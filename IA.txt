@@ -1,0 +1,215 @@
+Me ajude a criar um programa em GoLang para interpretar páginas do tipo ASP Classic.
+
+Ele deve funcionar da seguinte forma, receberá a solicitação do endereço diretamente do servidor, irá procurar na pasta ASP pelo arquivo <nome>.asp, deverá ler o arquivo, encontrar as diretivas ASP e então retornar o arquivo processado. Tente abstrair o código ao máximo para que ele utilize as implementações e bibliotecas de GoLang, de forma que não precisemos criar algo do zero, por exemplo, ao ler as variáveis, permita que elas sejam trabalhadas como variáveis Go, permita que response.write seja convertida por exemplo para uma escrita em Go. Basicamente o interpretador deve ler o script ASP, quase que converter para a chamada em Go e depois devolver o resultado em HTML válido. Me dê a implementação completa. Permita com que o código ASP seja escrito de forma nativa do VBScript, o usuário deve poder escrever o código sem emular o formato GoLang (faça as conversões necessárias). Crie o diretório em que os arquivos ASP residem e crie um arquivo ASP de modelo no diretório. Crie o servidor para fornecer o programa em um browser. Ao término compile o programa GoLang. Permita a execução de múltiplas chamadas simultâneas aos arquivos, de forma a permitir que o servidor execute várias tarefas simultâneas sem travar em uma página. Para questão de simplicidade, vamos presumir que o servidor roda apenas uma Application por vez. 
+
+Inicialmente precisamos implementar apenas as seguintes operações:
+
+- response.write
+- Dim (variables)
+- Dim (arrays)
+- for/next/Do/While
+- if/else/End If
+- sub (procedures), que permitam ser chamados de outro
+- Session
+- Cookies
+- Application
+
+No interpretador GoLang:
+
+Verifique se todas as KeyWords padrão VBScript foram implementadas, se não foram, implemente seguindo a especificação VBScript. Implemente apenas as não existentes, não modifique as já implementadas. Lembre-se de sempre utilizar o que já está disponível em GoLang para evitar criar código desnecessário.
+As keywords são: Empty, IsEmpty, Nothing, Is Nothing, Null, IsNull, True,  False. 
+
+No Programa GoLang:
+Verifique se as seguintes funções padrão do VBScript foram implementadas e as que não foram implemente seguindo a especificação VBScript. Implemente apenas as não existentes, não modifique as já implementadas. Lembre-se de sempre utilizar o que já está disponível em GoLang para evitar criar código desnecessário.
+As funções são:
+    - Date/Time Functions: CDate, Date, DateAdd, DateDiff, DatePart, DateSerial,  DateValue, Day, FormatDateTime, Hour, IsDate, Minute, Month, MonthName, Now, Second, Time,Timer,  TimeSerial, TimeValue, Weekday, WeekdayName, Year
+    - Conversion Functions: Asc, CBool, CByte, CCur, CDate, CDbl, Chr, CInt, CLng, CSng, CStr, Hex, Oct
+    - Format Functions: FormatCurrency, FormatDateTime, FormatNumber, FormatPercent
+    - Math Functions: Abs, Atn, Cos, Exp, Hex, Int, Fix, Log, Oct, Rnd, Sgn, Sin, Sqr, Tan
+    - Array Functions: Array, Filter, IsArray, Join, LBound, Split, UBound
+    - String Functions: InStr, InStrRev, LCase, Left, Len, LTrim, RTrim, Trim, Mid, Replace, Right, Space, StrComp, String, StrReverse, UCase
+    - Other Functions: CreateObject(por enquanto estamos implementando, mas coloque uma opção de exemplo para que detecte por exemplo se é vbscript.regexp), Eval (implemente a possibilidade de ler o código e executar), IsEmpty, IsNull, IsNumeric, IsObject, RGB, Round, ScriptEngine(sempre retorne VBScript),ScriptEngineBuildVersion (retorne 18702), ScriptEngineMajorVersion (5), ScriptEngineMinorVersion (retorne 8), TypeName, VarType.
+Verifique se as seguintes funções padrão de ASP Server foram implementadas e as que não foram implemente seguindo a especificação VBScript.Implemente apenas as não existentes, não modifique as já implementadas. Lembre-se de sempre utilizar o que já está disponível em GoLang para evitar criar código desnecessário. Entenda que o Servidor realmente corresponde a Server. Portanto crie as variáveis padrão no main.go que permitam por exemplo acesso global, como em GetLastError e afins. ScriptTimeout, implemente um timer no programa que permita que cada requisição dure apenas o tempo máximo especificado ou na diretiva na página ou utilizando a opção padrão do programa. 
+    Métodos Server: CreateObject, Execute (implemente a possiblidade de leitura e execução de script dentro de script), GetLastError(retorne um objeto que se chame ASPError e contenha a descrição do último erro), HTMLEncode, MapPath, Transfer, URLEncode
+
+
+
+
+
+CONTEXT: You are an expert GoLang developer tasked with upgrading a custom ASP (Active Server Pages 3.0) interpreter called AxonASP that include extra libraries. The current implementation includes main.go, parser.go, engine.go, context.go and *_lib.go. While basic VBScript evaluation and HTTP context exist, critical features defined in the "ASP 3.0" are missing. Don't remove functions implemented. All code comments MUST be created in English. Keep the GoLang style comments. You MUST implemment all the features, create all the code necessary. Generate the documentation needed and follow the instructions on GEMINI.md. Update or create the test_*.asp and the Default.asp to contain a link to test the feature implemented.
+
+
+TASK: Generate and implement the missing features, properties, methods, and architectural patterns defined below. Do not generate huge explanations, just one line and only the necessary code blocks and integration points. Modify existing files where necessary to integrate these changes.
+
+MISSING FEATURES SPECIFICATION:
+
+1. Implement a library where the user can obtain the .env variables using Server.CreateObject("G3ENV")
+
+15. Implement the Server.CreateObject("Scripting.Dictionary") full specification including the properties: CompareMode, Count, Item, Key 
+    and Methods: Add, Exists, Items, Keys, Remove, RemoveAll
+
+
+
+1. VBScript Engine Core (engine.go, parser.go)
+Implement Const Declarations:
+File: engine.go.
+Directive: Handle the Const keyword. Create a separate map in ExecutionContext for constants or add a metadata flag to Variables to prevent reassignment of these keys after initialization.
+
+CONTEXT: You are an expert GoLang developer tasked with upgrading a custom ASP (Active Server Pages 3.0) interpreter called AxonASP that include extra libraries. The current implementation includes main.go, parser.go, engine.go, context.go and *_lib.go. While basic VBScript evaluation and HTTP context exist, critical features defined in the "ASP 3.0" are missing. Don't remove functions implemented. All code comments MUST be created in English. Keep the GoLang style comments. You MUST implemment all the features, create all the code necessary. Generate the documentation needed and follow the instructions on GEMINI.md. Update or create the test_*.asp and the Default.asp to contain a link to test the feature implemented.
+
+
+TASK: Generate and implement the missing features, properties, methods, and architectural patterns defined below. Do not generate huge explanations, just one line and only the necessary code blocks and integration points. Modify existing files where necessary to integrate these changes.
+
+
+
+2. ASP Built-in Objects (context.go)
+Request Object Enhancements:
+Directive: Implement the ClientCertificate collection structure (stub is acceptable if SSL is not handled, but the collection must exist).
+Directive: Implement BinaryRead(count). Map this to reading from ctx.Request.Body.
+Directive: Correct TotalBytes. Ensure it returns the exact byte count of the request body, not just the ContentLength header. If not possible, keep the way it is now.
+
+
+3. Database & ADO (database_lib.go)
+Critical Persistence Fix (SQL Generation):
+Context: Currently, ADODBRecordset.Update only modifies the in-memory allData slice.
+
+Directive: Implement SQL generation logic within Update.
+Track modified fields (dirty checking) in ADODBRecordset.
+On Update, generate and execute an UPDATE table SET field=? WHERE ... or INSERT INTO table ... statement against rs.db.
+Requires storing the Primary Key or unique identifier metadata to construct the WHERE clause.
+
+Cursor Implementation:
+Directive: Refactor openRecordset to respect CursorType.
+If adOpenForwardOnly (default), use standard rows.Next().
+If adOpenStatic, keep current logic (fetch all to slice).
+If adOpenDynamic, implementation may require re-querying or holding the connection open differently. At minimum, ensure properties reflect the limitations of the chosen cursor.
+
+Search & Sort:
+Directive: Implement Recordset.Find(criteria). Parse a subset of SQL WHERE syntax (e.g., "id = 5") to search through allData.
+Directive: Implement Recordset.Sort. Use Go's sort.Slice on allData based on the field name provided in the property.
+
+Missing ADO Objects/Methods:
+Directive: Implement ADODB.Command object structure for handling Stored Procedures and Parameters.
+Directive: Implement Recordset.Supports(cursorOptions) method.
+Directive: Implement Recordset.Bookmark property for Keyset cursor emulation.
+
+
+
+Third-Party Compatibility Wrappers:
+
+File: components.go.
+
+Directive: Persits.MailSender: Map Server.CreateObject("Persits.MailSender") to the internal G3MAIL struct (or create a wrapper that matches Persits' API: .Host, .From, .AddAddress, .Send).
+
+Directive: AspUpload: Implement a Server.CreateObject("Persits.Upload") or similar. This requires parsing multipart/form-data from ctx.Request and exposing a collection of file objects (take a look at uploadhelper.asp to implement extra function on the upload element). If GoLang offers a better support for file upload, create a wrapper around it and expose a collection of file objects. 
+
+**TASK LIST & IMPLEMENTATION DIRECTIVES (CONTINUED):**
+
+### 6. Scripting.FileSystemObject (FSO) Core (`fso_lib.go`)
+
+* **Implement Main FSO Component:**
+* **File:** Create `fso_lib.go` (or update existing).
+* **Directive:** Implement the `FSOObject` struct satisfying the `Component` interface.
+* **Directive:** Implement **Path Manipulation Methods**:
+* `BuildPath(path, name)`: Use `filepath.Join`.
+* `GetAbsolutePathName(path)`: Use `filepath.Abs`.
+* `GetBaseName(path)`, `GetExtensionName(path)`, `GetFileName(path)`, `GetParentFolderName(path)`: Map to `filepath` functions.
+
+
+* **Directive:** Implement **File/Folder Operations**:
+* `CopyFile(source, dest, overwrite)`, `MoveFile`, `DeleteFile`: Map to `os` and `io` operations. Support wildcards if possible (`*.*`).
+* `CopyFolder`, `MoveFolder`, `DeleteFolder`, `CreateFolder`: Map to `os.MkdirAll`, `os.RemoveAll`.
+* `FileExists(path)`, `FolderExists(path)`, `DriveExists(path)`: Use `os.Stat`.
+
+
+* **Directive:** Implement **I/O Methods**:
+* `CreateTextFile`, `OpenTextFile`: Return a `TextStreamObject` (must also be implemented) wrapping `os.File`.
+
+
+* **Directive:** Implement **System Methods**:
+* `GetSpecialFolder(id)`: Map `0` -> WindowsDir (or `/bin`), `1` -> SystemDir (or `/usr/bin`), `2` -> TempDir (`os.TempDir`).
+* `GetTempName()`: Generate a random temporary filename.
+
+
+* **Directive:** Implement **Drives Collection**:
+* `Drives`: Return a collection of `DriveObject`. On Windows, iterate `A-Z`. On Unix/Linux, return just `/` (root) or parse `/proc/mounts`.
+
+
+### 7. FSO: Drive Object (`fso_lib.go`)
+
+* **Implement DriveObject Struct:**
+* **Directive:** Create `DriveObject` which `FSOObject.GetDrive()` returns.
+* **Properties Implementation:**
+* `DriveLetter`: Return letter (Windows) or empty (Unix).
+* `Path`, `RootFolder`: Return mount point.
+* `AvailableSpace`, `FreeSpace`, `TotalSize`: Use `golang.org/x/sys/unix` (Statfs) or Windows equivalent to calculate bytes.
+* `DriveType`: Return integer (2=Fixed, 3=Network, 4=CD-ROM, etc.).
+* `FileSystem`: Detect or mock (e.g., "NTFS", "EXT4").
+* `IsReady`: Return `true`.
+* `SerialNumber`: **Strict Requirement:** Must always return `"0001"` (decimal or hex representation) as a stub if real hardware ID access is restricted.
+* `ShareName`: Return network path if DriveType=3, else empty string.
+* `VolumeName`: Read label or return empty.
+
+
+
+### 8. FSO: File Object (`fso_lib.go`)
+
+* **Implement FileObject Struct:**
+* **Directive:** Create `FileObject` which `FSOObject.GetFile()` returns.
+* **Properties Implementation:**
+* `Attributes`: Bitmask from file mode (ReadOnly, Hidden, System, etc.).
+* `DateCreated`, `DateLastAccessed`, `DateLastModified`: Map from `os.Stat` (FileInfo).
+* `Name`, `Path`, `Drive`, `ParentFolder`: String manipulation based on file path.
+* `Size`: Return file size in bytes.
+* `Type`: Return description (e.g., "Text Document") based on extension.
+* `ShortName`, `ShortPath`: On non-Windows, return the standard Name/Path. On Windows, this would utilize 8.3 naming (optional, fallback to long name is acceptable).
+
+* **Methods Implementation:**
+* `Copy`, `Delete`, `Move`: wrappers calling the parent FSO methods on `this.Path`.
+* `OpenAsTextStream(iomode, format)`: Return `TextStreamObject`.
+
+
+
+### 9. FSO: Folder Object (`fso_lib.go`)
+
+* **Implement FolderObject Struct:**
+* **Directive:** Create `FolderObject` which `FSOObject.GetFolder()` returns.
+* **Properties Implementation:**
+* `Attributes`, `Date*`, `Name`, `Path`, `Drive`, `ParentFolder`, `ShortName`: Same logic as File Object.
+* `IsRootFolder`: Check if path is volume root.
+* `Size`: **Recursive calculation:** Sum size of all files and subfolders.
+
+
+* **Collections Implementation:**
+* `Files`: Return an iterable collection of `FileObject`s in this directory.
+* `SubFolders`: Return an iterable collection of `FolderObject`s in this directory.
+
+* **Methods Implementation:**
+* `Copy`, `Delete`, `Move`: Wrappers around FSO methods.
+* `CreateTextFile`: Convenience wrapper.
+
+
+
+
+
+### 10. Scripting.Dictionary Enhancements (`components.go`)
+
+* **Update Dictionary Implementation:**
+* **File:** `components.go`.
+* **Directive:** Expand the existing `Dictionary` struct.
+* **Properties:**
+* `CompareMode`: Add integer field. 0 = Binary (case-sensitive), 1 = Text (case-insensitive). Affects how `Key` lookups are performed in `Item`, `Exists`, `Add`, and `Remove`.
+* `Count`: Ensure it returns current map length.
+* `Item(key)`: Make Read/Write. If assigning to a key that doesn't exist, create it.
+* `Key(oldKey)`: **Write-only property logic.** Allows renaming a key: `dict.Key("Old") = "New"`.
+
+
+* **Methods:**
+* `Add(key, value)`, `Remove(key)`, `RemoveAll()`: Ensure these respect `CompareMode`.
+* `Exists(key)`: Returns boolean.
+* `Items()`, `Keys()`: Return array/slice of all values or keys.
+
+
+
+
+Você vai me ajudar com uma tarefa fantástica, estou criando um parser de VBScript. Para isso já criei a versão dele em C#, mas quero converter ela para GoLang. Esse parser será utilizado futuramente em um servidor de ASP Clássico. Me ajude traduzindo cada uma das classes para um arquivo GoLang de mesmo nome e que deverá ser armazenado na pasta VBScript-Go. Os scripts em C# que precisam ser traduzidos estão na pasta dot-net-parser. Vamos começar, traduza e crie o arquivo correspondente em GoLang de CharUtills.cs, Extensions.cs, LexerUtils.cs, Marker.cs, ParsingOptions.cs, Token.cs, TokenType.cs, VBSyntaxErrorCode.cs, Visitor.cs. Faça um arquivo por vez.
