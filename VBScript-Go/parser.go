@@ -1113,6 +1113,12 @@ func (p *Parser) parseConstExpression() ast.Expression {
 	case *DecIntegerLiteralToken:
 		expr = ast.NewIntegerLiteral(int64(t.Value))
 		p.move()
+	case *HexIntegerLiteralToken:
+		expr = ast.NewIntegerLiteral(int64(t.Value))
+		p.move()
+	case *OctIntegerLiteralToken:
+		expr = ast.NewIntegerLiteral(int64(t.Value))
+		p.move()
 	case *StringLiteralToken:
 		expr = ast.NewStringLiteral(t.Value)
 		p.move()

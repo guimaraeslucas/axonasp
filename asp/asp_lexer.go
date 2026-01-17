@@ -143,7 +143,8 @@ func (al *ASPLexer) processASPBlock(startPos int) {
 	}
 
 	// Extrai o conteúdo do bloco ASP (sem %> no final)
-	content := al.Code[blockStart : blockEnd-2]
+	// Remove espaçamento em branco do início e fim, compatível com ASP clássico
+	content := strings.TrimSpace(al.Code[blockStart : blockEnd-2])
 
 	al.blocks = append(al.blocks, &CodeBlock{
 		Type:     "asp",

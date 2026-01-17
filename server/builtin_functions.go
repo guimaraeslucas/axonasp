@@ -116,7 +116,106 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		// VBScript RGB returns as BGR integer (Blue in low byte)
 		return r + (g << 8) + (b << 16), true
+	// Array functions
+	case "array":
+		// Array(elem1, elem2, ...) - creates an array
+		result := make([]interface{}, len(args))
+		for i, arg := range args {
+			result[i] = arg
+		}
+		return result, true
 
+	case "isarray":
+		// IsArray(var) - checks if variable is an array
+		if len(args) == 0 {
+			return false, true
+		}
+		val := args[0]
+		_, ok := val.([]interface{})
+		return ok, true
+
+	case "lbound":
+		// LBound(array, [dimension]) - returns lower bound (always 0 in VBScript)
+		return 0, true
+
+	case "ubound":
+		// UBound(array, [dimension]) - returns upper bound (last index)
+		if len(args) == 0 {
+			return -1, true
+		}
+		arr, ok := args[0].([]interface{})
+		if !ok {
+			return -1, true
+		}
+		// Check for dimension parameter (default is 1)
+		dim := 1
+		if len(args) > 1 {
+			dim = toInt(args[1])
+		}
+		// For dimension 1, return length-1
+		if dim == 1 {
+			return len(arr) - 1, true
+		}
+		// For nested arrays, traverse to requested dimension
+		current := interface{}(arr)
+		for d := 1; d <= dim; d++ {
+			if slice, ok := current.([]interface{}); ok {
+				if d == dim {
+					return len(slice) - 1, true
+				}
+				if len(slice) > 0 {
+					current = slice[0]
+					continue
+				}
+				return -1, true
+			}
+			return -1, true
+		}
+		return -1, true
+
+	case "split":
+		// Split(expression, delimiter, [limit], [compare]) - splits string into array
+		if len(args) < 2 {
+			return []interface{}{}, true
+		}
+		str := toString(args[0])
+		delim := toString(args[1])
+		
+		// Handle limit parameter
+		limit := -1
+		if len(args) > 2 {
+			limit = toInt(args[2])
+		}
+		
+		var parts []string
+		if limit > 0 {
+			parts = strings.SplitN(str, delim, limit)
+		} else {
+			parts = strings.Split(str, delim)
+		}
+		
+		result := make([]interface{}, len(parts))
+		for i, part := range parts {
+			result[i] = part
+		}
+		return result, true
+
+	case "join":
+		// Join(array, delimiter) - joins array elements into string
+		if len(args) < 2 {
+			return "", true
+		}
+		arr, ok := args[0].([]interface{})
+		if !ok {
+			return "", true
+		}
+		delim := toString(args[1])
+		
+		parts := make([]string, len(arr))
+		for i, item := range arr {
+			parts[i] = toString(item)
+		}
+		return strings.Join(parts, delim), true
 	default:
 		return nil, false
 	}

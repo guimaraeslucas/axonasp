@@ -1,3 +1,0 @@
-$('#autocomplete').devbridgeAutocomplete({	
-    serviceUrl: 'default.asp?asplEvent=sampleform31_data'
-});

@@ -545,12 +545,71 @@ func (v *ASPVisitor) visitReDim(stmt *ast.ReDimStatement) error {
 		if redim == nil || redim.Identifier == nil {
 			continue
 		}
+		
 		varName := redim.Identifier.Name
-		// Initialize array - in full implementation, respect dimensions
-		_ = v.context.SetVariable(varName, make([]interface{}, 0))
+
+		// Evaluate array dimensions
+		dims := make([]int, len(redim.ArrayDims))
+		for i, dimExpr := range redim.ArrayDims {
+			dimVal, err := v.visitExpression(dimExpr)
+			if err != nil {
+				return err
+			}
+			dims[i] = toInt(dimVal)
+		}
+
+		if stmt.Preserve {
+			// ReDim Preserve - resize array keeping existing elements
+			oldVal, _ := v.context.GetVariable(varName)
+			var newArr []interface{}
+
+			if oldArr, ok := oldVal.([]interface{}); ok {
+				// Create new array with new dimensions
+				newArr = v.makeNestedArray(dims)
+				
+				// Copy old values to new array
+				v.preserveCopy(oldArr, newArr, dims)
+			} else {
+				// If variable doesn't exist or isn't an array, create new array
+				newArr = v.makeNestedArray(dims)
+			}
+			
+			_ = v.context.SetVariable(varName, newArr)
+		} else {
+			// ReDim without Preserve - create new array (old values lost)
+			newArr := v.makeNestedArray(dims)
+			_ = v.context.SetVariable(varName, newArr)
+		}
 	}
 
 	return nil
+}
+
+// preserveCopy copies elements from old array to new array
+func (v *ASPVisitor) preserveCopy(oldArr, newArr []interface{}, dims []int) {
+	if len(oldArr) == 0 || len(newArr) == 0 {
+		return
+	}
+
+	// Determine how many elements to copy (minimum of old and new lengths)
+	copyLen := len(oldArr)
+	if len(newArr) < copyLen {
+		copyLen = len(newArr)
+	}
+
+	if len(dims) == 1 {
+		// Single-dimensional array: direct copy
+		copy(newArr, oldArr[:copyLen])
+	} else {
+		// Multi-dimensional array: recursive copy
+		for i := 0; i < copyLen; i++ {
+			if oldInner, ok := oldArr[i].([]interface{}); ok {
+				if newInner, ok := newArr[i].([]interface{}); ok {
+					v.preserveCopy(oldInner, newInner, dims[1:])
+				}
+			}
+		}
+	}
 }
 
 // visitIf handles if-else statements
@@ -897,12 +956,59 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 		return nil
 	}
 
-	// Initialize variable to nil (VBScript behavior)
-	// Variables are case-insensitive, so store with lowercase key
-	if err := v.context.SetVariable(stmt.Identifier.Name, nil); err != nil {
-		return err
+	varName := stmt.Identifier.Name
+
+	// Check if it's an array declaration
+	if len(stmt.ArrayDims) > 0 {
+		// Fixed-size array: Dim arr(5) or Dim arr(2,3)
+		dims := make([]int, len(stmt.ArrayDims))
+		for i, dimExpr := range stmt.ArrayDims {
+			dimVal, err := v.visitExpression(dimExpr)
+			if err != nil {
+				return err
+			}
+			dims[i] = toInt(dimVal)
+		}
+		
+		// Create multi-dimensional array
+		arr := v.makeNestedArray(dims)
+		if err := v.context.SetVariable(varName, arr); err != nil {
+			return err
+		}
+	} else if stmt.IsDynamicArray {
+		// Dynamic array: Dim arr() - initialize as empty array
+		if err := v.context.SetVariable(varName, []interface{}{}); err != nil {
+			return err
+		}
+	} else {
+		// Regular variable - initialize to nil (VBScript Empty)
+		if err := v.context.SetVariable(varName, nil); err != nil {
+			return err
+		}
 	}
+
 	return nil
+}
+
+// makeNestedArray creates a nested array based on dimensions
+// VBScript arrays are 0-indexed: Dim arr(5) creates array with indices 0-5 (6 elements)
+func (v *ASPVisitor) makeNestedArray(dims []int) []interface{} {
+	if len(dims) == 0 {
+		return []interface{}{}
+	}
+
+	size := dims[0] + 1 // VBScript: Dim arr(5) means 0 to 5 (6 elements)
+	arr := make([]interface{}, size)
+
+	if len(dims) > 1 {
+		// Recursive for multi-dimensional arrays
+		innerDims := dims[1:]
+		for i := 0; i < size; i++ {
+			arr[i] = v.makeNestedArray(innerDims)
+		}
+	}
+
+	return arr
 }
 
 // visitConstDeclaration handles constant declarations (Const statement)
