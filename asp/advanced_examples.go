@@ -350,7 +350,8 @@ func Example10_CompleteWorkflow() {
 func RunAllExamples() {
 	fmt.Println("====================================")
 	fmt.Println("ASP Module - Advanced Usage Examples")
-	fmt.Println("====================================\n")
+	fmt.Println("====================================")
+	fmt.Println("")
 
 	Example1_BasicParsing()
 	Example2_BlockExtraction()

@@ -1,0 +1,18 @@
+<%
+'SheetJS sample
+set form=aspl.form
+
+if form.postback then
+
+	'conditional load of JavaScript!
+	form.writejs aspl.loadText("default/html/sampleform30.resx")	
+
+end if
+
+dim submit : set submit = form.field("submit")
+submit.add "html","click to generate xlsx"
+submit.add "class","btn btn-success"
+submit.add "id","generateExcel"
+
+form.build
+%>

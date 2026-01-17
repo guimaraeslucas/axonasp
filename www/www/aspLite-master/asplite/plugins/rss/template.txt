@@ -1,0 +1,13 @@
+<div style="width:100%">
+
+	<p><strong>[title]</strong></p>
+
+	<div style="margin-bottom:10px;font-size:smaller"><i>[pubdate]</i></div>
+	
+	<div>[description]</div>
+	
+	<p><button class="btn btn-warning" type="button" onclick="window.open('[link]')" href="#">read more</button></p>
+	
+	<hr>
+	
+</div>

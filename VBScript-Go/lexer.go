@@ -31,7 +31,7 @@ func NewLexer(code string) *Lexer {
 		Index:          0,
 		CurrentLine:    1,
 		CurrentLineStart: 0,
-		Length:         len(code),
+		Length:         len([]rune(code)),
 	}
 }
 

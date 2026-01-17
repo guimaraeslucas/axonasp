@@ -6,6 +6,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
   - O servidor HTTP principal está em `main.go`. Ele escuta em `:4050` e serve a pasta `./www`.
   - A pasta `asp/` contém o interpretador:
     - `asp_parser.go`.: parser ASP que divide o código em blocos HTML e ASP, e faz parse dos blocos ASP via VBScript-Go.
+    - `asp_lexer.go`: lexer ASP que tokeniza o código em blocos (HTML, ASP, directives). Suporta diretivas ASP como `<%@ Language=VBScript %>`.
  - A pasta `server/libs/` contém implementações de bibliotecas ASP (FileSystem, JSON, HTTP, Mail, Template, Crypto) que devem ser integradas ao servidor ASP e que são chamadas através de `Server.CreateObject("G3NOME_DA_BIBLIOTECA")`. Elas possuem um execution context que permite acesso ao contexto ASP atual (Request, Response, Session, Application, Server). 
   - Configurações do programa/bibliotecas devem ser obtidas de um arquivo .env e devem ter opções padrão no código caso .env não seja obtido
   - A pasta `server/deprecated/` contém implementações antigas que não devem ser modificadas. Utilize apenas para referência.
@@ -18,6 +19,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
     - `<% debug_asp_code = "TRUE" %>` no topo do arquivo ASP.
 
 - **Padrões do projeto e convenções**
+  - ASP directives like `<%@ Language=VBScript %>` are supported. They are parsed by the lexer and stored as directive blocks with attributes.
   - Lookup de variáveis é case-insensitive; internamente as chaves são armazenadas em minúsculas.
   - Includes: `<!--#include file="..."-->` é relativo ao arquivo atual; `virtual` é relativo a `www/` (root).
   - `Session`  deve ser armazenado em uma pasta em `temp/session` e e `Application` na memória; a sessão usa cookie `ASPSESSIONID`.

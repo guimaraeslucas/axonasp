@@ -6,12 +6,13 @@ import (
 
 // CodeBlock representa um bloco de código ASP ou conteúdo HTML
 type CodeBlock struct {
-	Type     string // "html", "asp", "text"
-	Content  string
-	Line     int
-	Column   int
-	StartPos int
-	EndPos   int
+	Type       string            // "html", "asp", "directive", "text"
+	Content    string
+	Line       int
+	Column     int
+	StartPos   int
+	EndPos     int
+	Attributes map[string]string // For directives (e.g., Language=VBScript)
 }
 
 // ASPLexer realiza análise léxica de código ASP clássico
@@ -78,14 +79,18 @@ func (al *ASPLexer) Tokenize() []*CodeBlock {
 			al.updatePosition(htmlContent)
 		}
 
-		// Processa o bloco ASP
-		al.processASPBlock(aspStart)
+		// Processa o bloco ASP ou diretiva
+		if al.isDirective(aspStart) {
+			al.processDirective(aspStart)
+		} else {
+			al.processASPBlock(aspStart)
+		}
 	}
 
 	return al.blocks
 }
 
-// findNextASPBlock encontra a próxima ocorrência de <%
+// findNextASPBlock encontra a próxima ocorrência de <% ou <%@
 func (al *ASPLexer) findNextASPBlock() int {
 	search := al.Code[al.Index:]
 	idx := strings.Index(search, "<%")
@@ -95,6 +100,14 @@ func (al *ASPLexer) findNextASPBlock() int {
 	}
 
 	return al.Index + idx
+}
+
+// isDirective checks if the block starting at position is a directive (<%@ ... %>)
+func (al *ASPLexer) isDirective(startPos int) bool {
+	if startPos+3 >= al.Length {
+		return false
+	}
+	return al.Code[startPos:startPos+3] == "<%@"
 }
 
 // findASPBlockEnd encontra a próxima ocorrência de %>
@@ -115,8 +128,17 @@ func (al *ASPLexer) processASPBlock(startPos int) {
 	blockEnd := al.findASPBlockEnd(blockStart)
 
 	if blockEnd == -1 {
-		// Bloco não foi fechado corretamente, trata como HTML
-		al.Index = startPos
+		// Bloco não foi fechado corretamente, trata como HTML e avança para evitar loop infinito
+		htmlContent := al.Code[startPos:]
+		al.blocks = append(al.blocks, &CodeBlock{
+			Type:     "html",
+			Content:  htmlContent,
+			Line:     al.CurrentLine,
+			Column:   al.CurrentColumn,
+			StartPos: startPos,
+			EndPos:   al.Length,
+		})
+		al.Index = al.Length // Avança até o fim
 		return
 	}
 
@@ -165,6 +187,71 @@ func (al *ASPLexer) GetAspBlocks() []*CodeBlock {
 // GetAllBlocks retorna todos os blocos
 func (al *ASPLexer) GetAllBlocks() []*CodeBlock {
 	return al.blocks
+}
+
+// processDirective processes an ASP directive like <%@ Language=VBScript %>
+func (al *ASPLexer) processDirective(startPos int) {
+	blockStart := startPos + 3 // Skip <%@
+	blockEnd := al.findASPBlockEnd(blockStart)
+
+	if blockEnd == -1 {
+		// Directive not closed properly, treat as HTML and advance to avoid infinite loop
+		htmlContent := al.Code[startPos:]
+		al.blocks = append(al.blocks, &CodeBlock{
+			Type:     "html",
+			Content:  htmlContent,
+			Line:     al.CurrentLine,
+			Column:   al.CurrentColumn,
+			StartPos: startPos,
+			EndPos:   al.Length,
+		})
+		al.Index = al.Length // Avança até o fim
+		return
+	}
+
+	// Extract directive content (without %> at end)
+	content := strings.TrimSpace(al.Code[blockStart : blockEnd-2])
+
+	// Parse directive attributes
+	attributes := al.parseDirectiveAttributes(content)
+
+	al.blocks = append(al.blocks, &CodeBlock{
+		Type:       "directive",
+		Content:    content,
+		Line:       al.CurrentLine,
+		Column:     al.CurrentColumn,
+		StartPos:   startPos,
+		EndPos:     blockEnd,
+		Attributes: attributes,
+	})
+
+	// Update position
+	processedContent := al.Code[al.Index:blockEnd]
+	al.updatePosition(processedContent)
+}
+
+// parseDirectiveAttributes parses attributes from directive content
+// Example: "Language=VBScript" -> {"Language": "VBScript"}
+func (al *ASPLexer) parseDirectiveAttributes(content string) map[string]string {
+	attributes := make(map[string]string)
+
+	// Split by whitespace to get individual attribute=value pairs
+	parts := strings.Fields(content)
+
+	for _, part := range parts {
+		// Split by = to get key and value
+		if idx := strings.Index(part, "="); idx != -1 {
+			key := strings.TrimSpace(part[:idx])
+			value := strings.TrimSpace(part[idx+1:])
+
+			// Remove quotes if present
+			value = strings.Trim(value, `"'`)
+
+			attributes[key] = value
+		}
+	}
+
+	return attributes
 }
 
 // Reset reinicia o lexer para o início

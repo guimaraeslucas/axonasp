@@ -275,3 +275,86 @@ func BenchmarkASPParser(b *testing.B) {
 		parser.Parse()
 	}
 }
+
+// TestASPDirective tests ASP directive parsing
+func TestASPDirective(t *testing.T) {
+	code := `<%@ Language=VBScript %>
+<% Dim x %>
+<html>Content</html>`
+	
+	lexer := NewASPLexer(code)
+	blocks := lexer.Tokenize()
+
+	if len(blocks) < 1 {
+		t.Fatalf("Expected at least 1 block, got %d", len(blocks))
+	}
+
+	// First block should be directive
+	if blocks[0].Type != "directive" {
+		t.Errorf("Expected first block to be 'directive', got '%s'", blocks[0].Type)
+	}
+
+	// Check directive attributes
+	if blocks[0].Attributes == nil {
+		t.Errorf("Expected directive attributes, got nil")
+	} else if lang, exists := blocks[0].Attributes["Language"]; !exists || lang != "VBScript" {
+		t.Errorf("Expected Language=VBScript, got %v", blocks[0].Attributes)
+	}
+}
+
+// TestASPDirectiveWithQuotes tests directive with quoted values
+func TestASPDirectiveWithQuotes(t *testing.T) {
+	code := `<%@ Language="VBScript" CodePage="65001" %>`
+	
+	lexer := NewASPLexer(code)
+	blocks := lexer.Tokenize()
+
+	if len(blocks) < 1 {
+		t.Fatalf("Expected at least 1 block, got %d", len(blocks))
+	}
+
+	// Check directive attributes
+	if blocks[0].Attributes == nil {
+		t.Fatalf("Expected directive attributes, got nil")
+	}
+	
+	if lang, exists := blocks[0].Attributes["Language"]; !exists || lang != "VBScript" {
+		t.Errorf("Expected Language=VBScript, got %v", blocks[0].Attributes)
+	}
+	
+	if cp, exists := blocks[0].Attributes["CodePage"]; !exists || cp != "65001" {
+		t.Errorf("Expected CodePage=65001, got %v", blocks[0].Attributes)
+	}
+}
+
+// TestASPParserWithDirective tests that parser handles directives correctly
+func TestASPParserWithDirective(t *testing.T) {
+	code := `<%@ Language=VBScript %>
+<% Dim message
+   message = "Hello" %>
+<html><body><%= message %></body></html>`
+	
+	parser := NewASPParser(code)
+	result, err := parser.Parse()
+
+	if err != nil {
+		t.Errorf("Parse error: %v", err)
+	}
+
+	if len(result.Blocks) == 0 {
+		t.Errorf("Expected blocks, got none")
+	}
+
+	// Verify directive block exists
+	hasDirective := false
+	for _, block := range result.Blocks {
+		if block.Type == "directive" {
+			hasDirective = true
+			break
+		}
+	}
+
+	if !hasDirective {
+		t.Errorf("Expected to find directive block")
+	}
+}

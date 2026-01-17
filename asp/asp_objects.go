@@ -174,7 +174,9 @@ func (s *ServerObject) createObject(args []interface{}) (interface{}, error) {
 	if executor, exists := s.properties["_executor"]; exists {
 		// Call the executor's CreateObject method
 		// The executor is an interface with CreateObject(string) (interface{}, error)
-		if ex, ok := executor.(interface{ CreateObject(string) (interface{}, error) }); ok {
+		if ex, ok := executor.(interface {
+			CreateObject(string) (interface{}, error)
+		}); ok {
 			return ex.CreateObject(objType)
 		}
 	}

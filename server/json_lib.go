@@ -74,4 +74,3 @@ func (j *G3JSON) LoadFile(path string) interface{} {
 	}
 	return j.Parse(string(content))
 }
-

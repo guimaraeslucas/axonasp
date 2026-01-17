@@ -33,6 +33,9 @@ type ExecutionContext struct {
 
 	// Variable storage (case-insensitive keys)
 	variables map[string]interface{}
+	
+	// Constant storage (case-insensitive keys) - read-only values
+	constants map[string]interface{}
 
 	// HTTP context
 	httpWriter  http.ResponseWriter
@@ -61,6 +64,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		Session:     make(map[string]interface{}),
 		Application: make(map[string]interface{}),
 		variables:   make(map[string]interface{}),
+		constants:   make(map[string]interface{}),
 		libraries:   make(map[string]interface{}),
 		httpWriter:  w,
 		httpRequest: r,
@@ -70,18 +74,59 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 }
 
 // SetVariable sets a variable in the execution context (case-insensitive)
-func (ec *ExecutionContext) SetVariable(name string, value interface{}) {
+// Returns error if attempting to overwrite a constant
+func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
+	nameLower := strings.ToLower(name)
+	
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
-	ec.variables[strings.ToLower(name)] = value
+	
+	// Check if this is a constant
+	if _, exists := ec.constants[nameLower]; exists {
+		return fmt.Errorf("cannot reassign constant '%s'", name)
+	}
+	
+	ec.variables[nameLower] = value
+	return nil
 }
 
 // GetVariable gets a variable from the execution context (case-insensitive)
 func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
+	nameLower := strings.ToLower(name)
+	
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
-	val, exists := ec.variables[strings.ToLower(name)]
+	
+	// Check constants first
+	if val, exists := ec.constants[nameLower]; exists {
+		return val, true
+	}
+	
+	// Then check variables
+	val, exists := ec.variables[nameLower]
 	return val, exists
+}
+
+// SetConstant sets a constant in the execution context (case-insensitive)
+// Constants cannot be changed after initialization
+func (ec *ExecutionContext) SetConstant(name string, value interface{}) error {
+	nameLower := strings.ToLower(name)
+	
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	
+	// Check if constant already exists
+	if _, exists := ec.constants[nameLower]; exists {
+		return fmt.Errorf("constant '%s' already defined", name)
+	}
+	
+	// Check if variable with same name exists
+	if _, exists := ec.variables[nameLower]; exists {
+		return fmt.Errorf("cannot define constant with name of existing variable '%s'", name)
+	}
+	
+	ec.constants[nameLower] = value
+	return nil
 }
 
 // CheckTimeout checks if execution has exceeded timeout
@@ -123,7 +168,7 @@ func EvaluateExpression(expr interface{}, ctx *ExecutionContext) interface{} {
 	if expr == nil {
 		return nil
 	}
-	
+
 	// If it's a string, check if it's a variable name
 	if strExpr, ok := expr.(string); ok {
 		// Try to get as variable
@@ -133,7 +178,7 @@ func EvaluateExpression(expr interface{}, ctx *ExecutionContext) interface{} {
 		// Otherwise return the string itself
 		return strExpr
 	}
-	
+
 	// Return as-is for other types
 	return expr
 }
@@ -163,7 +208,7 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	// Create execution context
 	timeout := time.Duration(ae.config.ScriptTimeout) * time.Second
 	ae.context = NewExecutionContext(w, r, sessionID, timeout)
-	
+
 	// Set RootDir in context
 	ae.context.RootDir = ae.config.RootDir
 
@@ -171,7 +216,6 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	ae.context.Server.SetProperty("_rootDir", ae.config.RootDir)
 	ae.context.Server.SetProperty("_httpRequest", r)
 	ae.context.Server.SetProperty("_executor", ae)
-
 
 	// Populate Request object
 	populateRequestData(ae.context.Request, r)
@@ -331,12 +375,22 @@ func NewASPVisitor(ctx *ExecutionContext, executor *ASPExecutor) *ASPVisitor {
 }
 
 // VisitStatement executes a single statement from the AST
+
 func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
+
 	if node == nil {
+
 		return nil
+
 	}
-	
+
+
+
 	v.depth++
+
+
+
+
 	if v.depth > 1000 {
 		return fmt.Errorf("maximum call depth exceeded")
 	}
@@ -382,9 +436,12 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	case *ast.ClassDeclaration:
 		return v.visitClassDeclaration(stmt)
-	
+
 	case *ast.VariableDeclaration:
 		return v.visitVariableDeclaration(stmt)
+
+	case *ast.ConstsDeclaration:
+		return v.visitConstDeclaration(stmt)
 
 	case *ast.OnErrorResumeNextStatement:
 		// Error handling - continue on error
@@ -418,13 +475,15 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 	}
 
 	// Handle different left-hand side patterns
-	
+
 	// Case 1: Simple variable assignment (Dim x = 5 or x = 5)
 	if ident, ok := stmt.Left.(*ast.Identifier); ok {
-		v.context.SetVariable(ident.Name, value)
+		if err := v.context.SetVariable(ident.Name, value); err != nil {
+			return err
+		}
 		return nil
 	}
-	
+
 	// Case 2: Indexed/Property assignment (obj("key") = value or obj.prop = value)
 	if indexCall, ok := stmt.Left.(*ast.IndexOrCallExpression); ok {
 		// Get the object
@@ -432,10 +491,10 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// If it's a map (dictionary-like object), set the indexed property
 		if mapObj, ok := obj.(map[string]interface{}); ok {
-			if indexCall.Indexes != nil && len(indexCall.Indexes) > 0 {
+			if len(indexCall.Indexes) > 0 {
 				// Get the key
 				key, err := v.visitExpression(indexCall.Indexes[0])
 				if err != nil {
@@ -445,9 +504,11 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 				return nil
 			}
 		}
-		
+
 		// If it's an ASP Library wrapper, try to call a setter
-		if lib, ok := obj.(interface{ SetProperty(string, interface{}) error }); ok && indexCall.Indexes != nil && len(indexCall.Indexes) > 0 {
+		if lib, ok := obj.(interface {
+			SetProperty(string, interface{}) error
+		}); ok && indexCall.Indexes != nil && len(indexCall.Indexes) > 0 {
 			key, err := v.visitExpression(indexCall.Indexes[0])
 			if err != nil {
 				return err
@@ -455,7 +516,7 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 			return lib.SetProperty(fmt.Sprintf("%v", key), value)
 		}
 	}
-	
+
 	// Case 3: Member assignment (obj.prop = value)
 	if member, ok := stmt.Left.(*ast.MemberExpression); ok {
 		// Get the object
@@ -463,13 +524,13 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Get property name
 		propName := ""
 		if member.Property != nil {
 			propName = member.Property.Name
 		}
-		
+
 		// If it's an ASP object, set the property
 		if aspObj, ok := obj.(asp.ASPObject); ok {
 			return aspObj.SetProperty(propName, value)
@@ -491,7 +552,7 @@ func (v *ASPVisitor) visitReDim(stmt *ast.ReDimStatement) error {
 		}
 		varName := redim.Identifier.Name
 		// Initialize array - in full implementation, respect dimensions
-		v.context.SetVariable(varName, make([]interface{}, 0))
+		_ = v.context.SetVariable(varName, make([]interface{}, 0))
 	}
 
 	return nil
@@ -570,7 +631,7 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 
 	if step > 0 {
 		for current <= end {
-			v.context.SetVariable(varName, current)
+			_ = v.context.SetVariable(varName, current)
 
 			// Execute body
 			if stmt.Body != nil {
@@ -585,7 +646,7 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 		}
 	} else if step < 0 {
 		for current >= end {
-			v.context.SetVariable(varName, current)
+			_ = v.context.SetVariable(varName, current)
 
 			// Execute body
 			if stmt.Body != nil {
@@ -621,7 +682,7 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		// Iterate over array
 		for _, item := range col {
 			// Set loop variable
-			v.context.SetVariable(stmt.Identifier.Name, item)
+			_ = v.context.SetVariable(stmt.Identifier.Name, item)
 
 			// Execute loop body
 			for _, body := range stmt.Body {
@@ -638,7 +699,7 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		// Iterate over map (VBScript dictionary)
 		for key := range col {
 			// Set loop variable to key
-			v.context.SetVariable(stmt.Identifier.Name, key)
+			_ = v.context.SetVariable(stmt.Identifier.Name, key)
 
 			// Execute loop body
 			for _, body := range stmt.Body {
@@ -809,7 +870,7 @@ func (v *ASPVisitor) visitSubDeclaration(stmt *ast.SubDeclaration) error {
 	}
 
 	// Store sub in context for later calls
-	v.context.SetVariable(stmt.Identifier.Name, stmt)
+	_ = v.context.SetVariable(stmt.Identifier.Name, stmt)
 	return nil
 }
 
@@ -820,7 +881,7 @@ func (v *ASPVisitor) visitFunctionDeclaration(stmt *ast.FunctionDeclaration) err
 	}
 
 	// Store function in context for later calls
-	v.context.SetVariable(stmt.Identifier.Name, stmt)
+	_ = v.context.SetVariable(stmt.Identifier.Name, stmt)
 	return nil
 }
 
@@ -831,7 +892,7 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 	}
 
 	// Store class in context
-	v.context.SetVariable(stmt.Identifier.Name, stmt)
+	_ = v.context.SetVariable(stmt.Identifier.Name, stmt)
 	return nil
 }
 
@@ -843,7 +904,36 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 
 	// Initialize variable to nil (VBScript behavior)
 	// Variables are case-insensitive, so store with lowercase key
-	v.context.SetVariable(stmt.Identifier.Name, nil)
+	if err := v.context.SetVariable(stmt.Identifier.Name, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+// visitConstDeclaration handles constant declarations (Const statement)
+func (v *ASPVisitor) visitConstDeclaration(stmt *ast.ConstsDeclaration) error {
+	if stmt == nil {
+		return nil
+	}
+
+	// Process all constant declarations
+	for _, constDecl := range stmt.Declarations {
+		if constDecl == nil || constDecl.Identifier == nil {
+			continue
+		}
+
+		// Evaluate the constant expression
+		val, err := v.visitExpression(constDecl.Init)
+		if err != nil {
+			return err
+		}
+
+		// Set the constant (this will check for conflicts)
+		if err := v.context.SetConstant(constDecl.Identifier.Name, val); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -859,7 +949,7 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 		if val, exists := v.context.GetVariable(varName); exists {
 			return val, nil
 		}
-		
+
 		// Check built-in ASP objects (case-insensitive)
 		switch strings.ToLower(varName) {
 		case "response":
@@ -873,7 +963,7 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 		case "application":
 			return v.context.Application, nil
 		}
-		
+
 		// Undefined variable returns nil in VBScript
 		return nil, nil
 
@@ -888,6 +978,18 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 
 	case *ast.BooleanLiteral:
 		return e.Value, nil
+
+	case *ast.NullLiteral:
+		// Null in VBScript represents a special value (no valid data)
+		return nil, nil
+
+	case *ast.EmptyLiteral:
+		// Empty in VBScript represents an uninitialized variable
+		return EmptyValue{}, nil
+
+	case *ast.NothingLiteral:
+		// Nothing in VBScript represents an empty object reference
+		return NothingValue{}, nil
 
 	case *ast.BinaryExpression:
 		return v.visitBinaryExpression(e)
@@ -962,7 +1064,9 @@ func (v *ASPVisitor) visitUnaryExpression(expr *ast.UnaryExpression) (interface{
 
 	switch expr.Operation {
 	case ast.UnaryOperationNot:
-		return !isTruthy(operand), nil
+		// In VBScript, Not works as bitwise operator (invert all bits)
+		operandInt := int(toFloat(operand))
+		return ^operandInt, nil
 	case ast.UnaryOperationMinus:
 		return negateValue(operand), nil
 	case ast.UnaryOperationPlus:
@@ -999,13 +1103,19 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// Evaluate indexes (arguments)
 	args := make([]interface{}, 0)
-	if arguments != nil {
-		for _, arg := range arguments {
-			val, err := v.visitExpression(arg)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, val)
+	for _, arg := range arguments {
+		val, err := v.visitExpression(arg)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, val)
+	}
+
+	// Check if this is a built-in function call
+	if ident, ok := objectExpr.(*ast.Identifier); ok && base == nil {
+		funcName := ident.Name
+		if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
+			return result, nil
 		}
 	}
 
@@ -1015,12 +1125,12 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		if ident, ok := objectExpr.(*ast.Identifier); ok {
 			methodName = ident.Name
 		}
-		
+
 		if methodName != "" {
 			return obj.CallMethod(methodName, args...)
 		}
 	}
-	
+
 	// Handle Member Method Calls (obj.Method(args)) where Method is not a property
 	if base == nil {
 		if member, ok := objectExpr.(*ast.MemberExpression); ok {
@@ -1059,7 +1169,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 		return nil, nil
 	}
-	
+
 	// Handle map/dictionary access (for JSON objects, etc.)
 	if mapObj, ok := base.(map[string]interface{}); ok && len(args) > 0 {
 		key := fmt.Sprintf("%v", args[0])
@@ -1134,12 +1244,27 @@ func isTruthy(val interface{}) bool {
 	return true
 }
 
+// isNothingValue checks if a value is Nothing or nil
+func isNothingValue(val interface{}) bool {
+	if val == nil {
+		return true
+	}
+	if _, ok := val.(NothingValue); ok {
+		return true
+	}
+	return false
+}
+
 // toString converts a value to string
 func toString(val interface{}) string {
 	if val == nil {
 		return ""
 	}
 	switch v := val.(type) {
+	case EmptyValue:
+		return ""
+	case NothingValue:
+		return ""
 	case string:
 		return v
 	case bool:
@@ -1165,13 +1290,21 @@ func toInt(val interface{}) int {
 		return 0
 	}
 	switch v := val.(type) {
+	case EmptyValue, NothingValue:
+		return 0
 	case int:
 		return v
 	case float64:
 		return int(v)
 	case string:
-		if i, err := strconv.Atoi(v); err == nil {
-			return i
+		// Try to parse hex, octal, or decimal
+		if parsed, ok := tryParseNumericLiteral(v); ok {
+			if intVal, ok := parsed.(int); ok {
+				return intVal
+			}
+			if floatVal, ok := parsed.(float64); ok {
+				return int(floatVal)
+			}
 		}
 		return 0
 	case bool:
@@ -1190,13 +1323,21 @@ func toFloat(val interface{}) float64 {
 		return 0
 	}
 	switch v := val.(type) {
+	case EmptyValue, NothingValue:
+		return 0
 	case int:
 		return float64(v)
 	case float64:
 		return v
 	case string:
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return f
+		// Try to parse hex, octal, or decimal
+		if parsed, ok := tryParseNumericLiteral(v); ok {
+			if intVal, ok := parsed.(int); ok {
+				return float64(intVal)
+			}
+			if floatVal, ok := parsed.(float64); ok {
+				return floatVal
+			}
 		}
 		return 0
 	case bool:
@@ -1228,9 +1369,16 @@ func negateValue(val interface{}) interface{} {
 func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (interface{}, error) {
 	switch op {
 	case ast.BinaryOperationAnd:
-		return isTruthy(left) && isTruthy(right), nil
+		// In VBScript, And works as bitwise operator
+		// When used in conditional context, VBScript evaluates truthiness first
+		leftInt := int(toFloat(left))
+		rightInt := int(toFloat(right))
+		return leftInt & rightInt, nil
 	case ast.BinaryOperationOr:
-		return isTruthy(left) || isTruthy(right), nil
+		// In VBScript, Or works as bitwise operator  
+		leftInt := int(toFloat(left))
+		rightInt := int(toFloat(right))
+		return leftInt | rightInt, nil
 	case ast.BinaryOperationAddition:
 		leftNum := toFloat(left)
 		rightNum := toFloat(right)
@@ -1281,6 +1429,19 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (in
 	case ast.BinaryOperationConcatenation:
 		return toString(left) + toString(right), nil
 	case ast.BinaryOperationIs:
+		// Is operator for object comparison (checks if same reference)
+		// Special handling for Nothing comparisons
+		leftIsNothing := isNothingValue(left)
+		rightIsNothing := isNothingValue(right)
+		
+		if leftIsNothing && rightIsNothing {
+			return true, nil
+		}
+		if leftIsNothing || rightIsNothing {
+			return false, nil
+		}
+		
+		// For other objects, compare references
 		return left == right, nil
 	case ast.BinaryOperationXor, ast.BinaryOperationEqv, ast.BinaryOperationImp:
 		// TODO: implement bitwise operations
@@ -1352,6 +1513,12 @@ func toNumeric(val interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// isBoolType checks if a value is boolean type
+func isBoolType(val interface{}) bool {
+	_, ok := val.(bool)
+	return ok
 }
 
 // populateRequestData fills a RequestObject with data from HTTP request

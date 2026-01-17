@@ -79,6 +79,11 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 	vbBlockIndex := 0
 	for i, block := range blocks {
 		switch block.Type {
+		case "directive":
+			// ASP directives like <%@ Language=VBScript %>
+			// These are processed but don't generate code
+			// They are used for configuration (Language, CodePage, etc.)
+			// No action needed here - directives are parsed in the lexer
 		case "asp":
 			// Tenta fazer parse do bloco VBScript
 			program, err := ap.parseVBBlock(block.Content)
@@ -97,7 +102,7 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 }
 
 // parseVBBlock realiza parse de um bloco de código VBScript
-func (ap *ASPParser) parseVBBlock(code string) (*ast.Program, error) {
+func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error) {
 	// Remove comentários vazios e espaços em branco
 	trimmedCode := strings.TrimSpace(code)
 
@@ -106,7 +111,8 @@ func (ap *ASPParser) parseVBBlock(code string) (*ast.Program, error) {
 		return &ast.Program{
 			OptionExplicit: false,
 			Body:           []ast.Statement{},
-		}, nil
+		},
+		nil
 	}
 
 	// Usa o parser do VBScript-Go
@@ -115,11 +121,11 @@ func (ap *ASPParser) parseVBBlock(code string) (*ast.Program, error) {
 	// Faz o parse e captura possíveis panics
 	defer func() {
 		if r := recover(); r != nil {
-			// Converter panic para erro
+			err = fmt.Errorf("panic durante parse: %v", r)
 		}
 	}()
 
-	program := parser.Parse()
+	program = parser.Parse()
 	return program, nil
 }
 
