@@ -62,7 +62,7 @@ type ExecutionContext struct {
 // NewExecutionContext creates a new execution context
 func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID string, timeout time.Duration) *ExecutionContext {
 	sessionManager := GetSessionManager()
-	
+
 	// Load or create session data
 	sessionData, err := sessionManager.GetOrCreateSession(sessionID)
 	if err != nil {
@@ -76,7 +76,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 			Timeout:      20,
 		}
 	}
-	
+
 	return &ExecutionContext{
 		Request:        asp.NewRequestObject(),
 		Response:       asp.NewResponseObject(),
@@ -296,7 +296,7 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	// Get Content-Type from Response object if set
 	contentType := ae.context.Response.GetContentType()
 	w.Header().Set("Content-Type", contentType)
-	
+
 	// Set session cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ASPSESSIONID",
@@ -565,7 +565,7 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		if ident, ok := indexCall.Object.(*ast.Identifier); ok {
 			varName := ident.Name
 			varNameLower := strings.ToLower(varName)
-			
+
 			// Check if it's a built-in ASP object first
 			var obj interface{}
 			switch varNameLower {
@@ -620,7 +620,7 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 					return nil
 				}
 			}
-			
+
 			// Handle SessionObject assignment (Session("key") = value)
 			if sessionObj, ok := obj.(*SessionObject); ok {
 				if len(indexCall.Indexes) > 0 {
@@ -660,7 +660,7 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 					return nil
 				}
 			}
-			
+
 			// If it's a SessionObject, set the indexed property
 			if sessionObj, ok := obj.(*SessionObject); ok {
 				if len(indexCall.Indexes) > 0 {
@@ -1443,7 +1443,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 		return nil, nil
 	}
-	
+
 	// Handle SessionObject index access (Session("key"))
 	if sessionObj, ok := base.(*SessionObject); ok && len(args) > 0 {
 		return sessionObj.GetIndex(args[0]), nil
@@ -1497,7 +1497,7 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	if aspObj, ok := obj.(asp.ASPObject); ok {
 		return aspObj.GetProperty(propName), nil
 	}
-	
+
 	// Handle SessionObject
 	if sessionObj, ok := obj.(*SessionObject); ok {
 		return sessionObj.GetProperty(propName), nil

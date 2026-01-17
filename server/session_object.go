@@ -21,29 +21,29 @@ func NewSessionObject(sessionID string, data map[string]interface{}) *SessionObj
 // GetProperty gets a session property (case-insensitive)
 func (s *SessionObject) GetProperty(name string) interface{} {
 	nameLower := strings.ToLower(name)
-	
+
 	// Handle built-in properties
 	if nameLower == "sessionid" {
 		return s.ID
 	}
-	
+
 	// Get from session data
 	if val, exists := s.Data[nameLower]; exists {
 		return val
 	}
-	
+
 	return nil
 }
 
 // SetProperty sets a session property (case-insensitive)
 func (s *SessionObject) SetProperty(name string, value interface{}) error {
 	nameLower := strings.ToLower(name)
-	
+
 	// Don't allow setting SessionID
 	if nameLower == "sessionid" {
 		return nil // Ignore attempts to set SessionID
 	}
-	
+
 	s.Data[nameLower] = value
 	return nil
 }
@@ -58,7 +58,7 @@ func (s *SessionObject) GetIndex(index interface{}) interface{} {
 	default:
 		return nil
 	}
-	
+
 	return s.GetProperty(key)
 }
 
@@ -72,6 +72,6 @@ func (s *SessionObject) SetIndex(index interface{}, value interface{}) error {
 	default:
 		return nil
 	}
-	
+
 	return s.SetProperty(key, value)
 }

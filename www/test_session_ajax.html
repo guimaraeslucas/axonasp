@@ -1,100 +1,155 @@
 <!DOCTYPE html>
 <html>
-<head>
-    <title>Session Test with AJAX</title>
-    <style>
-        body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        h1 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
-        .box { border: 1px solid #ddd; padding: 15px; margin: 15px 0; background: #f9f9f9; border-radius: 4px; }
-        button { background: #667eea; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; margin-right: 10px; }
-        button:hover { background: #764ba2; }
-        #output { background: #f0f0f0; padding: 15px; border-radius: 4px; margin-top: 10px; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
-        .success { color: green; }
-        .error { color: red; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>G3pix AxonASP - Session Persistence Test</h1>
-        
-        <div class="box">
-            <p>This test demonstrates that session data persists across multiple requests when using the same session cookie.</p>
-            <button onclick="testRequest1()">Request 1: Set Session Data</button>
-            <button onclick="testRequest2()">Request 2: Increment Counter</button>
-            <button onclick="testRequest3()">Request 3: Retrieve Data</button>
-            <button onclick="clearOutput()">Clear Output</button>
+
+    <head>
+        <title>Session Test with AJAX</title>
+        <style>
+            body {
+                font-family: Arial;
+                padding: 20px;
+                background: #f5f5f5;
+            }
+
+            .container {
+                max-width: 800px;
+                margin: 0 auto;
+                background: white;
+                padding: 30px;
+                border-radius: 8px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            h1 {
+                color: #333;
+                border-bottom: 2px solid #667eea;
+                padding-bottom: 10px;
+            }
+
+            .box {
+                border: 1px solid #ddd;
+                padding: 15px;
+                margin: 15px 0;
+                background: #f9f9f9;
+                border-radius: 4px;
+            }
+
+            button {
+                background: #667eea;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                margin-right: 10px;
+            }
+
+            button:hover {
+                background: #764ba2;
+            }
+
+            #output {
+                background: #f0f0f0;
+                padding: 15px;
+                border-radius: 4px;
+                margin-top: 10px;
+                font-family: monospace;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+
+            .success {
+                color: green;
+            }
+
+            .error {
+                color: red;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <h1>G3pix AxonASP - Session Persistence Test</h1>
+
+            <div class="box">
+                <p>This test demonstrates that session data persists across multiple requests when using the same
+                    session cookie.</p>
+                <button onclick="testRequest1()">Request 1: Set Session Data</button>
+                <button onclick="testRequest2()">Request 2: Increment Counter</button>
+                <button onclick="testRequest3()">Request 3: Retrieve Data</button>
+                <button onclick="clearOutput()">Clear Output</button>
+            </div>
+
+            <div id="output">Output will appear here...</div>
         </div>
-        
-        <div id="output">Output will appear here...</div>
-    </div>
 
-    <script>
-        let sessionCookie = null;
+        <script>
+            let sessionCookie = null;
 
-        async function testRequest1() {
-            try {
-                addOutput('Sending Request 1...');
-                const response = await fetch('session_handler.asp?action=set', {
-                    method: 'GET',
-                    credentials: 'include' // Include cookies
-                });
-                const text = await response.text();
-                addOutput('Response 1:\n' + text);
-                
-                // Extract and store the cookie if set
-                const setCookie = response.headers.get('set-cookie');
-                if (setCookie) {
-                    sessionCookie = setCookie.split(';')[0];
-                    addOutput('Session Cookie: ' + sessionCookie, 'success');
+            async function testRequest1() {
+                try {
+                    addOutput('Sending Request 1...');
+                    const response = await fetch('session_handler.asp?action=set', {
+                        method: 'GET',
+                        credentials: 'include' // Include cookies
+                    });
+                    const text = await response.text();
+                    addOutput('Response 1:\n' + text);
+
+                    // Extract and store the cookie if set
+                    const setCookie = response.headers.get('set-cookie');
+                    if (setCookie) {
+                        sessionCookie = setCookie.split(';')[0];
+                        addOutput('Session Cookie: ' + sessionCookie, 'success');
+                    }
+                } catch (err) {
+                    addOutput('Error: ' + err.message, 'error');
                 }
-            } catch (err) {
-                addOutput('Error: ' + err.message, 'error');
             }
-        }
 
-        async function testRequest2() {
-            try {
-                addOutput('Sending Request 2...');
-                const response = await fetch('session_handler.asp?action=increment', {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-                const text = await response.text();
-                addOutput('Response 2:\n' + text);
-            } catch (err) {
-                addOutput('Error: ' + err.message, 'error');
+            async function testRequest2() {
+                try {
+                    addOutput('Sending Request 2...');
+                    const response = await fetch('session_handler.asp?action=increment', {
+                        method: 'GET',
+                        credentials: 'include'
+                    });
+                    const text = await response.text();
+                    addOutput('Response 2:\n' + text);
+                } catch (err) {
+                    addOutput('Error: ' + err.message, 'error');
+                }
             }
-        }
 
-        async function testRequest3() {
-            try {
-                addOutput('Sending Request 3...');
-                const response = await fetch('session_handler.asp?action=get', {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-                const text = await response.text();
-                addOutput('Response 3:\n' + text);
-            } catch (err) {
-                addOutput('Error: ' + err.message, 'error');
+            async function testRequest3() {
+                try {
+                    addOutput('Sending Request 3...');
+                    const response = await fetch('session_handler.asp?action=get', {
+                        method: 'GET',
+                        credentials: 'include'
+                    });
+                    const text = await response.text();
+                    addOutput('Response 3:\n' + text);
+                } catch (err) {
+                    addOutput('Error: ' + err.message, 'error');
+                }
             }
-        }
 
-        function addOutput(text, className) {
-            const output = document.getElementById('output');
-            const line = document.createElement('div');
-            if (className) {
-                line.className = className;
+            function addOutput(text, className) {
+                const output = document.getElementById('output');
+                const line = document.createElement('div');
+                if (className) {
+                    line.className = className;
+                }
+                line.textContent = text;
+                output.appendChild(line);
+                output.scrollTop = output.scrollHeight;
             }
-            line.textContent = text;
-            output.appendChild(line);
-            output.scrollTop = output.scrollHeight;
-        }
 
-        function clearOutput() {
-            document.getElementById('output').innerHTML = '';
-        }
-    </script>
-</body>
+            function clearOutput() {
+                document.getElementById('output').innerHTML = '';
+            }
+        </script>
+    </body>
+
 </html>
