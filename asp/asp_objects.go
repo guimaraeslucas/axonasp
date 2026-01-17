@@ -61,6 +61,8 @@ func (s *ServerObject) CallMethod(name string, args ...interface{}) (interface{}
 		return s.getLastError(), nil
 	case "IsClientConnected":
 		return s.isClientConnected(), nil
+	case "CreateObject":
+		return s.createObject(args)
 	default:
 		return nil, nil
 	}
@@ -158,6 +160,26 @@ func (s *ServerObject) isClientConnected() interface{} {
 	}
 	// Default to true if no request context available
 	return true
+}
+
+// createObject creates an ASP COM object (Server.CreateObject)
+func (s *ServerObject) createObject(args []interface{}) (interface{}, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("CreateObject requires an object type")
+	}
+
+	objType := fmt.Sprintf("%v", args[0])
+
+	// Get the executor from properties (set by server/executor.go)
+	if executor, exists := s.properties["_executor"]; exists {
+		// Call the executor's CreateObject method
+		// The executor is an interface with CreateObject(string) (interface{}, error)
+		if ex, ok := executor.(interface{ CreateObject(string) (interface{}, error) }); ok {
+			return ex.CreateObject(objType)
+		}
+	}
+
+	return nil, fmt.Errorf("CreateObject not available")
 }
 
 // RequestObject representa o objeto Request do ASP

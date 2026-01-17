@@ -45,6 +45,9 @@ type ExecutionContext struct {
 	// Library instances
 	libraries map[string]interface{}
 
+	// Configuration
+	RootDir string
+
 	// Mutex for thread safety
 	mu sync.RWMutex
 }
@@ -89,6 +92,52 @@ func (ec *ExecutionContext) CheckTimeout() error {
 	return nil
 }
 
+// Server_MapPath converts a virtual path to an absolute file system path
+func (ec *ExecutionContext) Server_MapPath(path string) string {
+	rootDir := ec.RootDir
+	if rootDir == "" {
+		rootDir = "./www"
+	}
+
+	// Handle different path formats
+	if path == "/" || path == "" {
+		return rootDir
+	}
+
+	// Remove leading slash if present
+	if len(path) > 0 && (path[0] == '/' || path[0] == '\\') {
+		path = path[1:]
+	}
+
+	// Join with root directory
+	fullPath := fmt.Sprintf("%s%c%s", rootDir, '/', strings.ReplaceAll(path, "\\", "/"))
+
+	return fullPath
+}
+
+// EvaluateExpression evaluates a simple expression (simplified version for legacy helpers)
+// This is a simple wrapper that returns the value as-is or converts strings
+// The full expression evaluation is handled by the VBScript parser
+func EvaluateExpression(expr interface{}, ctx *ExecutionContext) interface{} {
+	// If it's already a value, return it
+	if expr == nil {
+		return nil
+	}
+	
+	// If it's a string, check if it's a variable name
+	if strExpr, ok := expr.(string); ok {
+		// Try to get as variable
+		if val, exists := ctx.GetVariable(strExpr); exists {
+			return val
+		}
+		// Otherwise return the string itself
+		return strExpr
+	}
+	
+	// Return as-is for other types
+	return expr
+}
+
 // ASPExecutor handles execution of ASP code with VBScript programs
 type ASPExecutor struct {
 	config  *ASPProcessorConfig
@@ -114,10 +163,15 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	// Create execution context
 	timeout := time.Duration(ae.config.ScriptTimeout) * time.Second
 	ae.context = NewExecutionContext(w, r, sessionID, timeout)
+	
+	// Set RootDir in context
+	ae.context.RootDir = ae.config.RootDir
 
 	// Configure Server object with context
 	ae.context.Server.SetProperty("_rootDir", ae.config.RootDir)
 	ae.context.Server.SetProperty("_httpRequest", r)
+	ae.context.Server.SetProperty("_executor", ae)
+
 
 	// Populate Request object
 	populateRequestData(ae.context.Request, r)
@@ -281,7 +335,7 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 	if node == nil {
 		return nil
 	}
-
+	
 	v.depth++
 	if v.depth > 1000 {
 		return fmt.Errorf("maximum call depth exceeded")
@@ -295,6 +349,9 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 	case *ast.CallStatement:
 		_, err := v.visitExpression(stmt.Callee)
 		return err
+
+	case *ast.CallSubStatement:
+		return v.visitCallSubStatement(stmt)
 
 	case *ast.ReDimStatement:
 		return v.visitReDim(stmt)
@@ -325,6 +382,9 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	case *ast.ClassDeclaration:
 		return v.visitClassDeclaration(stmt)
+	
+	case *ast.VariableDeclaration:
+		return v.visitVariableDeclaration(stmt)
 
 	case *ast.OnErrorResumeNextStatement:
 		// Error handling - continue on error
@@ -357,9 +417,63 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		return err
 	}
 
-	// Get variable name from left side
+	// Handle different left-hand side patterns
+	
+	// Case 1: Simple variable assignment (Dim x = 5 or x = 5)
 	if ident, ok := stmt.Left.(*ast.Identifier); ok {
 		v.context.SetVariable(ident.Name, value)
+		return nil
+	}
+	
+	// Case 2: Indexed/Property assignment (obj("key") = value or obj.prop = value)
+	if indexCall, ok := stmt.Left.(*ast.IndexOrCallExpression); ok {
+		// Get the object
+		obj, err := v.visitExpression(indexCall.Object)
+		if err != nil {
+			return err
+		}
+		
+		// If it's a map (dictionary-like object), set the indexed property
+		if mapObj, ok := obj.(map[string]interface{}); ok {
+			if indexCall.Indexes != nil && len(indexCall.Indexes) > 0 {
+				// Get the key
+				key, err := v.visitExpression(indexCall.Indexes[0])
+				if err != nil {
+					return err
+				}
+				mapObj[fmt.Sprintf("%v", key)] = value
+				return nil
+			}
+		}
+		
+		// If it's an ASP Library wrapper, try to call a setter
+		if lib, ok := obj.(interface{ SetProperty(string, interface{}) error }); ok && indexCall.Indexes != nil && len(indexCall.Indexes) > 0 {
+			key, err := v.visitExpression(indexCall.Indexes[0])
+			if err != nil {
+				return err
+			}
+			return lib.SetProperty(fmt.Sprintf("%v", key), value)
+		}
+	}
+	
+	// Case 3: Member assignment (obj.prop = value)
+	if member, ok := stmt.Left.(*ast.MemberExpression); ok {
+		// Get the object
+		obj, err := v.visitExpression(member.Object)
+		if err != nil {
+			return err
+		}
+		
+		// Get property name
+		propName := ""
+		if member.Property != nil {
+			propName = member.Property.Name
+		}
+		
+		// If it's an ASP object, set the property
+		if aspObj, ok := obj.(asp.ASPObject); ok {
+			return aspObj.SetProperty(propName, value)
+		}
 	}
 
 	return nil
@@ -721,6 +835,18 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 	return nil
 }
 
+// visitVariableDeclaration handles variable declarations (Dim statement)
+func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) error {
+	if stmt == nil || stmt.Identifier == nil {
+		return nil
+	}
+
+	// Initialize variable to nil (VBScript behavior)
+	// Variables are case-insensitive, so store with lowercase key
+	v.context.SetVariable(stmt.Identifier.Name, nil)
+	return nil
+}
+
 // visitExpression evaluates an expression and returns its value
 func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 	if expr == nil {
@@ -733,6 +859,21 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 		if val, exists := v.context.GetVariable(varName); exists {
 			return val, nil
 		}
+		
+		// Check built-in ASP objects (case-insensitive)
+		switch strings.ToLower(varName) {
+		case "response":
+			return v.context.Response, nil
+		case "request":
+			return v.context.Request, nil
+		case "server":
+			return v.context.Server, nil
+		case "session":
+			return v.context.Session, nil
+		case "application":
+			return v.context.Application, nil
+		}
+		
 		// Undefined variable returns nil in VBScript
 		return nil, nil
 
@@ -831,22 +972,35 @@ func (v *ASPVisitor) visitUnaryExpression(expr *ast.UnaryExpression) (interface{
 	}
 }
 
+// visitCallSubStatement handles subroutine calls
+func (v *ASPVisitor) visitCallSubStatement(stmt *ast.CallSubStatement) error {
+	if stmt == nil {
+		return nil
+	}
+	_, err := v.resolveCall(stmt.Callee, stmt.Arguments)
+	return err
+}
+
 // visitIndexOrCall handles function calls and array indexing
 func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interface{}, error) {
 	if expr == nil {
 		return nil, nil
 	}
+	return v.resolveCall(expr.Object, expr.Indexes)
+}
 
+// resolveCall evaluates a call or index expression
+func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
 	// Evaluate base expression
-	base, err := v.visitExpression(expr.Object)
+	base, err := v.visitExpression(objectExpr)
 	if err != nil {
 		return nil, err
 	}
 
 	// Evaluate indexes (arguments)
 	args := make([]interface{}, 0)
-	if expr.Indexes != nil {
-		for _, arg := range expr.Indexes {
+	if arguments != nil {
+		for _, arg := range arguments {
 			val, err := v.visitExpression(arg)
 			if err != nil {
 				return nil, err
@@ -855,11 +1009,45 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 		}
 	}
 
-	// Handle method calls on built-in objects
+	// Handle method calls on built-in objects (Default Property / Method)
 	if obj, ok := base.(asp.ASPObject); ok {
-		// Get method name from object expression
-		if ident, ok := expr.Object.(*ast.Identifier); ok {
-			return obj.CallMethod(ident.Name, args...)
+		methodName := ""
+		if ident, ok := objectExpr.(*ast.Identifier); ok {
+			methodName = ident.Name
+		}
+		
+		if methodName != "" {
+			return obj.CallMethod(methodName, args...)
+		}
+	}
+	
+	// Handle Member Method Calls (obj.Method(args)) where Method is not a property
+	if base == nil {
+		if member, ok := objectExpr.(*ast.MemberExpression); ok {
+			// Evaluate the object (e.g., Response in Response.Write)
+			parentObj, err := v.visitExpression(member.Object)
+			if err != nil {
+				return nil, err
+			}
+
+			if parentObj != nil {
+				propName := ""
+				if member.Property != nil {
+					propName = member.Property.Name
+				}
+
+				// Try ASPObject
+				if aspObj, ok := parentObj.(asp.ASPObject); ok {
+					return aspObj.CallMethod(propName, args...)
+				}
+
+				// Try ASPLibrary / Generic interface with CallMethod
+				if lib, ok := parentObj.(interface {
+					CallMethod(string, ...interface{}) (interface{}, error)
+				}); ok {
+					return lib.CallMethod(propName, args...)
+				}
+			}
 		}
 	}
 
@@ -868,6 +1056,15 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 		idx := toInt(args[0])
 		if idx >= 0 && idx < len(arr) {
 			return arr[idx], nil
+		}
+		return nil, nil
+	}
+	
+	// Handle map/dictionary access (for JSON objects, etc.)
+	if mapObj, ok := base.(map[string]interface{}); ok && len(args) > 0 {
+		key := fmt.Sprintf("%v", args[0])
+		if val, exists := mapObj[key]; exists {
+			return val, nil
 		}
 		return nil, nil
 	}

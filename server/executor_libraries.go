@@ -7,310 +7,310 @@ type ASPLibrary interface {
 	SetProperty(name string, value interface{}) error
 }
 
-// JSONLibrary implements the G3JSON library
+// JSONLibrary wraps G3JSON for ASPLibrary interface compatibility
 type JSONLibrary struct {
-	context *ExecutionContext
+	lib *G3JSON
 }
 
 // NewJSONLibrary creates a new JSON library instance
 func NewJSONLibrary(ctx *ExecutionContext) *JSONLibrary {
 	return &JSONLibrary{
-		context: ctx,
+		lib: &G3JSON{},
 	}
 }
 
 // CallMethod calls a method on the JSON library
 func (jl *JSONLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with JSON operations
-	return nil, nil
+	return jl.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from the JSON library
 func (jl *JSONLibrary) GetProperty(name string) interface{} {
-	return nil
+	return jl.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on the JSON library
 func (jl *JSONLibrary) SetProperty(name string, value interface{}) error {
+	jl.lib.SetProperty(name, value)
 	return nil
 }
 
-// FileSystemLibrary implements the G3FILES library
+// FileSystemLibrary wraps G3FILES for ASPLibrary interface compatibility
 type FileSystemLibrary struct {
-	context *ExecutionContext
+	lib *G3FILES
 }
 
 // NewFileSystemLibrary creates a new FileSystem library instance
 func NewFileSystemLibrary(ctx *ExecutionContext) *FileSystemLibrary {
 	return &FileSystemLibrary{
-		context: ctx,
+		lib: &G3FILES{ctx: ctx},
 	}
 }
 
 // CallMethod calls a method on the FileSystem library
 func (fs *FileSystemLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with file operations
-	return nil, nil
+	return fs.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from the FileSystem library
 func (fs *FileSystemLibrary) GetProperty(name string) interface{} {
-	return nil
+	return fs.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on the FileSystem library
 func (fs *FileSystemLibrary) SetProperty(name string, value interface{}) error {
+	fs.lib.SetProperty(name, value)
 	return nil
 }
 
-// HTTPLibrary implements the G3HTTP library
+// HTTPLibrary wraps G3HTTP for ASPLibrary interface compatibility
 type HTTPLibrary struct {
-	context *ExecutionContext
+	lib *G3HTTP
 }
 
 // NewHTTPLibrary creates a new HTTP library instance
 func NewHTTPLibrary(ctx *ExecutionContext) *HTTPLibrary {
 	return &HTTPLibrary{
-		context: ctx,
+		lib: &G3HTTP{ctx: ctx},
 	}
 }
 
 // CallMethod calls a method on the HTTP library
 func (hl *HTTPLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with HTTP operations
-	return nil, nil
+	return hl.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from the HTTP library
 func (hl *HTTPLibrary) GetProperty(name string) interface{} {
-	return nil
+	return hl.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on the HTTP library
 func (hl *HTTPLibrary) SetProperty(name string, value interface{}) error {
+	hl.lib.SetProperty(name, value)
 	return nil
 }
 
-// TemplateLibrary implements the G3TEMPLATE library
+// TemplateLibrary wraps G3TEMPLATE for ASPLibrary interface compatibility
 type TemplateLibrary struct {
-	context *ExecutionContext
+	lib *G3TEMPLATE
 }
 
 // NewTemplateLibrary creates a new Template library instance
 func NewTemplateLibrary(ctx *ExecutionContext) *TemplateLibrary {
 	return &TemplateLibrary{
-		context: ctx,
+		lib: &G3TEMPLATE{ctx: ctx},
 	}
 }
 
 // CallMethod calls a method on the Template library
 func (tl *TemplateLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with template operations
-	return nil, nil
+	return tl.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from the Template library
 func (tl *TemplateLibrary) GetProperty(name string) interface{} {
-	return nil
+	return tl.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on the Template library
 func (tl *TemplateLibrary) SetProperty(name string, value interface{}) error {
+	tl.lib.SetProperty(name, value)
 	return nil
 }
 
-// MailLibrary implements the G3MAIL library
+// MailLibrary wraps G3MAIL for ASPLibrary interface compatibility
 type MailLibrary struct {
-	context *ExecutionContext
+	lib *G3MAIL
 }
 
 // NewMailLibrary creates a new Mail library instance
 func NewMailLibrary(ctx *ExecutionContext) *MailLibrary {
 	return &MailLibrary{
-		context: ctx,
+		lib: &G3MAIL{ctx: ctx},
 	}
 }
 
 // CallMethod calls a method on the Mail library
 func (ml *MailLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with mail operations
-	return nil, nil
+	return ml.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from the Mail library
 func (ml *MailLibrary) GetProperty(name string) interface{} {
-	return nil
+	return ml.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on the Mail library
 func (ml *MailLibrary) SetProperty(name string, value interface{}) error {
+	ml.lib.SetProperty(name, value)
 	return nil
 }
 
-// CryptoLibrary implements the G3CRYPTO library
+// CryptoLibrary wraps G3CRYPTO for ASPLibrary interface compatibility
 type CryptoLibrary struct {
-	context *ExecutionContext
+	lib *G3CRYPTO
 }
 
 // NewCryptoLibrary creates a new Crypto library instance
 func NewCryptoLibrary(ctx *ExecutionContext) *CryptoLibrary {
 	return &CryptoLibrary{
-		context: ctx,
+		lib: &G3CRYPTO{ctx: ctx},
 	}
 }
 
 // CallMethod calls a method on the Crypto library
 func (cl *CryptoLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with crypto operations
-	return nil, nil
+	return cl.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from the Crypto library
 func (cl *CryptoLibrary) GetProperty(name string) interface{} {
-	return nil
+	return cl.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on the Crypto library
 func (cl *CryptoLibrary) SetProperty(name string, value interface{}) error {
+	cl.lib.SetProperty(name, value)
 	return nil
 }
 
-// ServerXMLHTTP implements MSXML2.ServerXMLHTTP
+// ServerXMLHTTP wraps MsXML2ServerXMLHTTP for ASPLibrary interface compatibility
 type ServerXMLHTTP struct {
-	context *ExecutionContext
+	lib *MsXML2ServerXMLHTTP
 }
 
 // NewServerXMLHTTP creates a new ServerXMLHTTP instance
 func NewServerXMLHTTP(ctx *ExecutionContext) *ServerXMLHTTP {
 	return &ServerXMLHTTP{
-		context: ctx,
+		lib: NewMsXML2ServerXMLHTTP(ctx),
 	}
 }
 
 // CallMethod calls a method on ServerXMLHTTP
 func (sx *ServerXMLHTTP) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with XML HTTP operations
-	return nil, nil
+	return sx.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from ServerXMLHTTP
 func (sx *ServerXMLHTTP) GetProperty(name string) interface{} {
-	return nil
+	return sx.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on ServerXMLHTTP
 func (sx *ServerXMLHTTP) SetProperty(name string, value interface{}) error {
+	sx.lib.SetProperty(name, value)
 	return nil
 }
 
-// DOMDocument implements MSXML2.DOMDocument
+// DOMDocument wraps MsXML2DOMDocument for ASPLibrary interface compatibility
 type DOMDocument struct {
-	context *ExecutionContext
+	lib *MsXML2DOMDocument
 }
 
 // NewDOMDocument creates a new DOMDocument instance
 func NewDOMDocument(ctx *ExecutionContext) *DOMDocument {
 	return &DOMDocument{
-		context: ctx,
+		lib: NewMsXML2DOMDocument(ctx),
 	}
 }
 
 // CallMethod calls a method on DOMDocument
 func (dd *DOMDocument) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with DOM operations
-	return nil, nil
+	return dd.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from DOMDocument
 func (dd *DOMDocument) GetProperty(name string) interface{} {
-	return nil
+	return dd.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on DOMDocument
 func (dd *DOMDocument) SetProperty(name string, value interface{}) error {
+	dd.lib.SetProperty(name, value)
 	return nil
 }
 
-// ADOConnection implements ADODB.Connection
+// ADOConnection wraps ADODBConnection for ASPLibrary interface compatibility
 type ADOConnection struct {
-	context *ExecutionContext
+	lib *ADODBConnection
 }
 
 // NewADOConnection creates a new ADOConnection instance
 func NewADOConnection(ctx *ExecutionContext) *ADOConnection {
 	return &ADOConnection{
-		context: ctx,
+		lib: NewADODBConnection(ctx),
 	}
 }
 
 // CallMethod calls a method on ADOConnection
 func (ac *ADOConnection) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with database connection operations
-	return nil, nil
+	return ac.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from ADOConnection
 func (ac *ADOConnection) GetProperty(name string) interface{} {
-	return nil
+	return ac.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on ADOConnection
 func (ac *ADOConnection) SetProperty(name string, value interface{}) error {
+	ac.lib.SetProperty(name, value)
 	return nil
 }
 
-// ADORecordset implements ADODB.Recordset
+// ADORecordset wraps ADODBRecordset for ASPLibrary interface compatibility
 type ADORecordset struct {
-	context *ExecutionContext
+	lib *ADODBRecordset
 }
 
 // NewADORecordset creates a new ADORecordset instance
 func NewADORecordset(ctx *ExecutionContext) *ADORecordset {
 	return &ADORecordset{
-		context: ctx,
+		lib: NewADODBRecordset(ctx),
 	}
 }
 
 // CallMethod calls a method on ADORecordset
 func (ar *ADORecordset) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with recordset operations
-	return nil, nil
+	return ar.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from ADORecordset
 func (ar *ADORecordset) GetProperty(name string) interface{} {
-	return nil
+	return ar.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on ADORecordset
 func (ar *ADORecordset) SetProperty(name string, value interface{}) error {
+	ar.lib.SetProperty(name, value)
 	return nil
 }
 
-// ADOStream implements ADODB.Stream
+// ADOStream wraps ADODBStream for ASPLibrary interface compatibility
 type ADOStream struct {
-	context *ExecutionContext
+	lib *ADODBStream
 }
 
 // NewADOStream creates a new ADOStream instance
 func NewADOStream(ctx *ExecutionContext) *ADOStream {
 	return &ADOStream{
-		context: ctx,
+		lib: NewADODBStream(ctx),
 	}
 }
 
 // CallMethod calls a method on ADOStream
 func (as *ADOStream) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// To be implemented with stream operations
-	return nil, nil
+	return as.lib.CallMethod(name, args), nil
 }
 
 // GetProperty gets a property from ADOStream
 func (as *ADOStream) GetProperty(name string) interface{} {
-	return nil
+	return as.lib.GetProperty(name)
 }
 
 // SetProperty sets a property on ADOStream
 func (as *ADOStream) SetProperty(name string, value interface{}) error {
+	as.lib.SetProperty(name, value)
 	return nil
 }

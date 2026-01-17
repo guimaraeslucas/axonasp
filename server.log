@@ -1,0 +1,121 @@
+Starting G3pix AxonASP on http://localhost:4050
+Serving files from ./www
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=0
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=0
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] Visiting Statement: *ast.ForEachStatement
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=0
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.VariablesDeclaration
+[DEBUG] Visiting Statement: *ast.AssignmentStatement
+[DEBUG] resolveCall: base=map[string]interface {}, args count=1
+[DEBUG] Visiting Statement: *ast.ForEachStatement
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
+[DEBUG] Visiting Statement: *ast.CallSubStatement
+[DEBUG] resolveCall: base=<nil>, args count=1
