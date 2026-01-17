@@ -79,7 +79,7 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 	vbBlockIndex := 0
 	for i, block := range blocks {
 		switch block.Type {
-case "asp":
+		case "asp":
 			// Tenta fazer parse do bloco VBScript
 			program, err := ap.parseVBBlock(block.Content)
 			if err != nil {

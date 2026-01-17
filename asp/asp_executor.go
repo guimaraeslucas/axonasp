@@ -22,17 +22,17 @@ func NewASPExecutor() *ASPExecutor {
 func (ae *ASPExecutor) Execute(aspCode string) (string, error) {
 	parser := NewASPParser(aspCode)
 	result, err := parser.Parse()
-	
+
 	if err != nil {
 		return "", err
 	}
-	
+
 	if len(result.Errors) > 0 {
 		return "", fmt.Errorf("erros durante análise: %v", result.Errors[0])
 	}
-	
+
 	ae.parser = parser
-	
+
 	// Executa todos os blocos VBScript em ordem
 	for i, block := range result.Blocks {
 		if block.Type == "asp" {
@@ -43,7 +43,7 @@ func (ae *ASPExecutor) Execute(aspCode string) (string, error) {
 			}
 		}
 	}
-	
+
 	return ae.context.Response.GetBuffer(), nil
 }
 
@@ -62,9 +62,9 @@ func BuildASPDocument(htmlParts []string, vbParts []string) string {
 	if len(htmlParts) == 0 && len(vbParts) == 0 {
 		return ""
 	}
-	
+
 	result := strings.Builder{}
-	
+
 	for i := 0; i < len(htmlParts); i++ {
 		if htmlParts[i] != "" {
 			result.WriteString(htmlParts[i])
@@ -75,7 +75,7 @@ func BuildASPDocument(htmlParts []string, vbParts []string) string {
 			result.WriteString("\n%>")
 		}
 	}
-	
+
 	return result.String()
 }
 
@@ -93,24 +93,24 @@ func NewASPValidator() *ASPValidator {
 func (av *ASPValidator) Validate(aspCode string) (bool, []string) {
 	parser := NewASPParser(aspCode)
 	result, err := parser.Parse()
-	
+
 	var messages []string
-	
+
 	if err != nil {
 		messages = append(messages, fmt.Sprintf("Erro crítico: %v", err))
 		return false, messages
 	}
-	
+
 	if len(result.Errors) > 0 {
 		for _, e := range result.Errors {
 			messages = append(messages, fmt.Sprintf("Erro de parse: %v", e))
 		}
 	}
-	
+
 	if len(messages) > 0 {
 		return false, messages
 	}
-	
+
 	return true, []string{"Código ASP válido"}
 }
 
@@ -133,9 +133,9 @@ func NewASPFormatter(indentSize int) *ASPFormatter {
 func (af *ASPFormatter) Format(aspCode string) string {
 	lexer := NewASPLexer(aspCode)
 	blocks := lexer.Tokenize()
-	
+
 	result := strings.Builder{}
-	
+
 	for _, block := range blocks {
 		if block.Type == "html" {
 			result.WriteString(block.Content)
@@ -147,7 +147,7 @@ func (af *ASPFormatter) Format(aspCode string) string {
 			result.WriteString("\n%>")
 		}
 	}
-	
+
 	return result.String()
 }
 
@@ -155,13 +155,13 @@ func (af *ASPFormatter) Format(aspCode string) string {
 func (af *ASPFormatter) formatVBContent(vbCode string) string {
 	lines := strings.Split(vbCode, "\n")
 	var result []string
-	
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" {
 			result = append(result, "\t"+trimmed)
 		}
 	}
-	
+
 	return strings.Join(result, "\n")
 }

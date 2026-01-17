@@ -208,11 +208,11 @@ func TestCodeBlock(codeType string) (bool, string) {
 	}
 
 	valid, errors := ValidateASP(code)
-	
+
 	if !valid && len(errors) > 0 {
 		return false, errors[0].Error()
 	}
-	
+
 	return valid, "OK"
 }
 
@@ -242,22 +242,22 @@ func AnalyzeExample(codeType string) string {
 
 	parser := NewASPParser(code)
 	result, err := parser.Parse()
-	
+
 	output := strings.Builder{}
 	output.WriteString("=== Analysis of: " + codeType + " ===\n")
-	
+
 	if err != nil {
 		output.WriteString("Parse Error: " + err.Error() + "\n")
 		return output.String()
 	}
-	
+
 	output.WriteString("\nTotal Blocks: ")
 	output.WriteString(string(rune(len(result.Blocks))))
 	output.WriteString("\n")
-	
+
 	htmlCount := 0
 	aspCount := 0
-	
+
 	for _, block := range result.Blocks {
 		if block.Type == "html" {
 			htmlCount++
@@ -265,21 +265,21 @@ func AnalyzeExample(codeType string) string {
 			aspCount++
 		}
 	}
-	
+
 	output.WriteString("HTML Blocks: ")
 	output.WriteString(string(rune(htmlCount)))
 	output.WriteString("\n")
-	
+
 	output.WriteString("ASP Blocks: ")
 	output.WriteString(string(rune(aspCount)))
 	output.WriteString("\n")
-	
+
 	if len(result.Errors) > 0 {
 		output.WriteString("\nParse Errors:\n")
 		for _, parseErr := range result.Errors {
 			output.WriteString("  - " + parseErr.Error() + "\n")
 		}
 	}
-	
+
 	return output.String()
 }

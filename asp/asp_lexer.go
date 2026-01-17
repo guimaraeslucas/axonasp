@@ -41,11 +41,11 @@ func NewASPLexer(code string) *ASPLexer {
 // Retorna uma lista de blocos de código identificados
 func (al *ASPLexer) Tokenize() []*CodeBlock {
 	al.blocks = make([]*CodeBlock, 0)
-	
+
 	for al.Index < al.Length {
 		// Procura pelo início de um bloco ASP
 		aspStart := al.findNextASPBlock()
-		
+
 		if aspStart == -1 {
 			// Não há mais blocos ASP, adiciona o conteúdo restante como HTML
 			if al.Index < al.Length {
@@ -63,7 +63,7 @@ func (al *ASPLexer) Tokenize() []*CodeBlock {
 			}
 			break
 		}
-		
+
 		// Adiciona conteúdo HTML anterior ao bloco ASP
 		if aspStart > al.Index {
 			htmlContent := al.Code[al.Index:aspStart]
@@ -77,11 +77,11 @@ func (al *ASPLexer) Tokenize() []*CodeBlock {
 			})
 			al.updatePosition(htmlContent)
 		}
-		
+
 		// Processa o bloco ASP
 		al.processASPBlock(aspStart)
 	}
-	
+
 	return al.blocks
 }
 
@@ -89,11 +89,11 @@ func (al *ASPLexer) Tokenize() []*CodeBlock {
 func (al *ASPLexer) findNextASPBlock() int {
 	search := al.Code[al.Index:]
 	idx := strings.Index(search, "<%")
-	
+
 	if idx == -1 {
 		return -1
 	}
-	
+
 	return al.Index + idx
 }
 
@@ -101,11 +101,11 @@ func (al *ASPLexer) findNextASPBlock() int {
 func (al *ASPLexer) findASPBlockEnd(startPos int) int {
 	search := al.Code[startPos:]
 	idx := strings.Index(search, "%>")
-	
+
 	if idx == -1 {
 		return -1
 	}
-	
+
 	return startPos + idx + 2 // +2 para incluir %>
 }
 
@@ -113,16 +113,16 @@ func (al *ASPLexer) findASPBlockEnd(startPos int) int {
 func (al *ASPLexer) processASPBlock(startPos int) {
 	blockStart := startPos + 2 // Pula <%
 	blockEnd := al.findASPBlockEnd(blockStart)
-	
+
 	if blockEnd == -1 {
 		// Bloco não foi fechado corretamente, trata como HTML
 		al.Index = startPos
 		return
 	}
-	
+
 	// Extrai o conteúdo do bloco ASP (sem %> no final)
 	content := al.Code[blockStart : blockEnd-2]
-	
+
 	al.blocks = append(al.blocks, &CodeBlock{
 		Type:     "asp",
 		Content:  content,
@@ -131,7 +131,7 @@ func (al *ASPLexer) processASPBlock(startPos int) {
 		StartPos: startPos,
 		EndPos:   blockEnd,
 	})
-	
+
 	// Atualiza posição
 	processedContent := al.Code[al.Index:blockEnd]
 	al.updatePosition(processedContent)
@@ -140,14 +140,14 @@ func (al *ASPLexer) processASPBlock(startPos int) {
 // updatePosition atualiza a linha e coluna atual baseado no conteúdo processado
 func (al *ASPLexer) updatePosition(content string) {
 	lines := strings.Split(content, "\n")
-	
+
 	if len(lines) > 1 {
 		al.CurrentLine += len(lines) - 1
 		al.CurrentColumn = len(lines[len(lines)-1])
 	} else {
 		al.CurrentColumn += len(content)
 	}
-	
+
 	al.Index += len(content)
 }
 

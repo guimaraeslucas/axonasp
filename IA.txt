@@ -213,3 +213,13 @@ Directive: AspUpload: Implement a Server.CreateObject("Persits.Upload") or simil
 
 
 Você vai me ajudar com uma tarefa fantástica, estou criando um parser de VBScript. Para isso já criei a versão dele em C#, mas quero converter ela para GoLang. Esse parser será utilizado futuramente em um servidor de ASP Clássico. Me ajude traduzindo cada uma das classes para um arquivo GoLang de mesmo nome e que deverá ser armazenado na pasta VBScript-Go. Os scripts em C# que precisam ser traduzidos estão na pasta dot-net-parser. Vamos começar, traduza e crie o arquivo correspondente em GoLang de CharUtills.cs, Extensions.cs, LexerUtils.cs, Marker.cs, ParsingOptions.cs, Token.cs, TokenType.cs, VBSyntaxErrorCode.cs, Visitor.cs. Faça um arquivo por vez.
+
+
+- **Date/Time**: CDate, Date, DateAdd, DateDiff, DatePart, DateSerial, DateValue, Day, FormatDateTime, Hour, IsDate, Minute, Month, MonthName, Now, Second, Time, Timer, TimeSerial, TimeValue, Weekday, WeekdayName, Year
+  - **Conversion**: Asc, CBool, CByte, CCur, CDate, CDbl, Chr, CInt, CLng, CSng, CStr, Hex, Oct
+  - **Format**: FormatCurrency, FormatDateTime, FormatNumber, FormatPercent
+  - **Math**: Abs, Atn, Cos, Exp, Fix, Int, Log, Oct, Rnd, Sgn, Sin, Sqr, Tan
+  - **Array**: Array, Filter, IsArray, Join, LBound, Split, UBound
+  - **String**: InStr, InStrRev, LCase, Left, Len, LTrim, RTrim, Trim, Mid, Replace, Right, Space, StrComp, String, StrReverse, UCase
+  - **Type Check**: IsEmpty, IsNull, IsNumeric, IsDate, IsArray, IsObject
+  - **Other**: ScriptEngine, ScriptEngineBuildVersion, ScriptEngineMajorVersion, ScriptEngineMinorVersion, TypeName, VarType, RGB, CreateObject (stub), Eval, Document.Write (safe encoded)

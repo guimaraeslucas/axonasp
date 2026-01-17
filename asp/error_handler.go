@@ -2,12 +2,12 @@ package asp
 
 // ASPError representa um erro específico do ASP
 type ASPError struct {
-	Code        string // Código de erro
-	Message     string // Mensagem de erro
-	Line        int    // Linha onde ocorreu o erro
-	Column      int    // Coluna onde ocorreu o erro
-	BlockIndex  int    // Índice do bloco ASP
-	Context     string // Contexto do erro (parte do código)
+	Code       string // Código de erro
+	Message    string // Mensagem de erro
+	Line       int    // Linha onde ocorreu o erro
+	Column     int    // Coluna onde ocorreu o erro
+	BlockIndex int    // Índice do bloco ASP
+	Context    string // Contexto do erro (parte do código)
 }
 
 // Error implementa a interface error
@@ -20,12 +20,12 @@ func (ae *ASPError) Error() string {
 
 // Códigos de erro ASP comuns
 const (
-	ERR_SYNTAX          = "ASP0001"
-	ERR_INVALID_BLOCK   = "ASP0002"
-	ERR_UNCLOSED_BLOCK  = "ASP0003"
-	ERR_PARSER_ERROR    = "ASP0004"
-	ERR_INVALID_OBJECT  = "ASP0005"
-	ERR_METHOD_NOT_FOUND = "ASP0006"
+	ERR_SYNTAX             = "ASP0001"
+	ERR_INVALID_BLOCK      = "ASP0002"
+	ERR_UNCLOSED_BLOCK     = "ASP0003"
+	ERR_PARSER_ERROR       = "ASP0004"
+	ERR_INVALID_OBJECT     = "ASP0005"
+	ERR_METHOD_NOT_FOUND   = "ASP0006"
 	ERR_PROPERTY_NOT_FOUND = "ASP0007"
 )
 

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"go-asp/asp"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,27 +9,20 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-	"time"
+
+	"go-asp/server"
 
 	"github.com/joho/godotenv"
 )
 
-// Configuration variables (defaults can be overridden by .env)
+// Configuration variables
 var (
 	Port            = "4050"
 	RootDir         = "./www"
 	DefaultTimezone = "America/Sao_Paulo"
 	DefaultPage     = "default.asp"
 	ScriptTimeout   = 30 // in seconds
-
 )
-
-// DummyResponseWriter for background events
-type DummyResponseWriter struct{}
-
-func (d *DummyResponseWriter) Header() http.Header        { return http.Header{} }
-func (d *DummyResponseWriter) Write([]byte) (int, error)  { return 0, nil }
-func (d *DummyResponseWriter) WriteHeader(statusCode int) {}
 
 func init() {
 	// Load .env file
@@ -39,7 +31,7 @@ func init() {
 		fmt.Println("Info: No .env file found, using defaults or system environment.")
 	}
 
-	// Override configuration from Environment Variables if present
+	// Override configuration from Environment Variables
 	if val := os.Getenv("SERVER_PORT"); val != "" {
 		Port = val
 	}
@@ -58,27 +50,11 @@ func init() {
 		}
 	}
 
-	// Set timezone for the application
+	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
 }
 
 func main() {
-	// Load Global.asa
-	globalPath := filepath.Join(RootDir, "global.asa")
-	if content, err := os.ReadFile(globalPath); err == nil {
-		fmt.Println("Info: Loading global.asa...")
-		code := asp.ParseGlobalASA(string(content))
-		asp.AppState.GlobalASACode = code
-
-		// Trigger Application_OnStart
-		dummyReq, _ := http.NewRequest("GET", "/", nil)
-		dummyCtx := asp.NewExecutionContext(&DummyResponseWriter{}, dummyReq, RootDir)
-		asp.RunGlobalEvent("Application_OnStart", dummyCtx)
-	}
-
-	// Start Session Scavenger
-	go SessionScavenger()
-
 	http.HandleFunc("/", handleRequest)
 
 	fmt.Printf("Starting G3pix AxonASP on http://localhost:%s\n", Port)
@@ -90,46 +66,6 @@ func main() {
 	}
 }
 
-func SessionScavenger() {
-	// Check every minute
-	ticker := time.NewTicker(1 * time.Minute)
-	for range ticker.C {
-		now := time.Now()
-		asp.SessionStorage.Range(func(key, value interface{}) bool {
-			s := value.(*asp.Session)
-			// Default check: 20 mins or custom
-			limit := time.Duration(s.Timeout) * time.Minute
-
-			if !s.Abandoned && now.Sub(s.LastAccessed) > limit {
-				// Expired: Trigger Session_OnEnd
-				// We need a context with this session
-				dummyReq, _ := http.NewRequest("GET", "/", nil)
-				// We need to inject the EXPIRED session into the context,
-				// but NewExecutionContext gets a NEW session if cookie missing/invalid.
-				// We must manually construct Context to point to this session.
-
-				dummyCtx := &asp.ExecutionContext{
-					Response:    &DummyResponseWriter{},
-					Request:     dummyReq,
-					Session:     s, // Use the expiring session
-					Application: asp.AppState,
-					Variables:   make(map[string]interface{}),
-					ResponseState: &asp.ResponseState{
-						Buffer: true,
-					},
-					RootDir: RootDir,
-				}
-
-				asp.RunGlobalEvent("Session_OnEnd", dummyCtx)
-
-				// Remove
-				asp.SessionStorage.Delete(s.ID)
-			}
-			return true
-		})
-	}
-}
-
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	if path == "/" {
@@ -138,110 +74,85 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	fullPath := filepath.Join(RootDir, path)
 
-	// Security check
-	if !strings.HasPrefix(filepath.Clean(fullPath), filepath.Clean(RootDir)) {
+	// Security check: prevent directory traversal
+	cleanPath := filepath.Clean(fullPath)
+	cleanRoot := filepath.Clean(RootDir)
+	if !strings.HasPrefix(cleanPath, cleanRoot) {
 		http.Error(w, "AxonASP: Forbidden", http.StatusForbidden)
 		return
 	}
 
+	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		http.Error(w, "AxonASP: 404 page not found ", http.StatusNotFound)
-		//http.NotFound(w, r)
+		http.Error(w, "AxonASP: 404 page not found", http.StatusNotFound)
 		return
 	}
+
+	// If it's a directory, try to serve the default page
 	if info.IsDir() {
-		// try default
 		fullPath = filepath.Join(fullPath, DefaultPage)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			http.Error(w, "AxonASP: 404 page not found ", http.StatusNotFound)
-			//http.NotFound(w, r)
+			http.Error(w, "AxonASP: 404 page not found", http.StatusNotFound)
 			return
 		}
 	}
 
-	// Serve Static if not ASP
+	// Serve static files if not ASP
 	if !strings.HasSuffix(strings.ToLower(fullPath), ".asp") {
 		http.ServeFile(w, r, fullPath)
 		return
 	}
 
-	// Process ASP
+	// Process ASP file
 	content, err := os.ReadFile(fullPath)
 	if err != nil {
 		http.Error(w, "AxonASP: error reading file", http.StatusInternalServerError)
 		return
 	}
 
-	// 1. Initialize Context
-	ctx := asp.NewExecutionContext(w, r, RootDir)
-
-	// Handle Includes (Server-Side Includes)
-	contentStr := string(content)
-	contentStr, err = asp.ProcessIncludes(contentStr, filepath.Dir(fullPath), RootDir)
-	if err != nil {
-		fmt.Printf("Warning: Include processing error in %s: %v\n", fullPath, err)
-		ctx.Write(fmt.Sprintf("Include error: %s: %v<br>", fullPath, err))
-	}
-
-	// Trigger Session_OnStart if new
-	if ctx.Session.IsNew {
-		asp.RunGlobalEvent("Session_OnStart", ctx)
-	}
-
-	// 2. Parse Code
-	tokens := asp.ParseRaw(contentStr)
-
-	// 3. Prepare Engine
-	engine := asp.Prepare(tokens)
-
-	// 4. Run
-	// (Recover from panics in interpreter to avoid crashing server)
+	// Recover from panics to avoid crashing server
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Runtime Error in %s: %v\n", path, r)
+			fmt.Printf("Runtime panic in %s: %v\n", path, r)
 
-			// Check for DEBUG_ASP_CODE variable
-			isDebug := false
-			if val, ok := ctx.Variables["debug_asp_code"]; ok {
-				// Check string "TRUE" or boolean true
-				sVal := fmt.Sprintf("%v", val)
-				if strings.ToUpper(sVal) == "TRUE" {
-					isDebug = true
-				}
-			}
+			// Check if debug mode is enabled
+			isDebug := os.Getenv("DEBUG_ASP") == "TRUE"
 
-			// Format Error Message
-			line := engine.CurrentLine
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusInternalServerError)
 
-			ctx.Write("<br><hr style='border-top: 1px dashed red;'>")
-			ctx.Write("<div style='color: red; font-family: monospace; background: #ffe6e6; padding: 10px; border: 1px solid red;'>")
+			fmt.Fprintf(w, "<br><hr style='border-top: 1px dashed red;'>\n")
+			fmt.Fprintf(w, "<div style='color: red; font-family: monospace; background: #ffe6e6; padding: 10px; border: 1px solid red;'>\n")
 
 			if isDebug {
-				// Detailed Error
+				// Detailed error output with stack trace
 				stack := string(debug.Stack())
-				// Sanitize stack for HTML
 				stack = strings.ReplaceAll(stack, "<", "&lt;")
 				stack = strings.ReplaceAll(stack, ">", "&gt;")
 
-				ctx.Write("<strong>G3pix AxonASP panic</strong><br>")
-				ctx.Write(fmt.Sprintf("Error: %v<br>", r))
-				ctx.Write(fmt.Sprintf("Line: %d<br>", line))
-				ctx.Write(fmt.Sprintf("<pre>%s</pre>", stack))
+				fmt.Fprintf(w, "<strong>G3pix AxonASP panic</strong><br>\n")
+				fmt.Fprintf(w, "Error: %v<br>\n", r)
+				fmt.Fprintf(w, "<pre>%s</pre>\n", stack)
 			} else {
-				// Simple Error
-				ctx.Write("<strong>G3pix AxonASP error</strong><br>")
-				ctx.Write(fmt.Sprintf("Description: %v<br>", r))
-				ctx.Write(fmt.Sprintf("Line: %d", line))
+				// Simple error output
+				fmt.Fprintf(w, "<strong>G3pix AxonASP error</strong><br>\n")
+				fmt.Fprintf(w, "Description: %v<br>\n", r)
 			}
 
-			ctx.Write("</div>")
-			ctx.Flush()
+			fmt.Fprintf(w, "</div>\n")
 		}
 	}()
 
-	engine.Run(ctx)
+	// Create ASP processor and execute
+	processor := server.NewASPProcessor(&server.ASPProcessorConfig{
+		RootDir:       RootDir,
+		ScriptTimeout: ScriptTimeout,
+	})
 
-	// 5. Send Output
-	ctx.Flush()
+	err = processor.ExecuteASPFile(string(content), w, r)
+	if err != nil {
+		fmt.Printf("ASP processing error in %s: %v\n", path, err)
+		http.Error(w, fmt.Sprintf("AxonASP: %v", err), http.StatusInternalServerError)
+	}
 }
