@@ -6,7 +6,7 @@ import (
 
 // CodeBlock representa um bloco de código ASP ou conteúdo HTML
 type CodeBlock struct {
-	Type       string            // "html", "asp", "directive", "text"
+	Type       string // "html", "asp", "directive", "text"
 	Content    string
 	Line       int
 	Column     int

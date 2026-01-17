@@ -281,7 +281,7 @@ func TestASPDirective(t *testing.T) {
 	code := `<%@ Language=VBScript %>
 <% Dim x %>
 <html>Content</html>`
-	
+
 	lexer := NewASPLexer(code)
 	blocks := lexer.Tokenize()
 
@@ -305,7 +305,7 @@ func TestASPDirective(t *testing.T) {
 // TestASPDirectiveWithQuotes tests directive with quoted values
 func TestASPDirectiveWithQuotes(t *testing.T) {
 	code := `<%@ Language="VBScript" CodePage="65001" %>`
-	
+
 	lexer := NewASPLexer(code)
 	blocks := lexer.Tokenize()
 
@@ -317,11 +317,11 @@ func TestASPDirectiveWithQuotes(t *testing.T) {
 	if blocks[0].Attributes == nil {
 		t.Fatalf("Expected directive attributes, got nil")
 	}
-	
+
 	if lang, exists := blocks[0].Attributes["Language"]; !exists || lang != "VBScript" {
 		t.Errorf("Expected Language=VBScript, got %v", blocks[0].Attributes)
 	}
-	
+
 	if cp, exists := blocks[0].Attributes["CodePage"]; !exists || cp != "65001" {
 		t.Errorf("Expected CodePage=65001, got %v", blocks[0].Attributes)
 	}
@@ -333,7 +333,7 @@ func TestASPParserWithDirective(t *testing.T) {
 <% Dim message
    message = "Hello" %>
 <html><body><%= message %></body></html>`
-	
+
 	parser := NewASPParser(code)
 	result, err := parser.Parse()
 

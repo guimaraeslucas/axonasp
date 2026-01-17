@@ -212,7 +212,7 @@ func parseHexLiteral(s string) (int64, bool) {
 	if len(s) < 3 {
 		return 0, false
 	}
-	
+
 	// Check for &h or &H prefix
 	if strings.HasPrefix(strings.ToLower(s), "&h") {
 		val, err := strconv.ParseInt(s[2:], 16, 64)
@@ -220,7 +220,7 @@ func parseHexLiteral(s string) (int64, bool) {
 			return val, true
 		}
 	}
-	
+
 	return 0, false
 }
 
@@ -230,7 +230,7 @@ func parseOctalLiteral(s string) (int64, bool) {
 	if len(s) < 3 {
 		return 0, false
 	}
-	
+
 	// Check for &o or &O prefix
 	if strings.HasPrefix(strings.ToLower(s), "&o") {
 		val, err := strconv.ParseInt(s[2:], 8, 64)
@@ -238,33 +238,33 @@ func parseOctalLiteral(s string) (int64, bool) {
 			return val, true
 		}
 	}
-	
+
 	return 0, false
 }
 
 // tryParseNumericLiteral attempts to parse numeric literals including hex and octal
 func tryParseNumericLiteral(s string) (interface{}, bool) {
 	s = strings.TrimSpace(s)
-	
+
 	// Try hexadecimal
 	if val, ok := parseHexLiteral(s); ok {
 		return int(val), true
 	}
-	
+
 	// Try octal
 	if val, ok := parseOctalLiteral(s); ok {
 		return int(val), true
 	}
-	
+
 	// Try decimal integer
 	if val, err := strconv.ParseInt(s, 10, 64); err == nil {
 		return int(val), true
 	}
-	
+
 	// Try floating point
 	if val, err := strconv.ParseFloat(s, 64); err == nil {
 		return val, true
 	}
-	
+
 	return nil, false
 }

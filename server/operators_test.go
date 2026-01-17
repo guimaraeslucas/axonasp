@@ -113,11 +113,11 @@ func TestBitwiseOperators(t *testing.T) {
 		code     string
 		expected string
 	}{
-		{`<% Response.Write 12 And 10 %>`, "8"},   // 1100 & 1010 = 1000
-		{`<% Response.Write 12 Or 10 %>`, "14"},   // 1100 | 1010 = 1110
-		{`<% Response.Write Not 0 %>`, "-1"},      // ~0 = -1
-		{`<% Response.Write 5 And 3 %>`, "1"},     // 0101 & 0011 = 0001
-		{`<% Response.Write 5 Or 3 %>`, "7"},      // 0101 | 0011 = 0111
+		{`<% Response.Write 12 And 10 %>`, "8"}, // 1100 & 1010 = 1000
+		{`<% Response.Write 12 Or 10 %>`, "14"}, // 1100 | 1010 = 1110
+		{`<% Response.Write Not 0 %>`, "-1"},    // ~0 = -1
+		{`<% Response.Write 5 And 3 %>`, "1"},   // 0101 & 0011 = 0001
+		{`<% Response.Write 5 Or 3 %>`, "7"},    // 0101 | 0011 = 0111
 	}
 
 	for _, test := range tests {

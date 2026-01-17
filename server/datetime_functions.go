@@ -14,13 +14,13 @@ type ConstValue struct {
 
 // DateTimeFormat constants for FormatDateTime
 const (
-	FormatDateTimeGeneralDate     = 0  // m/d/yy h:mm:ss
-	FormatDateTimeLongDate        = 1  // dddd, mmmm dd, yyyy
-	FormatDateTimeShortDate       = 2  // m/d/yy
-	FormatDateTimeLongTime        = 3  // h:mm:ss AM/PM
-	FormatDateTimeShortTime       = 4  // h:mm AM/PM
-	FormatDateTimeISOWeekNumber   = 5  // Week number
-	FormatDateTimeFirstWeekOfYear = 6  // First week of year
+	FormatDateTimeGeneralDate     = 0 // m/d/yy h:mm:ss
+	FormatDateTimeLongDate        = 1 // dddd, mmmm dd, yyyy
+	FormatDateTimeShortDate       = 2 // m/d/yy
+	FormatDateTimeLongTime        = 3 // h:mm:ss AM/PM
+	FormatDateTimeShortTime       = 4 // h:mm AM/PM
+	FormatDateTimeISOWeekNumber   = 5 // Week number
+	FormatDateTimeFirstWeekOfYear = 6 // First week of year
 )
 
 // DatePartInterval represents the interval for DatePart/DateAdd
@@ -384,7 +384,7 @@ func extractDatePart(interval string, dt time.Time) interface{} {
 	case "yyyy":
 		return dt.Year()
 	case "q":
-		return (int(dt.Month()-1)/3) + 1
+		return (int(dt.Month()-1) / 3) + 1
 	case "m":
 		return int(dt.Month())
 	case "y":

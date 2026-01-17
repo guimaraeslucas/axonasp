@@ -33,7 +33,7 @@ type ExecutionContext struct {
 
 	// Variable storage (case-insensitive keys)
 	variables map[string]interface{}
-	
+
 	// Constant storage (case-insensitive keys) - read-only values
 	constants map[string]interface{}
 
@@ -77,15 +77,15 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 // Returns error if attempting to overwrite a constant
 func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 	nameLower := strings.ToLower(name)
-	
+
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
-	
+
 	// Check if this is a constant
 	if _, exists := ec.constants[nameLower]; exists {
 		return fmt.Errorf("cannot reassign constant '%s'", name)
 	}
-	
+
 	ec.variables[nameLower] = value
 	return nil
 }
@@ -93,15 +93,15 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 // GetVariable gets a variable from the execution context (case-insensitive)
 func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	nameLower := strings.ToLower(name)
-	
+
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
-	
+
 	// Check constants first
 	if val, exists := ec.constants[nameLower]; exists {
 		return val, true
 	}
-	
+
 	// Then check variables
 	val, exists := ec.variables[nameLower]
 	return val, exists
@@ -111,20 +111,20 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 // Constants cannot be changed after initialization
 func (ec *ExecutionContext) SetConstant(name string, value interface{}) error {
 	nameLower := strings.ToLower(name)
-	
+
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
-	
+
 	// Check if constant already exists
 	if _, exists := ec.constants[nameLower]; exists {
 		return fmt.Errorf("constant '%s' already defined", name)
 	}
-	
+
 	// Check if variable with same name exists
 	if _, exists := ec.variables[nameLower]; exists {
 		return fmt.Errorf("cannot define constant with name of existing variable '%s'", name)
 	}
-	
+
 	ec.constants[nameLower] = value
 	return nil
 }
@@ -384,12 +384,7 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	}
 
-
-
 	v.depth++
-
-
-
 
 	if v.depth > 1000 {
 		return fmt.Errorf("maximum call depth exceeded")
@@ -1375,7 +1370,7 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (in
 		rightInt := int(toFloat(right))
 		return leftInt & rightInt, nil
 	case ast.BinaryOperationOr:
-		// In VBScript, Or works as bitwise operator  
+		// In VBScript, Or works as bitwise operator
 		leftInt := int(toFloat(left))
 		rightInt := int(toFloat(right))
 		return leftInt | rightInt, nil
@@ -1433,14 +1428,14 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (in
 		// Special handling for Nothing comparisons
 		leftIsNothing := isNothingValue(left)
 		rightIsNothing := isNothingValue(right)
-		
+
 		if leftIsNothing && rightIsNothing {
 			return true, nil
 		}
 		if leftIsNothing || rightIsNothing {
 			return false, nil
 		}
-		
+
 		// For other objects, compare references
 		return left == right, nil
 	case ast.BinaryOperationXor, ast.BinaryOperationEqv, ast.BinaryOperationImp:

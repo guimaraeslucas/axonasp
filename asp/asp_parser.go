@@ -109,10 +109,10 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 	if trimmedCode == "" {
 		// Bloco vazio é válido
 		return &ast.Program{
-			OptionExplicit: false,
-			Body:           []ast.Statement{},
-		},
-		nil
+				OptionExplicit: false,
+				Body:           []ast.Statement{},
+			},
+			nil
 	}
 
 	// Usa o parser do VBScript-Go
