@@ -4,6 +4,8 @@ import (
 	"github.com/guimaraeslucas/vbscript-go/ast"
 )
 
+//Adapted from https://github.com/kmvi/vbscript-parser/tree/master
+
 // Parser represents a VBScript parser
 type Parser struct {
 	options       *ParsingOptions

@@ -1,0 +1,277 @@
+package asp
+
+import (
+	"strings"
+	"testing"
+)
+
+// TestASPLexerBasic testa a análise léxica básica
+func TestASPLexerBasic(t *testing.T) {
+	code := `<% Dim x %>HTML`
+	lexer := NewASPLexer(code)
+	blocks := lexer.Tokenize()
+	
+	if len(blocks) != 2 {
+		t.Errorf("Expected 2 blocks, got %d", len(blocks))
+	}
+	
+	if blocks[0].Type != "asp" {
+		t.Errorf("Expected first block to be 'asp', got '%s'", blocks[0].Type)
+	}
+	
+	if blocks[1].Type != "html" {
+		t.Errorf("Expected second block to be 'html', got '%s'", blocks[1].Type)
+	}
+}
+
+// TestASPLexerMultipleBlocks testa múltiplos blocos
+func TestASPLexerMultipleBlocks(t *testing.T) {
+	code := `<% Dim x %>HTML1<% Dim y %>HTML2`
+	lexer := NewASPLexer(code)
+	blocks := lexer.Tokenize()
+	
+	if len(blocks) != 4 {
+		t.Errorf("Expected 4 blocks, got %d", len(blocks))
+	}
+}
+
+// TestASPLexerNoBlocks testa código sem blocos ASP
+func TestASPLexerNoBlocks(t *testing.T) {
+	code := `<html><body>Only HTML</body></html>`
+	lexer := NewASPLexer(code)
+	blocks := lexer.Tokenize()
+	
+	if len(blocks) != 1 || blocks[0].Type != "html" {
+		t.Errorf("Expected one HTML block")
+	}
+}
+
+// TestASPLexerUnclosedBlock testa bloco não fechado
+func TestASPLexerUnclosedBlock(t *testing.T) {
+	code := `<% Dim x`
+	lexer := NewASPLexer(code)
+	blocks := lexer.Tokenize()
+	
+	// Bloco não fechado deve ser ignorado
+	if len(blocks) > 0 && blocks[0].Type == "asp" {
+		t.Errorf("Unclosed block should not be treated as ASP")
+	}
+}
+
+// TestASPParserSimple testa parsing simples
+func TestASPParserSimple(t *testing.T) {
+	code := `<% Dim message %><html><body><%= message %></body></html>`
+	parser := NewASPParser(code)
+	result, err := parser.Parse()
+	
+	if err != nil {
+		t.Errorf("Parse error: %v", err)
+	}
+	
+	if len(result.Blocks) == 0 {
+		t.Errorf("Expected blocks, got none")
+	}
+}
+
+// TestExtractHTMLOnly testa extração de HTML
+func TestExtractHTMLOnly(t *testing.T) {
+	code := `<% Dim x %><html>Content</html><% x = 5 %>`
+	html := ExtractHTMLOnly(code)
+	
+	if !strings.Contains(html, "<html>") || !strings.Contains(html, "</html>") {
+		t.Errorf("HTML not properly extracted")
+	}
+	
+	if strings.Contains(html, "Dim x") {
+		t.Errorf("VB code should not be in extracted HTML")
+	}
+}
+
+// TestExtractVBScriptOnly testa extração de VBScript
+func TestExtractVBScriptOnly(t *testing.T) {
+	code := `<% Dim x %><html>Content</html><% x = 5 %>`
+	vb := ExtractVBScriptOnly(code)
+	
+	if !strings.Contains(vb, "Dim x") {
+		t.Errorf("VB code 'Dim x' not found in extraction")
+	}
+	
+	if strings.Contains(vb, "<html>") {
+		t.Errorf("HTML should not be in extracted VB code")
+	}
+}
+
+// TestServerObject testa o objeto Server
+func TestServerObject(t *testing.T) {
+	server := NewServerObject()
+	
+	if server.GetName() != "Server" {
+		t.Errorf("Server name should be 'Server'")
+	}
+	
+	// Testa URLEncode
+	encoded, _ := server.CallMethod("URLEncode", "hello world")
+	if encoded == "" {
+		t.Errorf("URLEncode should return a value")
+	}
+}
+
+// TestRequestObject testa o objeto Request
+func TestRequestObject(t *testing.T) {
+	request := NewRequestObject()
+	
+	if request.GetName() != "Request" {
+		t.Errorf("Request name should be 'Request'")
+	}
+	
+	request.SetProperty("test_prop", "test_value")
+	
+	if request.GetProperty("test_prop") != "test_value" {
+		t.Errorf("Property not set correctly")
+	}
+}
+
+// TestResponseObject testa o objeto Response
+func TestResponseObject(t *testing.T) {
+	response := NewResponseObject()
+	
+	if response.GetName() != "Response" {
+		t.Errorf("Response name should be 'Response'")
+	}
+	
+	response.CallMethod("Write", "Hello")
+	buffer := response.GetBuffer()
+	
+	if buffer != "Hello" {
+		t.Errorf("Response buffer should contain 'Hello', got '%s'", buffer)
+	}
+}
+
+// TestASPContext testa o contexto ASP
+func TestASPContext(t *testing.T) {
+	context := NewASPContext()
+	
+	if context.Server == nil {
+		t.Errorf("Server object should be initialized")
+	}
+	
+	if context.Request == nil {
+		t.Errorf("Request object should be initialized")
+	}
+	
+	if context.Response == nil {
+		t.Errorf("Response object should be initialized")
+	}
+	
+	if context.Session == nil {
+		t.Errorf("Session object should be initialized")
+	}
+	
+	if context.Application == nil {
+		t.Errorf("Application object should be initialized")
+	}
+}
+
+// TestASPValidator testa validação
+func TestASPValidator(t *testing.T) {
+	validator := NewASPValidator()
+	
+	validCode := `<% Dim x %>`
+	valid, msgs := validator.Validate(validCode)
+	
+	if !valid {
+		t.Errorf("Simple VB code should be valid. Messages: %v", msgs)
+	}
+}
+
+// TestASPFormatter testa formatação
+func TestASPFormatter(t *testing.T) {
+	formatter := NewASPFormatter(2)
+	code := `<% Dim x %>`
+	formatted := formatter.Format(code)
+	
+	if !strings.Contains(formatted, "<%") || !strings.Contains(formatted, "%>") {
+		t.Errorf("Formatted code should contain ASP delimiters")
+	}
+}
+
+// TestASPError testa manipulação de erros
+func TestASPError(t *testing.T) {
+	err := NewASPError("TEST001", "Test error message", 10, 5)
+	
+	if err.Code != "TEST001" {
+		t.Errorf("Error code mismatch")
+	}
+	
+	if err.Line != 10 {
+		t.Errorf("Error line mismatch")
+	}
+}
+
+// TestASPErrorHandler testa manipulador de erros
+func TestASPErrorHandler(t *testing.T) {
+	handler := NewASPErrorHandler()
+	
+	if handler.HasErrors() {
+		t.Errorf("Handler should start with no errors")
+	}
+	
+	err := NewASPError("TEST", "Test", 1, 1)
+	handler.AddError(err)
+	
+	if !handler.HasErrors() {
+		t.Errorf("Handler should have errors after adding one")
+	}
+	
+	if handler.GetErrorCount() != 1 {
+		t.Errorf("Error count should be 1")
+	}
+}
+
+// BenchmarkASPLexer benchmark para análise léxica
+func BenchmarkASPLexer(b *testing.B) {
+	code := `
+<% 
+	Dim name
+	name = "John"
+%>
+<html>
+<body>
+	<h1><%= name %></h1>
+</body>
+</html>
+<% 
+	Response.Write(name)
+%>
+`
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		lexer := NewASPLexer(code)
+		lexer.Tokenize()
+	}
+}
+
+// BenchmarkASPParser benchmark para parsing
+func BenchmarkASPParser(b *testing.B) {
+	code := `
+<% 
+	Dim name
+	name = "John"
+%>
+<html>
+<body>
+	<h1><%= name %></h1>
+</body>
+</html>
+<% 
+	Response.Write(name)
+%>
+`
+	
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		parser := NewASPParser(code)
+		parser.Parse()
+	}
+}
