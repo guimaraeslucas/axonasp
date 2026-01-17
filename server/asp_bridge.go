@@ -9,7 +9,8 @@ import (
 // ASPProcessorConfig contains configuration for ASP processing
 type ASPProcessorConfig struct {
 	RootDir       string
-	ScriptTimeout int // in seconds
+	ScriptTimeout int  // in seconds
+	DebugASP      bool // Enable debug output for ASP parsing and execution
 }
 
 // ASPProcessor handles ASP file execution

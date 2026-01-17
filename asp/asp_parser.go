@@ -29,6 +29,7 @@ type ASPParsingOptions struct {
 	SaveComments      bool
 	StrictMode        bool
 	AllowImplicitVars bool
+	DebugMode         bool
 }
 
 // NewASPParsingOptions cria opções padrão
@@ -37,6 +38,7 @@ func NewASPParsingOptions() *ASPParsingOptions {
 		SaveComments:      false,
 		StrictMode:        false,
 		AllowImplicitVars: true,
+		DebugMode:         false,
 	}
 }
 
@@ -88,7 +90,11 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 			// Tenta fazer parse do bloco VBScript
 			program, err := ap.parseVBBlock(block.Content)
 			if err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("erro no bloco ASP linha %d: %v", block.Line, err))
+				parseErr := fmt.Errorf("Error: %d: %v", block.Line, err)
+				result.Errors = append(result.Errors, parseErr)
+				if ap.options.DebugMode {
+					fmt.Printf("[ASP Parser Error] Line %d: %v\n", block.Line, err)
+				}
 			}
 			result.VBPrograms[i] = program
 			vbBlockIndex++

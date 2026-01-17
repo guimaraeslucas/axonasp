@@ -180,20 +180,20 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		str := toString(args[0])
 		delim := toString(args[1])
-		
+
 		// Handle limit parameter
 		limit := -1
 		if len(args) > 2 {
 			limit = toInt(args[2])
 		}
-		
+
 		var parts []string
 		if limit > 0 {
 			parts = strings.SplitN(str, delim, limit)
 		} else {
 			parts = strings.Split(str, delim)
 		}
-		
+
 		result := make([]interface{}, len(parts))
 		for i, part := range parts {
 			result[i] = part
@@ -210,7 +210,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return "", true
 		}
 		delim := toString(args[1])
-		
+
 		parts := make([]string, len(arr))
 		for i, item := range arr {
 			parts[i] = toString(item)

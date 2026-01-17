@@ -20,6 +20,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
 
 - **Padrões do projeto e convenções**
   - ASP directives like `<%@ Language=VBScript %>` are supported. They are parsed by the lexer and stored as directive blocks with attributes.
+  - CÓDIGO E COMENTÁRIOS DEVEM **OBRIGATORIAMENTE** ESTAR EM INGLÊS
   - Lookup de variáveis é case-insensitive; internamente as chaves são armazenadas em minúsculas.
   - Includes: `<!--#include file="..."-->` é relativo ao arquivo atual; `virtual` é relativo a `www/` (root).
   - `Session`  deve ser armazenado em uma pasta em `temp/session` e e `Application` na memória; a sessão usa cookie `ASPSESSIONID`.
@@ -34,7 +35,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
   - Legacy ASP functions and behaviors must be strictly followed to ensure compatibility with existing ASP codebases.
 
 - **Boas mudanças para PRs pequenas**
-  - Fixes e features pontuais devem incluir um exemplo ASP em `www/` (ou atualizar `test_*.asp`) e adicionar a modificação um link ou atualizar a descrição em `Default.asp`, sempre seguindo uma formatação adequada e instruções de como reproduzir localmente.
+  - Fixes e features pontuais devem incluir um exemplo ASP em `www/` (ou atualizar `test_*.asp`) e adicionar a modificação um link ou atualizar a descrição em `Default.asp`, sempre seguindo uma formatação adequada. Não crie arquivos .MD com a descrição das funcionalidades. Tudo deve estar em inglês americano..
   - Evitar reescrever estilo de arquivos; manter implementações pequenas e testáveis.
   - Não modificar nada que esteja na pasta VBScript-Go.
   - Evitar modificar o nome do programa que é G3 AxonASP
@@ -55,6 +56,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
     - `TIMEZONE`: Fuso horário (padrão America/Sao_Paulo)
     - `DEFAULT_PAGE`: Página inicial (padrão default.asp)
     - `SCRIPT_TIMEOUT`: Timeout em segundos (padrão 30)
+    - `DEBUG_ASP`: Ativa modo Debug para parser ASP/VB (padrão FALSE). Quando TRUE, cada erro, notice e warning do parse são notificados no console com detalhes como número de linha.
     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: Configurações de envio de e-mail (Mail.SendStandard).
 
 - **Compilação obrigatória**

@@ -1,0 +1,1 @@
+﻿<% Response.Write "Hello World" %>

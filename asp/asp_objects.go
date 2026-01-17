@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // ASPObject representa um objeto ASP
@@ -277,7 +278,8 @@ func (r *ResponseObject) GetName() string {
 
 // GetProperty obtém uma propriedade
 func (r *ResponseObject) GetProperty(name string) interface{} {
-	if val, exists := r.properties[name]; exists {
+	nameLower := strings.ToLower(name)
+	if val, exists := r.properties[nameLower]; exists {
 		return val
 	}
 	return nil
@@ -285,22 +287,25 @@ func (r *ResponseObject) GetProperty(name string) interface{} {
 
 // SetProperty define uma propriedade
 func (r *ResponseObject) SetProperty(name string, value interface{}) error {
-	r.properties[name] = value
+	nameLower := strings.ToLower(name)
+	r.properties[nameLower] = value
 	return nil
 }
 
 // CallMethod chama um método do objeto
 func (r *ResponseObject) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	switch name {
-	case "Write":
+	// Convert method name to lowercase for case-insensitive comparison
+	nameLower := strings.ToLower(name)
+	switch nameLower {
+	case "write":
 		return r.write(args), nil
-	case "Redirect":
+	case "redirect":
 		if len(args) > 0 {
 			// Simulação de redirect
 			r.properties["__redirect__"] = args[0]
 		}
 		return nil, nil
-	case "AddHeader":
+	case "addheader":
 		if len(args) >= 2 {
 			r.headers[args[0].(string)] = args[1].(string)
 		}
@@ -362,6 +367,14 @@ func (r *ResponseObject) toString(value interface{}) string {
 // GetBuffer retorna o conteúdo do buffer de saída
 func (r *ResponseObject) GetBuffer() string {
 	return r.buffer
+}
+
+// GetContentType retorna o Content-Type definido ou o padrão
+func (r *ResponseObject) GetContentType() string {
+	if val, exists := r.properties["contenttype"]; exists {
+		return fmt.Sprintf("%v", val)
+	}
+	return "text/html; charset=utf-8"
 }
 
 // SessionObject representa o objeto Session do ASP

@@ -22,6 +22,7 @@ var (
 	DefaultTimezone = "America/Sao_Paulo"
 	DefaultPage     = "default.asp"
 	ScriptTimeout   = 30 // in seconds
+	DebugASP        = false
 )
 
 func init() {
@@ -49,6 +50,9 @@ func init() {
 			ScriptTimeout = i
 		}
 	}
+	if val := os.Getenv("DEBUG_ASP"); val == "TRUE" {
+		DebugASP = true
+	}
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
@@ -59,6 +63,9 @@ func main() {
 
 	fmt.Printf("Starting G3pix AxonASP on http://localhost:%s\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)
+	if DebugASP {
+		fmt.Println("[DEBUG] DEBUG_ASP mode is enabled")
+	}
 
 	err := http.ListenAndServe(":"+Port, nil)
 	if err != nil {
@@ -148,6 +155,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	processor := server.NewASPProcessor(&server.ASPProcessorConfig{
 		RootDir:       RootDir,
 		ScriptTimeout: ScriptTimeout,
+		DebugASP:      DebugASP,
 	})
 
 	err = processor.ExecuteASPFile(string(content), w, r)

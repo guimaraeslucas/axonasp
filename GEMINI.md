@@ -55,6 +55,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
     - `TIMEZONE`: Fuso horário (padrão America/Sao_Paulo)
     - `DEFAULT_PAGE`: Página inicial (padrão default.asp)
     - `SCRIPT_TIMEOUT`: Timeout em segundos (padrão 30)
+    - `DEBUG_ASP`: Ativa modo Debug para parser ASP/VB (padrão FALSE). Quando TRUE, cada erro, notice e warning do parse são notificados no console com detalhes como número de linha.
     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`: Configurações de envio de e-mail (Mail.SendStandard).
 
 - **Compilação obrigatória**

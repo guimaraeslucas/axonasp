@@ -565,6 +565,32 @@
 
             <!-- Experimental & Debug Tests -->
             <div class="category">
+                <div class="category-title">Response & Operators Tests</div>
+
+                <div class="test-item" onclick="loadTest('test_response_contenttype.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Response.ContentType Implementation</div>
+                        <div class="test-desc">Response.ContentType property now returns as valid HTTP header.</div>
+                    </a>
+                </div>
+
+                <div class="test-item" onclick="loadTest('test_operators_math_logic.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Mathematical & Logical Operators</div>
+                        <div class="test-desc">Complete test suite for Mod, \, And, Or, Not, and bitwise operators.</div>
+                    </a>
+                </div>
+
+                <div class="test-item" onclick="loadTest('test_content_type.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Content-Type JSON Test</div>
+                        <div class="test-desc">Test setting Response.ContentType to application/json.</div>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Experimental & Debug Tests -->
+            <div class="category">
                 <div class="category-title">Experimental & Debug Tests</div>
 
                 <div class="test-item" onclick="loadTest('test_asplite_fixes.asp', this)">

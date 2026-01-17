@@ -8,13 +8,13 @@ import (
 
 // Parser represents a VBScript parser
 type Parser struct {
-	options       *ParsingOptions
-	lexer         *Lexer
-	next          Token
-	startMarker   Marker
-	lastMarker    Marker
-	comments      []*CommentToken
-	inWithBlock   bool
+	options     *ParsingOptions
+	lexer       *Lexer
+	next        Token
+	startMarker Marker
+	lastMarker  Marker
+	comments    []*CommentToken
+	inWithBlock bool
 }
 
 // NewParser creates a new Parser instance
@@ -35,13 +35,13 @@ func NewParserWithOptions(code string, options *ParsingOptions) *Parser {
 	lexer := NewLexer(code)
 
 	p := &Parser{
-		options:       options,
-		lexer:         lexer,
-		startMarker:   NewMarker(0, lexer.CurrentLine, 0),
-		lastMarker:    NewMarker(0, lexer.CurrentLine, 0),
-		comments:      []*CommentToken{},
-		inWithBlock:   false,
-		next:          &InvalidToken{},
+		options:     options,
+		lexer:       lexer,
+		startMarker: NewMarker(0, lexer.CurrentLine, 0),
+		lastMarker:  NewMarker(0, lexer.CurrentLine, 0),
+		comments:    []*CommentToken{},
+		inWithBlock: false,
+		next:        &InvalidToken{},
 	}
 
 	return p
@@ -287,7 +287,7 @@ func (p *Parser) skipCommentsAndNewlines() {
 
 func (p *Parser) parseBlockStatement(inGlobal bool) ast.Statement {
 	p.createMarker() // marker
-	
+
 	var stmt ast.Statement
 	if k, ok := p.next.(*KeywordToken); ok {
 		switch k.Keyword {
@@ -467,7 +467,7 @@ func (p *Parser) parseProcedure(kw Keyword, modifier ast.MethodAccessModifier, i
 	}
 
 	stmt := ctor(id, body)
-	
+
 	// Add Parameters to the procedure
 	switch s := stmt.(type) {
 	case *ast.SubDeclaration:
@@ -1035,13 +1035,13 @@ func (p *Parser) parseUnaryExpression() ast.Expression {
 
 func (p *Parser) parseValueExpression() ast.Expression {
 	var expr ast.Expression
-	
+
 	// Check if it's a literal token using switch for proper type checking
 	switch p.next.(type) {
-	case *DecIntegerLiteralToken, *StringLiteralToken, *FloatLiteralToken, 
-	     *DateLiteralToken, *EmptyLiteralToken, *NothingLiteralToken, 
-	     *NullLiteralToken, *TrueLiteralToken, *FalseLiteralToken,
-	     *HexIntegerLiteralToken, *OctIntegerLiteralToken:
+	case *DecIntegerLiteralToken, *StringLiteralToken, *FloatLiteralToken,
+		*DateLiteralToken, *EmptyLiteralToken, *NothingLiteralToken,
+		*NullLiteralToken, *TrueLiteralToken, *FalseLiteralToken,
+		*HexIntegerLiteralToken, *OctIntegerLiteralToken:
 		expr = p.parseConstExpression()
 	default:
 		if p.optPunctuation(PunctLParen) {

@@ -221,7 +221,13 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	populateRequestData(ae.context.Request, r)
 
 	// Parse ASP code
-	parser := asp.NewASPParser(fileContent)
+	parsingOptions := &asp.ASPParsingOptions{
+		SaveComments:      false,
+		StrictMode:        false,
+		AllowImplicitVars: true,
+		DebugMode:         ae.config.DebugASP,
+	}
+	parser := asp.NewASPParserWithOptions(fileContent, parsingOptions)
 	result, err := parser.Parse()
 	if err != nil {
 		return fmt.Errorf("failed to parse ASP code: %w", err)
@@ -229,6 +235,12 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 
 	// Check for parse errors
 	if len(result.Errors) > 0 {
+		if ae.config.DebugASP {
+			fmt.Println("[ASP Parse] Multiple errors found during parsing:")
+			for _, parseErr := range result.Errors {
+				fmt.Printf("  - %v\n", parseErr)
+			}
+		}
 		return fmt.Errorf("ASP parse error: %v", result.Errors[0])
 	}
 
@@ -258,7 +270,11 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 
 	// Write response to HTTP ResponseWriter
 	buffer := ae.context.Response.GetBuffer()
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	
+	// Get Content-Type from Response object if set
+	contentType := ae.context.Response.GetContentType()
+	w.Header().Set("Content-Type", contentType)
+	
 	_, err = w.Write([]byte(buffer))
 	if err != nil {
 		return fmt.Errorf("failed to write response: %w", err)
@@ -545,7 +561,7 @@ func (v *ASPVisitor) visitReDim(stmt *ast.ReDimStatement) error {
 		if redim == nil || redim.Identifier == nil {
 			continue
 		}
-		
+
 		varName := redim.Identifier.Name
 
 		// Evaluate array dimensions
@@ -566,14 +582,14 @@ func (v *ASPVisitor) visitReDim(stmt *ast.ReDimStatement) error {
 			if oldArr, ok := oldVal.([]interface{}); ok {
 				// Create new array with new dimensions
 				newArr = v.makeNestedArray(dims)
-				
+
 				// Copy old values to new array
 				v.preserveCopy(oldArr, newArr, dims)
 			} else {
 				// If variable doesn't exist or isn't an array, create new array
 				newArr = v.makeNestedArray(dims)
 			}
-			
+
 			_ = v.context.SetVariable(varName, newArr)
 		} else {
 			// ReDim without Preserve - create new array (old values lost)
@@ -969,7 +985,7 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 			}
 			dims[i] = toInt(dimVal)
 		}
-		
+
 		// Create multi-dimensional array
 		arr := v.makeNestedArray(dims)
 		if err := v.context.SetVariable(varName, arr); err != nil {
