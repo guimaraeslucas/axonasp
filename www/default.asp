@@ -291,6 +291,13 @@
                         <div class="test-desc">SSI directives (file and virtual) with recursive processing.</div>
                     </a>
                 </div>
+                
+                <div class="test-item" onclick="loadTest('test_session_demo.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Session File Storage</div>
+                        <div class="test-desc">Session persistence in temp/session/ directory with JSON files.</div>
+                    </a>
+                </div>
             </div>
 
             <!-- Advanced Features -->

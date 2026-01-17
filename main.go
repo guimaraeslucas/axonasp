@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"go-asp/server"
 
@@ -60,6 +61,10 @@ func init() {
 
 func main() {
 	http.HandleFunc("/", handleRequest)
+
+	// Initialize session manager and start cleanup routine
+	sessionManager := server.GetSessionManager()
+	sessionManager.StartCleanupRoutine(15 * time.Minute) // Cleanup every 15 minutes
 
 	fmt.Printf("Starting G3pix AxonASP on http://localhost:%s\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)

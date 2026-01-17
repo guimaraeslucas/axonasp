@@ -28,7 +28,7 @@ type ExecutionContext struct {
 	Request     *asp.RequestObject
 	Response    *asp.ResponseObject
 	Server      *asp.ServerObject
-	Session     map[string]interface{}
+	Session     *SessionObject
 	Application map[string]interface{}
 
 	// Variable storage (case-insensitive keys)
@@ -51,25 +51,47 @@ type ExecutionContext struct {
 	// Configuration
 	RootDir string
 
+	// Session management
+	sessionID      string
+	sessionManager *SessionManager
+
 	// Mutex for thread safety
 	mu sync.RWMutex
 }
 
 // NewExecutionContext creates a new execution context
 func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID string, timeout time.Duration) *ExecutionContext {
+	sessionManager := GetSessionManager()
+	
+	// Load or create session data
+	sessionData, err := sessionManager.GetOrCreateSession(sessionID)
+	if err != nil {
+		fmt.Printf("Warning: Failed to load session: %v\n", err)
+		// Create empty session data as fallback
+		sessionData = &SessionData{
+			ID:           sessionID,
+			Data:         make(map[string]interface{}),
+			CreatedAt:    time.Now(),
+			LastAccessed: time.Now(),
+			Timeout:      20,
+		}
+	}
+	
 	return &ExecutionContext{
-		Request:     asp.NewRequestObject(),
-		Response:    asp.NewResponseObject(),
-		Server:      asp.NewServerObject(),
-		Session:     make(map[string]interface{}),
-		Application: make(map[string]interface{}),
-		variables:   make(map[string]interface{}),
-		constants:   make(map[string]interface{}),
-		libraries:   make(map[string]interface{}),
-		httpWriter:  w,
-		httpRequest: r,
-		startTime:   time.Now(),
-		timeout:     timeout,
+		Request:        asp.NewRequestObject(),
+		Response:       asp.NewResponseObject(),
+		Server:         asp.NewServerObject(),
+		Session:        NewSessionObject(sessionID, sessionData.Data),
+		Application:    make(map[string]interface{}),
+		variables:      make(map[string]interface{}),
+		constants:      make(map[string]interface{}),
+		libraries:      make(map[string]interface{}),
+		httpWriter:     w,
+		httpRequest:    r,
+		startTime:      time.Now(),
+		timeout:        timeout,
+		sessionID:      sessionID,
+		sessionManager: sessionManager,
 	}
 }
 
@@ -270,17 +292,58 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 
 	// Write response to HTTP ResponseWriter
 	buffer := ae.context.Response.GetBuffer()
-	
+
 	// Get Content-Type from Response object if set
 	contentType := ae.context.Response.GetContentType()
 	w.Header().Set("Content-Type", contentType)
 	
+	// Set session cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ASPSESSIONID",
+		Value:    ae.context.sessionID,
+		Path:     "/",
+		HttpOnly: false,
+		Secure:   false,
+		MaxAge:   20 * 60, // 20 minutes (matches ASP session timeout)
+		SameSite: http.SameSiteStrictMode,
+	})
+
 	_, err = w.Write([]byte(buffer))
 	if err != nil {
 		return fmt.Errorf("failed to write response: %w", err)
 	}
 
+	// Save session data to file after request completes
+	if err := ae.saveSession(); err != nil {
+		fmt.Printf("Warning: Failed to save session: %v\n", err)
+	}
+
 	return nil
+}
+
+// saveSession persists the current session data to file
+func (ae *ASPExecutor) saveSession() error {
+	if ae.context == nil || ae.context.sessionManager == nil {
+		return fmt.Errorf("no session context available")
+	}
+
+	sessionData := &SessionData{
+		ID:           ae.context.sessionID,
+		Data:         ae.context.Session.Data,
+		LastAccessed: time.Now(),
+		Timeout:      20, // Default timeout in minutes
+	}
+
+	// Load existing session to preserve CreatedAt
+	existingSession, err := ae.context.sessionManager.LoadSession(ae.context.sessionID)
+	if err == nil {
+		sessionData.CreatedAt = existingSession.CreatedAt
+		sessionData.Timeout = existingSession.Timeout
+	} else {
+		sessionData.CreatedAt = time.Now()
+	}
+
+	return ae.context.sessionManager.SaveSession(sessionData)
 }
 
 // executeBlocks executes all blocks in order (HTML and ASP)
@@ -497,34 +560,128 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 
 	// Case 2: Indexed/Property assignment (obj("key") = value or obj.prop = value)
 	if indexCall, ok := stmt.Left.(*ast.IndexOrCallExpression); ok {
-		// Get the object
-		obj, err := v.visitExpression(indexCall.Object)
-		if err != nil {
-			return err
-		}
+		// For array indexing, we need to get the variable name directly
+		// to modify the original array, not a copy
+		if ident, ok := indexCall.Object.(*ast.Identifier); ok {
+			varName := ident.Name
+			varNameLower := strings.ToLower(varName)
+			
+			// Check if it's a built-in ASP object first
+			var obj interface{}
+			switch varNameLower {
+			case "session":
+				obj = v.context.Session
+			case "application":
+				obj = v.context.Application
+			case "request":
+				obj = v.context.Request
+			case "response":
+				obj = v.context.Response
+			case "server":
+				obj = v.context.Server
+			default:
+				// Otherwise get from variables
+				var exists bool
+				obj, exists = v.context.GetVariable(varName)
+				if !exists {
+					return fmt.Errorf("variable '%s' is undefined", varName)
+				}
+			}
 
-		// If it's a map (dictionary-like object), set the indexed property
-		if mapObj, ok := obj.(map[string]interface{}); ok {
-			if len(indexCall.Indexes) > 0 {
-				// Get the key
+			// Handle array index assignment (arr(0) = value)
+			if arrObj, ok := obj.([]interface{}); ok {
+				if len(indexCall.Indexes) > 0 {
+					// Get the index
+					idx, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					index := toInt(idx)
+					// Bounds check
+					if index >= 0 && index < len(arrObj) {
+						arrObj[index] = value
+						// Re-set the variable to ensure it's updated
+						_ = v.context.SetVariable(varName, arrObj)
+						return nil
+					}
+					// Out of bounds - VBScript error
+					return fmt.Errorf("subscript out of range")
+				}
+			}
+
+			// Handle map assignment
+			if mapObj, ok := obj.(map[string]interface{}); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					mapObj[fmt.Sprintf("%v", key)] = value
+					return nil
+				}
+			}
+			
+			// Handle SessionObject assignment (Session("key") = value)
+			if sessionObj, ok := obj.(*SessionObject); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					return sessionObj.SetIndex(key, value)
+				}
+			}
+
+			// Handle ASP Library wrapper
+			if lib, ok := obj.(interface {
+				SetProperty(string, interface{}) error
+			}); ok && len(indexCall.Indexes) > 0 {
 				key, err := v.visitExpression(indexCall.Indexes[0])
 				if err != nil {
 					return err
 				}
-				mapObj[fmt.Sprintf("%v", key)] = value
-				return nil
+				return lib.SetProperty(fmt.Sprintf("%v", key), value)
 			}
-		}
-
-		// If it's an ASP Library wrapper, try to call a setter
-		if lib, ok := obj.(interface {
-			SetProperty(string, interface{}) error
-		}); ok && indexCall.Indexes != nil && len(indexCall.Indexes) > 0 {
-			key, err := v.visitExpression(indexCall.Indexes[0])
+		} else {
+			// For complex expressions, evaluate normally
+			obj, err := v.visitExpression(indexCall.Object)
 			if err != nil {
 				return err
 			}
-			return lib.SetProperty(fmt.Sprintf("%v", key), value)
+
+			// If it's a map (dictionary-like object), set the indexed property
+			if mapObj, ok := obj.(map[string]interface{}); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					mapObj[fmt.Sprintf("%v", key)] = value
+					return nil
+				}
+			}
+			
+			// If it's a SessionObject, set the indexed property
+			if sessionObj, ok := obj.(*SessionObject); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					return sessionObj.SetIndex(key, value)
+				}
+			}
+
+			// If it's an ASP Library wrapper, try to call a setter
+			if lib, ok := obj.(interface {
+				SetProperty(string, interface{}) error
+			}); ok && len(indexCall.Indexes) > 0 {
+				key, err := v.visitExpression(indexCall.Indexes[0])
+				if err != nil {
+					return err
+				}
+				return lib.SetProperty(fmt.Sprintf("%v", key), value)
+			}
 		}
 	}
 
@@ -1286,6 +1443,11 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 		return nil, nil
 	}
+	
+	// Handle SessionObject index access (Session("key"))
+	if sessionObj, ok := base.(*SessionObject); ok && len(args) > 0 {
+		return sessionObj.GetIndex(args[0]), nil
+	}
 
 	// Handle map/dictionary access (for JSON objects, etc.)
 	if mapObj, ok := base.(map[string]interface{}); ok && len(args) > 0 {
@@ -1334,6 +1496,11 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	// Handle generic property access
 	if aspObj, ok := obj.(asp.ASPObject); ok {
 		return aspObj.GetProperty(propName), nil
+	}
+	
+	// Handle SessionObject
+	if sessionObj, ok := obj.(*SessionObject); ok {
+		return sessionObj.GetProperty(propName), nil
 	}
 
 	return nil, nil

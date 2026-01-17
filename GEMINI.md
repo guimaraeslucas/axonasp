@@ -13,13 +13,15 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
 
 - **Como rodar / depurar localmente**
   - Com Go: `go run main.go` (porta padrão `4050`).
-  - Para build: `go build -o asp-interpreter.exe` e executar `./asp-interpreter.exe` (Windows).
+  - Para build: `go build -o go-asp.exe` e executar `./go-asp.exe` (Windows Powershell).
+  - O nosso terminal roda Windows Powershell, então utilize comandos compatíveis.
   - Testes manuais: abra `http://localhost:4050/test_basics.asp` ou outros `www/test_*.asp`.
   - Para ver trace de panic detalhado (stacktrace HTML), defina a variável ASP `debug_asp_code` para "TRUE" no próprio ASP antes do erro, por exemplo:
     - `<% debug_asp_code = "TRUE" %>` no topo do arquivo ASP.
 
 - **Padrões do projeto e convenções**
   - ASP directives like `<%@ Language=VBScript %>` are supported. They are parsed by the lexer and stored as directive blocks with attributes.
+  - CÓDIGO E COMENTÁRIOS DEVEM **OBRIGATORIAMENTE** ESTAR EM INGLÊS
   - Lookup de variáveis é case-insensitive; internamente as chaves são armazenadas em minúsculas.
   - Includes: `<!--#include file="..."-->` é relativo ao arquivo atual; `virtual` é relativo a `www/` (root).
   - `Session`  deve ser armazenado em uma pasta em `temp/session` e e `Application` na memória; a sessão usa cookie `ASPSESSIONID`.
@@ -34,7 +36,7 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
   - Legacy ASP functions and behaviors must be strictly followed to ensure compatibility with existing ASP codebases.
 
 - **Boas mudanças para PRs pequenas**
-  - Fixes e features pontuais devem incluir um exemplo ASP em `www/` (ou atualizar `test_*.asp`) e adicionar a modificação um link ou atualizar a descrição em `Default.asp`, sempre seguindo uma formatação adequada e instruções de como reproduzir localmente.
+  - Fixes e features pontuais devem incluir um exemplo ASP em `www/` (ou atualizar `test_*.asp`) e adicionar a modificação um link ou atualizar a descrição em `Default.asp`, sempre seguindo uma formatação adequada. Não crie arquivos .MD com a descrição das funcionalidades. Tudo deve estar em inglês americano..
   - Evitar reescrever estilo de arquivos; manter implementações pequenas e testáveis.
   - Não modificar nada que esteja na pasta VBScript-Go.
   - Evitar modificar o nome do programa que é G3 AxonASP

@@ -13,7 +13,8 @@ Objetivo: ajudar um agente a ser produtivo rapidamente neste repositório (inter
 
 - **Como rodar / depurar localmente**
   - Com Go: `go run main.go` (porta padrão `4050`).
-  - Para build: `go build -o asp-interpreter.exe` e executar `./asp-interpreter.exe` (Windows).
+  - Para build: `go build -o go-asp.exe` e executar `./go-asp.exe` (Windows Powershell).
+  - O nosso terminal roda Windows Powershell, então utilize comandos compatíveis.
   - Testes manuais: abra `http://localhost:4050/test_basics.asp` ou outros `www/test_*.asp`.
   - Para ver trace de panic detalhado (stacktrace HTML), defina a variável ASP `debug_asp_code` para "TRUE" no próprio ASP antes do erro, por exemplo:
     - `<% debug_asp_code = "TRUE" %>` no topo do arquivo ASP.

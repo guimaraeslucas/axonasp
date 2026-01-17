@@ -112,6 +112,7 @@
             i_loop = 0
             Do Until i_loop > 2
             i_loop = i_loop + 1
+            response.write "Loop iteration: " & i_loop & "<br>"
             If i_loop > 2 Then Exit Do
             Loop
              %>
@@ -169,7 +170,7 @@
     famname(5) = "Borge"
     
     For i = 0 to 5
-         response.write(famname(i) & "<br>")
+         response.write famname(i) & "<br>"
     Next
     %>
     </div>
