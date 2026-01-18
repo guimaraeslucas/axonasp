@@ -91,12 +91,12 @@ func (h *G3HTTP) executeRequest(url, method, bodyStr string) interface{} {
 func (h *G3HTTP) mapToDictionary(data interface{}) interface{} {
 	switch v := data.(type) {
 	case map[string]interface{}:
-		// Convert map to Collection for VBScript compatibility
-		col := NewCollection()
+		// Return map directly for VBScript subscript access
+		result := make(map[string]interface{})
 		for key, value := range v {
-			col.Add(key, h.mapToDictionary(value))
+			result[key] = h.mapToDictionary(value)
 		}
-		return col
+		return result
 	case []interface{}:
 		// Convert array recursively
 		result := make([]interface{}, len(v))

@@ -902,14 +902,14 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 
 			// So we can use vbscript-go parser directly here.
 			parser := vb.NewParser(code)
-			
+
 			// Defer recovery for parser panics
 			defer func() {
 				if r := recover(); r != nil {
 					fmt.Printf("Eval parse panic: %v\n", r)
 				}
 			}()
-			
+
 			program := parser.Parse()
 
 			if program == nil {
@@ -922,7 +922,7 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 				// We can use NewASPVisitor and VisitStatement manually
 
 				visitor := NewASPVisitor(ctx, executor)
-				
+
 				// Execute all statements (should be just one assignment)
 				for _, stmt := range program.Body {
 					if err := visitor.VisitStatement(stmt); err != nil {
