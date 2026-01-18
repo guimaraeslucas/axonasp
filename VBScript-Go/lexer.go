@@ -7,31 +7,31 @@ import (
 
 // Lexer represents a VBScript lexical analyzer
 type Lexer struct {
-	Code           string
-	Index          int
-	CurrentLine    int
+	Code             string
+	Index            int
+	CurrentLine      int
 	CurrentLineStart int
-	Length         int
-	sb             strings.Builder
+	Length           int
+	sb               strings.Builder
 }
 
 // NewLexer creates a new Lexer instance
 func NewLexer(code string) *Lexer {
 	if code == "" {
 		return &Lexer{
-			Code:           code,
-			Index:          0,
-			CurrentLine:    0,
+			Code:             code,
+			Index:            0,
+			CurrentLine:      0,
 			CurrentLineStart: 0,
-			Length:         0,
+			Length:           0,
 		}
 	}
 	return &Lexer{
-		Code:           code,
-		Index:          0,
-		CurrentLine:    1,
+		Code:             code,
+		Index:            0,
+		CurrentLine:      1,
 		CurrentLineStart: 0,
-		Length:         len([]rune(code)),
+		Length:           len([]rune(code)),
 	}
 }
 
@@ -423,22 +423,23 @@ func (l *Lexer) nextNumericLiteral() Token {
 	var fstr strings.Builder
 
 	if c != '.' {
-			if c == '&' {
-				if CharEquals(next, 'h') {
-					return l.nextHexIntLiteral()
-				} else if CharEquals(next, 'o') {
-					return l.nextOctIntLiteralPrefix()
-				} else if IsOctDigit(next) {
-					return l.nextOctIntLiteral()
-				} else {
-					panic(l.vbSyntaxError(SyntaxError))
-				}
+		if c == '&' {
+			if CharEquals(next, 'h') {
+				return l.nextHexIntLiteral()
+			} else if CharEquals(next, 'o') {
+				return l.nextOctIntLiteralPrefix()
+			} else if IsOctDigit(next) {
+				return l.nextOctIntLiteral()
 			} else {
-				decStr = l.getDecStr()
-				if IsIdentifierStart(l.getChar(l.Index)) {
-					panic(l.vbSyntaxError(ExpectedEndOfStatement))
-				}
-			}	}
+				panic(l.vbSyntaxError(SyntaxError))
+			}
+		} else {
+			decStr = l.getDecStr()
+			if IsIdentifierStart(l.getChar(l.Index)) {
+				panic(l.vbSyntaxError(ExpectedEndOfStatement))
+			}
+		}
+	}
 
 	c = l.getChar(l.Index)
 	if c == '.' {
