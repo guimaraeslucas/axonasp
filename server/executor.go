@@ -153,7 +153,9 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 
 	// 2. Check Context Object (Class Member)
 	if ec.contextObject != nil {
-		if internal, ok := ec.contextObject.(interface{ SetMember(string, interface{}) bool }); ok {
+		if internal, ok := ec.contextObject.(interface {
+			SetMember(string, interface{}) bool
+		}); ok {
 			if internal.SetMember(nameLower, value) {
 				return nil
 			}
@@ -166,11 +168,11 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 	// VBScript behavior depends on Option Explicit.
 	// Assuming Option Explicit is OFF (or we treat it loosely), it goes to Global?
 	// Actually, if it's not Dim'ed locally, it searches up. If nowhere, it creates Global.
-	
+
 	// BUT, if we want to support 'Dim x' inside function, 'visitVariableDeclaration' calls 'SetVariable'.
 	// We need 'DefineVariable' vs 'SetVariable'.
 	// 'visitVariableDeclaration' should put it in the CURRENT scope.
-	
+
 	// For now, standard SetVariable puts in global if not found in locals.
 	ec.variables[nameLower] = value
 	return nil
@@ -214,7 +216,9 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	// 3. Check Context Object (Class Member)
 	if ec.contextObject != nil {
 		// Try internal access first (allows Private members)
-		if internal, ok := ec.contextObject.(interface{ GetMember(string) (interface{}, bool) }); ok {
+		if internal, ok := ec.contextObject.(interface {
+			GetMember(string) (interface{}, bool)
+		}); ok {
 			if val, found := internal.GetMember(nameLower); found {
 				return val, true
 			}
@@ -1481,7 +1485,7 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 	switch e := expr.(type) {
 	case *ast.Identifier:
 		varName := e.Name
-		
+
 		// Handle "Me" keyword
 		if strings.EqualFold(varName, "me") {
 			if obj := v.context.GetContextObject(); obj != nil {
@@ -2247,44 +2251,44 @@ func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression)
 	if sessionObj, ok := obj.(*SessionObject); ok {
 		return sessionObj.GetProperty(propName), nil
 	}
-    
-    // Handle ClassInstance
-    if classInst, ok := obj.(*ClassInstance); ok {
-        return classInst.GetProperty(propName)
-    }
+
+	// Handle ClassInstance
+	if classInst, ok := obj.(*ClassInstance); ok {
+		return classInst.GetProperty(propName)
+	}
 
 	return nil, nil
 }
 
 // visitNewExpression handles New ClassName
 func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, error) {
-    if expr == nil || expr.Argument == nil {
-        return nil, nil
-    }
+	if expr == nil || expr.Argument == nil {
+		return nil, nil
+	}
 
-    // Arg should be Identifier
-    if ident, ok := expr.Argument.(*ast.Identifier); ok {
-        className := ident.Name
-        
-        // Lookup ClassDef
-        classDefVal, exists := v.context.GetVariable(className)
-        if !exists {
-             // Maybe it's a built-in COM object (unlikely syntax 'New X', usually 'Server.CreateObject')
-             if strings.ToLower(className) == "regexp" {
-                 // TODO: Implement RegExp
-                 return nil, fmt.Errorf("RegExp not implemented yet")
-             }
-             return nil, fmt.Errorf("class not defined: %s", className)
-        }
-        
-        if classDef, ok := classDefVal.(*ClassDef); ok {
-            return NewClassInstance(classDef, v.context)
-        }
-        
-        return nil, fmt.Errorf("%s is not a class", className)
-    }
-    
-    return nil, fmt.Errorf("invalid New expression")
+	// Arg should be Identifier
+	if ident, ok := expr.Argument.(*ast.Identifier); ok {
+		className := ident.Name
+
+		// Lookup ClassDef
+		classDefVal, exists := v.context.GetVariable(className)
+		if !exists {
+			// Maybe it's a built-in COM object (unlikely syntax 'New X', usually 'Server.CreateObject')
+			if strings.ToLower(className) == "regexp" {
+				// TODO: Implement RegExp
+				return nil, fmt.Errorf("RegExp not implemented yet")
+			}
+			return nil, fmt.Errorf("class not defined: %s", className)
+		}
+
+		if classDef, ok := classDefVal.(*ClassDef); ok {
+			return NewClassInstance(classDef, v.context)
+		}
+
+		return nil, fmt.Errorf("%s is not a class", className)
+	}
+
+	return nil, fmt.Errorf("invalid New expression")
 }
 
 // executeFunction executes a user defined function
@@ -2356,4 +2360,3 @@ func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (in
 
 	return nil, nil
 }
-
