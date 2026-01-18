@@ -860,6 +860,7 @@ func tryParseNumericLiteral(s string) (interface{}, bool) {
 
 	return nil, false
 }
+
 // evalExpression evaluates an expression string using the execution context
 // This is used by Eval() function to dynamically evaluate expressions
 func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
@@ -870,11 +871,11 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 	// Use the context's expression evaluation
 	// For now, return a simple evaluation or nil if context doesn't support it
 	// This would be extended to use the full ASP parser if available
-	
+
 	// Simple case: if it's a string literal (quoted), return the string
 	exprStr = strings.TrimSpace(exprStr)
 	if len(exprStr) >= 2 {
-		if (exprStr[0] == '"' && exprStr[len(exprStr)-1] == '"') {
+		if exprStr[0] == '"' && exprStr[len(exprStr)-1] == '"' {
 			// Handle escaped quotes ""
 			inner := exprStr[1 : len(exprStr)-1]
 			inner = strings.ReplaceAll(inner, `""`, `"`)

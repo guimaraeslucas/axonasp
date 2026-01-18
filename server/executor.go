@@ -637,6 +637,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewMailLibrary(ae.context), nil
 	case "G3CRYPTO", "CRYPTO":
 		return NewCryptoLibrary(ae.context), nil
+	case "G3REGEXP", "REGEXP":
+		return NewRegExpLibrary(ae.context), nil
 
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":
@@ -1012,6 +1014,13 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 				timeout := toInt(value)
 				return serverObj.SetScriptTimeout(timeout)
 			}
+		}
+
+		// If it's an ASPLibrary, set the property
+		if lib, ok := obj.(interface {
+			SetProperty(string, interface{}) error
+		}); ok {
+			return lib.SetProperty(propName, value)
 		}
 	}
 
@@ -2701,10 +2710,9 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
 		// Lookup ClassDef
 		classDefVal, exists := v.context.GetVariable(className)
 		if !exists {
-			// Maybe it's a built-in COM object (unlikely syntax 'New X', usually 'Server.CreateObject')
+			// Check for built-in COM objects (New RegExp syntax)
 			if strings.ToLower(className) == "regexp" {
-				// TODO: Implement RegExp
-				return nil, fmt.Errorf("RegExp not implemented yet")
+				return NewRegExpLibrary(v.context), nil
 			}
 			return nil, fmt.Errorf("class not defined: %s", className)
 		}
@@ -2768,7 +2776,7 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 	// Bind parameters
 	for i, param := range fn.Parameters {
 		var val interface{}
-		
+
 		if i < len(arguments) {
 			// Check if parameter is ByRef
 			if param.Modifier == ast.ParameterModifierByRef {
@@ -2799,7 +2807,7 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 				}
 			}
 		}
-		
+
 		_ = v.context.DefineVariable(param.Identifier.Name, val)
 	}
 
@@ -2882,7 +2890,7 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 	// Bind parameters
 	for i, param := range sub.Parameters {
 		var val interface{}
-		
+
 		if i < len(arguments) {
 			// Check if parameter is ByRef
 			if param.Modifier == ast.ParameterModifierByRef {
@@ -2913,7 +2921,7 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 				}
 			}
 		}
-		
+
 		_ = v.context.DefineVariable(param.Identifier.Name, val)
 	}
 
