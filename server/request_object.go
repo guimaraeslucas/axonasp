@@ -29,7 +29,7 @@ func NewCollection() *Collection {
 func (c *Collection) Add(key string, value interface{}) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	keyLower := strings.ToLower(key)
 	if _, exists := c.data[keyLower]; !exists {
 		c.keys = append(c.keys, keyLower)
@@ -41,7 +41,7 @@ func (c *Collection) Add(key string, value interface{}) {
 func (c *Collection) Get(key string) interface{} {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	keyLower := strings.ToLower(key)
 	if val, exists := c.data[keyLower]; exists {
 		return val
@@ -53,7 +53,7 @@ func (c *Collection) Get(key string) interface{} {
 func (c *Collection) Exists(key string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	keyLower := strings.ToLower(key)
 	_, exists := c.data[keyLower]
 	return exists
@@ -90,14 +90,14 @@ type RequestObject struct {
 	ServerVariables   *Collection
 	ClientCertificate *Collection
 	properties        map[string]interface{}
-	
+
 	// Internal state for BinaryRead
-	httpRequest     *http.Request
-	bodyBytes       []byte
-	bodyBuffer      *bytes.Reader
-	totalBytes      int64
-	bytesRead       int64
-	mu              sync.RWMutex
+	httpRequest *http.Request
+	bodyBytes   []byte
+	bodyBuffer  *bytes.Reader
+	totalBytes  int64
+	bytesRead   int64
+	mu          sync.RWMutex
 }
 
 // NewRequestObject creates a new Request object
@@ -211,7 +211,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 		if len(args) < 1 {
 			return []byte{}, nil
 		}
-		
+
 		count := int64(0)
 		switch v := args[0].(type) {
 		case int:
@@ -225,7 +225,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 		default:
 			return []byte{}, nil
 		}
-		
+
 		return r.BinaryRead(count)
 
 	default:
@@ -290,9 +290,9 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 func (r *RequestObject) SetHTTPRequest(req *http.Request) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.httpRequest = req
-	
+
 	// Set TotalBytes from Content-Length header
 	if req != nil {
 		r.totalBytes = req.ContentLength

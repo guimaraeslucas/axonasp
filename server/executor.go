@@ -22,6 +22,18 @@ func (e *LoopExitError) Error() string {
 	return fmt.Sprintf("Exit %s", e.LoopType)
 }
 
+// Global Application singleton (shared across all requests)
+var globalApplication *ApplicationObject
+var globalAppOnce sync.Once
+
+// GetGlobalApplication returns the singleton Application object
+func GetGlobalApplication() *ApplicationObject {
+	globalAppOnce.Do(func() {
+		globalApplication = NewApplicationObject()
+	})
+	return globalApplication
+}
+
 // ExecutionContext holds all runtime state for ASP execution
 type ExecutionContext struct {
 	// ASP core objects
@@ -29,7 +41,7 @@ type ExecutionContext struct {
 	Response    *ResponseObject
 	Server      *asp.ServerObject
 	Session     *SessionObject
-	Application map[string]interface{}
+	Application *ApplicationObject
 
 	// Variable storage (case-insensitive keys)
 	variables map[string]interface{}
@@ -86,7 +98,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		Response:       NewResponseObject(w, r),
 		Server:         asp.NewServerObject(),
 		Session:        NewSessionObject(sessionID, sessionData.Data),
-		Application:    make(map[string]interface{}),
+		Application:    GetGlobalApplication(),
 		variables:      make(map[string]interface{}),
 		constants:      make(map[string]interface{}),
 		libraries:      make(map[string]interface{}),
@@ -766,6 +778,18 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 				}
 			}
 
+			// Handle ApplicationObject assignment (Application("key") = value)
+			if appObj, ok := obj.(*ApplicationObject); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					appObj.Set(fmt.Sprintf("%v", key), value)
+					return nil
+				}
+			}
+
 			// Handle ASP Library wrapper
 			if lib, ok := obj.(interface {
 				SetProperty(string, interface{}) error
@@ -803,6 +827,18 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 						return err
 					}
 					return sessionObj.SetIndex(key, value)
+				}
+			}
+
+			// If it's an ApplicationObject, set the indexed property
+			if appObj, ok := obj.(*ApplicationObject); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					appObj.Set(fmt.Sprintf("%v", key), value)
+					return nil
 				}
 			}
 
@@ -1883,6 +1919,19 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					}
 				}
 
+				// Try ApplicationObject methods
+				if appObj, ok := parentObj.(*ApplicationObject); ok {
+					propNameLower := strings.ToLower(propName)
+					switch propNameLower {
+					case "lock":
+						appObj.Lock()
+						return nil, nil
+					case "unlock":
+						appObj.Unlock()
+						return nil, nil
+					}
+				}
+
 				// Try ASPObject
 				if aspObj, ok := parentObj.(asp.ASPObject); ok {
 					return aspObj.CallMethod(propName, args...)
@@ -1916,6 +1965,12 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	// Handle SessionObject index access (Session("key"))
 	if sessionObj, ok := base.(*SessionObject); ok && len(args) > 0 {
 		return sessionObj.GetIndex(args[0]), nil
+	}
+
+	// Handle ApplicationObject index access (Application("key"))
+	if appObj, ok := base.(*ApplicationObject); ok && len(args) > 0 {
+		key := fmt.Sprintf("%v", args[0])
+		return appObj.Get(key), nil
 	}
 
 	// Handle map/dictionary access (for JSON objects, etc.)
@@ -1997,6 +2052,29 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	// Handle SessionObject
 	if sessionObj, ok := obj.(*SessionObject); ok {
 		return sessionObj.GetProperty(propName), nil
+	}
+
+	// Handle ApplicationObject properties and methods
+	if appObj, ok := obj.(*ApplicationObject); ok {
+		propNameLower := strings.ToLower(propName)
+		switch propNameLower {
+		case "lock":
+			// Return a callable that will execute Lock when invoked
+			return func() {
+				appObj.Lock()
+			}, nil
+		case "unlock":
+			// Return a callable that will execute Unlock when invoked
+			return func() {
+				appObj.Unlock()
+			}, nil
+		case "staticobjects":
+			// Return the StaticObjects collection (as a map for enumeration)
+			return appObj.GetStaticObjects(), nil
+		case "contents":
+			// Return the Contents collection (as a map for enumeration)
+			return appObj.GetContents(), nil
+		}
 	}
 
 	// Handle Collection properties (Count, etc.)
@@ -2331,7 +2409,7 @@ func isBoolType(val interface{}) bool {
 func populateRequestData(req *RequestObject, r *http.Request) {
 	// Set the HTTP request for BinaryRead support
 	req.SetHTTPRequest(r)
-	
+
 	// Parse form data
 	r.ParseForm()
 
@@ -2369,7 +2447,7 @@ func populateRequestData(req *RequestObject, r *http.Request) {
 	req.ServerVariables.Add("HTTP_REFERER", r.Referer())
 	req.ServerVariables.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
 	req.ServerVariables.Add("CONTENT_LENGTH", r.Header.Get("Content-Length"))
-	
+
 	// Add all HTTP headers as HTTP_* server variables
 	for name, values := range r.Header {
 		if len(values) > 0 {
@@ -2377,7 +2455,7 @@ func populateRequestData(req *RequestObject, r *http.Request) {
 			req.ServerVariables.Add(varName, values[0])
 		}
 	}
-	
+
 	// ClientCertificate collection (stub - SSL certificates not currently handled)
 	// In a full implementation, this would parse TLS client certificate info
 	req.ClientCertificate.Add("Subject", "")

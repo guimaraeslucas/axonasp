@@ -305,6 +305,13 @@
                         <div class="test-desc">Lock, Unlock, StaticObjects, variable enumeration.</div>
                     </a>
                 </div>
+
+                <div class="test-item" onclick="loadTest('test_application_comprehensive.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Application Object - Comprehensive</div>
+                        <div class="test-desc">Complete test suite for all Application features.</div>
+                    </a>
+                </div>
                 
                 <div class="test-item" onclick="loadTest('test_include.asp', this)">
                     <a href="javascript:void(0)" class="test-link">
