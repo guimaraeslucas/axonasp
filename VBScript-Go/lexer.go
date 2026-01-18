@@ -87,7 +87,7 @@ func (l *Lexer) NextToken() Token {
 	}
 
 	if c == '&' {
-		if CharEquals(next, 'h') || IsDecDigit(next) {
+		if CharEquals(next, 'h') || CharEquals(next, 'o') || IsDecDigit(next) {
 			return l.nextNumericLiteral()
 		}
 		return l.nextPunctuation()
@@ -423,21 +423,22 @@ func (l *Lexer) nextNumericLiteral() Token {
 	var fstr strings.Builder
 
 	if c != '.' {
-		if c == '&' {
-			if CharEquals(next, 'h') {
-				return l.nextHexIntLiteral()
-			} else if IsOctDigit(next) {
-				return l.nextOctIntLiteral()
+			if c == '&' {
+				if CharEquals(next, 'h') {
+					return l.nextHexIntLiteral()
+				} else if CharEquals(next, 'o') {
+					return l.nextOctIntLiteralPrefix()
+				} else if IsOctDigit(next) {
+					return l.nextOctIntLiteral()
+				} else {
+					panic(l.vbSyntaxError(SyntaxError))
+				}
 			} else {
-				panic(l.vbSyntaxError(SyntaxError))
-			}
-		} else {
-			decStr = l.getDecStr()
-			if IsIdentifierStart(l.getChar(l.Index)) {
-				panic(l.vbSyntaxError(ExpectedEndOfStatement))
-			}
-		}
-	}
+				decStr = l.getDecStr()
+				if IsIdentifierStart(l.getChar(l.Index)) {
+					panic(l.vbSyntaxError(ExpectedEndOfStatement))
+				}
+			}	}
 
 	c = l.getChar(l.Index)
 	if c == '.' {
@@ -585,6 +586,27 @@ func (l *Lexer) parseInteger(str string, base int) Token {
 			},
 		}
 	}
+
+	return result
+}
+
+func (l *Lexer) nextOctIntLiteralPrefix() Token {
+	start := l.Index
+	l.Index += 2 // skip '&o'
+
+	str := l.getOctStr()
+	c := l.getChar(l.Index)
+
+	if IsDecDigit(c) && !IsOctDigit(c) {
+		panic(l.vbSyntaxError(SyntaxError))
+	}
+
+	if IsIdentifierStart(c) {
+		panic(l.vbSyntaxError(ExpectedEndOfStatement))
+	}
+
+	result := l.parseInteger(str, 8)
+	result.SetStart(start)
 
 	return result
 }

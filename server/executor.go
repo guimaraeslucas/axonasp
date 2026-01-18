@@ -633,6 +633,13 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 	case *ast.ConstsDeclaration:
 		return v.visitConstDeclaration(stmt)
 
+	case *ast.StatementList:
+		for _, s := range stmt.Statements {
+			if err := v.VisitStatement(s); err != nil {
+				return err
+			}
+		}
+
 	case *ast.OnErrorResumeNextStatement:
 		// Error handling - continue on error
 		return nil
