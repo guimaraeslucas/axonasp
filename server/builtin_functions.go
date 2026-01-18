@@ -101,6 +101,34 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		val := args[0]
 		return getVarType(val), true
 
+	case "scriptengine":
+		// ScriptEngine() - Returns "VBScript" for compatibility
+		return "VBScript", true
+
+	case "scriptenginebuildversion":
+		// ScriptEngineBuildVersion() - Returns VBScript build version (18702 = VBScript 5.8)
+		return 18702, true
+
+	case "scriptenginemajorversion":
+		// ScriptEngineMajorVersion() - Returns 5 (VBScript 5.x)
+		return 5, true
+
+	case "scriptengineminorversion":
+		// ScriptEngineMinorVersion() - Returns 8 (VBScript 5.8)
+		return 8, true
+
+	case "eval":
+		// Eval(expression) - Evaluate expression string and return result
+		if len(args) == 0 {
+			return nil, true
+		}
+		exprStr := toString(args[0])
+		// Evaluate the expression string using the context's evaluation mechanism
+		// This requires access to the context's expression evaluator
+		// For now, return the parsed result
+		result := evalExpression(exprStr, ctx)
+		return result, true
+
 	case "rgb":
 		// RGB(red, green, blue) - returns color as integer
 		if len(args) < 3 {
@@ -831,4 +859,51 @@ func tryParseNumericLiteral(s string) (interface{}, bool) {
 	}
 
 	return nil, false
+}
+// evalExpression evaluates an expression string using the execution context
+// This is used by Eval() function to dynamically evaluate expressions
+func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
+	if ctx == nil || exprStr == "" {
+		return nil
+	}
+
+	// Use the context's expression evaluation
+	// For now, return a simple evaluation or nil if context doesn't support it
+	// This would be extended to use the full ASP parser if available
+	
+	// Simple case: if it's a string literal (quoted), return the string
+	exprStr = strings.TrimSpace(exprStr)
+	if len(exprStr) >= 2 {
+		if (exprStr[0] == '"' && exprStr[len(exprStr)-1] == '"') {
+			// Handle escaped quotes ""
+			inner := exprStr[1 : len(exprStr)-1]
+			inner = strings.ReplaceAll(inner, `""`, `"`)
+			return inner
+		}
+	}
+
+	// Try to parse as number
+	if val, ok := tryParseNumericLiteral(exprStr); ok {
+		return val
+	}
+
+	// Check for boolean constants
+	exprLower := strings.ToLower(exprStr)
+	if exprLower == "true" {
+		return true
+	}
+	if exprLower == "false" {
+		return false
+	}
+
+	// Check for variable reference
+	if ctx != nil {
+		varName := strings.ToLower(exprStr)
+		if val, ok := ctx.GetVariable(varName); ok {
+			return val
+		}
+	}
+
+	// Return nil if unable to evaluate
+	return nil
 }

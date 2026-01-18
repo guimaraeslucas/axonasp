@@ -10,7 +10,7 @@ import (
 type SessionObject struct {
 	ID        string
 	Data      map[string]interface{}
-	TimeOut   int                    // Timeout in minutes
+	TimeOut   int // Timeout in minutes
 	CreatedAt time.Time
 	mu        sync.RWMutex
 	locked    bool

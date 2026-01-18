@@ -72,7 +72,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("Warning: Failed to load Global.asa: %v\n", err)
 	}
-	
+
 	// Check if events are loaded
 	fmt.Printf("Application_OnStart defined: %v\n", globalASAManager.HasApplicationOnStart())
 	fmt.Printf("Session_OnStart defined: %v\n", globalASAManager.HasSessionOnStart())
@@ -99,7 +99,7 @@ func main() {
 		// Create execution context for Application_OnStart
 		ctx := server.NewExecutionContext(dummyWriter, dummyRequest, "app_startup", time.Duration(ScriptTimeout)*time.Second)
 		ctx.RootDir = RootDir
-		
+
 		// Set the context in executor
 		executor.SetContext(ctx)
 

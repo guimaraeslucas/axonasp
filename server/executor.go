@@ -264,6 +264,55 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	return val, exists
 }
 
+// GetVariableFromParentScope gets a variable from the parent scope (for ByRef parameters)
+func (ec *ExecutionContext) GetVariableFromParentScope(name string) (interface{}, bool) {
+	nameLower := strings.ToLower(name)
+
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+
+	// Get from parent scope (one level up from current)
+	// We need at least 2 scopes: current and parent
+	if len(ec.scopeStack) >= 2 {
+		parentIndex := len(ec.scopeStack) - 2
+		if val, exists := ec.scopeStack[parentIndex][nameLower]; exists {
+			return val, true
+		}
+	}
+
+	// Check globals as fallback (variable might be global)
+	if val, exists := ec.variables[nameLower]; exists {
+		return val, true
+	}
+
+	return nil, false
+}
+
+// SetVariableInParentScope sets a variable in the parent scope (for ByRef parameters)
+func (ec *ExecutionContext) SetVariableInParentScope(name string, value interface{}) error {
+	nameLower := strings.ToLower(name)
+
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	// Set in parent scope (one level up from current)
+	if len(ec.scopeStack) >= 2 {
+		parentIndex := len(ec.scopeStack) - 2
+		ec.scopeStack[parentIndex][nameLower] = value
+		return nil
+	}
+
+	// If no parent scope (at global level), set globally
+	if len(ec.scopeStack) == 0 {
+		ec.variables[nameLower] = value
+		return nil
+	}
+
+	// If we have only one scope, treat parent as global
+	ec.variables[nameLower] = value
+	return nil
+}
+
 // SetConstant sets a constant in the execution context (case-insensitive)
 // Constants cannot be changed after initialization
 func (ec *ExecutionContext) SetConstant(name string, value interface{}) error {
@@ -1828,28 +1877,12 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
 		if val, exists := v.context.GetVariable(ident.Name); exists {
 			if fn, ok := val.(*ast.FunctionDeclaration); ok {
-				// Evaluate arguments
-				args := make([]interface{}, 0)
-				for _, arg := range arguments {
-					val, err := v.visitExpression(arg)
-					if err != nil {
-						return nil, err
-					}
-					args = append(args, val)
-				}
-				return v.executeFunction(fn, args)
+				// For ByRef support, we need to pass the original expressions, not evaluated values
+				return v.executeFunctionWithRefs(fn, arguments, v)
 			}
 			if sub, ok := val.(*ast.SubDeclaration); ok {
-				// Evaluate arguments
-				args := make([]interface{}, 0)
-				for _, arg := range arguments {
-					val, err := v.visitExpression(arg)
-					if err != nil {
-						return nil, err
-					}
-					args = append(args, val)
-				}
-				return v.executeSub(sub, args)
+				// For ByRef support, we need to pass the original expressions, not evaluated values
+				return v.executeSubWithRefs(sub, arguments, v)
 			}
 		}
 	}
@@ -2724,6 +2757,88 @@ func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interfa
 	return val, nil
 }
 
+// executeFunctionWithRefs executes a user defined function with ByRef parameter support
+func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, arguments []ast.Expression, visitor *ASPVisitor) (interface{}, error) {
+	v.context.PushScope()
+	defer v.context.PopScope()
+
+	// Map to track ByRef parameters and their original variable names
+	byRefMap := make(map[string]string) // param name -> original var name
+
+	// Bind parameters
+	for i, param := range fn.Parameters {
+		var val interface{}
+		
+		if i < len(arguments) {
+			// Check if parameter is ByRef
+			if param.Modifier == ast.ParameterModifierByRef {
+				// For ByRef, we need the original variable name
+				if ident, ok := arguments[i].(*ast.Identifier); ok {
+					byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
+					// Get value from caller's scope (could be parent scope or global)
+					if parentVal, exists := v.context.GetVariableFromParentScope(ident.Name); exists {
+						val = parentVal
+					} else if globalVal, exists := v.context.GetVariable(ident.Name); exists {
+						// Try global scope if not found in parent
+						val = globalVal
+					}
+				} else {
+					// If not an identifier, evaluate and use value (can't ByRef a literal)
+					var err error
+					val, err = visitor.visitExpression(arguments[i])
+					if err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				// ByVal or default: evaluate the argument
+				var err error
+				val, err = visitor.visitExpression(arguments[i])
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		
+		_ = v.context.DefineVariable(param.Identifier.Name, val)
+	}
+
+	// Define return variable
+	funcName := fn.Identifier.Name
+	_ = v.context.DefineVariable(funcName, nil)
+
+	// Execute body
+	if fn.Body != nil {
+		if list, ok := fn.Body.(*ast.StatementList); ok {
+			for _, stmt := range list.Statements {
+				if err := v.VisitStatement(stmt); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			if err := v.VisitStatement(fn.Body); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Apply ByRef updates back to caller's scope
+	for paramName, origVarName := range byRefMap {
+		if newVal, exists := v.context.GetVariable(paramName); exists {
+			// Try to set in parent scope first
+			err := v.context.SetVariableInParentScope(origVarName, newVal)
+			if err != nil {
+				// If setting in parent scope fails, set globally
+				v.context.SetVariable(origVarName, newVal)
+			}
+		}
+	}
+
+	// Get return value
+	val, _ := v.context.GetVariable(funcName)
+	return val, nil
+}
+
 // executeSub executes a user defined subroutine
 func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (interface{}, error) {
 	v.context.PushScope()
@@ -2749,6 +2864,82 @@ func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (in
 		} else {
 			if err := v.VisitStatement(sub.Body); err != nil {
 				return nil, err
+			}
+		}
+	}
+
+	return nil, nil
+}
+
+// executeSubWithRefs executes a user defined subroutine with ByRef parameter support
+func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast.Expression, visitor *ASPVisitor) (interface{}, error) {
+	v.context.PushScope()
+	defer v.context.PopScope()
+
+	// Map to track ByRef parameters and their original variable names
+	byRefMap := make(map[string]string) // param name -> original var name
+
+	// Bind parameters
+	for i, param := range sub.Parameters {
+		var val interface{}
+		
+		if i < len(arguments) {
+			// Check if parameter is ByRef
+			if param.Modifier == ast.ParameterModifierByRef {
+				// For ByRef, we need the original variable name
+				if ident, ok := arguments[i].(*ast.Identifier); ok {
+					byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
+					// Get value from caller's scope (could be parent scope or global)
+					if parentVal, exists := v.context.GetVariableFromParentScope(ident.Name); exists {
+						val = parentVal
+					} else if globalVal, exists := v.context.GetVariable(ident.Name); exists {
+						// Try global scope if not found in parent
+						val = globalVal
+					}
+				} else {
+					// If not an identifier, evaluate and use value (can't ByRef a literal)
+					var err error
+					val, err = visitor.visitExpression(arguments[i])
+					if err != nil {
+						return nil, err
+					}
+				}
+			} else {
+				// ByVal or default: evaluate the argument
+				var err error
+				val, err = visitor.visitExpression(arguments[i])
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		
+		_ = v.context.DefineVariable(param.Identifier.Name, val)
+	}
+
+	// Execute body
+	if sub.Body != nil {
+		if list, ok := sub.Body.(*ast.StatementList); ok {
+			for _, stmt := range list.Statements {
+				if err := v.VisitStatement(stmt); err != nil {
+					return nil, err
+				}
+			}
+		} else {
+			if err := v.VisitStatement(sub.Body); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Apply ByRef updates back to caller's scope
+	for paramName, origVarName := range byRefMap {
+		if newVal, exists := v.context.GetVariable(paramName); exists {
+			// Try to set in parent scope first
+			err := v.context.SetVariableInParentScope(origVarName, newVal)
+			if err != nil {
+				// If setting in parent scope fails, set globally
+				v.context.SetVariable(origVarName, newVal)
 			}
 		}
 	}

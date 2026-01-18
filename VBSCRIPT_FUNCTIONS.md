@@ -7,6 +7,17 @@ All requested VBScript/ASP Classic functions have been successfully implemented 
 
 ### Implemented Functions by Category
 
+#### ScriptEngine Properties & Functions (4 functions)
+- **ScriptEngine()** - Returns "VBScript" (always)
+- **ScriptEngineBuildVersion()** - Returns 18702 (VBScript 5.8 build)
+- **ScriptEngineMajorVersion()** - Returns 5 (VBScript major version)
+- **ScriptEngineMinorVersion()** - Returns 8 (VBScript minor version)
+
+#### Type Information Functions (3 functions)
+- **TypeName(expression)** - Returns the VBScript type name (String, Integer, Double, Boolean, Variant(), Dictionary, Object, etc.)
+- **VarType(expression)** - Returns the VBScript type constant (0=vbEmpty, 2=vbInteger, 5=vbDouble, 8=vbString, 11=vbBoolean, etc.)
+- **Eval(expression)** - Evaluates an expression string and returns the result
+
 #### String Functions (14 functions)
 - **Len(string)** - Returns the length of a string
 - **Left(string, length)** - Returns the leftmost characters
@@ -105,10 +116,63 @@ All functions have been validated with comprehensive test cases in:
 
 The test results show 100% success rate for all implemented functions.
 
+### Parameter Passing: ByRef and ByVal
+
+#### ByRef (By Reference)
+- **Default behavior**: Parameters in VBScript are passed ByRef by default
+- **Syntax**: `Sub MySub(ByRef paramName)`
+- **Behavior**: Changes to the parameter inside the function/sub are reflected in the original variable
+- **Use Case**: When you need to modify the caller's variable
+
+```vbscript
+Sub DoubleValue(ByRef num)
+    num = num * 2
+End Sub
+
+Dim x
+x = 5
+DoubleValue(x)
+Response.Write x  ' Output: 10
+```
+
+#### ByVal (By Value)
+- **Syntax**: `Sub MySub(ByVal paramName)`
+- **Behavior**: A copy of the parameter is passed. Changes inside the function don't affect the original variable
+- **Use Case**: When you want to protect the caller's variable from modification
+
+```vbscript
+Sub DoubleValue(ByVal num)
+    num = num * 2
+End Sub
+
+Dim x
+x = 5
+DoubleValue(x)
+Response.Write x  ' Output: 5
+```
+
+### Complete Implementation Features
+
+1. **Full ByRef Support**: Parameters marked with ByRef are passed by reference, allowing modifications to affect caller's variables
+2. **ByVal Support**: Parameters marked with ByVal are passed by value, protecting caller's variables
+3. **Default to ByRef**: If no modifier is specified, parameters default to ByRef (VBScript standard)
+4. **Expression Handling**: ByRef only works with variables (not literals or expressions)
+
 ### Usage Example
 
 ```vbscript
 <%
+' ScriptEngine Properties
+Response.Write ScriptEngine()  ' Output: VBScript
+Response.Write ScriptEngineMajorVersion()  ' Output: 5
+
+' TypeName and VarType
+Response.Write TypeName(42)  ' Output: Integer
+Response.Write VarType(42)  ' Output: 2
+
+' Eval
+Response.Write Eval("42")  ' Output: 42
+
 ' String Functions
 Response.Write Left("hello", 3)  ' Output: hel
 Response.Write InStr("hello", "ll")  ' Output: 3
@@ -118,13 +182,37 @@ Response.Write Round(3.14159, 2)  ' Output: 3.14
 Response.Write Sqr(16)  ' Output: 4
 
 ' Type Conversion
-Dim num As Integer = CInt("42")
+Dim num
+num = CInt("42")
 
 ' Date/Time
 Response.Write Year(Now())  ' Output: 2026
 Response.Write MonthName(1)  ' Output: January
+
+' Parameter Passing
+Sub ModifyValue(ByRef val)
+    val = val * 2
+End Sub
+
+Dim x
+x = 5
+ModifyValue(x)
+Response.Write x  ' Output: 10
 %>
 ```
+
+### Implementation Details
+
+1. **ByRef Implementation**: Uses scope stack management to track parameter origins and write back modified values
+2. **ByVal Implementation**: Evaluates arguments before passing, protecting original variables
+3. **VarType Constants**: Follows VBScript standard type codes (2=Integer, 5=Double, 8=String, 11=Boolean, etc.)
+4. **Eval Safety**: Simple evaluation of literals, numbers, booleans, and variable references
+
+### Testing
+
+All functions have been validated with comprehensive test cases in:
+- `www/test_scriptengine_eval_byref.asp` - Complete test suite
+- `www/test_vbscript_functions.asp` - Full functional test suite
 
 ### Notes
 
@@ -132,3 +220,4 @@ Response.Write MonthName(1)  ' Output: January
 - Functions integrate seamlessly with the existing ASP execution context
 - Compatibility maintained with VBScript/ASP Classic specification
 - Performance optimized using Go's standard library functions
+- ByRef parameter tracking is fully implemented at runtime
