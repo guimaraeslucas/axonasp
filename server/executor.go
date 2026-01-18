@@ -22,6 +22,9 @@ func (e *LoopExitError) Error() string {
 	return fmt.Sprintf("Exit %s", e.LoopType)
 }
 
+// ErrServerTransfer indicates a Server.Transfer call, stopping current execution
+var ErrServerTransfer = fmt.Errorf("Server.Transfer")
+
 // Global Application singleton (shared across all requests)
 var globalApplication *ApplicationObject
 var globalAppOnce sync.Once
@@ -567,6 +570,91 @@ func (ae *ASPExecutor) saveSession() error {
 	return ae.context.sessionManager.SaveSession(sessionData)
 }
 
+// ExecuteASPPath executes an ASP file from a path within the current execution environment
+// Used by Server.Execute and Server.Transfer
+// Inherits Request, Response, Session, Application from current context
+// But has its own variable scope (Variables, Constants)
+func (ae *ASPExecutor) ExecuteASPPath(path string) error {
+	// Map virtual path to physical path using the current context
+	physicalPath := ae.context.Server_MapPath(path)
+
+	// Read file content
+	// We need a helper to read and resolve includes from a file path
+	// The current ResolveIncludes takes content string.
+	// We should read the file first.
+	contentBytes, err := asp.ReadFile(physicalPath) // We need a file reader helper in asp package or use os
+	if err != nil {
+		return err
+	}
+	content := string(contentBytes)
+
+	// Pre-process Includes
+	resolvedContent, err := asp.ResolveIncludes(content, physicalPath, ae.config.RootDir, nil)
+	if err != nil {
+		return fmt.Errorf("include error: %w", err)
+	}
+	// It shares Request, Response, Session, Application
+	// But has its own scope for variables and constants
+	childCtx := &ExecutionContext{
+		Request:        ae.context.Request,
+		Response:       ae.context.Response,
+		Server:         nil, // Set below
+		Session:        ae.context.Session,
+		Application:    ae.context.Application,
+		variables:      make(map[string]interface{}),
+		constants:      make(map[string]interface{}),
+		libraries:      make(map[string]interface{}),
+		scopeStack:     make([]map[string]interface{}, 0),
+		httpWriter:     ae.context.httpWriter,
+		httpRequest:    ae.context.httpRequest,
+		startTime:      ae.context.startTime,
+		timeout:        ae.context.timeout,
+		sessionID:      ae.context.sessionID,
+		sessionManager: ae.context.sessionManager,
+		isNewSession:   false, // Session already exists
+		RootDir:        ae.context.RootDir,
+	}
+
+	// Initialize Server object for child context
+	childCtx.Server = NewServerObjectWithContext(childCtx)
+	childCtx.Server.SetHttpRequest(ae.context.httpRequest)
+	childCtx.Server.SetRootDir(ae.context.RootDir)
+	childCtx.Server.SetScriptTimeout(ae.context.Server.GetScriptTimeout())
+	
+	// Create a new executor for the child context
+	childExecutor := &ASPExecutor{
+		config:  ae.config,
+		context: childCtx,
+	}
+	
+	childCtx.Server.SetExecutor(childExecutor)
+	
+	// Add Document object
+	childCtx.variables["document"] = NewDocumentObject(childCtx)
+
+	// Parse ASP code
+	parsingOptions := &asp.ASPParsingOptions{
+		SaveComments:      false,
+		StrictMode:        false,
+		AllowImplicitVars: true,
+		DebugMode:         ae.config.DebugASP,
+	}
+	
+	parser := asp.NewASPParserWithOptions(resolvedContent, parsingOptions)
+	result, err := parser.Parse()
+	if err != nil {
+		return fmt.Errorf("failed to parse included ASP file: %w", err)
+	}
+
+	// Check for parse errors
+	if len(result.Errors) > 0 {
+		return fmt.Errorf("ASP parse error in included file: %v", result.Errors[0])
+	}
+
+	// Execute blocks
+	return childExecutor.executeBlocks(result)
+}
+
 // executeBlocks executes all blocks in order (HTML and ASP)
 func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 	for i, block := range result.Blocks {
@@ -591,6 +679,11 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 					// Check if it's a Response.End() or Response.Redirect() signal
 					if err.Error() == "RESPONSE_END" {
 						// This is normal - stop execution and return
+						return nil
+					}
+					// Check for Server.Transfer signal
+					if err == ErrServerTransfer {
+						// Stop execution of current page (Transfer complete)
 						return nil
 					}
 					return err
@@ -628,6 +721,10 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 				// Check if it's a Response.End() or Response.Redirect() signal
 				if err.Error() == "RESPONSE_END" {
 					// This is normal - stop execution and return
+					return err
+				}
+				// Propagate Server.Transfer signal
+				if err == ErrServerTransfer {
 					return err
 				}
 				return err

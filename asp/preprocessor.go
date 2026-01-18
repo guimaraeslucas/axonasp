@@ -12,6 +12,11 @@ import (
 // Case insensitive, handles whitespace
 var includeRegex = regexp.MustCompile(`(?i)<!--\s*#include\s+(file|virtual)\s*=\s*"([^"]+)"\s*-->`)
 
+// ReadFile reads a file from the file system
+func ReadFile(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
+
 // ResolveIncludes processes SSI include directives recursively
 // content: The content of the file
 // currentFile: The absolute path of the file being processed (to resolve 'file' includes)

@@ -142,20 +142,16 @@ func (s *ServerObject) Execute(path string) error {
 		return fmt.Errorf("Execute requires a path")
 	}
 
-	// This is similar to Server-Side Include but programmatic
-	// Implementation requires:
-	// 1. Resolve path using MapPath
-	// 2. Load and parse ASP file
-	// 3. Execute in current context
-	// 4. Return control to caller
-
 	if s.context == nil {
 		return fmt.Errorf("Execute not available: no execution context")
 	}
 
-	// TODO: Full implementation requires integration with ASP parser
-	// For now, return error indicating not yet implemented
-	return fmt.Errorf("Server.Execute is not yet implemented")
+	// Use executor to execute the file
+	if exec, ok := s.executor.(interface{ ExecuteASPPath(string) error }); ok {
+		return exec.ExecuteASPPath(path)
+	}
+
+	return fmt.Errorf("executor does not support Execute")
 }
 
 // GetLastError returns an ASPError object containing error details
@@ -221,14 +217,20 @@ func (s *ServerObject) Transfer(path string) error {
 		return fmt.Errorf("Transfer not available: no execution context")
 	}
 
-	// TODO: Full implementation requires:
-	// 1. Load and parse target ASP file
-	// 2. Execute in current context
-	// 3. Terminate current script execution
-	// 4. Prevent return to caller
+	// Clear the current response buffer
+	s.context.Response.Clear()
 
-	// For now, return error indicating not yet implemented
-	return fmt.Errorf("Server.Transfer is not yet implemented")
+	// Use executor to execute the file
+	if exec, ok := s.executor.(interface{ ExecuteASPPath(string) error }); ok {
+		if err := exec.ExecuteASPPath(path); err != nil {
+			return err
+		}
+		// Signal to stop execution of the current page
+		// We return a special error that the executor handles
+		return ErrServerTransfer
+	}
+
+	return fmt.Errorf("executor does not support Transfer")
 }
 
 // URLEncode encodes a string for safe use in URLs

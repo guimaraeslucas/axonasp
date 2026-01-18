@@ -121,8 +121,12 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 			nil
 	}
 
+	// Pre-process colons to handle multi-statement lines
+	// The VBScript parser might panic on colons, so we convert them to newlines
+	processedCode := preProcessColons(trimmedCode)
+
 	// Usa o parser do VBScript-Go
-	parser := vb.NewParserWithOptions(trimmedCode, ap.vbOptions)
+	parser := vb.NewParserWithOptions(processedCode, ap.vbOptions)
 
 	// Faz o parse e captura possíveis panics
 	defer func() {
@@ -133,6 +137,65 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 
 	program = parser.Parse()
 	return program, nil
+}
+
+// preProcessColons replaces colons with newlines outside of strings and comments
+func preProcessColons(code string) string {
+	var sb strings.Builder
+	inString := false
+	inComment := false
+	
+	for i := 0; i < len(code); i++ {
+		char := code[i]
+		
+		if char == '\n' || char == '\r' {
+			inComment = false
+			inString = false // Strings don't span lines in VBScript
+			sb.WriteByte(char)
+			continue
+		}
+
+		if inComment {
+			sb.WriteByte(char)
+			continue
+		}
+
+		if char == '"' {
+			inString = !inString
+			sb.WriteByte(char)
+			continue
+		}
+		
+		if inString {
+			sb.WriteByte(char)
+			continue
+		}
+
+		// Check for comment start
+		if char == '\'' {
+			inComment = true
+			sb.WriteByte(char)
+			continue
+		}
+		// Check for REM comment
+		if (char == 'R' || char == 'r') && i+3 < len(code) {
+			if strings.EqualFold(code[i:i+4], "REM ") {
+				inComment = true
+				sb.WriteString(code[i:i+4])
+				i += 3
+				continue
+			}
+		}
+
+		// Replace colon with newline
+		if char == ':' {
+			sb.WriteByte('\n')
+		} else {
+			sb.WriteByte(char)
+		}
+	}
+	
+	return sb.String()
 }
 
 // GetVBProgramsFromResult retorna os programas VBScript de um resultado
