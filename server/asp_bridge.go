@@ -35,7 +35,7 @@ func NewASPProcessor(config *ASPProcessorConfig) *ASPProcessor {
 // ExecuteASPFile processes and executes an ASP file
 // Takes the file content as string and returns the rendered output
 // Delegates to ASPExecutor in executor.go
-func (ap *ASPProcessor) ExecuteASPFile(fileContent string, w http.ResponseWriter, r *http.Request) error {
+func (ap *ASPProcessor) ExecuteASPFile(fileContent string, filePath string, w http.ResponseWriter, r *http.Request) error {
 	// Create the executor with configuration
 	executor := NewASPExecutor(ap.config)
 
@@ -43,7 +43,7 @@ func (ap *ASPProcessor) ExecuteASPFile(fileContent string, w http.ResponseWriter
 	sessionID := generateSessionID(r)
 
 	// Execute the ASP file using the full executor
-	return executor.Execute(fileContent, w, r, sessionID)
+	return executor.Execute(fileContent, filePath, w, r, sessionID)
 }
 
 // GetConfig returns the configuration of this ASP processor

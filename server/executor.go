@@ -416,13 +416,32 @@ func (ae *ASPExecutor) SetContext(ctx *ExecutionContext) {
 }
 
 // Execute processes ASP code and returns rendered output
-func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *http.Request, sessionID string) error {
+func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.ResponseWriter, r *http.Request, sessionID string) error {
 	// Create execution context
 	timeout := time.Duration(ae.config.ScriptTimeout) * time.Second
 	ae.context = NewExecutionContext(w, r, sessionID, timeout)
 
+	// Pre-process Includes
+	resolvedContent, err := asp.ResolveIncludes(fileContent, filePath, ae.config.RootDir, nil)
+	if err != nil {
+		return fmt.Errorf("include error: %w", err)
+	}
+	fileContent = resolvedContent
+
 	// Set RootDir in context
 	ae.context.RootDir = ae.config.RootDir
+
+	// Always set session cookie to ensure it persists and slides if needed
+	// Standard ASP session cookie is a browser-session cookie (no MaxAge)
+	// The server handles the timeout (20 mins default)
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ASPSESSIONID",
+		Value:    ae.context.sessionID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false, // Set to true if using HTTPS
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	// Configure Server object with root directory, script timeout, and executor
 	ae.context.Server.SetRootDir(ae.config.RootDir)
@@ -503,17 +522,17 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	}
 
 	// Only set session cookie if this is a new session
-	if ae.context.isNewSession {
+	/*
+		// Cookie is now set at the beginning of execution to ensure headers are sent before body flush
 		http.SetCookie(w, &http.Cookie{
 			Name:     "ASPSESSIONID",
 			Value:    ae.context.sessionID,
 			Path:     "/",
-			HttpOnly: false,
-			Secure:   false,
-			MaxAge:   20 * 60, // 20 minutes (matches ASP session timeout)
-			SameSite: http.SameSiteStrictMode,
+			HttpOnly: true,
+			Secure:   false, // Set to true if using HTTPS
+			SameSite: http.SameSiteLaxMode,
 		})
-	}
+	*/
 
 	// Save session data to file after request completes
 	if err := ae.saveSession(); err != nil {

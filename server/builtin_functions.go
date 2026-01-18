@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	vb "github.com/guimaraeslucas/vbscript-go"
 )
 
 // EmptyValue represents VBScript Empty type
@@ -862,17 +864,70 @@ func tryParseNumericLiteral(s string) (interface{}, bool) {
 }
 
 // evalExpression evaluates an expression string using the execution context
-// This is used by Eval() function to dynamically evaluate expressions
 func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 	if ctx == nil || exprStr == "" {
 		return nil
 	}
 
-	// Use the context's expression evaluation
-	// For now, return a simple evaluation or nil if context doesn't support it
-	// This would be extended to use the full ASP parser if available
+	// Try to get the executor from the Server object
+	if ctx.Server != nil {
+		if executor, ok := ctx.Server.GetExecutor().(*ASPExecutor); ok && executor != nil {
+			// Create a temporary variable name
+			tempVarName := "__eval_res_" + strconv.FormatInt(time.Now().UnixNano(), 16)
 
-	// Simple case: if it's a string literal (quoted), return the string
+			// Wrap expression in an assignment: temp = expression
+			code := tempVarName + " = " + exprStr
+
+			// Parse the code
+			// We need to use the parser from the asp package or vbscript-go directly
+			// Since we are in server package and can't easily access asp package functions without import cycle if asp imports server (which it likely doesn't, but let's check)
+			// Actually server imports asp. So we can use asp.NewASPParser.
+
+			// However, to avoid import cycles if asp imports server (unlikely but possible), let's see.
+			// asp/asp_parser.go imports vbscript-go.
+			// server/executor.go imports asp.
+
+			// So we can use vbscript-go parser directly here.
+			parser := vb.NewParser(code)
+			
+			// Defer recovery for parser panics
+			defer func() {
+				if r := recover(); r != nil {
+					// fmt.Printf("Eval parse panic: %v\n", r)
+				}
+			}()
+			
+			program := parser.Parse()
+
+			if program == nil {
+				// Fallback to simple evaluation if parsing fails or returns nil
+			} else {
+				// Execute the program
+				// We need to execute it within the current context
+				// ASPExecutor has executeVBProgram but it's private (lowercase)
+				// We can use NewASPVisitor and VisitStatement manually
+
+				visitor := NewASPVisitor(ctx, executor)
+				
+				// Execute all statements (should be just one assignment)
+				for _, stmt := range program.Body {
+					if err := visitor.VisitStatement(stmt); err != nil {
+						// fmt.Printf("Eval execution error: %v\n", err)
+						return nil
+					}
+				}
+
+				// Retrieve the result
+				if val, exists := ctx.GetVariable(tempVarName); exists {
+					// Clean up
+					// ctx.RemoveVariable(tempVarName) // If we had such method
+					return val
+				}
+			}
+		}
+	}
+
+	// ... existing fallback logic ...
 	exprStr = strings.TrimSpace(exprStr)
 	if len(exprStr) >= 2 {
 		if exprStr[0] == '"' && exprStr[len(exprStr)-1] == '"' {

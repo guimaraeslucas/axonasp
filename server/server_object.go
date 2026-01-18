@@ -69,6 +69,13 @@ func (s *ServerObject) SetExecutor(executor interface {
 	s.executor = executor
 }
 
+// GetExecutor returns the executor
+func (s *ServerObject) GetExecutor() interface {
+	CreateObject(string) (interface{}, error)
+} {
+	return s.executor
+}
+
 // SetRootDir sets the root directory for MapPath operations
 func (s *ServerObject) SetRootDir(rootDir string) {
 	s.rootDir = rootDir

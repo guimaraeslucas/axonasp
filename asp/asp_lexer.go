@@ -142,9 +142,20 @@ func (al *ASPLexer) processASPBlock(startPos int) {
 		return
 	}
 
+	// Check for <%= (Response.Write shorthand)
+	isOutput := false
+	if startPos+3 <= al.Length && al.Code[startPos:startPos+3] == "<%=" {
+		isOutput = true
+		blockStart++ // Skip =
+	}
+
 	// Extrai o conteúdo do bloco ASP (sem %> no final)
 	// Remove espaçamento em branco do início e fim, compatível com ASP clássico
 	content := strings.TrimSpace(al.Code[blockStart : blockEnd-2])
+
+	if isOutput {
+		content = "Response.Write(" + content + ")"
+	}
 
 	al.blocks = append(al.blocks, &CodeBlock{
 		Type:     "asp",
