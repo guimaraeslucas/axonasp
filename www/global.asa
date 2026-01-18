@@ -1,16 +1,50 @@
 <SCRIPT LANGUAGE=VBScript RUNAT=Server>
+
+''' Application_OnStart - Executes once when the application starts
 Sub Application_OnStart
+    ' Initialize global application variables
     Application("Global_AppStart_Time") = Now
     Application("Global_AppStart_Msg") = "Application Started via Global.asa"
+    
+    ' Initialize a counter that will be incremented per request
+    Application("Counter") = 0
+    
+    ' Initialize application-wide settings
+    Application("AppVersion") = "1.0"
+    Application("MaxConnections") = 100
+    Application("EnableLogging") = True
+    
+    ' Store startup messages
+    Application("StartupLog") = "Application initialized at " & Now
 End Sub
 
+''' Application_OnEnd - Executes when the application shuts down
+Sub Application_OnEnd
+    ' Cleanup code (if needed)
+    ' In this implementation, it's called during server shutdown
+End Sub
+
+''' Session_OnStart - Executes when a new session is created
 Sub Session_OnStart
+    ' Initialize session-specific variables
     Session("Global_SessionStart_Time") = Now
     Session("Global_SessionStart_Msg") = "Session Started via Global.asa"
+    
+    ' Store session creation timestamp for tracking
+    Session("SessionCreatedAt") = Now
+    
+    ' Initialize session variables
+    Session("RequestCount") = 0
+    Session("LastRequestTime") = Now
+    
+    ' Store initial user agent if available
+    Session("UserAgent") = ""
 End Sub
 
+''' Session_OnEnd - Executes when a session expires or is abandoned
 Sub Session_OnEnd
-    ' This is hard to visualize in a browser test without logging
-    ' Ideally, this would write to a file or database
+    ' Cleanup session-specific resources
+    ' Log session termination if needed
+    ' Note: Session_OnEnd runs in a special context with limited access
 End Sub
-</SCRIPT>
+

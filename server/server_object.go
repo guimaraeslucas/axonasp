@@ -41,11 +41,11 @@ type ASPError struct {
 	Line           int    // Line number where error occurred
 	Number         int    // Error number (VBScript error code or HTTP status)
 	Source         string // Source of the error (component name, function, etc.)
-	
+
 	// Extended properties for debugging
-	Stack          []string // Stack trace
-	Context        string   // Code context where error occurred
-	Timestamp      time.Time // When error occurred
+	Stack     []string  // Stack trace
+	Context   string    // Code context where error occurred
+	Timestamp time.Time // When error occurred
 }
 
 // NewServerObjectWithContext creates a new Server object with execution context
@@ -355,7 +355,7 @@ func (s *ServerObject) CallMethod(name string, args ...interface{}) (interface{}
 func NewASPError(number int, description string, source string, file string, line int, column int) *ASPError {
 	category := DetermineErrorCategory(number)
 	aspCode := DetermineASPCode(number)
-	
+
 	return &ASPError{
 		Number:         number,
 		Description:    description,
@@ -387,7 +387,7 @@ func NewASPErrorFromVBScript(vbErrorCode int, description string, file string, l
 		Context:        context,
 		Timestamp:      time.Now(),
 	}
-	
+
 	return err
 }
 
@@ -408,17 +408,17 @@ func DetermineErrorCategory(number int) string {
 		}
 		return "VBScript"
 	}
-	
+
 	// HTTP errors: 400-599
 	if number >= 400 && number <= 599 {
 		return "HTTP"
 	}
-	
+
 	// ADODB errors: -2147467259 to -2147467247
 	if number >= -2147467259 && number <= -2147467247 {
 		return "ADODB"
 	}
-	
+
 	return "ASP"
 }
 
@@ -446,7 +446,7 @@ func FormatVBScriptError(errorCode int, customMsg string) string {
 	if customMsg != "" {
 		return customMsg
 	}
-	
+
 	// Standard VBScript error messages
 	switch errorCode {
 	case 1002:
@@ -600,53 +600,53 @@ func (e *ASPError) String() string {
 	if e == nil {
 		return "No error"
 	}
-	
+
 	var builder strings.Builder
-	
+
 	// Main error message
 	if e.Number != 0 {
 		builder.WriteString(fmt.Sprintf("Error Number: %d\n", e.Number))
 	}
-	
+
 	if e.ASPCode != 0 {
 		builder.WriteString(fmt.Sprintf("ASP Code: %d\n", e.ASPCode))
 	}
-	
+
 	if e.Description != "" {
 		builder.WriteString(fmt.Sprintf("Description: %s\n", e.Description))
 	}
-	
+
 	if e.Source != "" {
 		builder.WriteString(fmt.Sprintf("Source: %s\n", e.Source))
 	}
-	
+
 	if e.File != "" {
 		builder.WriteString(fmt.Sprintf("File: %s\n", e.File))
 	}
-	
+
 	if e.Line > 0 {
 		builder.WriteString(fmt.Sprintf("Line: %d\n", e.Line))
 	}
-	
+
 	if e.Column > 0 {
 		builder.WriteString(fmt.Sprintf("Column: %d\n", e.Column))
 	}
-	
+
 	if e.Category != "" {
 		builder.WriteString(fmt.Sprintf("Category: %s\n", e.Category))
 	}
-	
+
 	if e.Context != "" {
 		builder.WriteString(fmt.Sprintf("\nContext:\n%s\n", e.Context))
 	}
-	
+
 	if len(e.Stack) > 0 {
 		builder.WriteString("\nStack Trace:\n")
 		for i, frame := range e.Stack {
 			builder.WriteString(fmt.Sprintf("  %d. %s\n", i+1, frame))
 		}
 	}
-	
+
 	return builder.String()
 }
 
@@ -655,11 +655,11 @@ func (e *ASPError) GetHTMLFormattedError() string {
 	if e == nil {
 		return ""
 	}
-	
+
 	var builder strings.Builder
 	builder.WriteString("<div style='border: 2px solid #dc3545; padding: 20px; margin: 20px; background: #fff; font-family: monospace;'>")
 	builder.WriteString("<h2 style='color: #dc3545; margin-top: 0;'>ASP Error</h2>")
-	
+
 	if e.Number != 0 {
 		builder.WriteString(fmt.Sprintf("<p><strong>Error Number:</strong> %d", e.Number))
 		if e.ASPCode != 0 {
@@ -667,15 +667,15 @@ func (e *ASPError) GetHTMLFormattedError() string {
 		}
 		builder.WriteString("</p>")
 	}
-	
+
 	if e.Description != "" {
 		builder.WriteString(fmt.Sprintf("<p><strong>Description:</strong> %s</p>", html.EscapeString(e.Description)))
 	}
-	
+
 	if e.Source != "" {
 		builder.WriteString(fmt.Sprintf("<p><strong>Source:</strong> %s</p>", html.EscapeString(e.Source)))
 	}
-	
+
 	if e.File != "" {
 		builder.WriteString(fmt.Sprintf("<p><strong>File:</strong> %s", html.EscapeString(e.File)))
 		if e.Line > 0 {
@@ -686,16 +686,16 @@ func (e *ASPError) GetHTMLFormattedError() string {
 		}
 		builder.WriteString("</p>")
 	}
-	
+
 	if e.Category != "" {
 		builder.WriteString(fmt.Sprintf("<p><strong>Category:</strong> %s</p>", e.Category))
 	}
-	
+
 	if e.Context != "" {
 		builder.WriteString("<p><strong>Context:</strong></p>")
 		builder.WriteString(fmt.Sprintf("<pre style='background: #f5f5f5; padding: 10px; overflow-x: auto;'>%s</pre>", html.EscapeString(e.Context)))
 	}
-	
+
 	if len(e.Stack) > 0 {
 		builder.WriteString("<p><strong>Stack Trace:</strong></p>")
 		builder.WriteString("<ol style='background: #f5f5f5; padding: 20px;'>")
@@ -704,9 +704,9 @@ func (e *ASPError) GetHTMLFormattedError() string {
 		}
 		builder.WriteString("</ol>")
 	}
-	
+
 	builder.WriteString(fmt.Sprintf("<p style='color: #666; font-size: 0.9em;'><strong>Timestamp:</strong> %s</p>", e.Timestamp.Format("2006-01-02 15:04:05")))
 	builder.WriteString("</div>")
-	
+
 	return builder.String()
 }

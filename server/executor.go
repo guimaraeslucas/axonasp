@@ -360,6 +360,12 @@ func NewASPExecutor(config *ASPProcessorConfig) *ASPExecutor {
 	}
 }
 
+// SetContext sets the execution context for the executor
+// Useful for manual context manipulation when not using Execute()
+func (ae *ASPExecutor) SetContext(ctx *ExecutionContext) {
+	ae.context = ctx
+}
+
 // Execute processes ASP code and returns rendered output
 func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *http.Request, sessionID string) error {
 	// Create execution context
@@ -376,6 +382,19 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 
 	// Populate Request object
 	populateRequestData(ae.context.Request, r)
+
+	// Call Session_OnStart if this is a new session
+	if ae.context.isNewSession {
+		globalASAManager := GetGlobalASAManager()
+		if globalASAManager.HasSessionOnStart() {
+			if err := globalASAManager.ExecuteSessionOnStart(ae, ae.context); err != nil {
+				if ae.config.DebugASP {
+					fmt.Printf("Warning: Error in Session_OnStart: %v\n", err)
+				}
+				// Don't return error, just log it - Session_OnStart errors shouldn't break the request
+			}
+		}
+	}
 
 	// Parse ASP code
 	parsingOptions := &asp.ASPParsingOptions{

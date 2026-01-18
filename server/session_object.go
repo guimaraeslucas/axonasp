@@ -2,19 +2,30 @@ package server
 
 import (
 	"strings"
+	"sync"
+	"time"
 )
 
 // SessionObject wraps session data and provides ASP-style access
 type SessionObject struct {
-	ID   string
-	Data map[string]interface{}
+	ID        string
+	Data      map[string]interface{}
+	TimeOut   int                    // Timeout in minutes
+	CreatedAt time.Time
+	mu        sync.RWMutex
+	locked    bool
+	lockCount int
 }
 
 // NewSessionObject creates a new session object wrapper
 func NewSessionObject(sessionID string, data map[string]interface{}) *SessionObject {
 	return &SessionObject{
-		ID:   sessionID,
-		Data: data,
+		ID:        sessionID,
+		Data:      data,
+		TimeOut:   20, // Default ASP session timeout in minutes
+		CreatedAt: time.Now(),
+		locked:    false,
+		lockCount: 0,
 	}
 }
 
@@ -74,4 +85,109 @@ func (s *SessionObject) SetIndex(index interface{}, value interface{}) error {
 	}
 
 	return s.SetProperty(key, value)
+}
+
+// Lock prevents other clients from modifying Session variables
+// Supports nested locks - each Lock must have a corresponding Unlock
+func (s *SessionObject) Lock() {
+	s.mu.Lock()
+	s.locked = true
+	s.lockCount++
+}
+
+// Unlock allows other clients to modify Session variables
+// Must be called the same number of times as Lock was called
+func (s *SessionObject) Unlock() {
+	if s.locked && s.lockCount > 0 {
+		s.lockCount--
+		if s.lockCount == 0 {
+			s.locked = false
+			s.mu.Unlock()
+		}
+	}
+}
+
+// IsLocked returns whether the Session object is currently locked
+func (s *SessionObject) IsLocked() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.locked
+}
+
+// GetLockCount returns the current lock count
+func (s *SessionObject) GetLockCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lockCount
+}
+
+// Abandon terminates the session (removes it from storage)
+// This is called by the Session.Abandon() method in ASP
+func (s *SessionObject) Abandon() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Clear all data
+	s.Data = make(map[string]interface{})
+}
+
+// RemoveAll clears all variables from the Session
+func (s *SessionObject) RemoveAll() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Data = make(map[string]interface{})
+}
+
+// GetContents returns a copy of all session variables for enumeration
+func (s *SessionObject) GetContents() map[string]interface{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	copy := make(map[string]interface{})
+	for k, v := range s.Data {
+		copy[k] = v
+	}
+	return copy
+}
+
+// GetAllKeys returns all variable names in the session
+func (s *SessionObject) GetAllKeys() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	keys := make([]string, 0, len(s.Data))
+	for k := range s.Data {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// Count returns the number of variables in the session
+func (s *SessionObject) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.Data)
+}
+
+// SetTimeout sets the session timeout in minutes
+func (s *SessionObject) SetTimeout(minutes int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if minutes > 0 {
+		s.TimeOut = minutes
+	}
+}
+
+// GetTimeout returns the session timeout in minutes
+func (s *SessionObject) GetTimeout() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.TimeOut
+}
+
+// IsExpired checks if the session has expired based on creation time and timeout
+func (s *SessionObject) IsExpired() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	timeout := time.Duration(s.TimeOut) * time.Minute
+	return time.Since(s.CreatedAt) > timeout
 }

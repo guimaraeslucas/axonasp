@@ -46,6 +46,11 @@ func (ap *ASPProcessor) ExecuteASPFile(fileContent string, w http.ResponseWriter
 	return executor.Execute(fileContent, w, r, sessionID)
 }
 
+// GetConfig returns the configuration of this ASP processor
+func (ap *ASPProcessor) GetConfig() *ASPProcessorConfig {
+	return ap.config
+}
+
 // generateSessionID creates or retrieves a session ID from request cookies
 func generateSessionID(r *http.Request) string {
 	// Look for existing ASPSESSIONID cookie

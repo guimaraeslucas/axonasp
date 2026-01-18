@@ -66,16 +66,76 @@ func main() {
 	sessionManager := server.GetSessionManager()
 	sessionManager.StartCleanupRoutine(15 * time.Minute) // Cleanup every 15 minutes
 
+	// Load Global.asa file
+	globalASAManager := server.GetGlobalASAManager()
+	err := globalASAManager.LoadGlobalASA(RootDir)
+	if err != nil {
+		fmt.Printf("Warning: Failed to load Global.asa: %v\n", err)
+	}
+	
+	// Check if events are loaded
+	fmt.Printf("Application_OnStart defined: %v\n", globalASAManager.HasApplicationOnStart())
+	fmt.Printf("Session_OnStart defined: %v\n", globalASAManager.HasSessionOnStart())
+
+	// Execute Application_OnStart if defined
+	if globalASAManager.HasApplicationOnStart() {
+		// Create temporary executor for Application_OnStart
+		processor := server.NewASPProcessor(&server.ASPProcessorConfig{
+			RootDir:       RootDir,
+			ScriptTimeout: ScriptTimeout,
+			DebugASP:      DebugASP,
+		})
+		executor := server.NewASPExecutor(processor.GetConfig())
+
+		// Create a dummy response writer for Application_OnStart
+		// Since it's not tied to a specific request, we can use a no-op writer
+		dummyWriter := NewDummyResponseWriter()
+
+		// Create a dummy request
+		dummyRequest := &http.Request{
+			Header: make(http.Header),
+		}
+
+		// Create execution context for Application_OnStart
+		ctx := server.NewExecutionContext(dummyWriter, dummyRequest, "app_startup", time.Duration(ScriptTimeout)*time.Second)
+		ctx.RootDir = RootDir
+		
+		// Set the context in executor
+		executor.SetContext(ctx)
+
+		if err := globalASAManager.ExecuteApplicationOnStart(executor, ctx); err != nil {
+			fmt.Printf("Error in Application_OnStart: %v\n", err)
+		}
+	}
+
 	fmt.Printf("Starting G3pix AxonASP on http://localhost:%s\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)
 	if DebugASP {
 		fmt.Println("[DEBUG] DEBUG_ASP mode is enabled")
 	}
 
-	err := http.ListenAndServe(":"+Port, nil)
+	err = http.ListenAndServe(":"+Port, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+// DummyResponseWriter is a no-op response writer for Application_OnStart
+type DummyResponseWriter struct{}
+
+func (w *DummyResponseWriter) Header() http.Header {
+	return make(http.Header)
+}
+
+func (w *DummyResponseWriter) Write([]byte) (int, error) {
+	return 0, nil
+}
+
+func (w *DummyResponseWriter) WriteHeader(statusCode int) {
+}
+
+func NewDummyResponseWriter() *DummyResponseWriter {
+	return &DummyResponseWriter{}
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {

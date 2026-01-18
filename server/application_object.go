@@ -21,6 +21,8 @@ type ApplicationObject struct {
 	mutex sync.RWMutex
 	// Lock state tracking
 	locked bool
+	// Lock count to support nested locks
+	lockCount int
 }
 
 // NewApplicationObject creates a new Application object
@@ -33,16 +35,22 @@ func NewApplicationObject() *ApplicationObject {
 }
 
 // Lock prevents other clients from modifying Application variables
+// Supports nested locks - each Lock must have a corresponding Unlock
 func (app *ApplicationObject) Lock() {
 	app.mutex.Lock()
 	app.locked = true
+	app.lockCount++
 }
 
 // Unlock allows other clients to modify Application variables
+// Must be called the same number of times as Lock was called
 func (app *ApplicationObject) Unlock() {
-	if app.locked {
-		app.locked = false
-		app.mutex.Unlock()
+	if app.locked && app.lockCount > 0 {
+		app.lockCount--
+		if app.lockCount == 0 {
+			app.locked = false
+			app.mutex.Unlock()
+		}
 	}
 }
 
@@ -153,4 +161,88 @@ func (app *ApplicationObject) Count() int {
 	defer app.mutex.RUnlock()
 
 	return len(app.contents) + len(app.staticObjects)
+}
+
+// IsLocked returns whether the Application object is currently locked
+func (app *ApplicationObject) IsLocked() bool {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+	return app.locked
+}
+
+// GetLockCount returns the current lock count
+func (app *ApplicationObject) GetLockCount() int {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+	return app.lockCount
+}
+
+// GetContentsCopy returns a deep copy of the Contents collection
+// Safe for external iteration without locks
+func (app *ApplicationObject) GetContentsCopy() map[string]interface{} {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
+	copy := make(map[string]interface{})
+	for k, v := range app.contents {
+		copy[k] = v
+	}
+	return copy
+}
+
+// GetStaticObjectsCopy returns a copy of only the StaticObjects collection
+// Safe for external iteration without locks
+func (app *ApplicationObject) GetStaticObjectsCopy() map[string]interface{} {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
+	copy := make(map[string]interface{})
+	for k, v := range app.staticObjects {
+		copy[k] = v
+	}
+	return copy
+}
+
+// GetContentKeys returns only the keys from Contents collection
+func (app *ApplicationObject) GetContentKeys() []string {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
+	keys := make([]string, 0, len(app.contents))
+	for k := range app.contents {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// GetStaticObjectKeys returns only the keys from StaticObjects collection
+func (app *ApplicationObject) GetStaticObjectKeys() []string {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
+	keys := make([]string, 0, len(app.staticObjects))
+	for k := range app.staticObjects {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// ContainsContent checks if a key exists in Contents collection
+func (app *ApplicationObject) ContainsContent(key string) bool {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
+	keyLower := normalizeKey(key)
+	_, exists := app.contents[keyLower]
+	return exists
+}
+
+// ContainsStaticObject checks if a key exists in StaticObjects collection
+func (app *ApplicationObject) ContainsStaticObject(key string) bool {
+	app.mutex.RLock()
+	defer app.mutex.RUnlock()
+
+	keyLower := normalizeKey(key)
+	_, exists := app.staticObjects[keyLower]
+	return exists
 }
