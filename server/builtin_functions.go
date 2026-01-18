@@ -1,9 +1,13 @@
 package server
 
 import (
+	"fmt"
+	"math"
+	"math/rand"
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // EmptyValue represents VBScript Empty type
@@ -216,6 +220,467 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			parts[i] = toString(item)
 		}
 		return strings.Join(parts, delim), true
+
+	// String Functions
+	case "len":
+		// LEN(string) - returns length of string
+		if len(args) == 0 {
+			return 0, true
+		}
+		return len(toString(args[0])), true
+
+	case "left":
+		// LEFT(string, length) - returns leftmost characters
+		if len(args) < 2 {
+			return "", true
+		}
+		s := toString(args[0])
+		n := toInt(args[1])
+		if n > len(s) {
+			n = len(s)
+		}
+		if n < 0 {
+			n = 0
+		}
+		return s[:n], true
+
+	case "right":
+		// RIGHT(string, length) - returns rightmost characters
+		if len(args) < 2 {
+			return "", true
+		}
+		s := toString(args[0])
+		n := toInt(args[1])
+		if n > len(s) {
+			n = len(s)
+		}
+		if n < 0 {
+			n = 0
+		}
+		return s[len(s)-n:], true
+
+	case "mid":
+		// MID(string, start, [length]) - returns substring
+		if len(args) < 2 {
+			return "", true
+		}
+		s := toString(args[0])
+		start := toInt(args[1]) - 1 // VBScript is 1-based
+		length := len(s)
+		if len(args) >= 3 {
+			length = toInt(args[2])
+		}
+		if start < 0 {
+			start = 0
+		}
+		if start >= len(s) {
+			return "", true
+		}
+		end := start + length
+		if end > len(s) {
+			end = len(s)
+		}
+		return s[start:end], true
+
+	case "instr":
+		// INSTR([start], string1, string2) - find substring position
+		var s1, s2 string
+		start := 0
+		if len(args) == 2 {
+			s1 = toString(args[0])
+			s2 = toString(args[1])
+		} else if len(args) >= 3 {
+			start = toInt(args[0]) - 1 // VBScript is 1-based
+			s1 = toString(args[1])
+			s2 = toString(args[2])
+		} else {
+			return 0, true
+		}
+		if start < 0 {
+			start = 0
+		}
+		if start >= len(s1) {
+			return 0, true
+		}
+		idx := strings.Index(strings.ToLower(s1[start:]), strings.ToLower(s2))
+		if idx == -1 {
+			return 0, true
+		}
+		return idx + start + 1, true // Return 1-based position
+
+	case "instrrev":
+		// INSTRREV(string, substring, [start]) - find substring from right
+		if len(args) < 2 {
+			return 0, true
+		}
+		s1 := toString(args[0])
+		s2 := toString(args[1])
+		start := -1
+		if len(args) >= 3 {
+			start = toInt(args[2]) - 1 // VBScript is 1-based
+		}
+		if start == -1 {
+			start = len(s1) - 1
+		}
+		if start < 0 || start >= len(s1) {
+			return 0, true
+		}
+		idx := strings.LastIndex(strings.ToLower(s1[:start+1]), strings.ToLower(s2))
+		if idx == -1 {
+			return 0, true
+		}
+		return idx + 1, true // Return 1-based position
+
+	case "replace":
+		// REPLACE(string, find, replace, [start], [count], [compare])
+		if len(args) < 3 {
+			return "", true
+		}
+		s := toString(args[0])
+		find := toString(args[1])
+		repl := toString(args[2])
+		// VBScript Replace uses case-insensitive comparison by default
+		return strings.ReplaceAll(s, find, repl), true
+
+	case "trim":
+		// TRIM(string) - removes leading and trailing spaces
+		return strings.TrimSpace(toString(args[0])), true
+
+	case "ltrim":
+		// LTRIM(string) - removes leading spaces
+		if len(args) == 0 {
+			return "", true
+		}
+		return strings.TrimLeft(toString(args[0]), " \t"), true
+
+	case "rtrim":
+		// RTRIM(string) - removes trailing spaces
+		if len(args) == 0 {
+			return "", true
+		}
+		return strings.TrimRight(toString(args[0]), " \t"), true
+
+	case "lcase":
+		// LCASE(string) - converts to lowercase
+		return strings.ToLower(toString(args[0])), true
+
+	case "ucase":
+		// UCASE(string) - converts to uppercase
+		return strings.ToUpper(toString(args[0])), true
+
+	case "space":
+		// SPACE(number) - returns string of spaces
+		n := toInt(args[0])
+		if n < 0 {
+			n = 0
+		}
+		return strings.Repeat(" ", n), true
+
+	case "string":
+		// STRING(number, character) - returns character repeated
+		if len(args) < 2 {
+			return "", true
+		}
+		num := toInt(args[0])
+		charStr := toString(args[1])
+		if len(charStr) > 0 {
+			return strings.Repeat(string(charStr[0]), num), true
+		}
+		return "", true
+
+	case "strreverse":
+		// STRREVERSE(string) - reverses string
+		s := toString(args[0])
+		runes := []rune(s)
+		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
+			runes[i], runes[j] = runes[j], runes[i]
+		}
+		return string(runes), true
+
+	case "strcomp":
+		// STRCOMP(string1, string2, [compare]) - compares strings
+		if len(args) < 2 {
+			return 0, true
+		}
+		s1 := toString(args[0])
+		s2 := toString(args[1])
+		caseInsensitive := false
+		if len(args) >= 3 {
+			caseInsensitive = toInt(args[2]) == 1
+		}
+		if caseInsensitive {
+			s1 = strings.ToLower(s1)
+			s2 = strings.ToLower(s2)
+		}
+		if s1 < s2 {
+			return -1, true
+		} else if s1 > s2 {
+			return 1, true
+		}
+		return 0, true
+
+	case "asc":
+		// ASC(string) - returns ASCII code of first character
+		s := toString(args[0])
+		if len(s) > 0 {
+			return int(s[0]), true
+		}
+		return 0, true
+
+	case "chr":
+		// CHR(code) - returns character from ASCII code
+		code := toInt(args[0])
+		if code >= 0 && code <= 255 {
+			return string(rune(code)), true
+		}
+		return "", true
+
+	case "hex":
+		// HEX(number) - converts number to hexadecimal string
+		if len(args) == 0 {
+			return "", true
+		}
+		num := toInt(args[0])
+		return strings.ToUpper(fmt.Sprintf("%X", num)), true
+
+	case "oct":
+		// OCT(number) - converts number to octal string
+		if len(args) == 0 {
+			return "", true
+		}
+		num := toInt(args[0])
+		return fmt.Sprintf("%o", num), true
+
+	// Math Functions
+	case "abs":
+		// ABS(number) - absolute value
+		return math.Abs(toFloat(args[0])), true
+
+	case "sqr":
+		// SQR(number) - square root
+		return math.Sqrt(toFloat(args[0])), true
+
+	case "rnd":
+		// RND([seed]) - random number between 0 and 1
+		return rand.Float64(), true
+
+	case "round":
+		// ROUND(number, [digits]) - rounds to specified digits
+		num := toFloat(args[0])
+		digits := 0
+		if len(args) > 1 {
+			digits = toInt(args[1])
+		}
+		multiplier := math.Pow(10, float64(digits))
+		return math.Round(num*multiplier) / multiplier, true
+
+	case "int":
+		// INT(number) - integer part (truncates toward negative infinity)
+		return int(math.Floor(toFloat(args[0]))), true
+
+	case "fix":
+		// FIX(number) - integer part (truncates toward zero)
+		f := toFloat(args[0])
+		if f >= 0 {
+			return int(f), true
+		}
+		return int(math.Ceil(f)), true
+
+	case "sgn":
+		// SGN(number) - sign (-1, 0, 1)
+		f := toFloat(args[0])
+		if f < 0 {
+			return -1, true
+		} else if f > 0 {
+			return 1, true
+		}
+		return 0, true
+
+	case "sin":
+		// SIN(number) - sine (radians)
+		return math.Sin(toFloat(args[0])), true
+
+	case "cos":
+		// COS(number) - cosine (radians)
+		return math.Cos(toFloat(args[0])), true
+
+	case "tan":
+		// TAN(number) - tangent (radians)
+		return math.Tan(toFloat(args[0])), true
+
+	case "atn":
+		// ATN(number) - arctangent (radians)
+		return math.Atan(toFloat(args[0])), true
+
+	case "log":
+		// LOG(number) - natural logarithm
+		return math.Log(toFloat(args[0])), true
+
+	case "exp":
+		// EXP(number) - e raised to power
+		return math.Exp(toFloat(args[0])), true
+
+	// Type Conversion Functions
+	case "cint":
+		// CINT(expression) - convert to integer
+		return toInt(args[0]), true
+
+	case "cdbl":
+		// CDBL(expression) - convert to double
+		return toFloat(args[0]), true
+
+	case "cstr":
+		// CSTR(expression) - convert to string
+		return toString(args[0]), true
+
+	case "cbool":
+		// CBOOL(expression) - convert to boolean
+		val := args[0]
+		switch v := val.(type) {
+		case bool:
+			return v, true
+		case int:
+			return v != 0, true
+		case float64:
+			return v != 0, true
+		case string:
+			s := strings.ToLower(strings.TrimSpace(v))
+			return s == "true" || s == "-1" || s == "1", true
+		default:
+			return val != nil, true
+		}
+
+	case "cdate":
+		// CDATE(expression) - convert to date
+		return toDateTime(args[0]), true
+
+	case "cbyte":
+		// CBYTE(expression) - convert to byte (0-255)
+		n := toInt(args[0])
+		n = n % 256
+		if n < 0 {
+			n = 256 + n
+		}
+		return n, true
+
+	case "ccur":
+		// CCUR(expression) - convert to currency (float64)
+		return toFloat(args[0]), true
+
+	case "clng":
+		// CLNG(expression) - convert to long integer
+		return toInt(args[0]), true
+
+	case "csng":
+		// CSNG(expression) - convert to single precision float
+		return float32(toFloat(args[0])), true
+
+	// Type Checking Functions (some already handled above)
+	case "isnumeric":
+		// ISNUMERIC(expression) - checks if string is numeric
+		if len(args) == 0 {
+			return false, true
+		}
+		s := toString(args[0])
+		_, err := strconv.ParseFloat(s, 64)
+		return err == nil, true
+
+	case "isdate":
+		// ISDATE(expression) - checks if string is a valid date
+		if len(args) == 0 {
+			return false, true
+		}
+		s := toString(args[0])
+		// Try parsing with common date formats
+		formats := []string{
+			"01/02/2006",
+			"2006-01-02",
+			"January 2, 2006",
+			"01/02/2006 15:04:05",
+			"2006-01-02 15:04:05",
+		}
+		for _, format := range formats {
+			_, err := time.Parse(format, s)
+			if err == nil {
+				return true, true
+			}
+		}
+		return false, true
+
+	// Formatting Functions
+	case "formatcurrency":
+		// FORMATCURRENCY(value, [digits], [include_leading_digit], [use_parens], [group_separator])
+		if len(args) == 0 {
+			return "", true
+		}
+		value := toFloat(args[0])
+		digits := 2
+		if len(args) > 1 {
+			digits = toInt(args[1])
+		}
+		formatStr := "%." + fmt.Sprintf("%d", digits) + "f"
+		return "$" + fmt.Sprintf(formatStr, value), true
+
+	case "formatnumber":
+		// FORMATNUMBER(value, [digits], [include_leading_digit], [use_parens], [group_separator])
+		if len(args) == 0 {
+			return "", true
+		}
+		value := toFloat(args[0])
+		digits := 0
+		if len(args) > 1 {
+			digits = toInt(args[1])
+		}
+		formatStr := "%." + fmt.Sprintf("%d", digits) + "f"
+		return fmt.Sprintf(formatStr, value), true
+
+	case "formatpercent":
+		// FORMATPERCENT(value, [digits], [include_leading_digit], [use_parens], [group_separator])
+		if len(args) == 0 {
+			return "", true
+		}
+		value := toFloat(args[0]) * 100
+		digits := 0
+		if len(args) > 1 {
+			digits = toInt(args[1])
+		}
+		formatStr := "%." + fmt.Sprintf("%d", digits) + "f"
+		return fmt.Sprintf(formatStr, value) + "%", true
+
+	// Date/Time extra functions
+	case "timer":
+		// TIMER() - returns seconds since midnight
+		now := time.Now()
+		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		return int(now.Sub(midnight).Seconds()), true
+
+	case "weekdayname":
+		// WEEKDAYNAME(weekday, [abbreviate]) - returns day name
+		if len(args) == 0 {
+			return "", true
+		}
+		w := toInt(args[0])
+		if w < 1 || w > 7 {
+			return "", true
+		}
+		// VBScript: 1=Sunday, 7=Saturday
+		// Go: 0=Sunday, 6=Saturday
+		days := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+		return days[w-1], true
+
+	case "monthname":
+		// MONTHNAME(month, [abbreviate]) - returns month name
+		if len(args) == 0 {
+			return "", true
+		}
+		m := toInt(args[0])
+		if m < 1 || m > 12 {
+			return "", true
+		}
+		months := []string{"January", "February", "March", "April", "May", "June",
+			"July", "August", "September", "October", "November", "December"}
+		return months[m-1], true
+
 	default:
 		return nil, false
 	}
