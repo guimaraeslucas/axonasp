@@ -26,7 +26,7 @@ func (e *LoopExitError) Error() string {
 type ExecutionContext struct {
 	// ASP core objects
 	Request     *RequestObject
-	Response    *asp.ResponseObject
+	Response    *ResponseObject
 	Server      *asp.ServerObject
 	Session     *SessionObject
 	Application map[string]interface{}
@@ -83,7 +83,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 
 	return &ExecutionContext{
 		Request:        NewRequestObject(),
-		Response:       asp.NewResponseObject(),
+		Response:       NewResponseObject(w, r),
 		Server:         asp.NewServerObject(),
 		Session:        NewSessionObject(sessionID, sessionData.Data),
 		Application:    make(map[string]interface{}),
@@ -397,13 +397,15 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	}
 
 	// Write response to HTTP ResponseWriter
-	buffer := ae.context.Response.GetBuffer()
+	// Check if Response.End() was already called (which flushes headers/content)
+	if !ae.context.Response.IsEnded() {
+		// Flush the Response object (writes headers and buffer)
+		if err := ae.context.Response.Flush(); err != nil {
+			return fmt.Errorf("failed to flush response: %w", err)
+		}
+	}
 
-	// Get Content-Type from Response object if set
-	contentType := ae.context.Response.GetContentType()
-	w.Header().Set("Content-Type", contentType)
-
-	// Set session cookie
+	// Set session cookie (if not already set by Response.Flush)
 	http.SetCookie(w, &http.Cookie{
 		Name:     "ASPSESSIONID",
 		Value:    ae.context.sessionID,
@@ -413,11 +415,6 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 		MaxAge:   20 * 60, // 20 minutes (matches ASP session timeout)
 		SameSite: http.SameSiteStrictMode,
 	})
-
-	_, err = w.Write([]byte(buffer))
-	if err != nil {
-		return fmt.Errorf("failed to write response: %w", err)
-	}
 
 	// Save session data to file after request completes
 	if err := ae.saveSession(); err != nil {
@@ -465,12 +462,19 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 		switch block.Type {
 		case "html":
 			// Write HTML content directly
-			ae.context.Response.CallMethod("Write", block.Content)
+			if err := ae.context.Response.Write(block.Content); err != nil {
+				return fmt.Errorf("failed to write HTML: %w", err)
+			}
 
 		case "asp":
 			// Execute VBScript block if parsed
 			if program, exists := result.VBPrograms[i]; exists && program != nil {
 				if err := ae.executeVBProgram(program); err != nil {
+					// Check if it's a Response.End() or Response.Redirect() signal
+					if err.Error() == "RESPONSE_END" {
+						// This is normal - stop execution and return
+						return nil
+					}
 					return err
 				}
 			}
@@ -503,6 +507,11 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 
 			// Execute statement
 			if err := v.VisitStatement(stmt); err != nil {
+				// Check if it's a Response.End() or Response.Redirect() signal
+				if err.Error() == "RESPONSE_END" {
+					// This is normal - stop execution and return
+					return err
+				}
 				return err
 			}
 		}
@@ -827,6 +836,41 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		// If it's an ASP object, set the property
 		if aspObj, ok := obj.(asp.ASPObject); ok {
 			return aspObj.SetProperty(propName, value)
+		}
+
+		// If it's a ResponseObject, set the property
+		if respObj, ok := obj.(*ResponseObject); ok {
+			propNameLower := strings.ToLower(propName)
+			switch propNameLower {
+			case "buffer":
+				if b, ok := value.(bool); ok {
+					respObj.SetBuffer(b)
+				}
+				return nil
+			case "cachecontrol":
+				respObj.SetCacheControl(fmt.Sprintf("%v", value))
+				return nil
+			case "charset":
+				respObj.SetCharset(fmt.Sprintf("%v", value))
+				return nil
+			case "contenttype":
+				respObj.SetContentType(fmt.Sprintf("%v", value))
+				return nil
+			case "expires":
+				respObj.SetExpires(toInt(value))
+				return nil
+			case "expiresabsolute":
+				if t, ok := value.(time.Time); ok {
+					respObj.SetExpiresAbsolute(t)
+				}
+				return nil
+			case "pics":
+				respObj.SetPICS(fmt.Sprintf("%v", value))
+				return nil
+			case "status":
+				respObj.SetStatus(fmt.Sprintf("%v", value))
+				return nil
+			}
 		}
 	}
 
@@ -1769,6 +1813,60 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					propName = member.Property.Name
 				}
 
+				// Try ResponseObject methods
+				if respObj, ok := parentObj.(*ResponseObject); ok {
+					propNameLower := strings.ToLower(propName)
+					switch propNameLower {
+					case "write":
+						for _, arg := range args {
+							if err := respObj.Write(arg); err != nil {
+								return nil, err
+							}
+						}
+						return nil, nil
+					case "binarywrite":
+						if len(args) > 0 {
+							if err := respObj.BinaryWrite(args[0]); err != nil {
+								return nil, err
+							}
+						}
+						return nil, nil
+					case "addheader":
+						if len(args) >= 2 {
+							respObj.AddHeader(fmt.Sprintf("%v", args[0]), fmt.Sprintf("%v", args[1]))
+						}
+						return nil, nil
+					case "appendtolog":
+						if len(args) > 0 {
+							respObj.AppendToLog(fmt.Sprintf("%v", args[0]))
+						}
+						return nil, nil
+					case "clear":
+						respObj.Clear()
+						return nil, nil
+					case "flush":
+						if err := respObj.Flush(); err != nil {
+							return nil, err
+						}
+						return nil, nil
+					case "end":
+						if err := respObj.End(); err != nil {
+							return nil, err
+						}
+						// Signal that execution should stop
+						return nil, fmt.Errorf("RESPONSE_END")
+					case "redirect":
+						if len(args) > 0 {
+							if err := respObj.Redirect(fmt.Sprintf("%v", args[0])); err != nil {
+								return nil, err
+							}
+							// Signal that execution should stop
+							return nil, fmt.Errorf("RESPONSE_END")
+						}
+						return nil, nil
+					}
+				}
+
 				// Try ASPObject
 				if aspObj, ok := parentObj.(asp.ASPObject); ok {
 					return aspObj.CallMethod(propName, args...)
@@ -1851,6 +1949,33 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	// Handle generic property access
 	if aspObj, ok := obj.(asp.ASPObject); ok {
 		return aspObj.GetProperty(propName), nil
+	}
+
+	// Handle ResponseObject properties
+	if respObj, ok := obj.(*ResponseObject); ok {
+		propNameLower := strings.ToLower(propName)
+		switch propNameLower {
+		case "buffer":
+			return respObj.GetBuffer(), nil
+		case "cachecontrol":
+			return respObj.GetCacheControl(), nil
+		case "charset":
+			return respObj.GetCharset(), nil
+		case "contenttype":
+			return respObj.GetContentType(), nil
+		case "expires":
+			return respObj.GetExpires(), nil
+		case "expiresabsolute":
+			return respObj.GetExpiresAbsolute(), nil
+		case "isclientconnected":
+			return respObj.IsClientConnected(), nil
+		case "pics":
+			return respObj.GetPICS(), nil
+		case "status":
+			return respObj.GetStatus(), nil
+		case "cookies":
+			return respObj.Cookies(), nil
+		}
 	}
 
 	// Handle SessionObject

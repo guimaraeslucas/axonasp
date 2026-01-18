@@ -149,6 +149,20 @@
             <div class="category">
                 <div class="category-title">Core Functionality</div>
                 
+                <div class="test-item" onclick="loadTest('test_response_complete.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">✨ Response Object - Complete Test</div>
+                        <div class="test-desc">All methods, properties & collections (NEW)</div>
+                    </a>
+                </div>
+                
+                <div class="test-item" onclick="loadTest('test_response_end_redirect.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">✨ Response.End & Redirect</div>
+                        <div class="test-desc">Test Response.End and Response.Redirect (NEW)</div>
+                    </a>
+                </div>
+                
                 <div class="test-item" onclick="loadTest('test_basics.asp', this)">
                     <a href="javascript:void(0)" class="test-link">
                         <div class="test-title">Basic Syntax & Logic</div>
