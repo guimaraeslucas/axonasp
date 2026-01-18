@@ -342,6 +342,7 @@ func (as *ADOStream) SetProperty(name string, value interface{}) error {
 	as.lib.SetProperty(name, value)
 	return nil
 }
+
 // RegExpLibrary wraps G3REGEXP for ASPLibrary interface compatibility
 type RegExpLibrary struct {
 	lib *G3REGEXP
@@ -356,7 +357,7 @@ func NewRegExpLibrary(ctx *ExecutionContext) *RegExpLibrary {
 
 // CallMethod calls a method on the RegExp library
 func (rl *RegExpLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return rl.lib.CallMethod(name, args...), nil
+	return rl.lib.CallMethod(name, args...)
 }
 
 // GetProperty gets a property from the RegExp library
@@ -366,6 +367,5 @@ func (rl *RegExpLibrary) GetProperty(name string) interface{} {
 
 // SetProperty sets a property on the RegExp library
 func (rl *RegExpLibrary) SetProperty(name string, value interface{}) error {
-	rl.lib.SetProperty(name, value)
-	return nil
+	return rl.lib.SetProperty(name, value)
 }

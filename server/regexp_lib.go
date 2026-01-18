@@ -9,10 +9,10 @@ import (
 // G3REGEXP implements the RegExp object for pattern matching and manipulation
 // Follows VBScript RegExp behavior with Go's regexp engine underneath
 type G3REGEXP struct {
-	pattern     string        // The pattern string
-	ignoreCase  bool          // Case-insensitive matching
-	global      bool          // Match all occurrences
-	multiline   bool          // Multi-line mode (^ and $ match line boundaries)
+	pattern     string         // The pattern string
+	ignoreCase  bool           // Case-insensitive matching
+	global      bool           // Match all occurrences
+	multiline   bool           // Multi-line mode (^ and $ match line boundaries)
 	compiled    *regexp.Regexp // Compiled regex
 	lastMatches []*RegExpMatch // Last execution matches
 	err         string         // Last error message
@@ -50,7 +50,7 @@ func (r *G3REGEXP) GetProperty(name string) any {
 }
 
 // SetProperty sets a property on the RegExp object
-func (r *G3REGEXP) SetProperty(name string, value any) {
+func (r *G3REGEXP) SetProperty(name string, value interface{}) error {
 	switch strings.ToLower(name) {
 	case "pattern":
 		if s, ok := value.(string); ok {
@@ -72,81 +72,82 @@ func (r *G3REGEXP) SetProperty(name string, value any) {
 			r.compilePattern()
 		}
 	}
+	return nil
 }
 
 // CallMethod calls a method on the RegExp object
-func (r *G3REGEXP) CallMethod(name string, args ...interface{}) interface{} {
+func (r *G3REGEXP) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	nameLower := strings.ToLower(name)
-	
+
 	switch nameLower {
 	// Methods
 	case "execute":
 		if len(args) > 0 {
-			return r.Execute(fmt.Sprintf("%v", args[0]))
+			return r.Execute(fmt.Sprintf("%v", args[0])), nil
 		}
-		return nil
+		return nil, nil
 	case "test":
 		if len(args) > 0 {
-			return r.Test(fmt.Sprintf("%v", args[0]))
+			return r.Test(fmt.Sprintf("%v", args[0])), nil
 		}
-		return false
+		return false, nil
 	case "replace":
 		if len(args) >= 2 {
-			return r.Replace(fmt.Sprintf("%v", args[0]), fmt.Sprintf("%v", args[1]))
+			return r.Replace(fmt.Sprintf("%v", args[0]), fmt.Sprintf("%v", args[1])), nil
 		}
-		return ""
-	
+		return "", nil
+
 	// Property getters (direct call)
 	case "getpattern":
-		return r.pattern
+		return r.pattern, nil
 	case "getignorecase":
-		return r.ignoreCase
+		return r.ignoreCase, nil
 	case "getglobal":
-		return r.global
+		return r.global, nil
 	case "getmultiline":
-		return r.multiline
+		return r.multiline, nil
 	case "getsource":
-		return r.pattern
-	
+		return r.pattern, nil
+
 	// Property setters (direct call)
 	case "setpattern":
 		if len(args) > 0 {
 			r.pattern = fmt.Sprintf("%v", args[0])
 			r.compilePattern()
 		}
-		return nil
+		return nil, nil
 	case "setignorecase":
 		if len(args) > 0 {
 			r.ignoreCase = toTruthy(args[0])
 			r.compilePattern()
 		}
-		return nil
+		return nil, nil
 	case "setglobal":
 		if len(args) > 0 {
 			r.global = toTruthy(args[0])
 			r.compilePattern()
 		}
-		return nil
+		return nil, nil
 	case "setmultiline":
 		if len(args) > 0 {
 			r.multiline = toTruthy(args[0])
 			r.compilePattern()
 		}
-		return nil
+		return nil, nil
 	case "setsource":
 		if len(args) > 0 {
 			r.pattern = fmt.Sprintf("%v", args[0])
 			r.compilePattern()
 		}
-		return nil
-	
+		return nil, nil
+
 	// Generic SetProperty/GetProperty handlers (when called as methods)
 	case "setproperty", "set":
 		// setproperty(propertyName, value)
 		if len(args) >= 2 {
 			propName := strings.ToLower(fmt.Sprintf("%v", args[0]))
 			propValue := args[1]
-			
+
 			switch propName {
 			case "pattern", "source":
 				r.pattern = fmt.Sprintf("%v", propValue)
@@ -162,64 +163,64 @@ func (r *G3REGEXP) CallMethod(name string, args ...interface{}) interface{} {
 				r.compilePattern()
 			}
 		}
-		return nil
-		
+		return nil, nil
+
 	case "getproperty", "get":
 		// getproperty(propertyName)
 		if len(args) > 0 {
 			propName := strings.ToLower(fmt.Sprintf("%v", args[0]))
 			switch propName {
 			case "pattern", "source":
-				return r.pattern
+				return r.pattern, nil
 			case "ignorecase":
-				return r.ignoreCase
+				return r.ignoreCase, nil
 			case "global":
-				return r.global
+				return r.global, nil
 			case "multiline":
-				return r.multiline
+				return r.multiline, nil
 			}
 		}
-		return nil
-	
+		return nil, nil
+
 	// Property access without Get/Set prefix (for direct method calls)
 	case "pattern":
 		if len(args) > 0 {
 			r.pattern = fmt.Sprintf("%v", args[0])
 			r.compilePattern()
-			return nil
+			return nil, nil
 		}
-		return r.pattern
+		return r.pattern, nil
 	case "ignorecase":
 		if len(args) > 0 {
 			r.ignoreCase = toTruthy(args[0])
 			r.compilePattern()
-			return nil
+			return nil, nil
 		}
-		return r.ignoreCase
+		return r.ignoreCase, nil
 	case "global":
 		if len(args) > 0 {
 			r.global = toTruthy(args[0])
 			r.compilePattern()
-			return nil
+			return nil, nil
 		}
-		return r.global
+		return r.global, nil
 	case "multiline":
 		if len(args) > 0 {
 			r.multiline = toTruthy(args[0])
 			r.compilePattern()
-			return nil
+			return nil, nil
 		}
-		return r.multiline
+		return r.multiline, nil
 	case "source":
 		if len(args) > 0 {
 			r.pattern = fmt.Sprintf("%v", args[0])
 			r.compilePattern()
-			return nil
+			return nil, nil
 		}
-		return r.pattern
-	
+		return r.pattern, nil
+
 	default:
-		return nil
+		return nil, nil
 	}
 }
 
@@ -408,7 +409,7 @@ type RegExpMatchesCollection struct {
 }
 
 // GetProperty gets a property from matches collection
-func (m *RegExpMatchesCollection) GetProperty(name string) any {
+func (m *RegExpMatchesCollection) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
 	case "count":
 		return m.count
@@ -422,7 +423,9 @@ func (m *RegExpMatchesCollection) GetProperty(name string) any {
 }
 
 // SetProperty sets a property (no-op for collection)
-func (m *RegExpMatchesCollection) SetProperty(name string, value any) {}
+func (m *RegExpMatchesCollection) SetProperty(name string, value interface{}) error {
+	return nil
+}
 
 // CallMethod for collection - primarily Item access (with error return for interface compatibility)
 func (m *RegExpMatchesCollection) CallMethod(name string, args ...interface{}) (interface{}, error) {
@@ -444,7 +447,7 @@ func (m *RegExpMatchesCollection) CallMethod(name string, args ...interface{}) (
 
 // RegExpMatch Methods
 // GetProperty on a single match
-func (m *RegExpMatch) GetProperty(name string) any {
+func (m *RegExpMatch) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
 	case "value":
 		return m.Value
@@ -460,7 +463,9 @@ func (m *RegExpMatch) GetProperty(name string) any {
 }
 
 // SetProperty on a single match (read-only)
-func (m *RegExpMatch) SetProperty(name string, value any) {}
+func (m *RegExpMatch) SetProperty(name string, value interface{}) error {
+	return nil
+}
 
 // CallMethod on a single match (with error return for interface compatibility)
 func (m *RegExpMatch) CallMethod(name string, args ...interface{}) (interface{}, error) {
