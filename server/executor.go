@@ -540,6 +540,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewADORecordset(ae.context), nil
 	case "ADODB.STREAM":
 		return NewADOStream(ae.context), nil
+	case "SCRIPTING.DICTIONARY":
+		return NewDictionary(ae.context), nil
 	default:
 		return nil, fmt.Errorf("unsupported object type: %s", objType)
 	}
@@ -1077,6 +1079,26 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 						break
 					}
 					return err
+				}
+			}
+		}
+	default:
+		// Try Enumeration interface
+		if enumerable, ok := collection.(interface{ Enumeration() []interface{} }); ok {
+			items := enumerable.Enumeration()
+			for _, item := range items {
+				// Set loop variable
+				_ = v.context.SetVariable(stmt.Identifier.Name, item)
+
+				// Execute loop body
+				for _, body := range stmt.Body {
+					if err := v.VisitStatement(body); err != nil {
+						// Handle Exit For
+						if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
+							break
+						}
+						return err
+					}
 				}
 			}
 		}
@@ -1843,6 +1865,11 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		case "count":
 			return collection.Count(), nil
 		}
+	}
+
+	// Handle generic GetProperty interface
+	if getter, ok := obj.(interface{ GetProperty(string) interface{} }); ok {
+		return getter.GetProperty(propName), nil
 	}
 
 	return nil, nil
