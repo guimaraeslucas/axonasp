@@ -144,6 +144,7 @@ func preProcessColons(code string) string {
 	var sb strings.Builder
 	inString := false
 	inComment := false
+	inDateLiteral := false
 	
 	for i := 0; i < len(code); i++ {
 		char := code[i]
@@ -151,6 +152,7 @@ func preProcessColons(code string) string {
 		if char == '\n' || char == '\r' {
 			inComment = false
 			inString = false // Strings don't span lines in VBScript
+			inDateLiteral = false // Date literals don't span lines
 			sb.WriteByte(char)
 			continue
 		}
@@ -161,12 +163,26 @@ func preProcessColons(code string) string {
 		}
 
 		if char == '"' {
-			inString = !inString
+			if !inDateLiteral {
+				inString = !inString
+			}
 			sb.WriteByte(char)
 			continue
 		}
 		
 		if inString {
+			sb.WriteByte(char)
+			continue
+		}
+
+		// Check for date literal delimiter
+		if char == '#' {
+			inDateLiteral = !inDateLiteral
+			sb.WriteByte(char)
+			continue
+		}
+
+		if inDateLiteral {
 			sb.WriteByte(char)
 			continue
 		}

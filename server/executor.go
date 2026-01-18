@@ -2356,6 +2356,24 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 			return respObj.GetStatus(), nil
 		case "cookies":
 			return respObj.Cookies(), nil
+		case "end":
+			if err := respObj.End(); err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("RESPONSE_END")
+		case "clear":
+			respObj.Clear()
+			return nil, nil
+		case "flush":
+			if err := respObj.Flush(); err != nil {
+				return nil, err
+			}
+			return nil, nil
+		case "redirect":
+			// Redirect usually requires an argument, but if called without one (unlikely for Redirect), we can't do much.
+			// However, if parsed as MemberExpression, it implies no arguments were passed here.
+			// If arguments were passed, it would likely be IndexOrCallExpression.
+			return nil, nil
 		}
 	}
 
@@ -3107,4 +3125,10 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 			err := v.context.SetVariableInParentScope(origVarName, newVal)
 			if err != nil {
 				// If setting in parent scope fails, set globally
-				v.context.SetVariable(origVarNam
+				v.context.SetVariable(origVarName, newVal)
+			}
+		}
+	}
+
+	return nil, nil
+}
