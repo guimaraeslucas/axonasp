@@ -1867,6 +1867,22 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					}
 				}
 
+				// Try RequestObject methods
+				if reqObj, ok := parentObj.(*RequestObject); ok {
+					propNameLower := strings.ToLower(propName)
+					switch propNameLower {
+					case "binaryread":
+						if len(args) > 0 {
+							result, err := reqObj.CallMethod("binaryread", args...)
+							if err != nil {
+								return nil, err
+							}
+							return result, nil
+						}
+						return []byte{}, nil
+					}
+				}
+
 				// Try ASPObject
 				if aspObj, ok := parentObj.(asp.ASPObject); ok {
 					return aspObj.CallMethod(propName, args...)
@@ -2313,6 +2329,9 @@ func isBoolType(val interface{}) bool {
 
 // populateRequestData fills a RequestObject with data from HTTP request
 func populateRequestData(req *RequestObject, r *http.Request) {
+	// Set the HTTP request for BinaryRead support
+	req.SetHTTPRequest(r)
+	
 	// Parse form data
 	r.ParseForm()
 
@@ -2344,6 +2363,28 @@ func populateRequestData(req *RequestObject, r *http.Request) {
 	req.ServerVariables.Add("REQUEST_PATH", r.URL.Path)
 	req.ServerVariables.Add("QUERY_STRING", r.URL.RawQuery)
 	req.ServerVariables.Add("REMOTE_ADDR", r.RemoteAddr)
+	req.ServerVariables.Add("SERVER_NAME", r.Host)
+	req.ServerVariables.Add("SERVER_PORT", r.URL.Port())
+	req.ServerVariables.Add("HTTP_USER_AGENT", r.UserAgent())
+	req.ServerVariables.Add("HTTP_REFERER", r.Referer())
+	req.ServerVariables.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
+	req.ServerVariables.Add("CONTENT_LENGTH", r.Header.Get("Content-Length"))
+	
+	// Add all HTTP headers as HTTP_* server variables
+	for name, values := range r.Header {
+		if len(values) > 0 {
+			varName := "HTTP_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+			req.ServerVariables.Add(varName, values[0])
+		}
+	}
+	
+	// ClientCertificate collection (stub - SSL certificates not currently handled)
+	// In a full implementation, this would parse TLS client certificate info
+	req.ClientCertificate.Add("Subject", "")
+	req.ClientCertificate.Add("Issuer", "")
+	req.ClientCertificate.Add("ValidFrom", "")
+	req.ClientCertificate.Add("ValidUntil", "")
+	req.ClientCertificate.Add("SerialNumber", "")
 }
 
 // visitWithStatement handles With statements

@@ -156,6 +156,13 @@
                     </a>
                 </div>
                 
+                <div class="test-item" onclick="loadTest('test_request_complete.asp?test=queryvalue&foo=bar', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">🔍 Request Object - Complete Test</div>
+                        <div class="test-desc">All collections (QueryString, Form, Cookies, ServerVariables, ClientCertificate), TotalBytes, BinaryRead (NEW)</div>
+                    </a>
+                </div>
+                
                 <div class="test-item" onclick="loadTest('test_response_end_redirect.asp', this)">
                     <a href="javascript:void(0)" class="test-link">
                         <div class="test-title">✨ Response.End & Redirect</div>

@@ -12,15 +12,15 @@ import (
 // Implements all methods, properties, and collections from Classic ASP
 type ResponseObject struct {
 	// Internal state
-	buffer          []byte
-	httpWriter      http.ResponseWriter
-	httpRequest     *http.Request
-	isEnded         bool
-	isFlushed       bool
-	headers         map[string]string
-	cookiesMap      map[string]*ResponseCookie
-	logEntries      []string
-	mu              sync.RWMutex
+	buffer      []byte
+	httpWriter  http.ResponseWriter
+	httpRequest *http.Request
+	isEnded     bool
+	isFlushed   bool
+	headers     map[string]string
+	cookiesMap  map[string]*ResponseCookie
+	logEntries  []string
+	mu          sync.RWMutex
 
 	// Properties
 	bufferEnabled   bool
@@ -423,8 +423,8 @@ func (r *ResponseObject) flushInternal() error {
 		r.httpWriter.Header().Set("Cache-Control", r.cacheControl)
 
 		// Set Pragma for no-cache scenarios
-		if strings.EqualFold(r.cacheControl, "no-cache") || 
-		   (strings.EqualFold(r.cacheControl, "private") && r.expires <= 0) {
+		if strings.EqualFold(r.cacheControl, "no-cache") ||
+			(strings.EqualFold(r.cacheControl, "private") && r.expires <= 0) {
 			r.httpWriter.Header().Set("Pragma", "no-cache")
 		}
 	}
