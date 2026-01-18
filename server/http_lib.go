@@ -79,11 +79,34 @@ func (h *G3HTTP) executeRequest(url, method, bodyStr string) interface{} {
 		lib := &G3JSON{}
 		parsed := lib.Parse(respString)
 		if parsed != nil {
-			return parsed
+			// Convert map[string]interface{} to DictionaryLibrary for VBScript compatibility
+			return h.mapToDictionary(parsed)
 		}
 	}
 
 	return respString
+}
+
+// mapToDictionary converts Go map or slice to VBScript-compatible Dictionary/Array
+func (h *G3HTTP) mapToDictionary(data interface{}) interface{} {
+	switch v := data.(type) {
+	case map[string]interface{}:
+		// Convert map to Collection for VBScript compatibility
+		col := NewCollection()
+		for key, value := range v {
+			col.Add(key, h.mapToDictionary(value))
+		}
+		return col
+	case []interface{}:
+		// Convert array recursively
+		result := make([]interface{}, len(v))
+		for i, item := range v {
+			result[i] = h.mapToDictionary(item)
+		}
+		return result
+	default:
+		return data
+	}
 }
 
 // FetchHelper for backward compatibility

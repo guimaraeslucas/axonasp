@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -118,6 +119,17 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "scriptengineminorversion":
 		// ScriptEngineMinorVersion() - Returns 8 (VBScript 5.8)
 		return 8, true
+
+	case "env":
+		// Env(name) - Returns environment variable value
+		if len(args) == 0 {
+			return "", true
+		}
+		envName := toString(args[0])
+		// Try to get from OS environment first
+		value := os.Getenv(envName)
+		// Return the value (empty string if not found, which matches VBScript behavior)
+		return value, true
 
 	case "eval":
 		// Eval(expression) - Evaluate expression string and return result
