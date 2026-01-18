@@ -23,7 +23,7 @@ func NewDictionary(ctx *ExecutionContext) *DictionaryLibrary {
 
 // CallMethod calls a method on the Dictionary
 func (dl *DictionaryLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	result := dl.dict.CallMethod(name, args)
+	result := dl.dict.CallMethod(name, args...)
 	return result, nil
 }
 
@@ -88,7 +88,7 @@ func (d *Dictionary) SetProperty(name string, value interface{}) {
 }
 
 // CallMethod calls a method on the Dictionary
-func (d *Dictionary) CallMethod(name string, args []interface{}) interface{} {
+func (d *Dictionary) CallMethod(name string, args ...interface{}) interface{} {
 	lowerName := strings.ToLower(name)
 
 	switch lowerName {

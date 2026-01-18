@@ -21,7 +21,7 @@ func NewJSONLibrary(ctx *ExecutionContext) *JSONLibrary {
 
 // CallMethod calls a method on the JSON library
 func (jl *JSONLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return jl.lib.CallMethod(name, args), nil
+	return jl.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the JSON library
@@ -49,7 +49,7 @@ func NewFileSystemLibrary(ctx *ExecutionContext) *FileSystemLibrary {
 
 // CallMethod calls a method on the FileSystem library
 func (fs *FileSystemLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return fs.lib.CallMethod(name, args), nil
+	return fs.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the FileSystem library
@@ -77,7 +77,7 @@ func NewFileSystemObjectLibrary(ctx *ExecutionContext) *FileSystemObjectLibrary 
 
 // CallMethod calls a method on the FileSystemObject library
 func (fol *FileSystemObjectLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return fol.fso.CallMethod(name, args), nil
+	return fol.fso.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the FileSystemObject library
@@ -105,7 +105,7 @@ func NewHTTPLibrary(ctx *ExecutionContext) *HTTPLibrary {
 
 // CallMethod calls a method on the HTTP library
 func (hl *HTTPLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return hl.lib.CallMethod(name, args), nil
+	return hl.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the HTTP library
@@ -133,7 +133,7 @@ func NewTemplateLibrary(ctx *ExecutionContext) *TemplateLibrary {
 
 // CallMethod calls a method on the Template library
 func (tl *TemplateLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return tl.lib.CallMethod(name, args), nil
+	return tl.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the Template library
@@ -161,7 +161,7 @@ func NewMailLibrary(ctx *ExecutionContext) *MailLibrary {
 
 // CallMethod calls a method on the Mail library
 func (ml *MailLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return ml.lib.CallMethod(name, args), nil
+	return ml.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the Mail library
@@ -189,7 +189,7 @@ func NewCryptoLibrary(ctx *ExecutionContext) *CryptoLibrary {
 
 // CallMethod calls a method on the Crypto library
 func (cl *CryptoLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return cl.lib.CallMethod(name, args), nil
+	return cl.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from the Crypto library
@@ -217,7 +217,7 @@ func NewServerXMLHTTP(ctx *ExecutionContext) *ServerXMLHTTP {
 
 // CallMethod calls a method on ServerXMLHTTP
 func (sx *ServerXMLHTTP) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return sx.lib.CallMethod(name, args), nil
+	return sx.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from ServerXMLHTTP
@@ -245,7 +245,7 @@ func NewDOMDocument(ctx *ExecutionContext) *DOMDocument {
 
 // CallMethod calls a method on DOMDocument
 func (dd *DOMDocument) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return dd.lib.CallMethod(name, args), nil
+	return dd.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from DOMDocument
@@ -273,7 +273,7 @@ func NewADOConnection(ctx *ExecutionContext) *ADOConnection {
 
 // CallMethod calls a method on ADOConnection
 func (ac *ADOConnection) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return ac.lib.CallMethod(name, args), nil
+	return ac.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from ADOConnection
@@ -301,7 +301,7 @@ func NewADORecordset(ctx *ExecutionContext) *ADORecordset {
 
 // CallMethod calls a method on ADORecordset
 func (ar *ADORecordset) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return ar.lib.CallMethod(name, args), nil
+	return ar.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from ADORecordset
@@ -329,7 +329,7 @@ func NewADOStream(ctx *ExecutionContext) *ADOStream {
 
 // CallMethod calls a method on ADOStream
 func (as *ADOStream) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return as.lib.CallMethod(name, args), nil
+	return as.lib.CallMethod(name, args...), nil
 }
 
 // GetProperty gets a property from ADOStream

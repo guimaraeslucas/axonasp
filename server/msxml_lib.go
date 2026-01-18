@@ -67,7 +67,7 @@ func (s *MsXML2ServerXMLHTTP) SetProperty(name string, value interface{}) {
 	}
 }
 
-func (s *MsXML2ServerXMLHTTP) CallMethod(name string, args []interface{}) interface{} {
+func (s *MsXML2ServerXMLHTTP) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "open":
 		return s.open(args)
@@ -294,7 +294,7 @@ func (d *MsXML2DOMDocument) SetProperty(name string, value interface{}) {
 	}
 }
 
-func (d *MsXML2DOMDocument) CallMethod(name string, args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "loadxml":
 		return d.loadXML(args)
@@ -630,7 +630,7 @@ func (e *XMLElement) SetProperty(name string, value interface{}) {
 	}
 }
 
-func (e *XMLElement) CallMethod(name string, args []interface{}) interface{} {
+func (e *XMLElement) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "appendchild":
 		if len(args) > 0 {

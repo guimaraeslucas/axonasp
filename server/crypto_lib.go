@@ -19,7 +19,7 @@ func (c *G3CRYPTO) GetProperty(name string) interface{} {
 
 func (c *G3CRYPTO) SetProperty(name string, value interface{}) {}
 
-func (c *G3CRYPTO) CallMethod(name string, args []interface{}) interface{} {
+func (c *G3CRYPTO) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
 	getStr := func(i int) string {

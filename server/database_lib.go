@@ -56,7 +56,7 @@ func (ec *ErrorsCollection) GetProperty(name string) interface{} {
 
 func (ec *ErrorsCollection) SetProperty(name string, value interface{}) {}
 
-func (ec *ErrorsCollection) CallMethod(name string, args []interface{}) interface{} {
+func (ec *ErrorsCollection) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "item":
 		if len(args) < 1 {
@@ -124,7 +124,7 @@ func (c *ADODBConnection) SetProperty(name string, value interface{}) {
 	}
 }
 
-func (c *ADODBConnection) CallMethod(name string, args []interface{}) interface{} {
+func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
 	switch method {
@@ -326,7 +326,7 @@ func (fc *FieldsCollection) GetProperty(name string) interface{} {
 
 func (fc *FieldsCollection) SetProperty(name string, value interface{}) {}
 
-func (fc *FieldsCollection) CallMethod(name string, args []interface{}) interface{} {
+func (fc *FieldsCollection) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "item":
 		if len(args) < 1 {
@@ -446,7 +446,7 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 	}
 }
 
-func (rs *ADODBRecordset) CallMethod(name string, args []interface{}) interface{} {
+func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
 	switch method {
@@ -536,7 +536,7 @@ func (rs *ADODBRecordset) CallMethod(name string, args []interface{}) interface{
 			rs.EOF = false
 			rs.BOF = false
 		} else {
-			if rs.allData == nil || len(rs.allData) == 0 {
+			if len(rs.allData) == 0 {
 				rs.EOF = true
 				rs.BOF = true
 				return nil

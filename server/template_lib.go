@@ -19,7 +19,7 @@ func (t *G3TEMPLATE) GetProperty(name string) interface{} {
 
 func (t *G3TEMPLATE) SetProperty(name string, value interface{}) {}
 
-func (t *G3TEMPLATE) CallMethod(name string, args []interface{}) interface{} {
+func (t *G3TEMPLATE) CallMethod(name string, args ...interface{}) interface{} {
 	if len(args) < 1 {
 		return "Error: Template path required"
 	}

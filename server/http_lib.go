@@ -19,7 +19,7 @@ func (h *G3HTTP) GetProperty(name string) interface{} {
 
 func (h *G3HTTP) SetProperty(name string, value interface{}) {}
 
-func (h *G3HTTP) CallMethod(name string, args []interface{}) interface{} {
+func (h *G3HTTP) CallMethod(name string, args ...interface{}) interface{} {
 	if len(args) < 1 {
 		return nil
 	}

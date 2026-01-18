@@ -39,7 +39,7 @@ type ExecutionContext struct {
 	// ASP core objects
 	Request     *RequestObject
 	Response    *ResponseObject
-	Server      *asp.ServerObject
+	Server      *ServerObject
 	Session     *SessionObject
 	Application *ApplicationObject
 
@@ -73,6 +73,9 @@ type ExecutionContext struct {
 
 	// Mutex for thread safety
 	mu sync.RWMutex
+	
+	// Session tracking
+	isNewSession bool
 }
 
 // NewExecutionContext creates a new execution context
@@ -80,7 +83,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	sessionManager := GetSessionManager()
 
 	// Load or create session data
-	sessionData, err := sessionManager.GetOrCreateSession(sessionID)
+	sessionData, isNew, err := sessionManager.GetOrCreateSession(sessionID)
 	if err != nil {
 		fmt.Printf("Warning: Failed to load session: %v\n", err)
 		// Create empty session data as fallback
@@ -91,12 +94,13 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 			LastAccessed: time.Now(),
 			Timeout:      20,
 		}
+		isNew = true
 	}
 
-	return &ExecutionContext{
+	ctx := &ExecutionContext{
 		Request:        NewRequestObject(),
 		Response:       NewResponseObject(w, r),
-		Server:         asp.NewServerObject(),
+		Server:         nil, // Will be initialized below
 		Session:        NewSessionObject(sessionID, sessionData.Data),
 		Application:    GetGlobalApplication(),
 		variables:      make(map[string]interface{}),
@@ -109,7 +113,20 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		timeout:        timeout,
 		sessionID:      sessionID,
 		sessionManager: sessionManager,
+		isNewSession:   isNew,
 	}
+
+	// Initialize Server object with context reference
+	ctx.Server = NewServerObjectWithContext(ctx)
+	ctx.Server.SetHttpRequest(r)
+	
+	// We'll set the executor reference after creating it (circular dependency)
+	// This is done in ASPExecutor.Execute()
+
+	// Add Document object to variables (for Document.Write access)
+	ctx.variables["document"] = NewDocumentObject(ctx)
+
+	return ctx
 }
 
 // PushScope pushes a new local scope
@@ -352,10 +369,10 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 	// Set RootDir in context
 	ae.context.RootDir = ae.config.RootDir
 
-	// Configure Server object with context
-	ae.context.Server.SetProperty("_rootDir", ae.config.RootDir)
-	ae.context.Server.SetProperty("_httpRequest", r)
-	ae.context.Server.SetProperty("_executor", ae)
+	// Configure Server object with root directory, script timeout, and executor
+	ae.context.Server.SetRootDir(ae.config.RootDir)
+	ae.context.Server.SetScriptTimeout(ae.config.ScriptTimeout)
+	ae.context.Server.SetExecutor(ae) // Set executor for CreateObject calls
 
 	// Populate Request object
 	populateRequestData(ae.context.Request, r)
@@ -417,16 +434,18 @@ func (ae *ASPExecutor) Execute(fileContent string, w http.ResponseWriter, r *htt
 		}
 	}
 
-	// Set session cookie (if not already set by Response.Flush)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "ASPSESSIONID",
-		Value:    ae.context.sessionID,
-		Path:     "/",
-		HttpOnly: false,
-		Secure:   false,
-		MaxAge:   20 * 60, // 20 minutes (matches ASP session timeout)
-		SameSite: http.SameSiteStrictMode,
-	})
+	// Only set session cookie if this is a new session
+	if ae.context.isNewSession {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "ASPSESSIONID",
+			Value:    ae.context.sessionID,
+			Path:     "/",
+			HttpOnly: false,
+			Secure:   false,
+			MaxAge:   20 * 60, // 20 minutes (matches ASP session timeout)
+			SameSite: http.SameSiteStrictMode,
+		})
+	}
 
 	// Save session data to file after request completes
 	if err := ae.saveSession(); err != nil {
@@ -537,32 +556,40 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	objType = strings.ToUpper(objType)
 
 	switch objType {
-	case "G3JSON":
+	// G3 Custom Libraries
+	case "G3JSON", "JSON":
 		return NewJSONLibrary(ae.context), nil
-	case "G3FILES":
+	case "G3FILES", "FILES":
 		return NewFileSystemLibrary(ae.context), nil
-	case "G3HTTP":
+	case "G3HTTP", "HTTP":
 		return NewHTTPLibrary(ae.context), nil
-	case "G3TEMPLATE":
+	case "G3TEMPLATE", "TEMPLATE":
 		return NewTemplateLibrary(ae.context), nil
-	case "G3MAIL":
+	case "G3MAIL", "MAIL":
 		return NewMailLibrary(ae.context), nil
-	case "G3CRYPTO":
+	case "G3CRYPTO", "CRYPTO":
 		return NewCryptoLibrary(ae.context), nil
-	case "SCRIPTING.FILESYSTEMOBJECT":
+	
+	// Scripting Objects
+	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":
 		return NewFileSystemObjectLibrary(ae.context), nil
-	case "MSXML2.SERVERXMLHTTP":
-		return NewServerXMLHTTP(ae.context), nil
-	case "MSXML2.DOMDOCUMENT":
-		return NewDOMDocument(ae.context), nil
-	case "ADODB.CONNECTION":
-		return NewADOConnection(ae.context), nil
-	case "ADODB.RECORDSET":
-		return NewADORecordset(ae.context), nil
-	case "ADODB.STREAM":
-		return NewADOStream(ae.context), nil
-	case "SCRIPTING.DICTIONARY":
+	case "SCRIPTING.DICTIONARY", "DICTIONARY":
 		return NewDictionary(ae.context), nil
+	
+	// MSXML2 Objects
+	case "MSXML2.SERVERXMLHTTP", "MSXML2.XMLHTTP", "SERVERXMLHTTP", "XMLHTTP":
+		return NewServerXMLHTTP(ae.context), nil
+	case "MSXML2.DOMDOCUMENT", "DOMDOCUMENT", "MSXML2.DOMDOCUMENT.6.0", "MSXML2.DOMDOCUMENT.3.0":
+		return NewDOMDocument(ae.context), nil
+	
+	// ADODB Objects
+	case "ADODB.CONNECTION", "ADODB", "CONNECTION":
+		return NewADOConnection(ae.context), nil
+	case "ADODB.RECORDSET", "RECORDSET":
+		return NewADORecordset(ae.context), nil
+	case "ADODB.STREAM", "STREAM":
+		return NewADOStream(ae.context), nil
+	
 	default:
 		return nil, fmt.Errorf("unsupported object type: %s", objType)
 	}
@@ -906,6 +933,16 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 			case "status":
 				respObj.SetStatus(fmt.Sprintf("%v", value))
 				return nil
+			}
+		}
+
+		// If it's a ServerObject, set the property
+		if serverObj, ok := obj.(*ServerObject); ok {
+			propNameLower := strings.ToLower(propName)
+			switch propNameLower {
+			case "scripttimeout":
+				timeout := toInt(value)
+				return serverObj.SetScriptTimeout(timeout)
 			}
 		}
 	}
@@ -1817,6 +1854,11 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	// Check if this is a built-in function call
 	if ident, ok := objectExpr.(*ast.Identifier); ok && base == nil {
 		funcName := ident.Name
+		// Try custom functions first
+		if result, handled := evalCustomFunction(funcName, args, v.context); handled {
+			return result, nil
+		}
+		// Then try built-in functions
 		if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
 			return result, nil
 		}
@@ -1929,6 +1971,53 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					case "unlock":
 						appObj.Unlock()
 						return nil, nil
+					}
+				}
+
+				// Try ServerObject methods
+				if serverObj, ok := parentObj.(*ServerObject); ok {
+					propNameLower := strings.ToLower(propName)
+					switch propNameLower {
+					case "createobject":
+						if len(args) > 0 {
+							progID := fmt.Sprintf("%v", args[0])
+							return serverObj.CreateObject(progID)
+						}
+						return nil, fmt.Errorf("CreateObject requires a ProgID argument")
+					case "htmlencode":
+						if len(args) > 0 {
+							str := fmt.Sprintf("%v", args[0])
+							return serverObj.HTMLEncode(str), nil
+						}
+						return "", nil
+					case "urlencode":
+						if len(args) > 0 {
+							str := fmt.Sprintf("%v", args[0])
+							return serverObj.URLEncode(str), nil
+						}
+						return "", nil
+					case "mappath":
+						if len(args) > 0 {
+							path := fmt.Sprintf("%v", args[0])
+							return serverObj.MapPath(path), nil
+						}
+						return serverObj.MapPath(""), nil
+					case "execute":
+						if len(args) > 0 {
+							path := fmt.Sprintf("%v", args[0])
+							err := serverObj.Execute(path)
+							return nil, err
+						}
+						return nil, fmt.Errorf("Execute requires a path argument")
+					case "transfer":
+						if len(args) > 0 {
+							path := fmt.Sprintf("%v", args[0])
+							err := serverObj.Transfer(path)
+							return nil, err
+						}
+						return nil, fmt.Errorf("Transfer requires a path argument")
+					case "getlasterror":
+						return serverObj.GetLastError(), nil
 					}
 				}
 
@@ -2046,6 +2135,15 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 			return respObj.GetStatus(), nil
 		case "cookies":
 			return respObj.Cookies(), nil
+		}
+	}
+
+	// Handle ServerObject properties
+	if serverObj, ok := obj.(*ServerObject); ok {
+		propNameLower := strings.ToLower(propName)
+		switch propNameLower {
+		case "scripttimeout":
+			return serverObj.GetScriptTimeout(), nil
 		}
 	}
 
@@ -2595,8 +2693,8 @@ func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interfa
 					return nil, err
 				}
 			}
-		} else if stmt, ok := fn.Body.(ast.Statement); ok {
-			if err := v.VisitStatement(stmt); err != nil {
+		} else {
+			if err := v.VisitStatement(fn.Body); err != nil {
 				return nil, err
 			}
 		}
@@ -2629,8 +2727,8 @@ func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (in
 					return nil, err
 				}
 			}
-		} else if stmt, ok := sub.Body.(ast.Statement); ok {
-			if err := v.VisitStatement(stmt); err != nil {
+		} else {
+			if err := v.VisitStatement(sub.Body); err != nil {
 				return nil, err
 			}
 		}

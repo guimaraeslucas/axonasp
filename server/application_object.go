@@ -50,7 +50,7 @@ func (app *ApplicationObject) Unlock() {
 func (app *ApplicationObject) Get(key string) interface{} {
 	app.mutex.RLock()
 	defer app.mutex.RUnlock()
-	
+
 	// Normalize key to lowercase for case-insensitive lookup
 	keyLower := normalizeKey(key)
 	return app.contents[keyLower]
@@ -61,7 +61,7 @@ func (app *ApplicationObject) Set(key string, value interface{}) {
 	// Use RLock for read check, then upgrade if needed
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	
+
 	// Normalize key to lowercase for case-insensitive storage
 	keyLower := normalizeKey(key)
 	app.contents[keyLower] = value
@@ -71,7 +71,7 @@ func (app *ApplicationObject) Set(key string, value interface{}) {
 func (app *ApplicationObject) Remove(key string) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	
+
 	keyLower := normalizeKey(key)
 	delete(app.contents, keyLower)
 }
@@ -80,7 +80,7 @@ func (app *ApplicationObject) Remove(key string) {
 func (app *ApplicationObject) RemoveAll() {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	
+
 	app.contents = make(map[string]interface{})
 }
 
@@ -89,7 +89,7 @@ func (app *ApplicationObject) RemoveAll() {
 func (app *ApplicationObject) GetContents() map[string]interface{} {
 	app.mutex.RLock()
 	defer app.mutex.RUnlock()
-	
+
 	// Return a copy of contents
 	contentsCopy := make(map[string]interface{})
 	for k, v := range app.contents {
@@ -104,7 +104,7 @@ func (app *ApplicationObject) GetContents() map[string]interface{} {
 func (app *ApplicationObject) GetStaticObjects() map[string]interface{} {
 	app.mutex.RLock()
 	defer app.mutex.RUnlock()
-	
+
 	// Return combined map of both contents and static objects
 	combined := make(map[string]interface{})
 	for k, v := range app.contents {
@@ -121,7 +121,7 @@ func (app *ApplicationObject) GetStaticObjects() map[string]interface{} {
 func (app *ApplicationObject) AddStaticObject(key string, obj interface{}) {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	
+
 	keyLower := normalizeKey(key)
 	app.staticObjects[keyLower] = obj
 }
@@ -131,19 +131,19 @@ func (app *ApplicationObject) AddStaticObject(key string, obj interface{}) {
 func (app *ApplicationObject) GetAllKeys() []string {
 	app.mutex.RLock()
 	defer app.mutex.RUnlock()
-	
+
 	keys := make([]string, 0, len(app.contents)+len(app.staticObjects))
-	
+
 	// Add contents keys
 	for k := range app.contents {
 		keys = append(keys, k)
 	}
-	
+
 	// Add static objects keys
 	for k := range app.staticObjects {
 		keys = append(keys, k)
 	}
-	
+
 	return keys
 }
 
@@ -151,6 +151,6 @@ func (app *ApplicationObject) GetAllKeys() []string {
 func (app *ApplicationObject) Count() int {
 	app.mutex.RLock()
 	defer app.mutex.RUnlock()
-	
+
 	return len(app.contents) + len(app.staticObjects)
 }

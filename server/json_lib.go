@@ -17,7 +17,7 @@ func (j *G3JSON) GetProperty(name string) any {
 
 func (j *G3JSON) SetProperty(name string, value any) {}
 
-func (j *G3JSON) CallMethod(name string, args []any) any {
+func (j *G3JSON) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "parse":
 		if len(args) > 0 {

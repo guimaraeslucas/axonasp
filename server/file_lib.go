@@ -22,7 +22,7 @@ func (f *G3FILES) GetProperty(name string) interface{} {
 
 func (f *G3FILES) SetProperty(name string, value interface{}) {}
 
-func (f *G3FILES) CallMethod(name string, args []interface{}) interface{} {
+func (f *G3FILES) CallMethod(name string, args ...interface{}) interface{} {
 	if len(args) < 1 || args[0] == nil {
 		log.Println("Error: G3FILES method requires a valid path argument")
 		return nil
@@ -170,7 +170,7 @@ func (f *FSOObject) GetProperty(name string) interface{} {
 
 func (f *FSOObject) SetProperty(name string, value interface{}) {}
 
-func (f *FSOObject) CallMethod(name string, args []interface{}) interface{} {
+func (f *FSOObject) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
 	getStr := func(i int) string {
@@ -399,7 +399,7 @@ func (ts *TextStream) GetProperty(name string) interface{} {
 	return nil
 }
 func (ts *TextStream) SetProperty(name string, value interface{}) {}
-func (ts *TextStream) CallMethod(name string, args []interface{}) interface{} {
+func (ts *TextStream) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 	switch method {
 	case "close":
@@ -479,7 +479,7 @@ func (d *FSODrive) GetProperty(name string) interface{} {
 	return nil
 }
 func (d *FSODrive) SetProperty(name string, value interface{})             {}
-func (d *FSODrive) CallMethod(name string, args []interface{}) interface{} { return nil }
+func (d *FSODrive) CallMethod(name string, args ...interface{}) interface{} { return nil }
 
 // --- FSO Drives Collection ---
 type FSODrives struct {
@@ -496,7 +496,7 @@ func (ds *FSODrives) GetProperty(name string) interface{} {
 	return nil
 }
 func (ds *FSODrives) SetProperty(name string, value interface{}) {}
-func (ds *FSODrives) CallMethod(name string, args []interface{}) interface{} {
+func (ds *FSODrives) CallMethod(name string, args ...interface{}) interface{} {
 	if strings.EqualFold(name, "Item") && len(args) > 0 {
 		return &FSODrive{letter: fmt.Sprintf("%v", args[0])}
 	}
@@ -551,7 +551,7 @@ func (f *FSOFile) GetProperty(name string) interface{} {
 	return nil
 }
 func (f *FSOFile) SetProperty(name string, value interface{}) {}
-func (f *FSOFile) CallMethod(name string, args []interface{}) interface{} {
+func (f *FSOFile) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "copy":
 		// Copy(dest, [overwrite])
@@ -613,7 +613,7 @@ func (fs *FSOFiles) GetProperty(name string) interface{} {
 	return nil
 }
 func (fs *FSOFiles) SetProperty(name string, value interface{}) {}
-func (fs *FSOFiles) CallMethod(name string, args []interface{}) interface{} {
+func (fs *FSOFiles) CallMethod(name string, args ...interface{}) interface{} {
 	if strings.EqualFold(name, "Item") && len(args) > 0 {
 		// Key is name
 		key := fmt.Sprintf("%v", args[0])
@@ -665,7 +665,7 @@ func (f *FSOFolder) GetProperty(name string) interface{} {
 	return nil
 }
 func (f *FSOFolder) SetProperty(name string, value interface{}) {}
-func (f *FSOFolder) CallMethod(name string, args []interface{}) interface{} {
+func (f *FSOFolder) CallMethod(name string, args ...interface{}) interface{} {
 	// Copy, Delete, Move, CreateTextFile
 	switch strings.ToLower(name) {
 	case "copy":
@@ -726,7 +726,7 @@ func (fs *FSOSubFolders) GetProperty(name string) interface{} {
 	return nil
 }
 func (fs *FSOSubFolders) SetProperty(name string, value interface{}) {}
-func (fs *FSOSubFolders) CallMethod(name string, args []interface{}) interface{} {
+func (fs *FSOSubFolders) CallMethod(name string, args ...interface{}) interface{} {
 	if strings.EqualFold(name, "Item") && len(args) > 0 {
 		key := fmt.Sprintf("%v", args[0])
 		p := filepath.Join(fs.folderPath, key)
@@ -829,7 +829,7 @@ func (s *ADODBStream) SetProperty(name string, value interface{}) {
 	}
 }
 
-func (s *ADODBStream) CallMethod(name string, args []interface{}) interface{} {
+func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
 	switch method {

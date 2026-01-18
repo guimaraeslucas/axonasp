@@ -20,7 +20,7 @@ func (m *G3MAIL) GetProperty(name string) interface{} {
 
 func (m *G3MAIL) SetProperty(name string, value interface{}) {}
 
-func (m *G3MAIL) CallMethod(name string, args []interface{}) interface{} {
+func (m *G3MAIL) CallMethod(name string, args ...interface{}) interface{} {
 	if len(args) < 1 {
 		return nil
 	}

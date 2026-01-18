@@ -152,15 +152,20 @@ func (sm *SessionManager) CreateSession(sessionID string) (*SessionData, error) 
 }
 
 // GetOrCreateSession retrieves an existing session or creates a new one
-func (sm *SessionManager) GetOrCreateSession(sessionID string) (*SessionData, error) {
+// Returns the session data and a boolean indicating if the session was newly created
+func (sm *SessionManager) GetOrCreateSession(sessionID string) (*SessionData, bool, error) {
 	// Try to load existing session
 	session, err := sm.LoadSession(sessionID)
 	if err == nil {
-		return session, nil
+		return session, false, nil // Existing session
 	}
 
 	// Create new session if not found or expired
-	return sm.CreateSession(sessionID)
+	session, err = sm.CreateSession(sessionID)
+	if err != nil {
+		return nil, false, err
+	}
+	return session, true, nil // New session
 }
 
 // CleanupExpiredSessions removes all expired session files
