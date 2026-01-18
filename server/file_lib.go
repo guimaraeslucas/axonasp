@@ -36,15 +36,15 @@ func (f *G3FILES) CallMethod(name string, args []interface{}) interface{} {
 	}
 
 	relPath := getStr(0)
-	
+
 	// Validate path is not empty or nil
 	if relPath == "" || relPath == "<nil>" {
 		log.Println("Error: G3FILES received empty or nil path")
 		return nil
 	}
-	
+
 	fullPath := f.ctx.Server_MapPath(relPath)
-	
+
 	// Validate mapped path
 	if fullPath == "" || fullPath == "<nil>" {
 		log.Printf("Error: Server_MapPath returned invalid path for %s\n", relPath)
@@ -993,7 +993,7 @@ func (s *ADODBStream) CallMethod(name string, args []interface{}) interface{} {
 		}
 
 		filename := fmt.Sprintf("%v", args[0])
-		
+
 		// Validate filename is not empty or nil
 		if filename == "" || filename == "<nil>" {
 			log.Println("Error: LoadFromFile received empty or nil filename")
@@ -1033,15 +1033,15 @@ func (s *ADODBStream) CallMethod(name string, args []interface{}) interface{} {
 		}
 
 		filename := fmt.Sprintf("%v", args[0])
-		
+
 		// Validate filename is not empty or nil
 		if filename == "" || filename == "<nil>" {
 			log.Println("Error: SaveToFile received empty or nil filename")
 			return nil
 		}
-		
+
 		fullPath := s.ctx.Server_MapPath(filename)
-		
+
 		// Validate mapped path
 		if fullPath == "" || fullPath == "<nil>" {
 			log.Printf("Error: Server_MapPath returned invalid path for %s\n", filename)
