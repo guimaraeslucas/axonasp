@@ -1188,6 +1188,55 @@ func (v *ASPVisitor) visitSelect(stmt *ast.SelectStatement) error {
 			matched = true
 		} else {
 			for _, caseValue := range caseStmt.Values {
+				// 1. Check for Range: __RANGE__(start, end)
+				if call, ok := caseValue.(*ast.IndexOrCallExpression); ok {
+					if ident, ok := call.Object.(*ast.Identifier); ok && ident.Name == "__RANGE__" {
+						if len(call.Indexes) == 2 {
+							startVal, err := v.visitExpression(call.Indexes[0])
+							if err != nil {
+								return err
+							}
+							endVal, err := v.visitExpression(call.Indexes[1])
+							if err != nil {
+								return err
+							}
+
+							// Check range: selectValue >= startVal AND selectValue <= endVal
+							ge, _ := performBinaryOperation(ast.BinaryOperationGreaterOrEqual, selectValue, startVal)
+							le, _ := performBinaryOperation(ast.BinaryOperationLessOrEqual, selectValue, endVal)
+
+							if isTruthy(ge) && isTruthy(le) {
+								matched = true
+								break
+							}
+							continue // Handled as Range
+						}
+					}
+				}
+
+				// 2. Check for Comparison: BinaryExpression with Missing Left (from Case Is > 5)
+				if bin, ok := caseValue.(*ast.BinaryExpression); ok {
+					// Check if Left is MissingValueExpression
+					if _, ok := bin.Left.(*ast.MissingValueExpression); ok {
+						// Evaluate Right
+						rightVal, err := v.visitExpression(bin.Right)
+						if err != nil {
+							return err
+						}
+
+						// Perform comparison with selectValue as Left
+						res, err := performBinaryOperation(bin.Operation, selectValue, rightVal)
+						if err != nil {
+							return err
+						}
+						if isTruthy(res) {
+							matched = true
+							break
+						}
+						continue // Handled as Comparison
+					}
+				}
+
 				val, err := v.visitExpression(caseValue)
 				if err != nil {
 					return err
@@ -1442,6 +1491,12 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 		}
 
 		if val, exists := v.context.GetVariable(varName); exists {
+			if fn, ok := val.(*ast.FunctionDeclaration); ok {
+				return v.executeFunction(fn, nil)
+			}
+			if sub, ok := val.(*ast.SubDeclaration); ok {
+				return v.executeSub(sub, nil)
+			}
 			return val, nil
 		}
 
@@ -1565,6 +1620,10 @@ func (v *ASPVisitor) visitUnaryExpression(expr *ast.UnaryExpression) (interface{
 
 	switch expr.Operation {
 	case ast.UnaryOperationNot:
+		// Check for boolean type to preserve it
+		if b, ok := operand.(bool); ok {
+			return !b, nil
+		}
 		// In VBScript, Not works as bitwise operator (invert all bits)
 		operandInt := int(toFloat(operand))
 		return ^operandInt, nil
@@ -1596,6 +1655,36 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 
 // resolveCall evaluates a call or index expression
 func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
+	// 1. Check if objectExpr is an Identifier referring to a User Function/Sub (Manual Lookup)
+	if ident, ok := objectExpr.(*ast.Identifier); ok {
+		if val, exists := v.context.GetVariable(ident.Name); exists {
+			if fn, ok := val.(*ast.FunctionDeclaration); ok {
+				// Evaluate arguments
+				args := make([]interface{}, 0)
+				for _, arg := range arguments {
+					val, err := v.visitExpression(arg)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, val)
+				}
+				return v.executeFunction(fn, args)
+			}
+			if sub, ok := val.(*ast.SubDeclaration); ok {
+				// Evaluate arguments
+				args := make([]interface{}, 0)
+				for _, arg := range arguments {
+					val, err := v.visitExpression(arg)
+					if err != nil {
+						return nil, err
+					}
+					args = append(args, val)
+				}
+				return v.executeSub(sub, args)
+			}
+		}
+	}
+
 	// Evaluate base expression
 	base, err := v.visitExpression(objectExpr)
 	if err != nil {
@@ -1895,12 +1984,24 @@ func negateValue(val interface{}) interface{} {
 func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (interface{}, error) {
 	switch op {
 	case ast.BinaryOperationAnd:
+		// Check for boolean preservation
+		if b1, ok1 := left.(bool); ok1 {
+			if b2, ok2 := right.(bool); ok2 {
+				return b1 && b2, nil
+			}
+		}
 		// In VBScript, And works as bitwise operator
 		// When used in conditional context, VBScript evaluates truthiness first
 		leftInt := int(toFloat(left))
 		rightInt := int(toFloat(right))
 		return leftInt & rightInt, nil
 	case ast.BinaryOperationOr:
+		// Check for boolean preservation
+		if b1, ok1 := left.(bool); ok1 {
+			if b2, ok2 := right.(bool); ok2 {
+				return b1 || b2, nil
+			}
+		}
 		// In VBScript, Or works as bitwise operator
 		leftInt := int(toFloat(left))
 		rightInt := int(toFloat(right))
@@ -2149,7 +2250,7 @@ func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression)
     
     // Handle ClassInstance
     if classInst, ok := obj.(*ClassInstance); ok {
-        return classInst.GetProperty(propName), nil
+        return classInst.GetProperty(propName)
     }
 
 	return nil, nil
@@ -2177,7 +2278,7 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
         }
         
         if classDef, ok := classDefVal.(*ClassDef); ok {
-            return NewClassInstance(classDef, v.context), nil
+            return NewClassInstance(classDef, v.context)
         }
         
         return nil, fmt.Errorf("%s is not a class", className)
@@ -2185,3 +2286,74 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
     
     return nil, fmt.Errorf("invalid New expression")
 }
+
+// executeFunction executes a user defined function
+func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interface{}) (interface{}, error) {
+	v.context.PushScope()
+	defer v.context.PopScope()
+
+	// Bind parameters
+	for i, param := range fn.Parameters {
+		var val interface{}
+		if i < len(args) {
+			val = args[i]
+		}
+		_ = v.context.DefineVariable(param.Identifier.Name, val)
+	}
+
+	// Define return variable
+	funcName := fn.Identifier.Name
+	_ = v.context.DefineVariable(funcName, nil)
+
+	// Execute body
+	if fn.Body != nil {
+		if list, ok := fn.Body.(*ast.StatementList); ok {
+			for _, stmt := range list.Statements {
+				if err := v.VisitStatement(stmt); err != nil {
+					return nil, err
+				}
+			}
+		} else if stmt, ok := fn.Body.(ast.Statement); ok {
+			if err := v.VisitStatement(stmt); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Get return value
+	val, _ := v.context.GetVariable(funcName)
+	return val, nil
+}
+
+// executeSub executes a user defined subroutine
+func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (interface{}, error) {
+	v.context.PushScope()
+	defer v.context.PopScope()
+
+	// Bind parameters
+	for i, param := range sub.Parameters {
+		var val interface{}
+		if i < len(args) {
+			val = args[i]
+		}
+		_ = v.context.DefineVariable(param.Identifier.Name, val)
+	}
+
+	// Execute body
+	if sub.Body != nil {
+		if list, ok := sub.Body.(*ast.StatementList); ok {
+			for _, stmt := range list.Statements {
+				if err := v.VisitStatement(stmt); err != nil {
+					return nil, err
+				}
+			}
+		} else if stmt, ok := sub.Body.(ast.Statement); ok {
+			if err := v.VisitStatement(stmt); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return nil, nil
+}
+

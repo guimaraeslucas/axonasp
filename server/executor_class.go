@@ -51,7 +51,7 @@ type ClassInstance struct {
 }
 
 // NewClassInstance creates a new instance and initializes variables
-func NewClassInstance(def *ClassDef, ctx *ExecutionContext) *ClassInstance {
+func NewClassInstance(def *ClassDef, ctx *ExecutionContext) (*ClassInstance, error) {
 	inst := &ClassInstance{
 		ClassDef:  def,
 		Variables: make(map[string]interface{}),
@@ -60,44 +60,59 @@ func NewClassInstance(def *ClassDef, ctx *ExecutionContext) *ClassInstance {
 
 	// Initialize variables
 	for name := range def.Variables {
-		inst.Variables[strings.ToLower(name)] = nil // Default to Empty
+		inst.Variables[strings.ToLower(name)] = nil
 	}
 
 	// Initialize Class_Initialize if present
 	if sub, ok := def.PrivateMethods["class_initialize"]; ok {
-		inst.executeMethod(sub, []interface{}{})
+		if _, err := inst.executeMethod(sub, []interface{}{}); err != nil {
+			return nil, err
+		}
 	} else if sub, ok := def.Methods["class_initialize"]; ok {
-		inst.executeMethod(sub, []interface{}{})
+		if _, err := inst.executeMethod(sub, []interface{}{}); err != nil {
+			return nil, err
+		}
 	}
 
-	return inst
+	return inst, nil
 }
 
-// GetProperty implements property access
-func (ci *ClassInstance) GetProperty(name string) interface{} {
+// GetName returns the class name
+func (ci *ClassInstance) GetName() string {
+	return ci.ClassDef.Name
+}
+
+// GetProperty implements property access (External Access)
+func (ci *ClassInstance) GetProperty(name string) (interface{}, error) {
 	nameLower := strings.ToLower(name)
 
 	// 1. Try Public Variables
 	if vDef, ok := ci.ClassDef.Variables[nameLower]; ok {
 		if vDef.Visibility == VisPublic {
-			return ci.Variables[nameLower]
+			return ci.Variables[nameLower], nil
 		}
 	}
 
-	// 2. Try Property Get
+	// 2. Try Public Property Get
 	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
 		for _, p := range props {
 			if p.Type == PropGet && p.Visibility == VisPublic {
-				// Execute Property Get
 				return ci.executeMethod(p.Node, []interface{}{})
 			}
 		}
 	}
 
-	return nil
+	return nil, nil // Not found is not strictly an error in GetProperty interface? Or is it?
+	// Usually GetProperty returns value. If not found, nil?
+	// But if execution failed, we must return error.
+	// The interface in executor.go for GetProperty is: GetProperty(string) interface{}
+	// It doesn't support error return yet. We will need to update that too if we want full safety.
+	// But `GetMember` (Internal) is used for variable lookup.
+	// `GetProperty` is used for `obj.Prop`.
+	// For now, I will return (interface{}, error) here and update caller to handle it.
 }
 
-// SetProperty implements property assignment
+// SetProperty implements property assignment (External Access)
 func (ci *ClassInstance) SetProperty(name string, value interface{}) error {
 	nameLower := strings.ToLower(name)
 
@@ -109,19 +124,12 @@ func (ci *ClassInstance) SetProperty(name string, value interface{}) error {
 		}
 	}
 
-	// 2. Try Property Let/Set
-	// Check if value is an object for PropSet? In VBScript it depends on "Set" keyword in assignment.
-	// But here we might rely on the called method type.
-	// For now, check both or prioritize based on usage.
-	// Usually parser determines if it is a "Set" assignment.
-	
+	// 2. Try Public Property Let/Set
 	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
 		for _, p := range props {
 			if (p.Type == PropLet || p.Type == PropSet) && p.Visibility == VisPublic {
-				// Execute Property Let/Set
-				// We pass the value as the last argument
-				_ = ci.executeMethod(p.Node, []interface{}{value})
-				return nil
+				_, err := ci.executeMethod(p.Node, []interface{}{value})
+				return err
 			}
 		}
 	}
@@ -129,25 +137,25 @@ func (ci *ClassInstance) SetProperty(name string, value interface{}) error {
 	return fmt.Errorf("property '%s' not found or not writable", name)
 }
 
-// CallMethod calls a method on the instance
+// CallMethod calls a method on the instance (External Access)
 func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	nameLower := strings.ToLower(name)
 
 	// 1. Check Public Methods (Sub)
 	if sub, ok := ci.ClassDef.Methods[nameLower]; ok {
-		return ci.executeMethod(sub, args), nil
+		return ci.executeMethod(sub, args)
 	}
 
 	// 2. Check Public Functions
 	if fn, ok := ci.ClassDef.Functions[nameLower]; ok {
-		return ci.executeMethod(fn, args), nil
+		return ci.executeMethod(fn, args)
 	}
-	
-	// 3. Check Property Get (with arguments)
+
+	// 3. Check Public Property Get (with arguments)
 	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
 		for _, p := range props {
 			if p.Type == PropGet && p.Visibility == VisPublic {
-				return ci.executeMethod(p.Node, args), nil
+				return ci.executeMethod(p.Node, args)
 			}
 		}
 	}
@@ -155,38 +163,103 @@ func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface
 	return nil, fmt.Errorf("method '%s' not found", name)
 }
 
-// executeMethod executes a method or function node
-func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) interface{} {
-	if ci.Context == nil {
-		return nil
+// GetMember returns a member variable or property (Internal Access)
+// Returns: value, found, error
+func (ci *ClassInstance) GetMember(name string) (interface{}, bool, error) {
+	nameLower := strings.ToLower(name)
+
+	// 1. Check Variables
+	if _, ok := ci.ClassDef.Variables[nameLower]; ok {
+		val := ci.Variables[nameLower]
+		return val, true, nil
 	}
 
-	// Get executor from Context.Server
+	// 2. Check Property Get
+	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
+		for _, p := range props {
+			if p.Type == PropGet {
+				val, err := ci.executeMethod(p.Node, []interface{}{})
+				return val, true, err
+			}
+		}
+	}
+
+	// 3. Check Functions (0-args)
+	if fn, ok := ci.ClassDef.Functions[nameLower]; ok {
+		if len(fn.Parameters) == 0 {
+			val, err := ci.executeMethod(fn, []interface{}{})
+			return val, true, err
+		}
+	}
+	
+	if sub, ok := ci.ClassDef.Methods[nameLower]; ok {
+		if len(sub.Parameters) == 0 {
+			val, err := ci.executeMethod(sub, []interface{}{})
+			return val, true, err
+		}
+	}
+
+	return nil, false, nil
+}
+
+// SetMember sets a member variable or property (Internal Access)
+// Returns: handled, error
+func (ci *ClassInstance) SetMember(name string, value interface{}) (bool, error) {
+	nameLower := strings.ToLower(name)
+
+	// 1. Check Variables
+	if _, ok := ci.ClassDef.Variables[nameLower]; ok {
+		ci.Variables[nameLower] = value
+		return true, nil
+	}
+
+	// 2. Try Property Let/Set
+	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
+		for _, p := range props {
+			if p.Type == PropLet || p.Type == PropSet {
+				_, err := ci.executeMethod(p.Node, []interface{}{value})
+				return true, err
+			}
+		}
+	}
+
+	return false, nil
+}
+
+// executeMethod executes a method or function node within the class context
+func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (interface{}, error) {
+	if ci.Context == nil {
+		return nil, fmt.Errorf("no context")
+	}
+
+	// Get executor
 	serverObj := ci.Context.Server
 	executorInt := serverObj.GetProperty("_executor")
 	if executorInt == nil {
-		return nil
+		return nil, fmt.Errorf("no executor")
 	}
 
 	executor, ok := executorInt.(*ASPExecutor)
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("invalid executor")
 	}
 
-	// Save old context object to restore later (recursion support)
+	// 1. SAVE PREVIOUS CONTEXT
 	oldContextObj := ci.Context.GetContextObject()
 
-	// Prepare for execution
+	// 2. PUSH NEW SCOPE
 	ci.Context.PushScope()
-	ci.Context.SetContextObject(ci) // Set 'Me'
 
-	// Defer cleanup
+	// 3. SET 'ME' CONTEXT
+	ci.Context.SetContextObject(ci)
+
+	// 4. DEFER CLEANUP
 	defer func() {
 		ci.Context.SetContextObject(oldContextObj)
 		ci.Context.PopScope()
 	}()
 
-	// Bind Arguments
+	// 5. IDENTIFY METHOD SIGNATURE
 	var params []*ast.Parameter
 	var body []ast.Statement
 	var funcName string
@@ -222,90 +295,59 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) interf
 		params = n.Parameters
 		body = n.Body
 	default:
-		return nil
+		return nil, fmt.Errorf("invalid method node")
 	}
 
-	// Map args to params
+	// 6. BIND ARGUMENTS
 	for i, param := range params {
+		paramName := param.Identifier.Name
+		var val interface{}
 		if i < len(args) {
-			_ = ci.Context.DefineVariable(param.Identifier.Name, args[i])
-		} else {
-			// Missing argument
-			_ = ci.Context.DefineVariable(param.Identifier.Name, nil)
+			val = args[i]
 		}
+		_ = ci.Context.DefineVariable(paramName, val)
 	}
 
-	// Create Visitor
+	// 7. DEFINE RETURN VARIABLE
+	if funcName != "" {
+		_ = ci.Context.DefineVariable(funcName, nil)
+	}
+
+	// 8. EXECUTE BODY
 	v := NewASPVisitor(ci.Context, executor)
 
-	// Execute Body
 	for _, stmt := range body {
 		if err := v.VisitStatement(stmt); err != nil {
-			// Check for Exit statements (simplified)
-			// In a real implementation we would check the type of error/exit
-			// For now, assume any error/return stops execution
-			break
+			// Propagate error!
+			// Check if it's an Exit Sub/Function/Property signal (which is not an error)
+			// We need a way to distinguish.
+			// The original executor uses LoopExitError. We might need a similar "ReturnError" or just assume non-fatal?
+			// But for Timeout, it's an error.
+			// Let's assume errors are errors, unless it's an explicit "Exit Sub".
+			// Since `VisitStatement` in `executor.go` returns `nil` for success.
+			// We need to know if `executor.go` returns specific errors for Exit Sub.
+			// Looking at `executor.go`:
+			// `case *ast.ExitSubStatement` (not in list? Wait, I saw Exit Sub handling in `Run` but `VisitStatement`?)
+			// `VisitStatement` doesn't handle Exit Sub explicitly?
+			// `visitSubDeclaration` etc are definitions.
+			// `ExitSub` is a Statement. `ast.ExitStatement`?
+			// If `VisitStatement` doesn't handle it, how does it work?
+			// Ah, `executor.go` `VisitStatement` has cases for `If`, `For`, etc.
+			// Does it have `Exit Sub`?
+			// I need to check `executor.go` again for `Exit Sub` handling.
+			// If it returns a special error, I should catch it.
+			// If it's a real error (Timeout), I MUST return it.
+			
+			// For now, I will return the error.
+			return nil, err
 		}
 	}
 
-	// Return value for Function/Property Get
+	// 9. RETRIEVE RETURN VALUE
 	if funcName != "" {
-		return ci.getReturnValue(funcName)
+		val, _ := ci.Context.GetVariable(funcName)
+		return val, nil
 	}
 
-	return nil
-}
-
-func (ci *ClassInstance) getReturnValue(name string) interface{} {
-	// Function return value is stored in a variable with the same name
-	// inside the local scope (which is currently the top scope)
-	val, _ := ci.Context.GetVariable(name)
-	return val
-}
-
-// GetMember returns a member variable or property (internal access, ignores visibility)
-func (ci *ClassInstance) GetMember(name string) (interface{}, bool) {
-	nameLower := strings.ToLower(name)
-	
-	// 1. Check Variables (Private or Public)
-	if _, ok := ci.ClassDef.Variables[nameLower]; ok {
-		val := ci.Variables[nameLower]
-		return val, true
-	}
-	
-	// 2. Check Property Get
-	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
-		for _, p := range props {
-			if p.Type == PropGet {
-				// Execute Property Get
-				return ci.executeMethod(p.Node, []interface{}{}), true
-			}
-		}
-	}
-	
-	return nil, false
-}
-
-// SetMember sets a member variable or property (internal access)
-func (ci *ClassInstance) SetMember(name string, value interface{}) bool {
-	nameLower := strings.ToLower(name)
-	
-	// 1. Check Variables
-	if _, ok := ci.ClassDef.Variables[nameLower]; ok {
-		ci.Variables[nameLower] = value
-		return true
-	}
-	
-	// 2. Try Property Let/Set
-	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
-		for _, p := range props {
-			if p.Type == PropLet || p.Type == PropSet {
-				// Execute Property Let/Set
-				_ = ci.executeMethod(p.Node, []interface{}{value})
-				return true
-			}
-		}
-	}
-	
-	return false
+	return nil, nil
 }

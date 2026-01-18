@@ -886,10 +886,52 @@ func (p *Parser) parseSelectStatement() ast.Statement {
 
 		caseStmt := ast.NewCaseStatement()
 		if !p.optKeyword(KeywordElse) {
-			caseStmt.Values = append(caseStmt.Values, p.parseExpression())
+			// Helper to parse case value
+			parseCaseValue := func() ast.Expression {
+				p.optKeyword(KeywordIs) // Optional Is
+
+				var op ast.BinaryOperation
+				hasOp := false
+
+				if p.optPunctuation(PunctEqual) {
+					op = ast.BinaryOperationEqual
+					hasOp = true
+				} else if p.optPunctuation(PunctNotEqual) {
+					op = ast.BinaryOperationNotEqual
+					hasOp = true
+				} else if p.optPunctuation(PunctLess) {
+					op = ast.BinaryOperationLess
+					hasOp = true
+				} else if p.optPunctuation(PunctGreater) {
+					op = ast.BinaryOperationGreater
+					hasOp = true
+				} else if p.optPunctuation(PunctLessOrEqual) {
+					op = ast.BinaryOperationLessOrEqual
+					hasOp = true
+				} else if p.optPunctuation(PunctGreaterOrEqual) {
+					op = ast.BinaryOperationGreaterOrEqual
+					hasOp = true
+				}
+
+				if hasOp {
+					rhs := p.parseExpression()
+					return ast.NewBinaryExpression(op, ast.NewMissingValueExpression(), rhs)
+				}
+
+				expr := p.parseExpression()
+				if p.optKeyword(KeywordTo) {
+					end := p.parseExpression()
+					call := ast.NewIndexOrCallExpression(ast.NewIdentifier("__RANGE__"))
+					call.Indexes = []ast.Expression{expr, end}
+					return call
+				}
+				return expr
+			}
+
+			caseStmt.Values = append(caseStmt.Values, parseCaseValue())
 			for p.optPunctuation(PunctComma) {
 				if !p.matchKeyword(KeywordElse) {
-					caseStmt.Values = append(caseStmt.Values, p.parseExpression())
+					caseStmt.Values = append(caseStmt.Values, parseCaseValue())
 				} else {
 					panic(p.vbSyntaxError(SyntaxError))
 				}
