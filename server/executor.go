@@ -476,9 +476,9 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 	}
 	parser := asp.NewASPParserWithOptions(fileContent, parsingOptions)
 	result, err := parser.Parse()
-	if err != nil {
-		return fmt.Errorf("failed to parse ASP code: %w", err)
-	}
+	//if err != nil {
+	//	return fmt.Errorf("failed to parse ASP code: %w", err)
+	//}
 
 	// Check for parse errors
 	if len(result.Errors) > 0 {
@@ -523,19 +523,6 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 			return fmt.Errorf("failed to flush response: %w", err)
 		}
 	}
-
-	// Only set session cookie if this is a new session
-	/*
-		// Cookie is now set at the beginning of execution to ensure headers are sent before body flush
-		http.SetCookie(w, &http.Cookie{
-			Name:     "ASPSESSIONID",
-			Value:    ae.context.sessionID,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   false, // Set to true if using HTTPS
-			SameSite: http.SameSiteLaxMode,
-		})
-	*/
 
 	// Save session data to file after request completes
 	if err := ae.saveSession(); err != nil {

@@ -1,9 +1,9 @@
 package server
 
 import (
+	"crypto/rand"
 	"fmt"
 	"net/http"
-	"time"
 )
 
 // ASPProcessorConfig contains configuration for ASP processing
@@ -65,5 +65,13 @@ func generateSessionID(r *http.Request) string {
 // generateUniqueID generates a unique identifier for sessions
 func generateUniqueID() string {
 	// Simple implementation - in production use crypto/rand with proper UUID
-	return fmt.Sprintf("ASP%d", time.Now().UnixNano())
+	b := make([]byte, 16)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "AXONINVALIDSESSION"
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	result := fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
+	return fmt.Sprintf("AXON%s", result)
 }
