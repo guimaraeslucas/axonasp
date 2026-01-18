@@ -1857,6 +1857,11 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 			return v.context.Application, nil
 		}
 
+		// Check for built-in functions (parameterless call)
+		if val, handled := evalBuiltInFunction(varName, []interface{}{}, v.context); handled {
+			return val, nil
+		}
+
 		// Undefined variable returns nil in VBScript
 		return nil, nil
 
@@ -1870,6 +1875,9 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 		return e.Value, nil
 
 	case *ast.BooleanLiteral:
+		return e.Value, nil
+
+	case *ast.DateLiteral:
 		return e.Value, nil
 
 	case *ast.NullLiteral:
@@ -2013,9 +2021,45 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	}
 
 	// Evaluate base expression
-	base, err := v.visitExpression(objectExpr)
-	if err != nil {
-		return nil, err
+	var base interface{}
+	var err error
+
+	// Special handling for Identifier to avoid premature evaluation of built-in functions
+	if ident, ok := objectExpr.(*ast.Identifier); ok {
+		// Try to find variable or simple object (like Response)
+		// But do NOT trigger parameterless built-in function fallback
+
+		// 1. Check Me
+		if strings.EqualFold(ident.Name, "me") {
+			base = v.context.GetContextObject()
+		} else {
+			// 2. Check Variable
+			if val, exists := v.context.GetVariable(ident.Name); exists {
+				base = val
+			} else {
+				// 3. Check Built-in Objects
+				switch strings.ToLower(ident.Name) {
+				case "response":
+					base = v.context.Response
+				case "request":
+					base = v.context.Request
+				case "server":
+					base = v.context.Server
+				case "session":
+					base = v.context.Session
+				case "application":
+					base = v.context.Application
+				}
+			}
+		}
+		// If base is still nil, we deliberately do NOT call visitExpression
+		// This allows the "built-in function call" logic below to handle it
+	} else {
+		// Not an identifier, evaluate normally
+		base, err = v.visitExpression(objectExpr)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Evaluate indexes (arguments)
@@ -3063,10 +3107,4 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 			err := v.context.SetVariableInParentScope(origVarName, newVal)
 			if err != nil {
 				// If setting in parent scope fails, set globally
-				v.context.SetVariable(origVarName, newVal)
-			}
-		}
-	}
-
-	return nil, nil
-}
+				v.context.SetVariable(origVarNam
