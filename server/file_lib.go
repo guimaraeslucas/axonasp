@@ -23,19 +23,33 @@ func (f *G3FILES) GetProperty(name string) interface{} {
 func (f *G3FILES) SetProperty(name string, value interface{}) {}
 
 func (f *G3FILES) CallMethod(name string, args []interface{}) interface{} {
-	if len(args) < 1 {
+	if len(args) < 1 || args[0] == nil {
+		log.Println("Error: G3FILES method requires a valid path argument")
 		return nil
 	}
 
 	getStr := func(i int) string {
-		if i >= len(args) {
+		if i >= len(args) || args[i] == nil {
 			return ""
 		}
 		return fmt.Sprintf("%v", args[i])
 	}
 
 	relPath := getStr(0)
+	
+	// Validate path is not empty or nil
+	if relPath == "" || relPath == "<nil>" {
+		log.Println("Error: G3FILES received empty or nil path")
+		return nil
+	}
+	
 	fullPath := f.ctx.Server_MapPath(relPath)
+	
+	// Validate mapped path
+	if fullPath == "" || fullPath == "<nil>" {
+		log.Printf("Error: Server_MapPath returned invalid path for %s\n", relPath)
+		return nil
+	}
 
 	rootDir, _ := filepath.Abs(f.ctx.RootDir)
 	absPath, _ := filepath.Abs(fullPath)
@@ -160,7 +174,7 @@ func (f *FSOObject) CallMethod(name string, args []interface{}) interface{} {
 	method := strings.ToLower(name)
 
 	getStr := func(i int) string {
-		if i >= len(args) {
+		if i >= len(args) || args[i] == nil {
 			return ""
 		}
 		return fmt.Sprintf("%v", args[i])
@@ -168,6 +182,11 @@ func (f *FSOObject) CallMethod(name string, args []interface{}) interface{} {
 
 	// Helper to resolve path (simple MapPath wrapper)
 	resolve := func(p string) string {
+		// Validate path is not empty or nil
+		if p == "" || p == "<nil>" {
+			log.Println("Error: FSO received empty or nil path")
+			return ""
+		}
 		// If p is absolute (e.g. C:\), use it?
 		// VBScript FSO usually takes absolute paths or relative.
 		// If it has drive letter, it's absolute.
@@ -178,7 +197,13 @@ func (f *FSOObject) CallMethod(name string, args []interface{}) interface{} {
 		if len(p) > 1 && p[1] == ':' {
 			return p
 		}
-		return f.ctx.Server_MapPath(p)
+		mapped := f.ctx.Server_MapPath(p)
+		// Validate mapped result
+		if mapped == "" || mapped == "<nil>" {
+			log.Printf("Error: Server_MapPath returned invalid path for %s\n", p)
+			return ""
+		}
+		return mapped
 	}
 
 	switch method {
@@ -962,11 +987,18 @@ func (s *ADODBStream) CallMethod(name string, args []interface{}) interface{} {
 		// LoadFromFile(FileName) - loads file into stream
 		// FileName should be a full path or relative to the current working directory
 		// (It's typically already mapped via Server.MapPath in the ASP call)
-		if len(args) < 1 {
+		if len(args) < 1 || args[0] == nil {
+			log.Println("Error: LoadFromFile requires a valid filename argument")
 			return nil
 		}
 
 		filename := fmt.Sprintf("%v", args[0])
+		
+		// Validate filename is not empty or nil
+		if filename == "" || filename == "<nil>" {
+			log.Println("Error: LoadFromFile received empty or nil filename")
+			return nil
+		}
 
 		// Don't call Server_MapPath here - the ASP script should have already done it
 		fullPath := filename
@@ -993,12 +1025,28 @@ func (s *ADODBStream) CallMethod(name string, args []interface{}) interface{} {
 
 	case "savetofile":
 		// SaveToFile(FileName, [Options]) - saves stream to file
-		if len(args) < 1 || s.State != 1 {
+		if len(args) < 1 || args[0] == nil || s.State != 1 {
+			if len(args) < 1 || args[0] == nil {
+				log.Println("Error: SaveToFile requires a valid filename argument")
+			}
 			return nil
 		}
 
 		filename := fmt.Sprintf("%v", args[0])
+		
+		// Validate filename is not empty or nil
+		if filename == "" || filename == "<nil>" {
+			log.Println("Error: SaveToFile received empty or nil filename")
+			return nil
+		}
+		
 		fullPath := s.ctx.Server_MapPath(filename)
+		
+		// Validate mapped path
+		if fullPath == "" || fullPath == "<nil>" {
+			log.Printf("Error: Server_MapPath returned invalid path for %s\n", filename)
+			return nil
+		}
 
 		// Security check
 		rootDir, _ := filepath.Abs(s.ctx.RootDir)

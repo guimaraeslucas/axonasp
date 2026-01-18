@@ -25,7 +25,7 @@ func (e *LoopExitError) Error() string {
 // ExecutionContext holds all runtime state for ASP execution
 type ExecutionContext struct {
 	// ASP core objects
-	Request     *asp.RequestObject
+	Request     *RequestObject
 	Response    *asp.ResponseObject
 	Server      *asp.ServerObject
 	Session     *SessionObject
@@ -78,7 +78,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	}
 
 	return &ExecutionContext{
-		Request:        asp.NewRequestObject(),
+		Request:        NewRequestObject(),
 		Response:       asp.NewResponseObject(),
 		Server:         asp.NewServerObject(),
 		Session:        NewSessionObject(sessionID, sessionData.Data),
@@ -422,6 +422,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewMailLibrary(ae.context), nil
 	case "G3CRYPTO":
 		return NewCryptoLibrary(ae.context), nil
+	case "SCRIPTING.FILESYSTEMOBJECT":
+		return NewFileSystemObjectLibrary(ae.context), nil
 	case "MSXML2.SERVERXMLHTTP":
 		return NewServerXMLHTTP(ae.context), nil
 	case "MSXML2.DOMDOCUMENT":
@@ -513,6 +515,9 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	case *ast.VariableDeclaration:
 		return v.visitVariableDeclaration(stmt)
+
+	case *ast.VariablesDeclaration:
+		return v.visitVariablesDeclaration(stmt)
 
 	case *ast.ConstsDeclaration:
 		return v.visitConstDeclaration(stmt)
@@ -939,6 +944,24 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 				}
 			}
 		}
+	case *Collection:
+		// Iterate over Collection (Request.QueryString, Request.Form, etc.)
+		keys := col.GetKeys()
+		for _, key := range keys {
+			// Set loop variable to key
+			_ = v.context.SetVariable(stmt.Identifier.Name, key)
+
+			// Execute loop body
+			for _, body := range stmt.Body {
+				if err := v.VisitStatement(body); err != nil {
+					// Handle Exit For
+					if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
+						break
+					}
+					return err
+				}
+			}
+		}
 	}
 
 	return nil
@@ -1160,6 +1183,23 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 		}
 	}
 
+	return nil
+}
+
+// visitVariablesDeclaration handles Dim statements with multiple variables
+func (v *ASPVisitor) visitVariablesDeclaration(stmt *ast.VariablesDeclaration) error {
+	if stmt == nil || len(stmt.Variables) == 0 {
+		return nil
+	}
+
+	for _, decl := range stmt.Variables {
+		if decl == nil {
+			continue
+		}
+		if err := v.visitVariableDeclaration(decl); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1444,6 +1484,12 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		return nil, nil
 	}
 
+	// Handle Collection access (Request.QueryString("key"), Request.Form("key"), etc.)
+	if collection, ok := base.(*Collection); ok && len(args) > 0 {
+		key := fmt.Sprintf("%v", args[0])
+		return collection.Get(key), nil
+	}
+
 	// Handle SessionObject index access (Session("key"))
 	if sessionObj, ok := base.(*SessionObject); ok && len(args) > 0 {
 		return sessionObj.GetIndex(args[0]), nil
@@ -1501,6 +1547,15 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	// Handle SessionObject
 	if sessionObj, ok := obj.(*SessionObject); ok {
 		return sessionObj.GetProperty(propName), nil
+	}
+
+	// Handle Collection properties (Count, etc.)
+	if collection, ok := obj.(*Collection); ok {
+		propNameLower := strings.ToLower(propName)
+		switch propNameLower {
+		case "count":
+			return collection.Count(), nil
+		}
 	}
 
 	return nil, nil
@@ -1806,32 +1861,36 @@ func isBoolType(val interface{}) bool {
 }
 
 // populateRequestData fills a RequestObject with data from HTTP request
-func populateRequestData(req *asp.RequestObject, r *http.Request) {
+func populateRequestData(req *RequestObject, r *http.Request) {
 	// Parse form data
 	r.ParseForm()
 
-	// Set query string parameters
+	// Set query string parameters (from URL only)
 	for key, values := range r.URL.Query() {
 		if len(values) > 0 {
-			req.CallMethod("QueryString", key, values[0])
+			req.QueryString.Add(key, values[0])
 		}
 	}
 
-	// Set form parameters
-	for key, values := range r.PostForm {
-		if len(values) > 0 {
-			req.CallMethod("Form", key, values[0])
+	// Set form parameters (POST data only)
+	// We need to check both PostForm and Form to handle different content types
+	if r.Method == "POST" || r.Method == "PUT" {
+		for key, values := range r.Form {
+			// Only add if not in QueryString (to avoid duplicates)
+			if !req.QueryString.Exists(key) && len(values) > 0 {
+				req.Form.Add(key, values[0])
+			}
 		}
 	}
 
 	// Set cookies
 	for _, cookie := range r.Cookies() {
-		req.CallMethod("Cookies", cookie.Name, cookie.Value)
+		req.Cookies.Add(cookie.Name, cookie.Value)
 	}
 
 	// Set server variables
-	req.CallMethod("ServerVariables", "REQUEST_METHOD", r.Method)
-	req.CallMethod("ServerVariables", "REQUEST_PATH", r.URL.Path)
-	req.CallMethod("ServerVariables", "QUERY_STRING", r.URL.RawQuery)
-	req.CallMethod("ServerVariables", "REMOTE_ADDR", r.RemoteAddr)
+	req.ServerVariables.Add("REQUEST_METHOD", r.Method)
+	req.ServerVariables.Add("REQUEST_PATH", r.URL.Path)
+	req.ServerVariables.Add("QUERY_STRING", r.URL.RawQuery)
+	req.ServerVariables.Add("REMOTE_ADDR", r.RemoteAddr)
 }

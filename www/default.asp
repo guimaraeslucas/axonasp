@@ -506,6 +506,13 @@
                     </a>
                 </div>
                 
+                <div class="test-item" onclick="loadTest('test_file_nil_check.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">File Nil/Empty Path Validation</div>
+                        <div class="test-desc">Tests proper handling of nil/empty paths in ADODB.Stream and G3FILES (Security Fix).</div>
+                    </a>
+                </div>
+                
                 <div class="test-item" onclick="loadTest('test_json.asp', this)">
                     <a href="javascript:void(0)" class="test-link">
                         <div class="test-title">JSON Operations</div>

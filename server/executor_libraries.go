@@ -63,6 +63,34 @@ func (fs *FileSystemLibrary) SetProperty(name string, value interface{}) error {
 	return nil
 }
 
+// FileSystemObjectLibrary wraps FSOObject (Scripting.FileSystemObject) for ASPLibrary interface compatibility
+type FileSystemObjectLibrary struct {
+	fso *FSOObject
+}
+
+// NewFileSystemObjectLibrary creates a new FileSystemObject library instance (Scripting.FileSystemObject)
+func NewFileSystemObjectLibrary(ctx *ExecutionContext) *FileSystemObjectLibrary {
+	return &FileSystemObjectLibrary{
+		fso: &FSOObject{ctx: ctx},
+	}
+}
+
+// CallMethod calls a method on the FileSystemObject library
+func (fol *FileSystemObjectLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return fol.fso.CallMethod(name, args), nil
+}
+
+// GetProperty gets a property from the FileSystemObject library
+func (fol *FileSystemObjectLibrary) GetProperty(name string) interface{} {
+	return fol.fso.GetProperty(name)
+}
+
+// SetProperty sets a property on the FileSystemObject library
+func (fol *FileSystemObjectLibrary) SetProperty(name string, value interface{}) error {
+	fol.fso.SetProperty(name, value)
+	return nil
+}
+
 // HTTPLibrary wraps G3HTTP for ASPLibrary interface compatibility
 type HTTPLibrary struct {
 	lib *G3HTTP

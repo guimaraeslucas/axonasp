@@ -1,1 +1,2 @@
-exit status 0xc000013a
+2026/01/17 21:15:56 Error: LoadFromFile received empty or nil filename
+2026/01/17 21:15:56 Error: G3FILES received empty or nil path
