@@ -55,6 +55,10 @@ type ExecutionContext struct {
 	sessionID      string
 	sessionManager *SessionManager
 
+	// Scoping
+	scopeStack    []map[string]interface{}
+	contextObject interface{} // For Class Instance (Me)
+
 	// Mutex for thread safety
 	mu sync.RWMutex
 }
@@ -86,6 +90,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		variables:      make(map[string]interface{}),
 		constants:      make(map[string]interface{}),
 		libraries:      make(map[string]interface{}),
+		scopeStack:     make([]map[string]interface{}, 0),
 		httpWriter:     w,
 		httpRequest:    r,
 		startTime:      time.Now(),
@@ -93,6 +98,36 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		sessionID:      sessionID,
 		sessionManager: sessionManager,
 	}
+}
+
+// PushScope pushes a new local scope
+func (ec *ExecutionContext) PushScope() {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	ec.scopeStack = append(ec.scopeStack, make(map[string]interface{}))
+}
+
+// PopScope pops the last local scope
+func (ec *ExecutionContext) PopScope() {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	if len(ec.scopeStack) > 0 {
+		ec.scopeStack = ec.scopeStack[:len(ec.scopeStack)-1]
+	}
+}
+
+// SetContextObject sets the current context object (e.g. Class Instance)
+func (ec *ExecutionContext) SetContextObject(obj interface{}) {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	ec.contextObject = obj
+}
+
+// GetContextObject returns the current context object
+func (ec *ExecutionContext) GetContextObject() interface{} {
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+	return ec.contextObject
 }
 
 // SetVariable sets a variable in the execution context (case-insensitive)
@@ -108,7 +143,52 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 		return fmt.Errorf("cannot reassign constant '%s'", name)
 	}
 
+	// 1. Check Local Scopes (Top to Bottom)
+	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
+		if _, exists := ec.scopeStack[i][nameLower]; exists {
+			ec.scopeStack[i][nameLower] = value
+			return nil
+		}
+	}
+
+	// 2. Check Context Object (Class Member)
+	if ec.contextObject != nil {
+		if internal, ok := ec.contextObject.(interface{ SetMember(string, interface{}) bool }); ok {
+			if internal.SetMember(nameLower, value) {
+				return nil
+			}
+		}
+	}
+
+	// 3. Global Variables (Default)
+	// If not found in locals, set in global (Variables)
+	// Note: If we are in a scope (Function), and it's not declared with Dim,
+	// VBScript behavior depends on Option Explicit.
+	// Assuming Option Explicit is OFF (or we treat it loosely), it goes to Global?
+	// Actually, if it's not Dim'ed locally, it searches up. If nowhere, it creates Global.
+	
+	// BUT, if we want to support 'Dim x' inside function, 'visitVariableDeclaration' calls 'SetVariable'.
+	// We need 'DefineVariable' vs 'SetVariable'.
+	// 'visitVariableDeclaration' should put it in the CURRENT scope.
+	
+	// For now, standard SetVariable puts in global if not found in locals.
 	ec.variables[nameLower] = value
+	return nil
+}
+
+// DefineVariable defines a variable in the current scope (Dim)
+func (ec *ExecutionContext) DefineVariable(name string, value interface{}) error {
+	nameLower := strings.ToLower(name)
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	if len(ec.scopeStack) > 0 {
+		// Define in top scope
+		ec.scopeStack[len(ec.scopeStack)-1][nameLower] = value
+	} else {
+		// Define global
+		ec.variables[nameLower] = value
+	}
 	return nil
 }
 
@@ -119,12 +199,34 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
 
-	// Check constants first
+	// 1. Check constants
 	if val, exists := ec.constants[nameLower]; exists {
 		return val, true
 	}
 
-	// Then check variables
+	// 2. Check Local Scopes (Top to Bottom)
+	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
+		if val, exists := ec.scopeStack[i][nameLower]; exists {
+			return val, true
+		}
+	}
+
+	// 3. Check Context Object (Class Member)
+	if ec.contextObject != nil {
+		// Try internal access first (allows Private members)
+		if internal, ok := ec.contextObject.(interface{ GetMember(string) (interface{}, bool) }); ok {
+			if val, found := internal.GetMember(nameLower); found {
+				return val, true
+			}
+		} else if getter, ok := ec.contextObject.(interface{ GetProperty(string) interface{} }); ok {
+			val := getter.GetProperty(nameLower)
+			if val != nil {
+				return val, true
+			}
+		}
+	}
+
+	// 4. Check Global Variables
 	val, exists := ec.variables[nameLower]
 	return val, exists
 }
@@ -441,17 +543,19 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 
 // ASPVisitor traverses and executes the VBScript AST
 type ASPVisitor struct {
-	context  *ExecutionContext
-	executor *ASPExecutor
-	depth    int
+	context   *ExecutionContext
+	executor  *ASPExecutor
+	depth     int
+	withStack []interface{}
 }
 
 // NewASPVisitor creates a new ASP visitor for AST traversal
 func NewASPVisitor(ctx *ExecutionContext, executor *ASPExecutor) *ASPVisitor {
 	return &ASPVisitor{
-		context:  ctx,
-		executor: executor,
-		depth:    0,
+		context:   ctx,
+		executor:  executor,
+		depth:     0,
+		withStack: make([]interface{}, 0),
 	}
 }
 
@@ -512,6 +616,9 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	case *ast.ClassDeclaration:
 		return v.visitClassDeclaration(stmt)
+
+	case *ast.WithStatement:
+		return v.visitWithStatement(stmt)
 
 	case *ast.VariableDeclaration:
 		return v.visitVariableDeclaration(stmt)
@@ -1141,9 +1248,74 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 		return nil
 	}
 
-	// Store class in context
-	_ = v.context.SetVariable(stmt.Identifier.Name, stmt)
-	return nil
+	classDef := &ClassDef{
+		Name:           stmt.Identifier.Name,
+		Variables:      make(map[string]ClassMemberVar),
+		Methods:        make(map[string]*ast.SubDeclaration),
+		Functions:      make(map[string]*ast.FunctionDeclaration),
+		Properties:     make(map[string][]PropertyDef),
+		PrivateMethods: make(map[string]ast.Node),
+	}
+
+	for _, member := range stmt.Members {
+		switch m := member.(type) {
+		case *ast.FieldsDeclaration:
+			// Private/Public variables
+			vis := VisPublic
+			if m.Modifier == ast.FieldAccessModifierPrivate {
+				vis = VisPrivate
+			}
+			for _, field := range m.Fields {
+				classDef.Variables[strings.ToLower(field.Identifier.Name)] = ClassMemberVar{
+					Name:       field.Identifier.Name,
+					Visibility: vis,
+				}
+			}
+		case *ast.SubDeclaration:
+			nameLower := strings.ToLower(m.Identifier.Name)
+			if m.AccessModifier == ast.MethodAccessModifierPrivate {
+				classDef.PrivateMethods[nameLower] = m
+			} else {
+				classDef.Methods[nameLower] = m
+			}
+		case *ast.FunctionDeclaration:
+			nameLower := strings.ToLower(m.Identifier.Name)
+			if m.AccessModifier == ast.MethodAccessModifierPrivate {
+				classDef.PrivateMethods[nameLower] = m
+			} else {
+				classDef.Functions[nameLower] = m
+			}
+		case *ast.PropertyGetDeclaration:
+			v.addPropertyDef(classDef, m.Identifier.Name, PropGet, m, m.AccessModifier)
+		case *ast.PropertyLetDeclaration:
+			v.addPropertyDef(classDef, m.Identifier.Name, PropLet, m, m.AccessModifier)
+		case *ast.PropertySetDeclaration:
+			v.addPropertyDef(classDef, m.Identifier.Name, PropSet, m, m.AccessModifier)
+		}
+	}
+
+	// Store class definition in context
+	return v.context.SetVariable(stmt.Identifier.Name, classDef)
+}
+
+func (v *ASPVisitor) addPropertyDef(classDef *ClassDef, name string, pType PropertyType, node ast.Node, access ast.MethodAccessModifier) {
+	nameLower := strings.ToLower(name)
+	vis := VisPublic
+	if access == ast.MethodAccessModifierPrivate {
+		vis = VisPrivate
+	}
+
+	def := PropertyDef{
+		Name:       name,
+		Type:       pType,
+		Node:       node,
+		Visibility: vis,
+	}
+
+	if _, ok := classDef.Properties[nameLower]; !ok {
+		classDef.Properties[nameLower] = []PropertyDef{}
+	}
+	classDef.Properties[nameLower] = append(classDef.Properties[nameLower], def)
 }
 
 // visitVariableDeclaration handles variable declarations (Dim statement)
@@ -1168,17 +1340,17 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 
 		// Create multi-dimensional array
 		arr := v.makeNestedArray(dims)
-		if err := v.context.SetVariable(varName, arr); err != nil {
+		if err := v.context.DefineVariable(varName, arr); err != nil {
 			return err
 		}
 	} else if stmt.IsDynamicArray {
 		// Dynamic array: Dim arr() - initialize as empty array
-		if err := v.context.SetVariable(varName, []interface{}{}); err != nil {
+		if err := v.context.DefineVariable(varName, []interface{}{}); err != nil {
 			return err
 		}
 	} else {
 		// Regular variable - initialize to nil (VBScript Empty)
-		if err := v.context.SetVariable(varName, nil); err != nil {
+		if err := v.context.DefineVariable(varName, nil); err != nil {
 			return err
 		}
 	}
@@ -1260,6 +1432,15 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 	switch e := expr.(type) {
 	case *ast.Identifier:
 		varName := e.Name
+		
+		// Handle "Me" keyword
+		if strings.EqualFold(varName, "me") {
+			if obj := v.context.GetContextObject(); obj != nil {
+				return obj, nil
+			}
+			return nil, fmt.Errorf("invalid use of 'Me' keyword outside of class")
+		}
+
 		if val, exists := v.context.GetVariable(varName); exists {
 			return val, nil
 		}
@@ -1316,6 +1497,12 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 
 	case *ast.MemberExpression:
 		return v.visitMemberExpression(e)
+
+	case *ast.NewExpression:
+		return v.visitNewExpression(e)
+
+	case *ast.WithMemberAccessExpression:
+		return v.visitWithMemberAccess(e)
 
 	default:
 		return nil, nil
@@ -1893,4 +2080,108 @@ func populateRequestData(req *RequestObject, r *http.Request) {
 	req.ServerVariables.Add("REQUEST_PATH", r.URL.Path)
 	req.ServerVariables.Add("QUERY_STRING", r.URL.RawQuery)
 	req.ServerVariables.Add("REMOTE_ADDR", r.RemoteAddr)
+}
+
+// visitWithStatement handles With statements
+func (v *ASPVisitor) visitWithStatement(stmt *ast.WithStatement) error {
+	if stmt == nil || stmt.Expression == nil {
+		return nil
+	}
+
+	// Evaluate the expression to get the object
+	obj, err := v.visitExpression(stmt.Expression)
+	if err != nil {
+		return err
+	}
+
+	// Push object to stack
+	v.withStack = append(v.withStack, obj)
+	defer func() {
+		// Pop object from stack
+		if len(v.withStack) > 0 {
+			v.withStack = v.withStack[:len(v.withStack)-1]
+		}
+	}()
+
+	// Execute body
+	for _, s := range stmt.Body {
+		if err := v.VisitStatement(s); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// visitWithMemberAccess handles .property access inside With block
+func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression) (interface{}, error) {
+	if len(v.withStack) == 0 {
+		return nil, fmt.Errorf("invalid reference to .%s outside of With block", expr.Property.Name)
+	}
+
+	// Get current With object
+	obj := v.withStack[len(v.withStack)-1]
+	propName := expr.Property.Name
+
+	// Handle ASP built-in objects
+	switch strings.ToLower(propName) {
+	case "response":
+		return v.context.Response, nil
+	case "request":
+		return v.context.Request, nil
+	case "server":
+		return v.context.Server, nil
+	case "session":
+		return v.context.Session, nil
+	case "application":
+		return v.context.Application, nil
+	}
+
+	// Handle generic property access
+	if aspObj, ok := obj.(asp.ASPObject); ok {
+		return aspObj.GetProperty(propName), nil
+	}
+
+	// Handle SessionObject
+	if sessionObj, ok := obj.(*SessionObject); ok {
+		return sessionObj.GetProperty(propName), nil
+	}
+    
+    // Handle ClassInstance
+    if classInst, ok := obj.(*ClassInstance); ok {
+        return classInst.GetProperty(propName), nil
+    }
+
+	return nil, nil
+}
+
+// visitNewExpression handles New ClassName
+func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, error) {
+    if expr == nil || expr.Argument == nil {
+        return nil, nil
+    }
+
+    // Arg should be Identifier
+    if ident, ok := expr.Argument.(*ast.Identifier); ok {
+        className := ident.Name
+        
+        // Lookup ClassDef
+        classDefVal, exists := v.context.GetVariable(className)
+        if !exists {
+             // Maybe it's a built-in COM object (unlikely syntax 'New X', usually 'Server.CreateObject')
+             if strings.ToLower(className) == "regexp" {
+                 // TODO: Implement RegExp
+                 return nil, fmt.Errorf("RegExp not implemented yet")
+             }
+             return nil, fmt.Errorf("class not defined: %s", className)
+        }
+        
+        if classDef, ok := classDefVal.(*ClassDef); ok {
+            return NewClassInstance(classDef, v.context), nil
+        }
+        
+        return nil, fmt.Errorf("%s is not a class", className)
+    }
+    
+    return nil, fmt.Errorf("invalid New expression")
 }
