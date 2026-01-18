@@ -21,8 +21,16 @@
     
     Dim str
     str = "Hello"
-    res = Eval("str & ' World'")
-    Response.Write "<p>Eval('str & '' World''') = " & res & " (Expected: Hello World)</p>"
+    res = Eval("str & "" World""")
+    Response.Write "<p>Eval('str & "" World""') = " & res & " (Expected: Hello World)</p>"
+
+    Function TestLocal()
+        Dim localVal
+        localVal = 99
+        TestLocal = Eval("localVal + 1")
+    End Function
+    
+    Response.Write "<p>Eval local variable: " & TestLocal() & " (Expected: 100)</p>"
     %>
 </body>
 </html>

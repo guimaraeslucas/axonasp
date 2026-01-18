@@ -873,10 +873,11 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 	if ctx.Server != nil {
 		if executor, ok := ctx.Server.GetExecutor().(*ASPExecutor); ok && executor != nil {
 			// Create a temporary variable name
-			tempVarName := "__eval_res_" + strconv.FormatInt(time.Now().UnixNano(), 16)
+			tempVarName := "v_eval_res_" + strconv.FormatInt(time.Now().UnixNano(), 16)
 
 			// Wrap expression in an assignment: temp = expression
 			code := tempVarName + " = " + exprStr
+			// fmt.Printf("Eval Code: %s\n", code)
 
 			// Parse the code
 			// We need to use the parser from the asp package or vbscript-go directly
@@ -893,7 +894,7 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 			// Defer recovery for parser panics
 			defer func() {
 				if r := recover(); r != nil {
-					// fmt.Printf("Eval parse panic: %v\n", r)
+					fmt.Printf("Eval parse panic: %v\n", r)
 				}
 			}()
 			
@@ -901,6 +902,7 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 
 			if program == nil {
 				// Fallback to simple evaluation if parsing fails or returns nil
+				fmt.Println("Eval parse returned nil program")
 			} else {
 				// Execute the program
 				// We need to execute it within the current context
@@ -912,7 +914,7 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 				// Execute all statements (should be just one assignment)
 				for _, stmt := range program.Body {
 					if err := visitor.VisitStatement(stmt); err != nil {
-						// fmt.Printf("Eval execution error: %v\n", err)
+						fmt.Printf("Eval execution error: %v\n", err)
 						return nil
 					}
 				}
@@ -922,6 +924,8 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 					// Clean up
 					// ctx.RemoveVariable(tempVarName) // If we had such method
 					return val
+				} else {
+					fmt.Println("Eval variable not found after execution")
 				}
 			}
 		}
