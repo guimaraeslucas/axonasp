@@ -332,6 +332,13 @@
             <div class="category">
                 <div class="category-title">Advanced Features</div>
                 
+                <div class="test-item" onclick="loadTest('test_asperror.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">ASPError Object</div>
+                        <div class="test-desc">Complete Server.GetLastError() and ASPError properties test with VBScript error codes integration.</div>
+                    </a>
+                </div>
+                
                 <div class="test-item" onclick="loadTest('test_error.asp', this)">
                     <a href="javascript:void(0)" class="test-link">
                         <div class="test-title">Error Handling</div>

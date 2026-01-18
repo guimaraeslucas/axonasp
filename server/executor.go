@@ -73,7 +73,7 @@ type ExecutionContext struct {
 
 	// Mutex for thread safety
 	mu sync.RWMutex
-	
+
 	// Session tracking
 	isNewSession bool
 }
@@ -119,7 +119,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	// Initialize Server object with context reference
 	ctx.Server = NewServerObjectWithContext(ctx)
 	ctx.Server.SetHttpRequest(r)
-	
+
 	// We'll set the executor reference after creating it (circular dependency)
 	// This is done in ASPExecutor.Execute()
 
@@ -569,19 +569,19 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewMailLibrary(ae.context), nil
 	case "G3CRYPTO", "CRYPTO":
 		return NewCryptoLibrary(ae.context), nil
-	
+
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":
 		return NewFileSystemObjectLibrary(ae.context), nil
 	case "SCRIPTING.DICTIONARY", "DICTIONARY":
 		return NewDictionary(ae.context), nil
-	
+
 	// MSXML2 Objects
 	case "MSXML2.SERVERXMLHTTP", "MSXML2.XMLHTTP", "SERVERXMLHTTP", "XMLHTTP":
 		return NewServerXMLHTTP(ae.context), nil
 	case "MSXML2.DOMDOCUMENT", "DOMDOCUMENT", "MSXML2.DOMDOCUMENT.6.0", "MSXML2.DOMDOCUMENT.3.0":
 		return NewDOMDocument(ae.context), nil
-	
+
 	// ADODB Objects
 	case "ADODB.CONNECTION", "ADODB", "CONNECTION":
 		return NewADOConnection(ae.context), nil
@@ -589,7 +589,7 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewADORecordset(ae.context), nil
 	case "ADODB.STREAM", "STREAM":
 		return NewADOStream(ae.context), nil
-	
+
 	default:
 		return nil, fmt.Errorf("unsupported object type: %s", objType)
 	}

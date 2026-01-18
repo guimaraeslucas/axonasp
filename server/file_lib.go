@@ -478,7 +478,7 @@ func (d *FSODrive) GetProperty(name string) interface{} {
 	}
 	return nil
 }
-func (d *FSODrive) SetProperty(name string, value interface{})             {}
+func (d *FSODrive) SetProperty(name string, value interface{})              {}
 func (d *FSODrive) CallMethod(name string, args ...interface{}) interface{} { return nil }
 
 // --- FSO Drives Collection ---
