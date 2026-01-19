@@ -515,6 +515,8 @@ func (r *ResponseObject) toString(value interface{}) string {
 			return "True"
 		}
 		return "False"
+	case time.Time:
+		return formatVBDateDefault(v)
 	case []byte:
 		return string(v)
 	default:

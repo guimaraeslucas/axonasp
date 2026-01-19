@@ -99,7 +99,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 	case "year":
 		// YEAR(date) - extracts year
 		if len(args) == 0 {
-			return 0, true
+			dt := time.Now()
+			return dt.Year(), true
 		}
 		dt := toDateTime(args[0])
 		return dt.Year(), true
@@ -107,7 +108,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 	case "month":
 		// MONTH(date) - extracts month (1-12)
 		if len(args) == 0 {
-			return 0, true
+			dt := time.Now()
+			return int(dt.Month()), true
 		}
 		dt := toDateTime(args[0])
 		return int(dt.Month()), true
@@ -115,7 +117,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 	case "day":
 		// DAY(date) - extracts day of month
 		if len(args) == 0 {
-			return 0, true
+			dt := time.Now()
+			return dt.Day(), true
 		}
 		dt := toDateTime(args[0])
 		return dt.Day(), true
@@ -123,7 +126,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 	case "hour":
 		// HOUR(time) - extracts hour (0-23)
 		if len(args) == 0 {
-			return 0, true
+			dt := time.Now()
+			return dt.Hour(), true
 		}
 		dt := toDateTime(args[0])
 		return dt.Hour(), true
@@ -131,7 +135,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 	case "minute":
 		// MINUTE(time) - extracts minute (0-59)
 		if len(args) == 0 {
-			return 0, true
+			dt := time.Now()
+			return dt.Minute(), true
 		}
 		dt := toDateTime(args[0])
 		return dt.Minute(), true
@@ -139,7 +144,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 	case "second":
 		// SECOND(time) - extracts second (0-59)
 		if len(args) == 0 {
-			return 0, true
+			dt := time.Now()
+			return dt.Second(), true
 		}
 		dt := toDateTime(args[0])
 		return dt.Second(), true
@@ -404,6 +410,28 @@ func extractDatePart(interval string, dt time.Time) interface{} {
 		return dt.Second()
 	default:
 		return 0
+	}
+}
+
+// formatVBDateDefault renders dates similarly to VBScript defaults
+func formatVBDateDefault(dt time.Time) string {
+	if dt.IsZero() {
+		return ""
+	}
+
+	// Time-only values use the VBScript epoch date
+	hasDate := !(dt.Year() == 1899 && dt.Month() == time.December && dt.Day() == 30)
+	hasTime := dt.Hour() != 0 || dt.Minute() != 0 || dt.Second() != 0
+
+	switch {
+	case hasDate && hasTime:
+		return formatDateTime(dt, FormatDateTimeGeneralDate)
+	case hasDate:
+		return formatDateTime(dt, FormatDateTimeShortDate)
+	case hasTime:
+		return formatDateTime(dt, FormatDateTimeLongTime)
+	default:
+		return formatDateTime(dt, FormatDateTimeShortDate)
 	}
 }
 

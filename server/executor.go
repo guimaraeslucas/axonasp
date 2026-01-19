@@ -2510,6 +2510,8 @@ func toString(val interface{}) string {
 			return fmt.Sprintf("%d", int(v))
 		}
 		return fmt.Sprintf("%g", v)
+	case time.Time:
+		return formatVBDateDefault(v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
