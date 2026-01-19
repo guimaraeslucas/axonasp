@@ -2045,29 +2045,6 @@ func (v *ASPVisitor) visitBinaryExpression(expr *ast.BinaryExpression) (interfac
 		return nil, err
 	}
 
-	// Handle short-circuit evaluation
-	switch expr.Operation {
-	case ast.BinaryOperationAnd:
-		if !isTruthy(left) {
-			return false, nil
-		}
-		right, err := v.visitExpression(expr.Right)
-		if err != nil {
-			return nil, err
-		}
-		return isTruthy(right), nil
-
-	case ast.BinaryOperationOr:
-		if isTruthy(left) {
-			return true, nil
-		}
-		right, err := v.visitExpression(expr.Right)
-		if err != nil {
-			return nil, err
-		}
-		return isTruthy(right), nil
-	}
-
 	right, err := v.visitExpression(expr.Right)
 	if err != nil {
 		return nil, err

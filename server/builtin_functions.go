@@ -490,8 +490,61 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		s := toString(args[0])
 		find := toString(args[1])
 		repl := toString(args[2])
-		// VBScript Replace uses case-insensitive comparison by default
-		return strings.ReplaceAll(s, find, repl), true
+
+		start := 1
+		if len(args) >= 4 {
+			start = toInt(args[3])
+		}
+		if start < 1 {
+			start = 1
+		}
+
+		count := -1
+		if len(args) >= 5 {
+			count = toInt(args[4])
+		}
+
+		compare := 1 // Default to text (case-insensitive) compare
+		if len(args) >= 6 {
+			compare = toInt(args[5])
+		}
+
+		if find == "" || start > len(s) || count == 0 {
+			return s, true
+		}
+
+		idxStart := start - 1 // convert to 0-based
+		last := 0
+		var b strings.Builder
+		replaced := 0
+
+		source := s
+		target := find
+		if compare == 1 {
+			source = strings.ToLower(s)
+			target = strings.ToLower(find)
+		}
+
+		for idxStart <= len(s) {
+			segment := source[idxStart:]
+			pos := strings.Index(segment, target)
+			if pos == -1 {
+				break
+			}
+			matchPos := idxStart + pos
+			b.WriteString(s[last:matchPos])
+			b.WriteString(repl)
+			matchEnd := matchPos + len(find)
+			last = matchEnd
+			replaced++
+			if count >= 0 && replaced >= count {
+				break
+			}
+			idxStart = matchEnd
+		}
+
+		b.WriteString(s[last:])
+		return b.String(), true
 
 	case "trim":
 		// TRIM(string) - removes leading and trailing spaces
