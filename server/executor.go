@@ -507,6 +507,12 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 
 	// Execute blocks in order with timeout protection
 	done := make(chan error, 1)
+	execFunc := func() error {
+		if result.CombinedProgram != nil {
+			return ae.executeVBProgram(result.CombinedProgram)
+		}
+		return ae.executeBlocks(result)
+	}
 
 	go func() {
 		defer func() {
@@ -515,7 +521,7 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 			}
 		}()
 
-		err := ae.executeBlocks(result)
+		err := execFunc()
 		done <- err
 	}()
 
@@ -523,6 +529,9 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 	select {
 	case err := <-done:
 		if err != nil {
+			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer {
+				return nil
+			}
 			return err
 		}
 	case <-time.After(timeout):
@@ -650,6 +659,16 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 	// Check for parse errors
 	if len(result.Errors) > 0 {
 		return fmt.Errorf("ASP parse error in included file: %v", result.Errors[0])
+	}
+
+	if result.CombinedProgram != nil {
+		if err := childExecutor.executeVBProgram(result.CombinedProgram); err != nil {
+			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer {
+				return nil
+			}
+			return err
+		}
+		return nil
 	}
 
 	// Execute blocks

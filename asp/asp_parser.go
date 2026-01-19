@@ -10,10 +10,12 @@ import (
 
 // ASPParserResult contém o resultado da análise de código ASP
 type ASPParserResult struct {
-	Blocks      []*CodeBlock         // Todos os blocos de código
-	VBPrograms  map[int]*ast.Program // Programas VBScript por índice do bloco
-	Errors      []error              // Erros durante análise
-	HTMLContent []string             // Conteúdo HTML em ordem
+	Blocks          []*CodeBlock         // All ASP/HTML blocks in order
+	VBPrograms      map[int]*ast.Program // Parsed VBScript programs keyed by block index
+	CombinedProgram *ast.Program         // Full VBScript program with HTML injected as Response.Write
+	CombinedVBCode  string               // Combined VBScript source code
+	Errors          []error              // Parse errors
+	HTMLContent     []string             // HTML content in order
 }
 
 // ASPParser realiza análise sintática de código ASP
@@ -78,7 +80,6 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 	result.Blocks = blocks
 
 	// Processa cada bloco
-	vbBlockIndex := 0
 	for i, block := range blocks {
 		switch block.Type {
 		case "directive":
@@ -87,20 +88,39 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 			// They are used for configuration (Language, CodePage, etc.)
 			// No action needed here - directives are parsed in the lexer
 		case "asp":
-			// Tenta fazer parse do bloco VBScript
+			// Attempt to parse individual VBScript block without failing the whole page
 			program, err := ap.parseVBBlock(block.Content)
 			if err != nil {
-				parseErr := fmt.Errorf("Parse error at ASP block starting line %d: %v", block.Line, err)
-				result.Errors = append(result.Errors, parseErr)
 				if ap.options.DebugMode {
 					fmt.Printf("[ASP Parser Error] Line %d: %v\n", block.Line, err)
 				}
+				break
 			}
 			result.VBPrograms[i] = program
-			vbBlockIndex++
 		case "html":
 			// Armazena conteúdo HTML
 			result.HTMLContent = append(result.HTMLContent, block.Content)
+		}
+	}
+
+	// Build a single VBScript program that includes HTML as Response.Write calls
+	combinedVB := buildCombinedVBScript(blocks)
+	result.CombinedVBCode = combinedVB
+
+	if strings.TrimSpace(combinedVB) != "" {
+		program, err := ap.parseVBBlock(combinedVB)
+		if err != nil {
+			parseErr := fmt.Errorf("Parse error in combined ASP script: %v", err)
+			result.Errors = append(result.Errors, parseErr)
+			if ap.options.DebugMode {
+				fmt.Printf("[ASP Parser Error] Combined: %v\n", err)
+			}
+		} else {
+			result.CombinedProgram = program
+			// Store under a reserved index so existing consumers can iterate
+			result.VBPrograms[-1] = program
+			// Combined program parsed successfully; suppress any block-level parse noise
+			result.Errors = nil
 		}
 	}
 
@@ -216,6 +236,55 @@ func preProcessColons(code string) string {
 	}
 
 	return sb.String()
+}
+
+// buildCombinedVBScript merges ASP blocks and HTML into a single VBScript program
+// HTML segments are converted into Response.Write calls so they participate in control flow
+func buildCombinedVBScript(blocks []*CodeBlock) string {
+	var sb strings.Builder
+
+	for _, block := range blocks {
+		switch block.Type {
+		case "asp":
+			content := strings.TrimSpace(block.Content)
+			if content == "" {
+				continue
+			}
+			sb.WriteString(content)
+			sb.WriteString("\n")
+		case "html":
+			htmlWrite := htmlToVBWrite(block.Content)
+			if htmlWrite == "" {
+				continue
+			}
+			sb.WriteString(htmlWrite)
+			sb.WriteString("\n")
+		}
+	}
+
+	return sb.String()
+}
+
+// htmlToVBWrite converts raw HTML into a VBScript Response.Write statement
+// New lines are preserved using vbCrLf and quotes are doubled for VBScript string literals
+func htmlToVBWrite(html string) string {
+	if html == "" {
+		return ""
+	}
+
+	normalized := strings.ReplaceAll(html, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	parts := make([]string, 0, len(lines)*2)
+
+	for i, line := range lines {
+		escaped := strings.ReplaceAll(line, "\"", "\"\"")
+		parts = append(parts, fmt.Sprintf("\"%s\"", escaped))
+		if i < len(lines)-1 {
+			parts = append(parts, "vbCrLf")
+		}
+	}
+
+	return "Response.Write " + strings.Join(parts, " & ")
 }
 
 // GetVBProgramsFromResult retorna os programas VBScript de um resultado
