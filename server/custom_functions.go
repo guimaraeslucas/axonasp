@@ -519,6 +519,10 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		}
 		return intPart, true
 
+	case "axpi":
+		// pi: return the mathematical constant pi
+		return math.Pi, true
+
 	// Type checking functions
 	case "axisint":
 		// is_int: check if value is integer
