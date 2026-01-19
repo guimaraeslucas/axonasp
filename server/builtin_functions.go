@@ -586,11 +586,26 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return "", true
 		}
 		num := toInt(args[0])
-		charStr := toString(args[1])
-		if len(charStr) > 0 {
-			return strings.Repeat(string(charStr[0]), num), true
+		if num < 0 {
+			num = 0
 		}
-		return "", true
+
+		// Accept both string and numeric character codes like VBScript
+		charStr := ""
+		switch v := args[1].(type) {
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+			code := toInt(v) & 0xFF
+			charStr = string(rune(code))
+		default:
+			charStr = toString(args[1])
+		}
+
+		runes := []rune(charStr)
+		if len(runes) == 0 {
+			return "", true
+		}
+
+		return strings.Repeat(string(runes[0]), num), true
 
 	case "strreverse":
 		// STRREVERSE(string) - reverses string

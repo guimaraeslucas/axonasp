@@ -177,7 +177,8 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 		return int(dt.Weekday()) + 1, true
 
 	case "dateadd":
-		// DATEADD(interval, number, date) - adds time to date
+		// DATEADD(interval, number, date [, firstdayofweek, firstweekofyear])
+		// VBScript ignores the optional params for date math; we accept them for parity.
 		if len(args) < 3 {
 			return time.Time{}, true
 		}
@@ -188,25 +189,41 @@ func evalDateTimeFunction(funcName string, args []interface{}, ctx *ExecutionCon
 		return addDatePart(dt, interval, num), true
 
 	case "datediff":
-		// DATEDIFF(interval, date1, date2) - difference between dates
+		// DATEDIFF(interval, date1, date2 [, firstdayofweek, firstweekofyear])
 		if len(args) < 3 {
 			return 0, true
 		}
 		interval := strings.ToLower(toString(args[0]))
 		date1 := toDateTime(args[1])
 		date2 := toDateTime(args[2])
+		firstDay := 1
+		firstWeek := 1
+		if len(args) >= 4 {
+			firstDay = toInt(args[3])
+		}
+		if len(args) >= 5 {
+			firstWeek = toInt(args[4])
+		}
 
-		return calcDateDiff(interval, date1, date2), true
+		return calcDateDiff(interval, date1, date2, firstDay, firstWeek), true
 
 	case "datepart":
-		// DATEPART(interval, date) - extract date part
+		// DATEPART(interval, date [, firstdayofweek, firstweekofyear])
 		if len(args) < 2 {
 			return 0, true
 		}
 		interval := strings.ToLower(toString(args[0]))
 		dt := toDateTime(args[1])
+		firstDay := 1
+		firstWeek := 1
+		if len(args) >= 3 {
+			firstDay = toInt(args[2])
+		}
+		if len(args) >= 4 {
+			firstWeek = toInt(args[3])
+		}
 
-		return extractDatePart(interval, dt), true
+		return extractDatePart(interval, dt, firstDay, firstWeek), true
 
 	case "datefromparts":
 		// Non-standard: creates date from parts
@@ -350,8 +367,77 @@ func addDatePart(dt time.Time, interval string, num int) time.Time {
 	}
 }
 
-// calcDateDiff calculates difference between two dates
-func calcDateDiff(interval string, date1, date2 time.Time) interface{} {
+// vbWeekday returns VBScript-style weekday with optional first day of week
+func vbWeekday(dt time.Time, firstDayOfWeek int) int {
+	if firstDayOfWeek < 1 || firstDayOfWeek > 7 {
+		firstDayOfWeek = 1 // vbUseSystem/vbSunday default
+	}
+	wd := int(dt.Weekday()) + 1 // Go: 0=Sunday; VB: 1=Sunday
+	return ((wd - firstDayOfWeek + 7) % 7) + 1
+}
+
+// vbWeekNumber computes VBScript-style week number (ww) with firstweekofyear rules
+func vbWeekNumber(dt time.Time, firstDayOfWeek int, firstWeekOfYear int) int {
+	if firstDayOfWeek < 1 || firstDayOfWeek > 7 {
+		firstDayOfWeek = 1
+	}
+	if firstWeekOfYear < 0 || firstWeekOfYear > 3 {
+		firstWeekOfYear = 1
+	}
+
+	startOfYear := time.Date(dt.Year(), time.January, 1, 0, 0, 0, 0, dt.Location())
+	firstWeekStart := firstWeekBoundary(startOfYear, firstDayOfWeek, firstWeekOfYear)
+	if dt.Before(firstWeekStart) {
+		// If before first week, fall back to last week of previous year
+		prevYear := dt.AddDate(-1, 0, 0)
+		return vbWeekNumber(prevYear, firstDayOfWeek, firstWeekOfYear)
+	}
+	days := int(dt.Sub(firstWeekStart).Hours() / 24)
+	return (days / 7) + 1
+}
+
+// firstWeekBoundary finds the start of week 1 per VBScript rules
+func firstWeekBoundary(start time.Time, firstDayOfWeek int, firstWeekOfYear int) time.Time {
+	// Align to firstDayOfWeek
+	shift := (int(start.Weekday()) + 1) - firstDayOfWeek
+	if shift < 0 {
+		shift += 7
+	}
+	aligned := start.AddDate(0, 0, -shift)
+
+	switch firstWeekOfYear {
+	case 2: // First week with at least four days
+		for aligned.AddDate(0, 0, 3).Year() < start.Year() {
+			aligned = aligned.AddDate(0, 0, 7)
+		}
+	case 3: // First full week
+		if aligned.Year() < start.Year() {
+			aligned = aligned.AddDate(0, 0, 7)
+		}
+	}
+
+	return aligned
+}
+
+// vbWeekDiff calculates week difference with VBScript rules for ww interval
+func vbWeekDiff(date1, date2 time.Time, firstDayOfWeek int, firstWeekOfYear int) int {
+	w1 := vbWeekNumber(date1, firstDayOfWeek, firstWeekOfYear)
+	w2 := vbWeekNumber(date2, firstDayOfWeek, firstWeekOfYear)
+	y1 := date1.Year()
+	y2 := date2.Year()
+	// Adjust for cross-year scenarios
+	if y1 == y2 {
+		return w2 - w1
+	}
+	// weeks remaining in y1 plus weeks in y2
+	lastDayY1 := time.Date(y1, time.December, 31, 0, 0, 0, 0, date1.Location())
+	weeksInY1 := vbWeekNumber(lastDayY1, firstDayOfWeek, firstWeekOfYear)
+	weeksY1Remaining := weeksInY1 - w1
+	return weeksY1Remaining + w2
+}
+
+// calcDateDiff calculates difference between two dates with VBScript week rules
+func calcDateDiff(interval string, date1, date2 time.Time, firstDayOfWeek int, firstWeekOfYear int) interface{} {
 	if date1.After(date2) {
 		date1, date2 = date2, date1 // Ensure date1 <= date2
 	}
@@ -372,7 +458,7 @@ func calcDateDiff(interval string, date1, date2 time.Time) interface{} {
 	case "w":
 		return int(date2.Sub(date1).Hours() / (24 * 7))
 	case "ww":
-		return int(date2.Sub(date1).Hours() / (24 * 7))
+		return vbWeekDiff(date1, date2, firstDayOfWeek, firstWeekOfYear)
 	case "h":
 		return int(date2.Sub(date1).Hours())
 	case "n":
@@ -384,8 +470,8 @@ func calcDateDiff(interval string, date1, date2 time.Time) interface{} {
 	}
 }
 
-// extractDatePart extracts a part from a date
-func extractDatePart(interval string, dt time.Time) interface{} {
+// extractDatePart extracts a part from a date with VBScript week rules
+func extractDatePart(interval string, dt time.Time, firstDayOfWeek int, firstWeekOfYear int) interface{} {
 	switch interval {
 	case "yyyy":
 		return dt.Year()
@@ -398,10 +484,9 @@ func extractDatePart(interval string, dt time.Time) interface{} {
 	case "d":
 		return dt.Day()
 	case "w":
-		return int(dt.Weekday()) + 1
+		return vbWeekday(dt, firstDayOfWeek)
 	case "ww":
-		_, week := dt.ISOWeek()
-		return week
+		return vbWeekNumber(dt, firstDayOfWeek, firstWeekOfYear)
 	case "h":
 		return dt.Hour()
 	case "n":
