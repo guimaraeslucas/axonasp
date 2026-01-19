@@ -58,32 +58,37 @@ func (s *MsXML2ServerXMLHTTP) GetProperty(name string) interface{} {
 	return nil
 }
 
-func (s *MsXML2ServerXMLHTTP) SetProperty(name string, value interface{}) {
+func (s *MsXML2ServerXMLHTTP) SetProperty(name string, value interface{}) error {
 	switch strings.ToLower(name) {
 	case "timeout":
 		if v, ok := value.(int); ok {
 			s.timeout = time.Duration(v) * time.Second
 		}
 	}
+	return nil
 }
 
-func (s *MsXML2ServerXMLHTTP) CallMethod(name string, args ...interface{}) interface{} {
+func (s *MsXML2ServerXMLHTTP) GetName() string {
+	return "MSXML2.ServerXMLHTTP"
+}
+
+func (s *MsXML2ServerXMLHTTP) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	switch strings.ToLower(name) {
 	case "open":
-		return s.open(args)
+		return s.open(args), nil
 	case "setrequestheader":
-		return s.setRequestHeader(args)
+		return s.setRequestHeader(args), nil
 	case "send":
-		return s.send(args)
+		return s.send(args), nil
 	case "abort":
 		s.readyState = 4
-		return nil
+		return nil, nil
 	case "getresponseheader":
-		return s.getResponseHeader(args)
+		return s.getResponseHeader(args), nil
 	case "getallresponseheaders":
-		return s.getAllResponseHeaders()
+		return s.getAllResponseHeaders(), nil
 	}
-	return nil
+	return nil, nil
 }
 
 // open initializes the HTTP request
@@ -271,6 +276,10 @@ func NewMsXML2DOMDocument(ctx *ExecutionContext) *MsXML2DOMDocument {
 	}
 }
 
+func (d *MsXML2DOMDocument) GetName() string {
+	return "MSXML2.DOMDocument"
+}
+
 func (d *MsXML2DOMDocument) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
 	case "documentelement":
@@ -285,39 +294,40 @@ func (d *MsXML2DOMDocument) GetProperty(name string) interface{} {
 	return nil
 }
 
-func (d *MsXML2DOMDocument) SetProperty(name string, value interface{}) {
+func (d *MsXML2DOMDocument) SetProperty(name string, value interface{}) error {
 	switch strings.ToLower(name) {
 	case "async":
 		if v, ok := value.(bool); ok {
 			d.async = v
 		}
 	}
+	return nil
 }
 
-func (d *MsXML2DOMDocument) CallMethod(name string, args ...interface{}) interface{} {
+func (d *MsXML2DOMDocument) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	switch strings.ToLower(name) {
 	case "loadxml":
-		return d.loadXML(args)
+		return d.loadXML(args), nil
 	case "load":
-		return d.load(args)
+		return d.load(args), nil
 	case "save":
-		return d.save(args)
+		return d.save(args), nil
 	case "getelementsbytagname":
-		return d.getElementsByTagName(args)
+		return d.getElementsByTagName(args), nil
 	case "createelement":
-		return d.createElement(args)
+		return d.createElement(args), nil
 	case "createtextnode":
-		return d.createTextNode(args)
+		return d.createTextNode(args), nil
 	case "createattribute":
-		return d.createAttribute(args)
+		return d.createAttribute(args), nil
 	case "appendchild":
-		return d.appendChild(args)
+		return d.appendChild(args), nil
 	case "selectsinglenode":
-		return d.selectSingleNode(args)
+		return d.selectSingleNode(args), nil
 	case "selectnodes":
-		return d.selectNodes(args)
+		return d.selectNodes(args), nil
 	}
-	return nil
+	return nil, nil
 }
 
 // loadXML parses an XML string
@@ -559,6 +569,10 @@ func (d *MsXML2DOMDocument) appendChild(args []interface{}) interface{} {
 }
 
 // Helper methods for XMLElement (implements Component interface)
+func (e *XMLElement) GetName() string {
+	return "IXMLDOMElement"
+}
+
 func (e *XMLElement) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
 	case "nodename":
@@ -621,23 +635,24 @@ func (e *XMLElement) GetProperty(name string) interface{} {
 	return nil
 }
 
-func (e *XMLElement) SetProperty(name string, value interface{}) {
+func (e *XMLElement) SetProperty(name string, value interface{}) error {
 	switch strings.ToLower(name) {
 	case "nodevalue":
 		e.Value = fmt.Sprintf("%v", value)
 	case "text":
 		e.Value = fmt.Sprintf("%v", value)
 	}
+	return nil
 }
 
-func (e *XMLElement) CallMethod(name string, args ...interface{}) interface{} {
+func (e *XMLElement) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	switch strings.ToLower(name) {
 	case "appendchild":
 		if len(args) > 0 {
 			if child, ok := args[0].(*XMLElement); ok {
 				e.Children = append(e.Children, child)
 				child.Parent = e
-				return child
+				return child, nil
 			}
 		}
 	case "getelementsbytagname":
@@ -649,12 +664,12 @@ func (e *XMLElement) CallMethod(name string, args ...interface{}) interface{} {
 			for _, elem := range results {
 				interfaceResults = append(interfaceResults, elem)
 			}
-			return interfaceResults
+			return interfaceResults, nil
 		}
 	case "item":
 		if len(args) > 0 {
 			if idx, ok := args[0].(int); ok && idx >= 0 && idx < len(e.Children) {
-				return e.Children[idx]
+				return e.Children[idx], nil
 			}
 		}
 	case "setattribute":
@@ -666,7 +681,7 @@ func (e *XMLElement) CallMethod(name string, args ...interface{}) interface{} {
 	case "getattribute":
 		if len(args) > 0 {
 			key := fmt.Sprintf("%v", args[0])
-			return e.Attributes[key]
+			return e.Attributes[key], nil
 		}
 	case "removeattribute":
 		if len(args) > 0 {
@@ -674,7 +689,7 @@ func (e *XMLElement) CallMethod(name string, args ...interface{}) interface{} {
 			delete(e.Attributes, key)
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func (e *XMLElement) findElements(tagName string, results *[]*XMLElement) {
@@ -791,7 +806,8 @@ func (d *MsXML2DOMDocument) parseElement(xmlStr string) (*XMLElement, int) {
 	closingTag := "</" + tagName + ">"
 	closeIdx := strings.Index(xmlStr, closingTag)
 	if closeIdx == -1 {
-		return elem, endTagStart + 1
+		// Malformed XML - missing closing tag
+		return nil, 0
 	}
 
 	// Extract content between opening and closing tags

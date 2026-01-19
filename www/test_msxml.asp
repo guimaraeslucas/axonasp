@@ -81,7 +81,7 @@ Response.Write "Created new element: newitem<br>"
 Set nameNode = xmlDoc.CreateElement("description")
 Response.Write "Created description element<br>"
 
-If newElem Is Not Nothing Then
+If Not newElem Is Nothing Then
     Response.Write "NewElement is not nothing<br>"
 Else
     Response.Write "NewElement is nothing<br>"
@@ -108,7 +108,7 @@ End If
 ' Test 8: SelectSingleNode (simple XPath)
 Response.Write "<h3>Test 8: SelectSingleNode</h3>"
 Set singleNode = xmlDoc.SelectSingleNode("//name")
-If singleNode Is Not Nothing Then
+If Not singleNode Is Nothing Then
     Response.Write "Found node: " & singleNode.NodeName & "<br>"
     Response.Write "Node value: " & singleNode.Text & "<br>"
 Else

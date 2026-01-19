@@ -217,7 +217,7 @@ func NewServerXMLHTTP(ctx *ExecutionContext) *ServerXMLHTTP {
 
 // CallMethod calls a method on ServerXMLHTTP
 func (sx *ServerXMLHTTP) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return sx.lib.CallMethod(name, args...), nil
+	return sx.lib.CallMethod(name, args...)
 }
 
 // GetProperty gets a property from ServerXMLHTTP
@@ -245,7 +245,7 @@ func NewDOMDocument(ctx *ExecutionContext) *DOMDocument {
 
 // CallMethod calls a method on DOMDocument
 func (dd *DOMDocument) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	return dd.lib.CallMethod(name, args...), nil
+	return dd.lib.CallMethod(name, args...)
 }
 
 // GetProperty gets a property from DOMDocument

@@ -408,6 +408,10 @@ type RegExpMatchesCollection struct {
 	count   int64
 }
 
+func (m *RegExpMatchesCollection) GetName() string {
+	return "IMatchCollection2"
+}
+
 // GetProperty gets a property from matches collection
 func (m *RegExpMatchesCollection) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
@@ -441,20 +445,31 @@ func (m *RegExpMatchesCollection) CallMethod(name string, args ...interface{}) (
 	case "count":
 		return m.count, nil
 	default:
+		// Default property access matches(0)
+		if len(args) > 0 {
+			idx, ok := toInt64(args[0])
+			if ok && idx >= 0 && idx < m.count {
+				return m.matches[idx], nil
+			}
+		}
 		return nil, fmt.Errorf("method not found: %s", name)
 	}
 }
 
 // RegExpMatch Methods
+func (m *RegExpMatch) GetName() string {
+	return "IMatch2"
+}
+
 // GetProperty on a single match
 func (m *RegExpMatch) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
 	case "value":
 		return m.Value
 	case "firstindex":
-		return m.Index + 1 // VBScript uses 1-based indexing
+		return m.Index // VBScript uses 0-based indexing for FirstIndex
 	case "index":
-		return m.Index + 1 // VBScript uses 1-based indexing
+		return m.Index // Alias
 	case "length":
 		return m.Length
 	default:
@@ -473,13 +488,14 @@ func (m *RegExpMatch) CallMethod(name string, args ...interface{}) (interface{},
 	case "value":
 		return m.Value, nil
 	case "firstindex":
-		return m.Index + 1, nil
+		return m.Index, nil
 	case "index":
-		return m.Index + 1, nil
+		return m.Index, nil
 	case "length":
 		return m.Length, nil
 	default:
-		return nil, fmt.Errorf("method not found: %s", name)
+		// Default property is Value
+		return m.Value, nil
 	}
 }
 

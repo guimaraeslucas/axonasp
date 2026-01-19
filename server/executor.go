@@ -196,13 +196,14 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 		}
 	}
 
-	// 2. Check Context Object (Class Member)
+	// 3. Check Context Object (Class Member)
 	if ec.contextObject != nil {
+		// Try internal access first (allows Private members)
 		if internal, ok := ec.contextObject.(interface {
-			SetMember(string, interface{}) bool
+			SetMember(string, interface{}) (bool, error)
 		}); ok {
-			if internal.SetMember(nameLower, value) {
-				return nil
+			if handled, err := internal.SetMember(nameLower, value); handled {
+				return err
 			}
 		}
 	}
@@ -262,9 +263,9 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	if ec.contextObject != nil {
 		// Try internal access first (allows Private members)
 		if internal, ok := ec.contextObject.(interface {
-			GetMember(string) (interface{}, bool)
+			GetMember(string) (interface{}, bool, error)
 		}); ok {
-			if val, found := internal.GetMember(nameLower); found {
+			if val, found, _ := internal.GetMember(nameLower); found {
 				return val, true
 			}
 		} else if getter, ok := ec.contextObject.(interface{ GetProperty(string) interface{} }); ok {
@@ -2117,6 +2118,9 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		if methodName != "" {
 			return obj.CallMethod(methodName, args...)
 		}
+		// Fallback for expression-based objects (e.g. matches.Item(0) -> Collection(0))
+		// We call with empty name, expecting the object's CallMethod to handle default dispatch (usually "Item")
+		return obj.CallMethod("", args...)
 	}
 
 	// Handle Member Method Calls (obj.Method(args)) where Method is not a property

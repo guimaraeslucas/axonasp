@@ -175,7 +175,7 @@ Set matches = regex.Execute(testStr)
 If Err.Number = 0 Then
     Response.Write "<p><strong>Input:</strong> <code>" & testStr & "</code></p>"
     Response.Write "<p><strong>Pattern:</strong> <code>\d+</code> (Global=True)</p>"
-    If Not matches Is Nothing Then
+    ' If Not matches Is Nothing Then
         count = matches.Count
         Response.Write "<p><strong>Matches found: " & count & "</strong></p>"
         If count > 0 Then
@@ -186,7 +186,7 @@ If Err.Number = 0 Then
             Next
             Response.Write "</table>"
         End If
-    End If
+    ' End If
 Else
     Response.Write "<p class='error'>ERROR: " & Err.Description & "</p>"
 End If
