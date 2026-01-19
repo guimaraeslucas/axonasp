@@ -865,9 +865,9 @@ func (l *Lexer) vbSyntaxError(code VBSyntaxErrorCode) error {
 
 // VBSyntaxError represents a VBScript syntax error
 type VBSyntaxError struct {
-	Code   VBSyntaxErrorCode
-	Line   int
-	Column int
+	Code      VBSyntaxErrorCode
+	Line      int
+	Column    int
 	TokenText string
 	LineText  string
 }

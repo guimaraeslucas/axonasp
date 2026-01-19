@@ -633,7 +633,7 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		consequent = p.parseMultiInlineStatement(true, line)
 
 		p.skipComments()
-		
+
 		// Check for explicit End If
 		if p.optKeyword(KeywordEnd) {
 			p.expectKeyword(KeywordIf)
@@ -742,8 +742,7 @@ func (p *Parser) parseMultiInlineStatement(matchElse bool, line int) ast.Stateme
 			continue
 		}
 		if p.matchLineTermination() {
-			p.move()
-			continue
+			break
 		}
 
 		break

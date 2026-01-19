@@ -149,13 +149,13 @@ func preProcessColons(code string) string {
 	inString := false
 	inComment := false
 	inDateLiteral := false
-	
+
 	for i := 0; i < len(code); i++ {
 		char := code[i]
-		
+
 		if char == '\n' || char == '\r' {
 			inComment = false
-			inString = false // Strings don't span lines in VBScript
+			inString = false      // Strings don't span lines in VBScript
 			inDateLiteral = false // Date literals don't span lines
 			sb.WriteByte(char)
 			continue
@@ -173,7 +173,7 @@ func preProcessColons(code string) string {
 			sb.WriteByte(char)
 			continue
 		}
-		
+
 		if inString {
 			sb.WriteByte(char)
 			continue
@@ -201,7 +201,7 @@ func preProcessColons(code string) string {
 		if (char == 'R' || char == 'r') && i+3 < len(code) {
 			if strings.EqualFold(code[i:i+4], "REM ") {
 				inComment = true
-				sb.WriteString(code[i:i+4])
+				sb.WriteString(code[i : i+4])
 				i += 3
 				continue
 			}
@@ -214,7 +214,7 @@ func preProcessColons(code string) string {
 			sb.WriteByte(char)
 		}
 	}
-	
+
 	return sb.String()
 }
 
