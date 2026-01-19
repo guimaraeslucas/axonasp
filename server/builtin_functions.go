@@ -120,6 +120,24 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// ScriptEngineMinorVersion() - Returns 8 (VBScript 5.8)
 		return 8, true
 
+	case "ascw":
+		if len(args) == 0 {
+			return 0, true
+		}
+		s := toString(args[0])
+		runes := []rune(s)
+		if len(runes) == 0 {
+			return 0, true
+		}
+		return int(runes[0]), true
+
+	case "chrw":
+		if len(args) == 0 {
+			return "", true
+		}
+		code := toInt(args[0])
+		return string(rune(code)), true
+
 	case "env":
 		// Env(name) - Returns environment variable value
 		if len(args) == 0 {
@@ -142,6 +160,48 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// For now, return the parsed result
 		result := evalExpression(exprStr, ctx)
 		return result, true
+
+	case "getobject":
+		if ctx == nil || ctx.Server == nil {
+			return nil, true
+		}
+		if len(args) == 0 {
+			return nil, true
+		}
+
+		pathArg := toString(args[0])
+		className := ""
+		if len(args) > 1 {
+			className = toString(args[1])
+		}
+
+		progID := strings.TrimSpace(className)
+		if progID == "" {
+			progID = strings.TrimSpace(pathArg)
+		}
+		if progID == "" {
+			return nil, true
+		}
+
+		obj, err := ctx.Server.CreateObject(progID)
+		if err != nil {
+			ctx.Err.SetError(err)
+			return nil, true
+		}
+
+		if pathArg != "" && className != "" {
+			if loader, ok := obj.(interface{ Load(string) error }); ok {
+				if err := loader.Load(pathArg); err != nil {
+					ctx.Err.SetError(err)
+				}
+			} else if opener, ok := obj.(interface{ Open(string) error }); ok {
+				if err := opener.Open(pathArg); err != nil {
+					ctx.Err.SetError(err)
+				}
+			}
+		}
+
+		return obj, true
 
 	case "rgb":
 		// RGB(red, green, blue) - returns color as integer
@@ -263,6 +323,48 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		return strings.Join(parts, delim), true
 
+	case "filter":
+		// Filter(array, match, [include], [compare]) - filters string arrays
+		if len(args) < 2 {
+			return []interface{}{}, true
+		}
+		arr, ok := args[0].([]interface{})
+		if !ok {
+			return []interface{}{}, true
+		}
+
+		match := toString(args[1])
+		include := true
+		if len(args) > 2 {
+			include = isTruthy(args[2])
+		}
+
+		compare := 0
+		if len(args) > 3 {
+			compare = toInt(args[3])
+		}
+
+		needle := match
+		if compare == 1 {
+			needle = strings.ToLower(match)
+		}
+
+		result := make([]interface{}, 0)
+		for _, item := range arr {
+			itemStr := toString(item)
+			text := itemStr
+			if compare == 1 {
+				text = strings.ToLower(itemStr)
+			}
+
+			found := needle == "" || strings.Contains(text, needle)
+			if found == include {
+				result = append(result, item)
+			}
+		}
+
+		return result, true
+
 	// String Functions
 	case "len":
 		// LEN(string) - returns length of string
@@ -327,28 +429,35 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "instr":
 		// INSTR([start], string1, string2) - find substring position
 		var s1, s2 string
-		start := 0
+		start := 1 // VBScript default start is 1
 		if len(args) == 2 {
 			s1 = toString(args[0])
 			s2 = toString(args[1])
 		} else if len(args) >= 3 {
-			start = toInt(args[0]) - 1 // VBScript is 1-based
+			start = toInt(args[0])
 			s1 = toString(args[1])
 			s2 = toString(args[2])
 		} else {
 			return 0, true
 		}
-		if start < 0 {
-			start = 0
+		if start < 1 {
+			start = 1
 		}
-		if start >= len(s1) {
+		if start > len(s1) {
 			return 0, true
 		}
-		idx := strings.Index(strings.ToLower(s1[start:]), strings.ToLower(s2))
+		s1Lower := strings.ToLower(s1)
+		s2Lower := strings.ToLower(s2)
+		idx := strings.Index(s1Lower[start-1:], s2Lower)
 		if idx == -1 {
-			return 0, true
+			// Fallback: scan full string in case of unexpected start math issues
+			fullIdx := strings.Index(s1Lower, s2Lower)
+			if fullIdx == -1 {
+				return 0, true
+			}
+			return fullIdx + 1, true
 		}
-		return idx + start + 1, true // Return 1-based position
+		return idx + start, true // Return 1-based position
 
 	case "instrrev":
 		// INSTRREV(string, substring, [start]) - find substring from right
@@ -504,7 +613,25 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 	case "rnd":
 		// RND([seed]) - random number between 0 and 1
-		return rand.Float64(), true
+		if ctx == nil {
+			return rand.Float64(), true
+		}
+		if len(args) > 0 {
+			return ctx.nextRandomValue(args[0], true), true
+		}
+		return ctx.nextRandomValue(nil, false), true
+
+	case "randomize":
+		// RANDOMIZE [seed] - initialize random-number generator
+		if ctx == nil {
+			return nil, true
+		}
+		if len(args) > 0 {
+			ctx.randomizeWithSeed(seedFromNumber(toFloat(args[0])))
+			return nil, true
+		}
+		ctx.randomizeWithSeed(time.Now().UnixNano())
+		return nil, true
 
 	case "round":
 		// ROUND(number, [digits]) - rounds to specified digits

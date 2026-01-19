@@ -90,6 +90,17 @@ func (p *Parser) parseOptionExplicit() bool {
 	return false
 }
 
+// consumeOptionStatement eats an inline Option Explicit (or any Option statement) as a no-op stub.
+// VBScript only honors Option at the top of the file; we accept it elsewhere to avoid parse errors.
+func (p *Parser) consumeOptionStatement() {
+	p.move() // consume Option
+	if p.matchKeyword(KeywordExplicit) {
+		p.move()
+	}
+	p.skipComments()
+	p.optLineTermination()
+}
+
 func (p *Parser) parseGlobalStatement() ast.Statement {
 	p.createMarker() // marker
 
@@ -578,6 +589,9 @@ func (p *Parser) parseInlineStatement() ast.Statement {
 			stmt = p.parseCallStatement()
 		case KeywordIf:
 			stmt = p.parseIfStatement()
+		case KeywordOption:
+			p.consumeOptionStatement()
+			stmt = nil
 		case KeywordPublic, KeywordPrivate:
 			stmt = p.parsePublicOrPrivate(false, true)
 		case KeywordSub, KeywordFunction:

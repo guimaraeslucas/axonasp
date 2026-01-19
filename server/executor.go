@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go-asp/asp"
 	"math"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -67,8 +68,11 @@ type ExecutionContext struct {
 	httpRequest *http.Request
 
 	// Execution state
-	startTime time.Time
-	timeout   time.Duration
+	startTime  time.Time
+	timeout    time.Duration
+	rng        *rand.Rand
+	lastRnd    float64
+	hasLastRnd bool
 
 	// Library instances
 	libraries map[string]interface{}
@@ -125,6 +129,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		httpRequest:    r,
 		startTime:      time.Now(),
 		timeout:        timeout,
+		rng:            rand.New(rand.NewSource(1)),
 		sessionID:      sessionID,
 		sessionManager: sessionManager,
 		isNewSession:   isNew,
@@ -143,6 +148,68 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.variables["err"] = ctx.Err
 
 	return ctx
+}
+
+func (ec *ExecutionContext) ensureRandomSource() {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	if ec.rng == nil {
+		ec.rng = rand.New(rand.NewSource(1))
+	}
+}
+
+func (ec *ExecutionContext) randomizeWithSeed(seed int64) {
+	ec.ensureRandomSource()
+
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	ec.rng.Seed(seed)
+	ec.hasLastRnd = false
+}
+
+func (ec *ExecutionContext) nextRandomValue(arg interface{}, hasArg bool) float64 {
+	ec.ensureRandomSource()
+
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	if hasArg {
+		seedVal := toFloat(arg)
+		if seedVal < 0 {
+			ec.rng.Seed(seedFromNumber(seedVal))
+			ec.hasLastRnd = false
+			ec.lastRnd = ec.rng.Float64()
+			ec.hasLastRnd = true
+			return ec.lastRnd
+		}
+		if seedVal == 0 {
+			if ec.hasLastRnd {
+				return ec.lastRnd
+			}
+			ec.lastRnd = ec.rng.Float64()
+			ec.hasLastRnd = true
+			return ec.lastRnd
+		}
+	}
+
+	ec.lastRnd = ec.rng.Float64()
+	ec.hasLastRnd = true
+	return ec.lastRnd
+}
+
+func seedFromNumber(val float64) int64 {
+	seed := int64(val * 1000000)
+	if seed == 0 {
+		seed = int64(val)
+	}
+	if seed == 0 {
+		if val >= 0 {
+			return 1
+		}
+		return -1
+	}
+	return seed
 }
 
 // PushScope pushes a new local scope
@@ -1711,6 +1778,9 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 				classDef.PrivateMethods[nameLower] = m
 			} else {
 				classDef.Methods[nameLower] = m
+				if m.AccessModifier == ast.MethodAccessModifierPublicDefault {
+					classDef.DefaultMethod = nameLower
+				}
 			}
 		case *ast.FunctionDeclaration:
 			nameLower := strings.ToLower(m.Identifier.Name)
@@ -1718,6 +1788,9 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 				classDef.PrivateMethods[nameLower] = m
 			} else {
 				classDef.Functions[nameLower] = m
+				if m.AccessModifier == ast.MethodAccessModifierPublicDefault {
+					classDef.DefaultMethod = nameLower
+				}
 			}
 		case *ast.PropertyGetDeclaration:
 			v.addPropertyDef(classDef, m.Identifier.Name, PropGet, m, m.AccessModifier)
@@ -1750,6 +1823,10 @@ func (v *ASPVisitor) addPropertyDef(classDef *ClassDef, name string, pType Prope
 		classDef.Properties[nameLower] = []PropertyDef{}
 	}
 	classDef.Properties[nameLower] = append(classDef.Properties[nameLower], def)
+
+	if access == ast.MethodAccessModifierPublicDefault {
+		classDef.DefaultMethod = nameLower
+	}
 }
 
 // visitVariableDeclaration handles variable declarations (Dim statement)
@@ -2140,6 +2217,23 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		// Fallback for expression-based objects (e.g. matches.Item(0) -> Collection(0))
 		// We call with empty name, expecting the object's CallMethod to handle default dispatch (usually "Item")
 		return obj.CallMethod("", args...)
+	}
+
+	// Handle class instance default dispatch (calling the object directly)
+	if classInst, ok := base.(*ClassInstance); ok {
+		methodName := ""
+		if _, ok := objectExpr.(*ast.Identifier); ok {
+			// Invocation on the instance variable itself (t(...)) should use default member
+			methodName = ""
+		} else if ident, ok := objectExpr.(*ast.MemberExpression); ok && ident.Property != nil {
+			// Member calls preserve explicit method name
+			methodName = ident.Property.Name
+		}
+
+		if methodName == "" {
+			methodName = classInst.ClassDef.DefaultMethod
+		}
+		return classInst.CallMethod(methodName, args...)
 	}
 
 	// Handle Member Method Calls (obj.Method(args)) where Method is not a property

@@ -16,6 +16,7 @@ func NewDictionary(ctx *ExecutionContext) *DictionaryLibrary {
 	return &DictionaryLibrary{
 		dict: &Dictionary{
 			store:       make(map[string]interface{}),
+			order:       make([]string, 0),
 			compareMode: 0, // Binary mode by default
 		},
 	}
@@ -48,6 +49,7 @@ type Dictionary struct {
 	store       map[string]interface{}
 	mutex       sync.RWMutex
 	compareMode int // 0=Binary, 1=TextCompare
+	order       []string
 }
 
 // GetProperty gets a property value from the Dictionary
@@ -121,6 +123,9 @@ func (d *Dictionary) Add(args []interface{}) interface{} {
 	defer d.mutex.Unlock()
 
 	key := d.keyToString(args[0])
+	if _, exists := d.store[key]; !exists {
+		d.order = append(d.order, key)
+	}
 	d.store[key] = args[1]
 	return nil
 }
@@ -167,6 +172,7 @@ func (d *Dictionary) Remove(args []interface{}) interface{} {
 
 	key := d.keyToString(args[0])
 	delete(d.store, key)
+	d.removeKeyOrder(key)
 	return nil
 }
 
@@ -176,6 +182,7 @@ func (d *Dictionary) RemoveAll(args []interface{}) interface{} {
 	defer d.mutex.Unlock()
 
 	d.store = make(map[string]interface{})
+	d.order = d.order[:0]
 	return nil
 }
 
@@ -184,8 +191,8 @@ func (d *Dictionary) Keys(args []interface{}) interface{} {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	keys := make([]interface{}, 0, len(d.store))
-	for k := range d.store {
+	keys := make([]interface{}, 0, len(d.order))
+	for _, k := range d.order {
 		keys = append(keys, k)
 	}
 	return keys
@@ -231,9 +238,18 @@ func (d *Dictionary) Enumeration() []interface{} {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	keys := make([]interface{}, 0, len(d.store))
-	for k := range d.store {
+	keys := make([]interface{}, 0, len(d.order))
+	for _, k := range d.order {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func (d *Dictionary) removeKeyOrder(key string) {
+	for i, k := range d.order {
+		if k == key {
+			d.order = append(d.order[:i], d.order[i+1:]...)
+			return
+		}
+	}
 }

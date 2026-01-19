@@ -41,6 +41,7 @@ type ClassDef struct {
 	Functions      map[string]*ast.FunctionDeclaration // Public Functions
 	Properties     map[string][]PropertyDef            // Properties can be overloaded by type (Get/Let/Set)
 	PrivateMethods map[string]ast.Node                 // Private Subs/Functions
+	DefaultMethod  string                              // Lowercase name of the default member
 }
 
 // ClassInstance represents an instance of a Class
@@ -140,6 +141,24 @@ func (ci *ClassInstance) SetProperty(name string, value interface{}) error {
 // CallMethod calls a method on the instance (External Access)
 func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	nameLower := strings.ToLower(name)
+	if nameLower == "" && ci.ClassDef != nil && ci.ClassDef.DefaultMethod != "" {
+		nameLower = ci.ClassDef.DefaultMethod
+	} else if nameLower == "" && ci.ClassDef != nil {
+		// Fallback: single-member classes should still allow default-style invocation
+		if len(ci.ClassDef.Functions) == 1 {
+			for k := range ci.ClassDef.Functions {
+				nameLower = k
+			}
+		} else if len(ci.ClassDef.Methods) == 1 {
+			for k := range ci.ClassDef.Methods {
+				nameLower = k
+			}
+		} else if len(ci.ClassDef.Properties) == 1 {
+			for k := range ci.ClassDef.Properties {
+				nameLower = k
+			}
+		}
+	}
 
 	// 1. Check Public Methods (Sub)
 	if sub, ok := ci.ClassDef.Methods[nameLower]; ok {
@@ -234,7 +253,11 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 
 	// Get executor
 	serverObj := ci.Context.Server
-	executorInt := serverObj.GetProperty("_executor")
+	if serverObj == nil {
+		return nil, fmt.Errorf("no executor")
+	}
+
+	executorInt := serverObj.GetExecutor()
 	if executorInt == nil {
 		return nil, fmt.Errorf("no executor")
 	}

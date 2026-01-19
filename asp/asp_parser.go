@@ -243,10 +243,62 @@ func preProcessColons(code string) string {
 func buildCombinedVBScript(blocks []*CodeBlock) string {
 	var sb strings.Builder
 
-	for _, block := range blocks {
+	optionDirectives := make([]string, 0)
+	adjustedContents := make(map[int]string, len(blocks))
+
+	for idx, block := range blocks {
+		if block.Type != "asp" {
+			continue
+		}
+
+		content := block.Content
+		if strings.TrimSpace(content) == "" {
+			adjustedContents[idx] = ""
+			continue
+		}
+
+		lines := strings.Split(content, "\n")
+		remainingLines := make([]string, 0, len(lines))
+		seenExecutable := false
+
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			lower := strings.ToLower(trimmed)
+			isComment := strings.HasPrefix(lower, "rem ") || strings.HasPrefix(trimmed, "'")
+
+			if !seenExecutable {
+				if trimmed == "" || isComment {
+					remainingLines = append(remainingLines, line)
+					continue
+				}
+
+				if strings.HasPrefix(lower, "option explicit") || strings.HasPrefix(lower, "option base") {
+					optionDirectives = append(optionDirectives, trimmed)
+					continue
+				}
+
+				seenExecutable = true
+			}
+
+			remainingLines = append(remainingLines, line)
+		}
+
+		adjustedContents[idx] = strings.Join(remainingLines, "\n")
+	}
+
+	for _, directive := range optionDirectives {
+		sb.WriteString(directive)
+		sb.WriteString("\n")
+	}
+
+	for idx, block := range blocks {
 		switch block.Type {
 		case "asp":
-			content := strings.TrimSpace(block.Content)
+			content := block.Content
+			if adjusted, ok := adjustedContents[idx]; ok {
+				content = adjusted
+			}
+			content = strings.TrimSpace(content)
 			if content == "" {
 				continue
 			}

@@ -286,6 +286,13 @@
                         <div class="test-desc">DateDiff, DatePart, DateAdd, DateValue, DateSerial, FormatDateTime.</div>
                     </a>
                 </div>
+
+                <div class="test-item" onclick="loadTest('test_missing_builtins.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Filter, Randomize, GetObject</div>
+                        <div class="test-desc">Validates Filter array helper, Randomize/Rnd, and GetObject creation.</div>
+                    </a>
+                </div>
             </div>
 
             <!-- Server & Objects -->
