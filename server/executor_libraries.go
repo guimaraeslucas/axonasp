@@ -287,6 +287,11 @@ func (ac *ADOConnection) SetProperty(name string, value interface{}) error {
 	return nil
 }
 
+// GetName returns the name of the object
+func (ac *ADOConnection) GetName() string {
+	return "ADODB.Connection"
+}
+
 // ADORecordset wraps ADODBRecordset for ASPLibrary interface compatibility
 type ADORecordset struct {
 	lib *ADODBRecordset
@@ -315,6 +320,11 @@ func (ar *ADORecordset) SetProperty(name string, value interface{}) error {
 	return nil
 }
 
+// GetName returns the name of the object
+func (ar *ADORecordset) GetName() string {
+	return "ADODB.Recordset"
+}
+
 // ADOStream wraps ADODBStream for ASPLibrary interface compatibility
 type ADOStream struct {
 	lib *ADODBStream
@@ -341,6 +351,11 @@ func (as *ADOStream) GetProperty(name string) interface{} {
 func (as *ADOStream) SetProperty(name string, value interface{}) error {
 	as.lib.SetProperty(name, value)
 	return nil
+}
+
+// GetName returns the name of the object
+func (as *ADOStream) GetName() string {
+	return "ADODB.Stream"
 }
 
 // RegExpLibrary wraps G3REGEXP for ASPLibrary interface compatibility
