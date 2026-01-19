@@ -1,12 +1,18 @@
 package server
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
+
+// Threshold to trigger early flush when buffering is enabled (to start sending content sooner)
+const responseFlushThreshold = 16 * 1024
 
 // ResponseObject represents the ASP Classic Response Object
 // Implements all methods, properties, and collections from Classic ASP
@@ -86,6 +92,11 @@ func (r *ResponseObject) Write(data interface{}) error {
 		return r.flushInternal()
 	}
 
+	// When buffer grows beyond threshold, flush to start streaming
+	if len(r.buffer) >= responseFlushThreshold {
+		return r.flushInternal()
+	}
+
 	return nil
 }
 
@@ -113,6 +124,11 @@ func (r *ResponseObject) BinaryWrite(data interface{}) error {
 
 	// If buffering is disabled, flush immediately
 	if !r.bufferEnabled {
+		return r.flushInternal()
+	}
+
+	// When buffer grows beyond threshold, flush to start streaming
+	if len(r.buffer) >= responseFlushThreshold {
 		return r.flushInternal()
 	}
 
@@ -405,96 +421,109 @@ func (r *ResponseObject) SetCookieWithOptions(cookie *ResponseCookie) {
 
 // flushInternal sends the buffered output (must be called with lock held)
 func (r *ResponseObject) flushInternal() error {
-	if r.isFlushed || r.httpWriter == nil {
+	if r.httpWriter == nil {
 		return nil
 	}
 
-	// Set Content-Type with charset
-	ct := r.contentType
-	if r.charset != "" && !strings.Contains(strings.ToLower(ct), "charset") {
-		ct += "; charset=" + r.charset
-	}
-	if ct != "" {
-		r.httpWriter.Header().Set("Content-Type", ct)
-	}
-
-	// Set Cache-Control
-	if r.cacheControl != "" {
-		r.httpWriter.Header().Set("Cache-Control", r.cacheControl)
-
-		// Set Pragma for no-cache scenarios
-		if strings.EqualFold(r.cacheControl, "no-cache") ||
-			(strings.EqualFold(r.cacheControl, "private") && r.expires <= 0) {
-			r.httpWriter.Header().Set("Pragma", "no-cache")
+	// On first flush, send headers and status
+	if !r.isFlushed {
+		ct := r.contentType
+		if r.charset != "" && !strings.Contains(strings.ToLower(ct), "charset") {
+			ct += "; charset=" + r.charset
 		}
-	}
-
-	// Set Expires header
-	if r.expires > 0 {
-		expTime := time.Now().Add(time.Duration(r.expires) * time.Minute)
-		r.httpWriter.Header().Set("Expires", expTime.Format(http.TimeFormat))
-	} else if r.expires == 0 {
-		r.httpWriter.Header().Set("Expires", "0")
-	} else if r.expires < 0 {
-		// Negative values mean immediate expiration
-		r.httpWriter.Header().Set("Expires", time.Now().Add(-1*time.Hour).Format(http.TimeFormat))
-	}
-
-	// Set ExpiresAbsolute
-	if !r.expiresAbsolute.IsZero() {
-		r.httpWriter.Header().Set("Expires", r.expiresAbsolute.Format(http.TimeFormat))
-	}
-
-	// Set PICS label
-	if r.pics != "" {
-		r.httpWriter.Header().Set("PICS-Label", r.pics)
-	}
-
-	// Set custom headers
-	for name, value := range r.headers {
-		r.httpWriter.Header().Set(name, value)
-	}
-
-	// Set cookies
-	for _, cookie := range r.cookiesMap {
-		httpCookie := &http.Cookie{
-			Name:     cookie.Name,
-			Value:    cookie.Value,
-			Path:     cookie.Path,
-			Domain:   cookie.Domain,
-			Expires:  cookie.Expires,
-			Secure:   cookie.Secure,
-			HttpOnly: cookie.HttpOnly,
+		if ct != "" {
+			r.httpWriter.Header().Set("Content-Type", ct)
 		}
-		if cookie.Path == "" {
-			httpCookie.Path = "/"
-		}
-		http.SetCookie(r.httpWriter, httpCookie)
-	}
 
-	// Set status code
-	if r.status != "" && r.status != "200 OK" {
-		// Parse status code from status string (e.g., "404 Not Found")
-		parts := strings.SplitN(r.status, " ", 2)
-		if len(parts) > 0 {
-			if code, err := fmt.Sscanf(parts[0], "%d", new(int)); err == nil && code == 1 {
-				var statusCode int
-				fmt.Sscanf(parts[0], "%d", &statusCode)
-				r.httpWriter.WriteHeader(statusCode)
+		if r.cacheControl != "" {
+			r.httpWriter.Header().Set("Cache-Control", r.cacheControl)
+			if strings.EqualFold(r.cacheControl, "no-cache") || (strings.EqualFold(r.cacheControl, "private") && r.expires <= 0) {
+				r.httpWriter.Header().Set("Pragma", "no-cache")
 			}
 		}
+
+		if r.expires > 0 {
+			expTime := time.Now().Add(time.Duration(r.expires) * time.Minute)
+			r.httpWriter.Header().Set("Expires", expTime.Format(http.TimeFormat))
+		} else if r.expires == 0 {
+			r.httpWriter.Header().Set("Expires", "0")
+		} else if r.expires < 0 {
+			r.httpWriter.Header().Set("Expires", time.Now().Add(-1*time.Hour).Format(http.TimeFormat))
+		}
+
+		if !r.expiresAbsolute.IsZero() {
+			r.httpWriter.Header().Set("Expires", r.expiresAbsolute.Format(http.TimeFormat))
+		}
+
+		if r.pics != "" {
+			r.httpWriter.Header().Set("PICS-Label", r.pics)
+		}
+
+		for name, value := range r.headers {
+			r.httpWriter.Header().Set(name, value)
+		}
+
+		for _, cookie := range r.cookiesMap {
+			httpCookie := &http.Cookie{
+				Name:     cookie.Name,
+				Value:    cookie.Value,
+				Path:     cookie.Path,
+				Domain:   cookie.Domain,
+				Expires:  cookie.Expires,
+				Secure:   cookie.Secure,
+				HttpOnly: cookie.HttpOnly,
+			}
+			if cookie.Path == "" {
+				httpCookie.Path = "/"
+			}
+			http.SetCookie(r.httpWriter, httpCookie)
+		}
+
+		if r.status != "" && r.status != "200 OK" {
+			parts := strings.SplitN(r.status, " ", 2)
+			if len(parts) > 0 {
+				var statusCode int
+				if _, err := fmt.Sscanf(parts[0], "%d", &statusCode); err == nil && statusCode > 0 {
+					r.httpWriter.WriteHeader(statusCode)
+				}
+			}
+		}
+
+		r.isFlushed = true
 	}
 
-	// Write buffer
 	if len(r.buffer) > 0 {
-		_, err := r.httpWriter.Write(r.buffer)
-		if err != nil {
+		if _, err := r.httpWriter.Write(r.buffer); err != nil {
+			if isClientAbortErr(err) {
+				// Consider flushed; client went away
+				r.buffer = r.buffer[:0]
+				return nil
+			}
 			return err
 		}
+		// Clear buffer after writing to avoid re-sending
+		r.buffer = r.buffer[:0]
 	}
 
-	r.isFlushed = true
 	return nil
+}
+
+func isClientAbortErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		msg := strings.ToLower(opErr.Error())
+		if strings.Contains(msg, "connection reset") || strings.Contains(msg, "broken pipe") || strings.Contains(msg, "wsasend") || strings.Contains(msg, "connection was aborted") || strings.Contains(msg, "software in your host machine") {
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset") || strings.Contains(msg, "wsasend") || strings.Contains(msg, "connection was aborted")
 }
 
 // toString converts a value to string following ASP rules
@@ -506,10 +535,16 @@ func (r *ResponseObject) toString(value interface{}) string {
 	switch v := value.(type) {
 	case string:
 		return v
-	case int, int32, int64:
-		return fmt.Sprintf("%d", v)
-	case float32, float64:
-		return fmt.Sprintf("%v", v)
+	case int:
+		return strconv.Itoa(v)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'g', -1, 32)
+	case float64:
+		return strconv.FormatFloat(v, 'g', -1, 64)
 	case bool:
 		if v {
 			return "True"

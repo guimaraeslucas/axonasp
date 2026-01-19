@@ -226,7 +226,6 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	err = processor.ExecuteASPFile(string(content), fullPath, w, r)
 	if err != nil {
 		fmt.Printf("ASP processing error in %s: %v\n", path, err)
-		
 		http.Error(w, fmt.Sprintf("AxonASP: %v", err), http.StatusInternalServerError)
 	}
 }

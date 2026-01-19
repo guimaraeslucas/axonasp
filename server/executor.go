@@ -5,7 +5,9 @@ import (
 	"go-asp/asp"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -139,6 +141,17 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.Server = NewServerObjectWithContext(ctx)
 	ctx.Server.SetHttpRequest(r)
 
+	// Built-in VBScript constants (case-insensitive)
+	ctx.constants["vbcrlf"] = "\r\n"
+	ctx.constants["vbcr"] = "\r"
+	ctx.constants["vblf"] = "\n"
+	ctx.constants["vbnewline"] = "\r\n"
+	ctx.constants["vbtab"] = "\t"
+	ctx.constants["vbback"] = string(rune(8))
+	ctx.constants["vbformfeed"] = string(rune(12))
+	ctx.constants["vbverticaltab"] = string(rune(11))
+	ctx.constants["vbnullstring"] = ""
+
 	// We'll set the executor reference after creating it (circular dependency)
 	// This is done in ASPExecutor.Execute()
 
@@ -212,6 +225,23 @@ func seedFromNumber(val float64) int64 {
 	return seed
 }
 
+// lowerKey returns a lowercase key without allocating when the input is already lower ASCII
+func lowerKey(name string) string {
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'A' && c <= 'Z' {
+			b := []byte(name)
+			for j := i; j < len(b); j++ {
+				if b[j] >= 'A' && b[j] <= 'Z' {
+					b[j] += 'a' - 'A'
+				}
+			}
+			return string(b)
+		}
+	}
+	return name
+}
+
 // PushScope pushes a new local scope
 func (ec *ExecutionContext) PushScope() {
 	ec.mu.Lock()
@@ -245,7 +275,7 @@ func (ec *ExecutionContext) GetContextObject() interface{} {
 // SetVariable sets a variable in the execution context (case-insensitive)
 // Returns error if attempting to overwrite a constant
 func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
-	nameLower := strings.ToLower(name)
+	nameLower := lowerKey(name)
 
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
@@ -293,7 +323,7 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 
 // DefineVariable defines a variable in the current scope (Dim)
 func (ec *ExecutionContext) DefineVariable(name string, value interface{}) error {
-	nameLower := strings.ToLower(name)
+	nameLower := lowerKey(name)
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 
@@ -309,7 +339,7 @@ func (ec *ExecutionContext) DefineVariable(name string, value interface{}) error
 
 // GetVariable gets a variable from the execution context (case-insensitive)
 func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
-	nameLower := strings.ToLower(name)
+	nameLower := lowerKey(name)
 
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
@@ -350,7 +380,7 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 
 // GetVariableFromParentScope gets a variable from the parent scope (for ByRef parameters)
 func (ec *ExecutionContext) GetVariableFromParentScope(name string) (interface{}, bool) {
-	nameLower := strings.ToLower(name)
+	nameLower := lowerKey(name)
 
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
@@ -374,7 +404,7 @@ func (ec *ExecutionContext) GetVariableFromParentScope(name string) (interface{}
 
 // SetVariableInParentScope sets a variable in the parent scope (for ByRef parameters)
 func (ec *ExecutionContext) SetVariableInParentScope(name string, value interface{}) error {
-	nameLower := strings.ToLower(name)
+	nameLower := lowerKey(name)
 
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
@@ -400,7 +430,7 @@ func (ec *ExecutionContext) SetVariableInParentScope(name string, value interfac
 // SetConstant sets a constant in the execution context (case-insensitive)
 // Constants cannot be changed after initialization
 func (ec *ExecutionContext) SetConstant(name string, value interface{}) error {
-	nameLower := strings.ToLower(name)
+	nameLower := lowerKey(name)
 
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
@@ -512,6 +542,22 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 	}
 	fileContent = resolvedContent
 
+	// Fast path: if there's no executable ASP (only directives/comments), stream HTML directly
+	if !hasExecutableASP(fileContent) {
+		cleanHTML := stripDirectivesAndComments(fileContent)
+		if err := ae.context.Response.Write(cleanHTML); err != nil {
+			return fmt.Errorf("failed to write static HTML: %w", err)
+		}
+		if err := ae.context.Response.Flush(); err != nil {
+			return fmt.Errorf("failed to flush response: %w", err)
+		}
+
+		if err := ae.saveSession(); err != nil {
+			fmt.Printf("Warning: Failed to save session: %v\n", err)
+		}
+		return nil
+	}
+
 	// Set RootDir in context
 	ae.context.RootDir = ae.config.RootDir
 
@@ -533,7 +579,7 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 	ae.context.Server.SetExecutor(ae) // Set executor for CreateObject calls
 
 	// Populate Request object
-	populateRequestData(ae.context.Request, r)
+	populateRequestData(ae.context.Request, r, ae.context)
 
 	// Call Session_OnStart if this is a new session
 	if ae.context.isNewSession {
@@ -575,9 +621,7 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 	// Execute blocks in order with timeout protection
 	done := make(chan error, 1)
 	execFunc := func() error {
-		if result.CombinedProgram != nil {
-			return ae.executeVBProgram(result.CombinedProgram)
-		}
+		// Always execute per-block to avoid re-emitting large HTML through VB conversion
 		return ae.executeBlocks(result)
 	}
 
@@ -728,17 +772,7 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 		return fmt.Errorf("ASP parse error in included file: %v", result.Errors[0])
 	}
 
-	if result.CombinedProgram != nil {
-		if err := childExecutor.executeVBProgram(result.CombinedProgram); err != nil {
-			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer {
-				return nil
-			}
-			return err
-		}
-		return nil
-	}
-
-	// Execute blocks
+	// Execute blocks (avoid CombinedProgram to keep HTML streaming fast)
 	return childExecutor.executeBlocks(result)
 }
 
@@ -820,6 +854,56 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 	}
 
 	return nil
+}
+
+// Detects whether the content has executable ASP code (non-directive/comment blocks)
+func hasExecutableASP(content string) bool {
+	pos := 0
+	for {
+		idx := strings.Index(content[pos:], "<%")
+		if idx == -1 {
+			return false
+		}
+		idx += pos
+		tail := content[idx+2:]
+		if strings.HasPrefix(tail, "@") || strings.HasPrefix(tail, "--") {
+			end := strings.Index(tail, "%>")
+			if end == -1 {
+				return false
+			}
+			pos = idx + 2 + end + 2
+			continue
+		}
+		return true
+	}
+}
+
+// Removes directives/comments so pure HTML can be streamed without parsing
+func stripDirectivesAndComments(content string) string {
+	var b strings.Builder
+	pos := 0
+	for pos < len(content) {
+		idx := strings.Index(content[pos:], "<%")
+		if idx == -1 {
+			b.WriteString(content[pos:])
+			break
+		}
+		idx += pos
+		b.WriteString(content[pos:idx])
+		tail := content[idx+2:]
+		if strings.HasPrefix(tail, "@") || strings.HasPrefix(tail, "--") {
+			end := strings.Index(tail, "%>")
+			if end == -1 {
+				break
+			}
+			pos = idx + 2 + end + 2
+			continue
+		}
+		// Found executable code; return original remainder
+		b.WriteString(content[idx:])
+		return b.String()
+	}
+	return b.String()
 }
 
 // CreateObject creates an ASP COM object (like Server.CreateObject)
@@ -2861,7 +2945,7 @@ func isBoolType(val interface{}) bool {
 }
 
 // populateRequestData fills a RequestObject with data from HTTP request
-func populateRequestData(req *RequestObject, r *http.Request) {
+func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionContext) {
 	// Set the HTTP request for BinaryRead support
 	req.SetHTTPRequest(r)
 
@@ -2891,24 +2975,159 @@ func populateRequestData(req *RequestObject, r *http.Request) {
 		req.Cookies.Add(cookie.Name, cookie.Value)
 	}
 
-	// Set server variables
-	req.ServerVariables.Add("REQUEST_METHOD", r.Method)
-	req.ServerVariables.Add("REQUEST_PATH", r.URL.Path)
+	// Resolve core server info
+	pathInfo := r.URL.Path
+	serverName := r.Host
+	serverPort := r.URL.Port()
+	if hostOnly, portOnly, err := net.SplitHostPort(r.Host); err == nil {
+		serverName = hostOnly
+		serverPort = portOnly
+	}
+
+	if serverPort == "" {
+		if r.TLS != nil {
+			serverPort = "443"
+		} else {
+			serverPort = "80"
+		}
+	}
+
+	remoteAddr := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		remoteAddr = host
+	}
+
+	localAddr := ""
+	if la, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+		if host, port, err := net.SplitHostPort(la.String()); err == nil {
+			localAddr = host
+			// Prefer bound port if not parsed from host header
+			if serverPort == "" {
+				serverPort = port
+			}
+		}
+	}
+
+	rootDir := "./www"
+	if ctx != nil && ctx.RootDir != "" {
+		rootDir = ctx.RootDir
+	}
+	absRoot, _ := filepath.Abs(rootDir)
+	pathTranslated := filepath.Join(absRoot, strings.TrimPrefix(pathInfo, "/"))
+
+	httpsVal := "OFF"
+	serverPortSecure := "0"
+	if r.TLS != nil {
+		httpsVal = "ON"
+		serverPortSecure = "1"
+	}
+
+	// Authentication info (Basic only)
+	authType := ""
+	authUser := ""
+	authPass := ""
+	if user, pass, ok := r.BasicAuth(); ok {
+		authType = "Basic"
+		authUser = user
+		authPass = pass
+	}
+
+	// SSL/Certificate placeholders (best effort)
+	certSubject := ""
+	certIssuer := ""
+	certSerial := ""
+	certFlags := "0"
+	if r.TLS != nil && len(r.TLS.PeerCertificates) > 0 {
+		cert := r.TLS.PeerCertificates[0]
+		certSubject = cert.Subject.String()
+		certIssuer = cert.Issuer.String()
+		certSerial = cert.SerialNumber.String()
+		certFlags = "1"
+	}
+
+	// All HTTP headers (HTTP_* form)
+	var allHTTPBuilder strings.Builder
+	for name, values := range r.Header {
+		if len(values) == 0 {
+			continue
+		}
+		headerName := "HTTP_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
+		allHTTPBuilder.WriteString(headerName)
+		allHTTPBuilder.WriteString(": ")
+		allHTTPBuilder.WriteString(values[0])
+		allHTTPBuilder.WriteString("\r\n")
+		req.ServerVariables.Add(headerName, values[0])
+	}
+
+	// ALL_RAW (original header names)
+	var allRawBuilder strings.Builder
+	for name, values := range r.Header {
+		if len(values) == 0 {
+			continue
+		}
+		allRawBuilder.WriteString(name)
+		allRawBuilder.WriteString(": ")
+		allRawBuilder.WriteString(values[0])
+		allRawBuilder.WriteString("\r\n")
+	}
+
+	// Core server variables
+	req.ServerVariables.Add("ALL_HTTP", allHTTPBuilder.String())
+	req.ServerVariables.Add("ALL_RAW", allRawBuilder.String())
+	req.ServerVariables.Add("APPL_MD_PATH", "/LM/W3SVC/1/ROOT")
+	req.ServerVariables.Add("APPL_PHYSICAL_PATH", absRoot)
+	req.ServerVariables.Add("AUTH_PASSWORD", authPass)
+	req.ServerVariables.Add("AUTH_TYPE", authType)
+	req.ServerVariables.Add("AUTH_USER", authUser)
+	req.ServerVariables.Add("CERT_COOKIE", "")
+	req.ServerVariables.Add("CERT_FLAGS", certFlags)
+	req.ServerVariables.Add("CERT_ISSUER", certIssuer)
+	req.ServerVariables.Add("CERT_KEYSIZE", "0")
+	req.ServerVariables.Add("CERT_SECRETKEYSIZE", "0")
+	req.ServerVariables.Add("CERT_SERIALNUMBER", certSerial)
+	req.ServerVariables.Add("CERT_SERVER_ISSUER", "")
+	req.ServerVariables.Add("CERT_SERVER_SUBJECT", "")
+	req.ServerVariables.Add("CERT_SUBJECT", certSubject)
+	req.ServerVariables.Add("CONTENT_LENGTH", r.Header.Get("Content-Length"))
+	req.ServerVariables.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
+	req.ServerVariables.Add("GATEWAY_INTERFACE", "CGI/1.1")
+	req.ServerVariables.Add("HTTPS", httpsVal)
+	req.ServerVariables.Add("HTTPS_KEYSIZE", "0")
+	req.ServerVariables.Add("HTTPS_SECRETKEYSIZE", "0")
+	req.ServerVariables.Add("HTTPS_SERVER_ISSUER", "")
+	req.ServerVariables.Add("HTTPS_SERVER_SUBJECT", "")
+	req.ServerVariables.Add("INSTANCE_ID", "1")
+	req.ServerVariables.Add("INSTANCE_META_PATH", "/LM/W3SVC/1")
+	req.ServerVariables.Add("LOCAL_ADDR", localAddr)
+	req.ServerVariables.Add("LOGON_USER", authUser)
+	req.ServerVariables.Add("PATH_INFO", pathInfo)
+	req.ServerVariables.Add("PATH_TRANSLATED", pathTranslated)
 	req.ServerVariables.Add("QUERY_STRING", r.URL.RawQuery)
-	req.ServerVariables.Add("REMOTE_ADDR", r.RemoteAddr)
-	req.ServerVariables.Add("SERVER_NAME", r.Host)
-	req.ServerVariables.Add("SERVER_PORT", r.URL.Port())
+	req.ServerVariables.Add("REMOTE_ADDR", remoteAddr)
+	req.ServerVariables.Add("REMOTE_HOST", remoteAddr)
+	req.ServerVariables.Add("REMOTE_USER", authUser)
+	req.ServerVariables.Add("REQUEST_METHOD", r.Method)
+	req.ServerVariables.Add("SCRIPT_NAME", pathInfo)
+	req.ServerVariables.Add("SERVER_NAME", serverName)
+	req.ServerVariables.Add("SERVER_PORT", serverPort)
+	req.ServerVariables.Add("SERVER_PORT_SECURE", serverPortSecure)
+	req.ServerVariables.Add("SERVER_PROTOCOL", r.Proto)
+	req.ServerVariables.Add("SERVER_SOFTWARE", "G3pix-AxonASP/Go")
+	req.ServerVariables.Add("URL", pathInfo)
+	req.ServerVariables.Add("REQUEST_PATH", r.URL.Path)
 	req.ServerVariables.Add("HTTP_USER_AGENT", r.UserAgent())
 	req.ServerVariables.Add("HTTP_REFERER", r.Referer())
-	req.ServerVariables.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
-	req.ServerVariables.Add("CONTENT_LENGTH", r.Header.Get("Content-Length"))
-
-	// Add all HTTP headers as HTTP_* server variables
-	for name, values := range r.Header {
-		if len(values) > 0 {
-			varName := "HTTP_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_"))
-			req.ServerVariables.Add(varName, values[0])
-		}
+	req.ServerVariables.Add("HTTP_COOKIE", r.Header.Get("Cookie"))
+	req.ServerVariables.Add("HTTP_ACCEPT", r.Header.Get("Accept"))
+	req.ServerVariables.Add("HTTP_ACCEPT_LANGUAGE", r.Header.Get("Accept-Language"))
+	req.ServerVariables.Add("HTTP_ACCEPT_ENCODING", r.Header.Get("Accept-Encoding"))
+	req.ServerVariables.Add("HTTP_HOST", r.Host)
+	req.ServerVariables.Add("HTTP_CONNECTION", r.Header.Get("Connection"))
+	req.ServerVariables.Add("HTTP_CACHE_CONTROL", r.Header.Get("Cache-Control"))
+	req.ServerVariables.Add("HTTP_PRAGMA", r.Header.Get("Pragma"))
+	req.ServerVariables.Add("HTTP_UPGRADE_INSECURE_REQUESTS", r.Header.Get("Upgrade-Insecure-Requests"))
+	if xfwd := r.Header.Get("X-Forwarded-For"); xfwd != "" {
+		req.ServerVariables.Add("HTTP_X_FORWARDED_FOR", xfwd)
 	}
 
 	// ClientCertificate collection (stub - SSL certificates not currently handled)
