@@ -849,7 +849,18 @@ func (l *Lexer) nextPunctuation() Token {
 }
 
 func (l *Lexer) vbSyntaxError(code VBSyntaxErrorCode) error {
-	return NewVBSyntaxError(code, l.CurrentLine, l.LineIndex())
+	// Capture the current offending character/token and full line text
+	tokenText := ""
+	if l.Index < len([]rune(l.Code)) {
+		r := l.getChar(l.Index)
+		if r != 0 {
+			tokenText = string(r)
+		}
+	}
+
+	lineText := l.currentLineText()
+
+	return NewVBSyntaxError(code, l.CurrentLine, l.LineIndex(), tokenText, lineText)
 }
 
 // VBSyntaxError represents a VBScript syntax error
@@ -857,18 +868,59 @@ type VBSyntaxError struct {
 	Code   VBSyntaxErrorCode
 	Line   int
 	Column int
+	TokenText string
+	LineText  string
 }
 
 // NewVBSyntaxError creates a new syntax error
-func NewVBSyntaxError(code VBSyntaxErrorCode, line, column int) *VBSyntaxError {
+func NewVBSyntaxError(code VBSyntaxErrorCode, line, column int, tokenText, lineText string) *VBSyntaxError {
 	return &VBSyntaxError{
-		Code:   code,
-		Line:   line,
-		Column: column,
+		Code:      code,
+		Line:      line,
+		Column:    column,
+		TokenText: tokenText,
+		LineText:  lineText,
 	}
 }
 
 // Error implements the error interface
 func (e *VBSyntaxError) Error() string {
-	return "VBScript syntax error"
+	msg := "VBScript syntax error"
+	// Include numeric error code, position, token and line context when available
+	if e.Line > 0 && e.Column >= 0 {
+		msg = msg + " " + strconv.Itoa(int(e.Code)) + " at line " + strconv.Itoa(e.Line) + ", column " + strconv.Itoa(e.Column)
+	}
+	if e.TokenText != "" {
+		msg = msg + ": '" + e.TokenText + "'"
+	}
+	if e.LineText != "" {
+		msg = msg + "\n" + e.LineText
+	}
+	return msg
+}
+
+// currentLineText returns the full text of the current line
+func (l *Lexer) currentLineText() string {
+	if len(l.Code) == 0 {
+		return ""
+	}
+	// Find start and end of current line using rune indices
+	start := l.CurrentLineStart
+	if start < 0 {
+		start = 0
+	}
+	// Scan forward until newline or EOF
+	end := start
+	for end < len([]rune(l.Code)) {
+		ch := l.getChar(end)
+		if ch == '\n' || ch == '\r' || ch == 0 {
+			break
+		}
+		end++
+	}
+	runes := []rune(l.Code)
+	if start >= 0 && start < len(runes) && end <= len(runes) && end >= start {
+		return string(runes[start:end])
+	}
+	return ""
 }

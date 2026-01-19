@@ -632,11 +632,14 @@ func (p *Parser) parseIfStatement() ast.Statement {
 	} else {
 		consequent = p.parseMultiInlineStatement(true, line)
 
-		if p.optKeyword(KeywordElse) {
-			alternate = p.parseMultiInlineStatement(false, line)
-		}
+		p.skipComments()
+		
+		// Check for explicit End If
 		if p.optKeyword(KeywordEnd) {
 			p.expectKeyword(KeywordIf)
+		} else if p.optKeyword(KeywordElse) {
+			alternate = p.parseMultiInlineStatement(false, line)
+			p.skipComments()
 		}
 	}
 
@@ -724,16 +727,26 @@ func (p *Parser) parseMultiInlineStatement(matchElse bool, line int) ast.Stateme
 	stmts := ast.NewStatementList()
 
 	for {
-		stmts.Add(p.parseInlineStatement())
 		p.skipComments()
-		canContinue := p.optColonLineTermination() &&
-			line == p.startMarker.Line &&
-			(!p.matchKeyword(KeywordElse) || !matchElse) &&
-			!p.matchKeyword(KeywordEnd)
 
-		if !canContinue || p.matchEof() {
+		// Stop if we reached a block terminator or EOF
+		if p.matchKeyword(KeywordEnd) || p.matchKeyword(KeywordElse) || p.matchKeyword(KeywordElseIf) || p.matchEof() {
 			break
 		}
+
+		stmts.Add(p.parseInlineStatement())
+		p.skipComments()
+
+		// Separator between inline statements: consume colon or any line termination
+		if p.optColonLineTermination() {
+			continue
+		}
+		if p.matchLineTermination() {
+			p.move()
+			continue
+		}
+
+		break
 	}
 
 	if stmts.Count() == 1 {
@@ -800,7 +813,6 @@ func (p *Parser) parseForEachStatement() ast.Statement {
 		if p.matchEof() || p.matchKeyword(KeywordNext) {
 			break
 		}
-
 		stmt.Body = append(stmt.Body, p.parseBlockStatement(false))
 	}
 
@@ -814,35 +826,38 @@ func (p *Parser) parseDoStatement() ast.Statement {
 
 	p.expectKeyword(KeywordDo)
 
+	loopType := ast.LoopTypeNone
+	testType := ast.ConditionTestTypeNone
 	var condition ast.Expression
-	var loopType ast.LoopType
-	var testType ast.ConditionTestType = ast.ConditionTestTypeNone
 
+	// Optional pre-test condition
 	if p.optKeyword(KeywordWhile) {
-		testType = ast.ConditionTestTypePreTest
 		loopType = ast.LoopTypeWhile
+		testType = ast.ConditionTestTypePreTest
 		condition = p.parseExpression()
 	} else if p.optKeyword(KeywordUntil) {
-		testType = ast.ConditionTestTypePreTest
 		loopType = ast.LoopTypeUntil
+		testType = ast.ConditionTestTypePreTest
 		condition = p.parseExpression()
 	}
 
 	p.skipComments()
-	p.expectLineTermination()
+	if !p.optLineTermination() {
+		p.expectLineTermination()
+	}
 
-	var body []ast.Statement
+	body := []ast.Statement{}
 	for {
 		p.skipCommentsAndNewlines()
 		if p.matchEof() || p.matchKeyword(KeywordLoop) {
 			break
 		}
-
 		body = append(body, p.parseBlockStatement(false))
 	}
 
 	p.expectKeyword(KeywordLoop)
 
+	// Optional post-test condition if not provided before
 	if testType == ast.ConditionTestTypeNone {
 		if p.optKeyword(KeywordWhile) {
 			loopType = ast.LoopTypeWhile
@@ -885,6 +900,7 @@ func (p *Parser) parseSelectStatement() ast.Statement {
 		}
 
 		caseStmt := ast.NewCaseStatement()
+		caseLine := p.startMarker.Line
 		if !p.optKeyword(KeywordElse) {
 			// Helper to parse case value
 			parseCaseValue := func() ast.Expression {
@@ -941,15 +957,23 @@ func (p *Parser) parseSelectStatement() ast.Statement {
 		}
 
 		p.skipComments()
-		p.optLineTermination()
 
-		for {
-			p.skipCommentsAndNewlines()
-			if p.matchEof() || p.matchKeyword(KeywordCase) || p.matchKeyword(KeywordEnd) {
-				break
+		// Check if there are inline statements after case value (on same line)
+		inline := !p.optLineTermination() || caseLine == p.startMarker.Line
+
+		if inline && !p.matchEof() && !p.matchKeyword(KeywordCase) && !p.matchKeyword(KeywordEnd) {
+			// Parse inline statements separated by colons
+			caseStmt.Body = append(caseStmt.Body, p.parseMultiInlineStatement(false, caseLine))
+		} else {
+			// Parse block statements on following lines
+			for {
+				p.skipCommentsAndNewlines()
+				if p.matchEof() || p.matchKeyword(KeywordCase) || p.matchKeyword(KeywordEnd) {
+					break
+				}
+
+				caseStmt.Body = append(caseStmt.Body, p.parseBlockStatement(false))
 			}
-
-			caseStmt.Body = append(caseStmt.Body, p.parseBlockStatement(false))
 		}
 
 		stmt.Cases = append(stmt.Cases, caseStmt)
@@ -1707,5 +1731,37 @@ func (p *Parser) expectAnyKeywordAsIdentifier() string {
 // Error handling
 
 func (p *Parser) vbSyntaxError(code VBSyntaxErrorCode) error {
-	return NewVBSyntaxError(code, p.lastMarker.Line, p.lastMarker.Column)
+	// Capture current token text if available
+	tokenText := ""
+	if p.next != nil {
+		start := p.next.GetStart()
+		end := p.next.GetEnd()
+		if start >= 0 && end >= start {
+			runes := []rune(p.lexer.Code)
+			if end <= len(runes) {
+				tokenText = string(runes[start:end])
+			}
+		}
+	}
+
+	// Capture the full line text from the lexer's state
+	lineText := ""
+	if p.lexer != nil {
+		// Determine start and end of current line based on lexer's CurrentLineStart
+		start := p.lexer.CurrentLineStart
+		end := start
+		for end < len([]rune(p.lexer.Code)) {
+			ch := p.lexer.getChar(end)
+			if ch == '\n' || ch == '\r' || ch == 0 {
+				break
+			}
+			end++
+		}
+		runes := []rune(p.lexer.Code)
+		if start >= 0 && start < len(runes) && end <= len(runes) && end >= start {
+			lineText = string(runes[start:end])
+		}
+	}
+
+	return NewVBSyntaxError(code, p.lastMarker.Line, p.lastMarker.Column, tokenText, lineText)
 }

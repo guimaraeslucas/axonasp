@@ -22,6 +22,15 @@ func (e *LoopExitError) Error() string {
 	return fmt.Sprintf("Exit %s", e.LoopType)
 }
 
+// ProcedureExitError represents an Exit Sub/Function/Property control flow signal
+type ProcedureExitError struct {
+	Kind string // "sub", "function", "property"
+}
+
+func (e *ProcedureExitError) Error() string {
+	return fmt.Sprintf("Exit %s", e.Kind)
+}
+
 // ErrServerTransfer indicates a Server.Transfer call, stopping current execution
 var ErrServerTransfer = fmt.Errorf("Server.Transfer")
 
@@ -45,6 +54,7 @@ type ExecutionContext struct {
 	Server      *ServerObject
 	Session     *SessionObject
 	Application *ApplicationObject
+	Err         *ErrObject
 
 	// Variable storage (case-insensitive keys)
 	variables map[string]interface{}
@@ -106,6 +116,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		Server:         nil, // Will be initialized below
 		Session:        NewSessionObject(sessionID, sessionData.Data),
 		Application:    GetGlobalApplication(),
+		Err:            NewErrObject(),
 		variables:      make(map[string]interface{}),
 		constants:      make(map[string]interface{}),
 		libraries:      make(map[string]interface{}),
@@ -128,6 +139,8 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 
 	// Add Document object to variables (for Document.Write access)
 	ctx.variables["document"] = NewDocumentObject(ctx)
+	// Expose Err intrinsic object
+	ctx.variables["err"] = ctx.Err
 
 	return ctx
 }
@@ -607,15 +620,15 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 	childCtx.Server.SetHttpRequest(ae.context.httpRequest)
 	childCtx.Server.SetRootDir(ae.context.RootDir)
 	childCtx.Server.SetScriptTimeout(ae.context.Server.GetScriptTimeout())
-	
+
 	// Create a new executor for the child context
 	childExecutor := &ASPExecutor{
 		config:  ae.config,
 		context: childCtx,
 	}
-	
+
 	childCtx.Server.SetExecutor(childExecutor)
-	
+
 	// Add Document object
 	childCtx.variables["document"] = NewDocumentObject(childCtx)
 
@@ -626,7 +639,7 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 		AllowImplicitVars: true,
 		DebugMode:         ae.config.DebugASP,
 	}
-	
+
 	parser := asp.NewASPParserWithOptions(resolvedContent, parsingOptions)
 	result, err := parser.Parse()
 	if err != nil {
@@ -770,20 +783,47 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 
 // ASPVisitor traverses and executes the VBScript AST
 type ASPVisitor struct {
-	context   *ExecutionContext
-	executor  *ASPExecutor
-	depth     int
-	withStack []interface{}
+	context       *ExecutionContext
+	executor      *ASPExecutor
+	depth         int
+	withStack     []interface{}
+	resumeOnError bool
 }
 
 // NewASPVisitor creates a new ASP visitor for AST traversal
 func NewASPVisitor(ctx *ExecutionContext, executor *ASPExecutor) *ASPVisitor {
 	return &ASPVisitor{
-		context:   ctx,
-		executor:  executor,
-		depth:     0,
-		withStack: make([]interface{}, 0),
+		context:       ctx,
+		executor:      executor,
+		depth:         0,
+		withStack:     make([]interface{}, 0),
+		resumeOnError: false,
 	}
+}
+
+// handleStatementError applies VBScript-style error handling semantics, respecting On Error Resume Next.
+func (v *ASPVisitor) handleStatementError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	// Propagate control-flow signals regardless of resume mode
+	if err == ErrServerTransfer || err.Error() == "RESPONSE_END" {
+		return err
+	}
+	if _, ok := err.(*LoopExitError); ok {
+		return err
+	}
+	if _, ok := err.(*ProcedureExitError); ok {
+		return err
+	}
+
+	if v.resumeOnError {
+		v.context.Err.SetError(err)
+		return nil
+	}
+
+	return err
 }
 
 // VisitStatement executes a single statement from the AST
@@ -805,77 +845,72 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	switch stmt := node.(type) {
 	case *ast.AssignmentStatement:
-		return v.visitAssignment(stmt)
-
+		return v.handleStatementError(v.visitAssignment(stmt))
 	case *ast.CallStatement:
 		_, err := v.visitExpression(stmt.Callee)
-		return err
-
+		return v.handleStatementError(err)
 	case *ast.CallSubStatement:
-		return v.visitCallSubStatement(stmt)
-
+		return v.handleStatementError(v.visitCallSubStatement(stmt))
 	case *ast.ReDimStatement:
-		return v.visitReDim(stmt)
-
+		return v.handleStatementError(v.visitReDim(stmt))
 	case *ast.IfStatement:
-		return v.visitIf(stmt)
-
+		return v.handleStatementError(v.visitIf(stmt))
 	case *ast.ForStatement:
-		return v.visitFor(stmt)
-
+		return v.handleStatementError(v.visitFor(stmt))
 	case *ast.ForEachStatement:
-		return v.visitForEach(stmt)
-
+		return v.handleStatementError(v.visitForEach(stmt))
 	case *ast.DoStatement:
-		return v.visitDo(stmt)
-
+		return v.handleStatementError(v.visitDo(stmt))
 	case *ast.WhileStatement:
-		return v.visitWhile(stmt)
-
+		return v.handleStatementError(v.visitWhile(stmt))
 	case *ast.SelectStatement:
-		return v.visitSelect(stmt)
-
+		return v.handleStatementError(v.visitSelect(stmt))
 	case *ast.SubDeclaration:
-		return v.visitSubDeclaration(stmt)
-
+		return v.handleStatementError(v.visitSubDeclaration(stmt))
 	case *ast.FunctionDeclaration:
-		return v.visitFunctionDeclaration(stmt)
-
+		return v.handleStatementError(v.visitFunctionDeclaration(stmt))
 	case *ast.ClassDeclaration:
-		return v.visitClassDeclaration(stmt)
-
+		return v.handleStatementError(v.visitClassDeclaration(stmt))
 	case *ast.WithStatement:
-		return v.visitWithStatement(stmt)
-
+		return v.handleStatementError(v.visitWithStatement(stmt))
 	case *ast.VariableDeclaration:
-		return v.visitVariableDeclaration(stmt)
-
+		return v.handleStatementError(v.visitVariableDeclaration(stmt))
 	case *ast.VariablesDeclaration:
-		return v.visitVariablesDeclaration(stmt)
-
+		return v.handleStatementError(v.visitVariablesDeclaration(stmt))
 	case *ast.ConstsDeclaration:
-		return v.visitConstDeclaration(stmt)
-
+		return v.handleStatementError(v.visitConstDeclaration(stmt))
 	case *ast.StatementList:
 		for _, s := range stmt.Statements {
 			if err := v.VisitStatement(s); err != nil {
-				return err
+				if handled := v.handleStatementError(err); handled != nil {
+					return handled
+				}
 			}
 		}
-
+		return nil
 	case *ast.OnErrorResumeNextStatement:
-		// Error handling - continue on error
+		v.resumeOnError = true
+		v.context.Err.Clear()
 		return nil
-
 	case *ast.OnErrorGoTo0Statement:
-		// Error handling - reset error
+		v.resumeOnError = false
+		v.context.Err.Clear()
 		return nil
-
+	case *ast.ExitForStatement:
+		return &LoopExitError{LoopType: "for"}
+	case *ast.ExitDoStatement:
+		return &LoopExitError{LoopType: "do"}
+	case *ast.ExitSubStatement:
+		return &ProcedureExitError{Kind: "sub"}
+	case *ast.ExitFunctionStatement:
+		return &ProcedureExitError{Kind: "function"}
+	case *ast.ExitPropertyStatement:
+		return &ProcedureExitError{Kind: "property"}
 	default:
 		// Try to evaluate as expression for side effects
 		if expr, ok := node.(ast.Expression); ok {
 			_, err := v.visitExpression(expr)
-			return err
+			return v.handleStatementError(err)
 		}
 	}
 

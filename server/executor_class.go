@@ -35,12 +35,12 @@ type PropertyDef struct {
 }
 
 type ClassDef struct {
-	Name          string
-	Variables     map[string]ClassMemberVar
-	Methods       map[string]*ast.SubDeclaration      // Public Subs
-	Functions     map[string]*ast.FunctionDeclaration // Public Functions
-	Properties    map[string][]PropertyDef            // Properties can be overloaded by type (Get/Let/Set)
-	PrivateMethods map[string]ast.Node                // Private Subs/Functions
+	Name           string
+	Variables      map[string]ClassMemberVar
+	Methods        map[string]*ast.SubDeclaration      // Public Subs
+	Functions      map[string]*ast.FunctionDeclaration // Public Functions
+	Properties     map[string][]PropertyDef            // Properties can be overloaded by type (Get/Let/Set)
+	PrivateMethods map[string]ast.Node                 // Private Subs/Functions
 }
 
 // ClassInstance represents an instance of a Class
@@ -191,7 +191,7 @@ func (ci *ClassInstance) GetMember(name string) (interface{}, bool, error) {
 			return val, true, err
 		}
 	}
-	
+
 	if sub, ok := ci.ClassDef.Methods[nameLower]; ok {
 		if len(sub.Parameters) == 0 {
 			val, err := ci.executeMethod(sub, []interface{}{})
@@ -263,6 +263,7 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 	var params []*ast.Parameter
 	var body []ast.Statement
 	var funcName string
+	var expectedExitKind string
 
 	switch n := node.(type) {
 	case *ast.SubDeclaration:
@@ -274,6 +275,7 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 				body = []ast.Statement{n.Body}
 			}
 		}
+		expectedExitKind = "sub"
 	case *ast.FunctionDeclaration:
 		funcName = n.Identifier.Name
 		params = n.Parameters
@@ -284,16 +286,20 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 				body = []ast.Statement{n.Body}
 			}
 		}
+		expectedExitKind = "function"
 	case *ast.PropertyGetDeclaration:
 		funcName = n.Identifier.Name
 		params = n.Parameters
 		body = n.Body
+		expectedExitKind = "property"
 	case *ast.PropertyLetDeclaration:
 		params = n.Parameters
 		body = n.Body
+		expectedExitKind = "property"
 	case *ast.PropertySetDeclaration:
 		params = n.Parameters
 		body = n.Body
+		expectedExitKind = "property"
 	default:
 		return nil, fmt.Errorf("invalid method node")
 	}
@@ -318,27 +324,12 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 
 	for _, stmt := range body {
 		if err := v.VisitStatement(stmt); err != nil {
-			// Propagate error!
-			// Check if it's an Exit Sub/Function/Property signal (which is not an error)
-			// We need a way to distinguish.
-			// The original executor uses LoopExitError. We might need a similar "ReturnError" or just assume non-fatal?
-			// But for Timeout, it's an error.
-			// Let's assume errors are errors, unless it's an explicit "Exit Sub".
-			// Since `VisitStatement` in `executor.go` returns `nil` for success.
-			// We need to know if `executor.go` returns specific errors for Exit Sub.
-			// Looking at `executor.go`:
-			// `case *ast.ExitSubStatement` (not in list? Wait, I saw Exit Sub handling in `Run` but `VisitStatement`?)
-			// `VisitStatement` doesn't handle Exit Sub explicitly?
-			// `visitSubDeclaration` etc are definitions.
-			// `ExitSub` is a Statement. `ast.ExitStatement`?
-			// If `VisitStatement` doesn't handle it, how does it work?
-			// Ah, `executor.go` `VisitStatement` has cases for `If`, `For`, etc.
-			// Does it have `Exit Sub`?
-			// I need to check `executor.go` again for `Exit Sub` handling.
-			// If it returns a special error, I should catch it.
-			// If it's a real error (Timeout), I MUST return it.
-			
-			// For now, I will return the error.
+			if pe, ok := err.(*ProcedureExitError); ok {
+				if expectedExitKind == "" || pe.Kind == expectedExitKind {
+					break
+				}
+				return nil, nil
+			}
 			return nil, err
 		}
 	}

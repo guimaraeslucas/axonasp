@@ -135,7 +135,7 @@ class cls_asplite_formbuilder
 		
 	end function
 
-	public function submit 
+	public function submit()
 	
 		submit="$('#" & id & "').submit();return false;"
 		

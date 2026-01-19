@@ -90,7 +90,7 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 			// Tenta fazer parse do bloco VBScript
 			program, err := ap.parseVBBlock(block.Content)
 			if err != nil {
-				parseErr := fmt.Errorf("Error: %d: %v", block.Line, err)
+				parseErr := fmt.Errorf("Parse error at ASP block starting line %d: %v", block.Line, err)
 				result.Errors = append(result.Errors, parseErr)
 				if ap.options.DebugMode {
 					fmt.Printf("[ASP Parser Error] Line %d: %v\n", block.Line, err)
@@ -131,7 +131,11 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 	// Faz o parse e captura possíveis panics
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("panic durante parse: %v", r)
+			if e, ok := r.(error); ok {
+				err = e
+			} else {
+				err = fmt.Errorf("panic during parse: %v", r)
+			}
 		}
 	}()
 

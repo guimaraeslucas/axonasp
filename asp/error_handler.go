@@ -1,5 +1,7 @@
 package asp
 
+import "fmt"
+
 // ASPError representa um erro específico do ASP
 type ASPError struct {
 	Code       string // Código de erro
@@ -12,10 +14,14 @@ type ASPError struct {
 
 // Error implementa a interface error
 func (ae *ASPError) Error() string {
-	if ae.Line > 0 && ae.Column > 0 {
-		return ae.Code + ": " + ae.Message + " (Linha " + string(rune(ae.Line)) + ", Coluna " + string(rune(ae.Column)) + ")"
+	msg := ae.Code + ": " + ae.Message
+	if ae.Line > 0 && ae.Column >= 0 {
+		msg = msg + " (Line " + fmt.Sprintf("%d", ae.Line) + ", Column " + fmt.Sprintf("%d", ae.Column) + ")"
 	}
-	return ae.Code + ": " + ae.Message
+	if ae.Context != "" {
+		msg = msg + "\n" + ae.Context
+	}
+	return msg
 }
 
 // Códigos de erro ASP comuns
