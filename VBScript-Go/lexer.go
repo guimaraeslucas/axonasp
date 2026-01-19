@@ -235,7 +235,7 @@ func (l *Lexer) nextDateLiteral() Token {
 		panic(l.vbSyntaxError(SyntaxError))
 	}
 
-	dateStr := l.sb.String()
+	dateStr := strings.TrimSpace(l.sb.String())
 	date, err := GetDate(dateStr)
 	if err != nil {
 		panic(l.vbSyntaxError(SyntaxError))

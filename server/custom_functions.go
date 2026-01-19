@@ -355,9 +355,10 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		words := strings.Fields(str)
 		count := len(words)
 
-		if format == 0 {
+		switch format {
+case 0:
 			return count, true
-		} else if format == 1 {
+		case 1:
 			// Return array of words
 			result := make([]interface{}, len(words))
 			for i, w := range words {

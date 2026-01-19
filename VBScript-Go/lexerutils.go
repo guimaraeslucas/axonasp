@@ -96,10 +96,18 @@ func GetKeywordAsIdentifier(s string) (Keyword, bool) {
 // Note: This is a basic implementation. VBScript date parsing may be more complex.
 func GetDate(s string) (time.Time, error) {
 	// Try common date formats
+	// Use '1' and '2' for month/day to allow single digits (Go matches "01" with "1" pattern too)
 	formats := []string{
+		"1/2/2006",
+		"2006-1-2",
 		"2006-01-02",
 		"01/02/2006",
-		"01/02/06",
+		"1/2/2006 3:04:05 PM",
+		"1/2/2006 15:04:05",
+		"2006-1-2 15:04:05",
+		"2006-01-02 15:04:05",
+		"3:04:05 PM",
+		"15:04:05",
 		time.RFC3339,
 		time.RFC3339Nano,
 	}
