@@ -82,6 +82,7 @@ type ExecutionContext struct {
 	// Configuration
 	RootDir     string
 	compareMode ast.OptionCompareMode
+	optionBase  int
 
 	// Session management
 	sessionID      string
@@ -137,6 +138,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		sessionManager: sessionManager,
 		isNewSession:   isNew,
 		compareMode:    ast.OptionCompareBinary,
+		optionBase:     0,
 	}
 
 	// Initialize Server object with context reference
@@ -178,6 +180,20 @@ func (ec *ExecutionContext) SetOptionCompare(mode ast.OptionCompareMode) {
 // OptionCompareMode returns the active string comparison mode
 func (ec *ExecutionContext) OptionCompareMode() ast.OptionCompareMode {
 	return ec.compareMode
+}
+
+// SetOptionBase updates the default array lower bound for this context.
+func (ec *ExecutionContext) SetOptionBase(base int) {
+	if base == 1 {
+		ec.optionBase = 1
+		return
+	}
+	ec.optionBase = 0
+}
+
+// OptionBase returns the configured default array lower bound.
+func (ec *ExecutionContext) OptionBase() int {
+	return ec.optionBase
 }
 
 func (ec *ExecutionContext) ensureRandomSource() {
@@ -855,6 +871,8 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 
 	// Apply Option Compare for this program before executing any statements
 	ae.context.SetOptionCompare(program.OptionCompare)
+	// Apply Option Base for array default lower bounds
+	ae.context.SetOptionBase(program.OptionBase)
 
 	// Create a visitor to traverse the AST
 	v := NewASPVisitor(ae.context, ae)
@@ -1175,22 +1193,17 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 			}
 
 			// Handle array index assignment (arr(0) = value)
-			if arrObj, ok := obj.([]interface{}); ok {
+			if arrObj, ok := toVBArray(obj); ok {
 				if len(indexCall.Indexes) > 0 {
-					// Get the index
 					idx, err := v.visitExpression(indexCall.Indexes[0])
 					if err != nil {
 						return err
 					}
 					index := toInt(idx)
-					// Bounds check
-					if index >= 0 && index < len(arrObj) {
-						arrObj[index] = value
-						// Re-set the variable to ensure it's updated
+					if arrObj.Set(index, value) {
 						_ = v.context.SetVariable(varName, arrObj)
 						return nil
 					}
-					// Out of bounds - VBScript error
 					return fmt.Errorf("subscript out of range")
 				}
 			}
@@ -1396,9 +1409,9 @@ func (v *ASPVisitor) visitReDim(stmt *ast.ReDimStatement) error {
 		if stmt.Preserve {
 			// ReDim Preserve - resize array keeping existing elements
 			oldVal, _ := v.context.GetVariable(varName)
-			var newArr []interface{}
+			var newArr *VBArray
 
-			if oldArr, ok := oldVal.([]interface{}); ok {
+			if oldArr, ok := toVBArray(oldVal); ok {
 				// Create new array with new dimensions
 				newArr = v.makeNestedArray(dims)
 
@@ -1421,28 +1434,32 @@ func (v *ASPVisitor) visitReDim(stmt *ast.ReDimStatement) error {
 }
 
 // preserveCopy copies elements from old array to new array
-func (v *ASPVisitor) preserveCopy(oldArr, newArr []interface{}, dims []int) {
-	if len(oldArr) == 0 || len(newArr) == 0 {
+func (v *ASPVisitor) preserveCopy(oldArr, newArr *VBArray, dims []int) {
+	if oldArr == nil || newArr == nil || len(dims) == 0 {
 		return
 	}
 
-	// Determine how many elements to copy (minimum of old and new lengths)
-	copyLen := len(oldArr)
-	if len(newArr) < copyLen {
-		copyLen = len(newArr)
+	copyLen := len(oldArr.Values)
+	if len(newArr.Values) < copyLen {
+		copyLen = len(newArr.Values)
 	}
 
 	if len(dims) == 1 {
-		// Single-dimensional array: direct copy
-		copy(newArr, oldArr[:copyLen])
-	} else {
-		// Multi-dimensional array: recursive copy
 		for i := 0; i < copyLen; i++ {
-			if oldInner, ok := oldArr[i].([]interface{}); ok {
-				if newInner, ok := newArr[i].([]interface{}); ok {
-					v.preserveCopy(oldInner, newInner, dims[1:])
-				}
+			oldIdx := oldArr.Lower + i
+			newIdx := newArr.Lower + i
+			if val, ok := oldArr.Get(oldIdx); ok {
+				_ = newArr.Set(newIdx, val)
 			}
+		}
+		return
+	}
+
+	for i := 0; i < copyLen; i++ {
+		oldInner, okOld := toVBArray(oldArr.Values[i])
+		newInner, okNew := toVBArray(newArr.Values[i])
+		if okOld && okNew {
+			v.preserveCopy(oldInner, newInner, dims[1:])
 		}
 	}
 }
@@ -1974,7 +1991,7 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 		}
 	} else if stmt.IsDynamicArray {
 		// Dynamic array: Dim arr() - initialize as empty array
-		if err := v.context.DefineVariable(varName, []interface{}{}); err != nil {
+		if err := v.context.DefineVariable(varName, NewVBArray(v.context.OptionBase(), 0)); err != nil {
 			return err
 		}
 	} else {
@@ -2004,21 +2021,26 @@ func (v *ASPVisitor) visitVariablesDeclaration(stmt *ast.VariablesDeclaration) e
 	return nil
 }
 
-// makeNestedArray creates a nested array based on dimensions
-// VBScript arrays are 0-indexed: Dim arr(5) creates array with indices 0-5 (6 elements)
-func (v *ASPVisitor) makeNestedArray(dims []int) []interface{} {
+// makeNestedArray creates a nested array based on dimensions and Option Base.
+func (v *ASPVisitor) makeNestedArray(dims []int) *VBArray {
+	base := v.context.OptionBase()
 	if len(dims) == 0 {
-		return []interface{}{}
+		return NewVBArray(base, 0)
 	}
 
-	size := dims[0] + 1 // VBScript: Dim arr(5) means 0 to 5 (6 elements)
-	arr := make([]interface{}, size)
+	lower := base
+	upper := dims[0]
+	size := upper - lower + 1
+	if size < 0 {
+		size = 0
+	}
+
+	arr := NewVBArray(lower, size)
 
 	if len(dims) > 1 {
-		// Recursive for multi-dimensional arrays
 		innerDims := dims[1:]
 		for i := 0; i < size; i++ {
-			arr[i] = v.makeNestedArray(innerDims)
+			arr.Values[i] = v.makeNestedArray(innerDims)
 		}
 	}
 
@@ -2492,10 +2514,10 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	}
 
 	// Handle array access
-	if arr, ok := base.([]interface{}); ok && len(args) > 0 {
+	if arr, ok := toVBArray(base); ok && len(args) > 0 {
 		idx := toInt(args[0])
-		if idx >= 0 && idx < len(arr) {
-			return arr[idx], nil
+		if val, ok := arr.Get(idx); ok {
+			return val, nil
 		}
 		return nil, nil
 	}

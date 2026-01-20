@@ -65,6 +65,7 @@ var (
 		"erase":    KeywordErase,
 		"error":    KeywordError,
 		"explicit": KeywordExplicit,
+		"base":     KeywordBase,
 		"property": KeywordProperty,
 		"step":     KeywordStep,
 		"text":     KeywordText,

@@ -18,6 +18,14 @@ import (
 	"time"
 )
 
+// arrayValues extracts the raw slice from VBArray or []interface{} values.
+func arrayValues(val interface{}) ([]interface{}, bool) {
+	if arr, ok := toVBArray(val); ok {
+		return arr.Values, true
+	}
+	return nil, false
+}
+
 // evalCustomFunction evaluates custom G3 functions following VBScript conventions
 // Returns (result, wasHandled) where wasHandled indicates if the function was recognized
 func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionContext) (interface{}, bool) {
@@ -40,7 +48,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		// Accepts multiple arrays and returns merged array
 		result := []interface{}{}
 		for _, arg := range args {
-			if arr, ok := arg.([]interface{}); ok {
+			if arr, ok := arrayValues(arg); ok {
 				result = append(result, arr...)
 			} else if dict, ok := arg.(map[string]interface{}); ok {
 				for _, v := range dict {
@@ -48,7 +56,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 				}
 			}
 		}
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	case "axarraycontains":
 		// in_array equivalent: search for value in array
@@ -69,13 +77,21 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 					return true, true
 				}
 			}
+		default:
+			if arr, ok := arrayValues(args[1]); ok {
+				for _, v := range arr {
+					if areEqual(needle, v) {
+						return true, true
+					}
+				}
+			}
 		}
 		return false, true
 
 	case "axarraymap":
 		// array_map equivalent: transform array elements using callback
 		if len(args) < 2 {
-			return []interface{}{}, true
+			return NewVBArrayFromValues(0, []interface{}{}), true
 		}
 		callbackName := toString(args[0])
 		result := []interface{}{}
@@ -93,13 +109,21 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 					result = append(result, res)
 				}
 			}
+		default:
+			if arrVals, ok := arrayValues(args[1]); ok {
+				for _, item := range arrVals {
+					if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+						result = append(result, res)
+					}
+				}
+			}
 		}
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	case "axarrayfilter":
 		// array_filter equivalent: filter array using callback
 		if len(args) < 2 {
-			return []interface{}{}, true
+			return NewVBArrayFromValues(0, []interface{}{}), true
 		}
 		callbackName := toString(args[0])
 		result := []interface{}{}
@@ -121,8 +145,18 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 					}
 				}
 			}
+		default:
+			if arrVals, ok := arrayValues(args[1]); ok {
+				for _, item := range arrVals {
+					if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+						if isTruthyCustom(res) {
+							result = append(result, item)
+						}
+					}
+				}
+			}
 		}
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	case "axcount":
 		// count equivalent: return array/collection length
@@ -207,7 +241,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 	case "axexplode":
 		// explode: split string by delimiter
 		if len(args) < 2 {
-			return []interface{}{}, true
+			return NewVBArrayFromValues(0, []interface{}{}), true
 		}
 		delimiter := toString(args[0])
 		str := toString(args[1])
@@ -231,7 +265,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		for i, p := range parts {
 			result[i] = p
 		}
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	case "axstringreplace":
 		// str_replace: replace search string with replacement
@@ -243,16 +277,18 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		subject := toString(args[2])
 
 		// Handle array search/replace
-		switch s := search.(type) {
-		case []interface{}:
-			for i, searchStr := range s {
-				var replaceStr string
-				if i < len(replace.([]interface{})) {
-					replaceStr = toString(replace.([]interface{})[i])
+		if searchArr, ok := arrayValues(search); ok {
+			replaceArr, _ := arrayValues(replace)
+			for i, searchStr := range searchArr {
+				replaceStr := ""
+				if i < len(replaceArr) {
+					replaceStr = toString(replaceArr[i])
+				} else {
+					replaceStr = toString(replace)
 				}
 				subject = strings.ReplaceAll(subject, toString(searchStr), replaceStr)
 			}
-		default:
+		} else {
 			searchStr := toString(search)
 			replaceStr := toString(replace)
 			subject = strings.ReplaceAll(subject, searchStr, replaceStr)
@@ -356,7 +392,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		count := len(words)
 
 		switch format {
-case 0:
+		case 0:
 			return count, true
 		case 1:
 			// Return array of words
@@ -824,7 +860,7 @@ case 0:
 			// Handle Scripting.Dictionary object (wrapped as DictionaryLibrary)
 			values := url.Values{}
 			keys, _ := dict.CallMethod("keys")
-			if keyArr, ok := keys.([]interface{}); ok {
+			if keyArr, ok := arrayValues(keys); ok {
 				for _, k := range keyArr {
 					keyStr := toString(k)
 					val, _ := dict.CallMethod("item", k)
@@ -836,7 +872,7 @@ case 0:
 			// Handle raw Dictionary object
 			values := url.Values{}
 			keys := dict.Keys([]interface{}{})
-			if keyArr, ok := keys.([]interface{}); ok {
+			if keyArr, ok := arrayValues(keys); ok {
 				for _, k := range keyArr {
 					keyStr := toString(k)
 					val := dict.Item([]interface{}{k})
@@ -850,6 +886,16 @@ case 0:
 			for i := 0; i < len(dict)-1; i += 2 {
 				key := toString(dict[i])
 				val := toString(dict[i+1])
+				values.Set(strings.ToLower(key), val)
+			}
+			return values.Encode(), true
+		}
+
+		if arr, ok := arrayValues(args[0]); ok {
+			values := url.Values{}
+			for i := 0; i+1 < len(arr); i += 2 {
+				key := toString(arr[i])
+				val := toString(arr[i+1])
 				values.Set(strings.ToLower(key), val)
 			}
 			return values.Encode(), true
@@ -918,7 +964,7 @@ func isEmpty(v interface{}) bool {
 	if b, ok := v.(bool); ok {
 		return !b
 	}
-	if arr, ok := v.([]interface{}); ok {
+	if arr, ok := arrayValues(v); ok {
 		return len(arr) == 0
 	}
 	if dict, ok := v.(map[string]interface{}); ok {

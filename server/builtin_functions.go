@@ -76,10 +76,9 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		val := args[0]
 		// Check if value is an object (map, array, component, library)
 		switch val.(type) {
-		case map[string]interface{}, []interface{}, ASPLibrary:
+		case map[string]interface{}, []interface{}, ASPLibrary, *VBArray:
 			return true, true
 		default:
-			// Check if it's a struct (custom type)
 			if val != nil {
 				rv := reflect.ValueOf(val)
 				if rv.Kind() == reflect.Ptr {
@@ -229,7 +228,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		for i, arg := range args {
 			result[i] = arg
 		}
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	case "isarray":
 		// IsArray(var) - checks if variable is an array
@@ -237,52 +236,43 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return false, true
 		}
 		val := args[0]
-		_, ok := val.([]interface{})
+		_, ok := toVBArray(val)
 		return ok, true
 
 	case "lbound":
-		// LBound(array, [dimension]) - returns lower bound (always 0 in VBScript)
-		return 0, true
+		// LBound(array, [dimension]) - returns lower bound respecting Option Base
+		if len(args) == 0 {
+			return -1, true
+		}
+		dim := 1
+		if len(args) > 1 {
+			dim = toInt(args[1])
+		}
+		lower, _, ok := arrayBounds(args[0], dim)
+		if !ok {
+			return -1, true
+		}
+		return lower, true
 
 	case "ubound":
 		// UBound(array, [dimension]) - returns upper bound (last index)
 		if len(args) == 0 {
 			return -1, true
 		}
-		arr, ok := args[0].([]interface{})
-		if !ok {
-			return -1, true
-		}
-		// Check for dimension parameter (default is 1)
 		dim := 1
 		if len(args) > 1 {
 			dim = toInt(args[1])
 		}
-		// For dimension 1, return length-1
-		if dim == 1 {
-			return len(arr) - 1, true
-		}
-		// For nested arrays, traverse to requested dimension
-		current := interface{}(arr)
-		for d := 1; d <= dim; d++ {
-			if slice, ok := current.([]interface{}); ok {
-				if d == dim {
-					return len(slice) - 1, true
-				}
-				if len(slice) > 0 {
-					current = slice[0]
-					continue
-				}
-				return -1, true
-			}
+		_, upper, ok := arrayBounds(args[0], dim)
+		if !ok {
 			return -1, true
 		}
-		return -1, true
+		return upper, true
 
 	case "split":
 		// Split(expression, delimiter, [limit], [compare]) - splits string into array
 		if len(args) < 2 {
-			return []interface{}{}, true
+			return NewVBArrayFromValues(0, []interface{}{}), true
 		}
 		str := toString(args[0])
 		delim := toString(args[1])
@@ -304,21 +294,21 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		for i, part := range parts {
 			result[i] = part
 		}
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	case "join":
 		// Join(array, delimiter) - joins array elements into string
 		if len(args) < 2 {
 			return "", true
 		}
-		arr, ok := args[0].([]interface{})
+		arr, ok := toVBArray(args[0])
 		if !ok {
 			return "", true
 		}
 		delim := toString(args[1])
 
-		parts := make([]string, len(arr))
-		for i, item := range arr {
+		parts := make([]string, len(arr.Values))
+		for i, item := range arr.Values {
 			parts[i] = toString(item)
 		}
 		return strings.Join(parts, delim), true
@@ -326,11 +316,11 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "filter":
 		// Filter(array, match, [include], [compare]) - filters string arrays
 		if len(args) < 2 {
-			return []interface{}{}, true
+			return NewVBArrayFromValues(0, []interface{}{}), true
 		}
-		arr, ok := args[0].([]interface{})
+		arr, ok := toVBArray(args[0])
 		if !ok {
-			return []interface{}{}, true
+			return NewVBArrayFromValues(0, []interface{}{}), true
 		}
 
 		match := toString(args[1])
@@ -350,7 +340,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 
 		result := make([]interface{}, 0)
-		for _, item := range arr {
+		for _, item := range arr.Values {
 			itemStr := toString(item)
 			text := itemStr
 			if compare == 1 {
@@ -363,7 +353,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			}
 		}
 
-		return result, true
+		return NewVBArrayFromValues(0, result), true
 
 	// String Functions
 	case "len":
@@ -855,8 +845,20 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if len(args) > 1 {
 			digits = toInt(args[1])
 		}
-		formatStr := "%." + fmt.Sprintf("%d", digits) + "f"
-		return "$" + fmt.Sprintf(formatStr, value), true
+		includeLeading := true
+		if len(args) > 2 {
+			includeLeading = isTruthy(args[2])
+		}
+		useParens := false
+		if len(args) > 3 {
+			useParens = isTruthy(args[3])
+		}
+		groupDigits := false
+		if len(args) > 4 {
+			groupDigits = isTruthy(args[4])
+		}
+
+		return formatNumeric(value, digits, includeLeading, useParens, groupDigits, "$", ""), true
 
 	case "formatnumber":
 		// FORMATNUMBER(value, [digits], [include_leading_digit], [use_parens], [group_separator])
@@ -868,8 +870,20 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if len(args) > 1 {
 			digits = toInt(args[1])
 		}
-		formatStr := "%." + fmt.Sprintf("%d", digits) + "f"
-		return fmt.Sprintf(formatStr, value), true
+		includeLeading := true
+		if len(args) > 2 {
+			includeLeading = isTruthy(args[2])
+		}
+		useParens := false
+		if len(args) > 3 {
+			useParens = isTruthy(args[3])
+		}
+		groupDigits := false
+		if len(args) > 4 {
+			groupDigits = isTruthy(args[4])
+		}
+
+		return formatNumeric(value, digits, includeLeading, useParens, groupDigits, "", ""), true
 
 	case "formatpercent":
 		// FORMATPERCENT(value, [digits], [include_leading_digit], [use_parens], [group_separator])
@@ -881,15 +895,27 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if len(args) > 1 {
 			digits = toInt(args[1])
 		}
-		formatStr := "%." + fmt.Sprintf("%d", digits) + "f"
-		return fmt.Sprintf(formatStr, value) + "%", true
+		includeLeading := true
+		if len(args) > 2 {
+			includeLeading = isTruthy(args[2])
+		}
+		useParens := false
+		if len(args) > 3 {
+			useParens = isTruthy(args[3])
+		}
+		groupDigits := false
+		if len(args) > 4 {
+			groupDigits = isTruthy(args[4])
+		}
+
+		return formatNumeric(value, digits, includeLeading, useParens, groupDigits, "", "%"), true
 
 	// Date/Time extra functions
 	case "timer":
 		// TIMER() - returns seconds since midnight
 		now := time.Now()
 		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		return int(now.Sub(midnight).Seconds()), true
+		return now.Sub(midnight).Seconds(), true
 
 	case "weekdayname":
 		// WEEKDAYNAME(weekday, [abbreviate]) - returns day name
@@ -942,6 +968,8 @@ func getTypeName(val interface{}) string {
 		return "Double"
 	case string:
 		return "String"
+	case *VBArray:
+		return "Variant()"
 	case []interface{}:
 		return "Variant()"
 	case map[string]interface{}:
@@ -989,6 +1017,8 @@ func getVarType(val interface{}) int {
 		return 5 // vbDouble
 	case string:
 		return 8 // vbString
+	case *VBArray:
+		return 8204
 	case []interface{}:
 		// Array of Variant: 8192 (vbArray flag) + 12 (vbVariant) = 8204
 		return 8204
@@ -1068,6 +1098,81 @@ func tryParseNumericLiteral(s string) (interface{}, bool) {
 	}
 
 	return nil, false
+}
+
+func formatNumeric(value float64, digits int, includeLeadingDigit, useParens, groupDigits bool, prefix, suffix string) string {
+	if digits < 0 {
+		digits = 0
+	}
+
+	negative := value < 0
+	absVal := math.Abs(value)
+	formatStr := "%." + strconv.Itoa(digits) + "f"
+	formatted := fmt.Sprintf(formatStr, absVal)
+
+	intPart := formatted
+	fracPart := ""
+	if dot := strings.IndexByte(formatted, '.'); dot >= 0 {
+		intPart = formatted[:dot]
+		fracPart = formatted[dot+1:]
+	}
+
+	if groupDigits {
+		intPart = applyGrouping(intPart)
+	}
+
+	hasFraction := fracPart != ""
+	if !includeLeadingDigit && hasFraction && intPart == "0" {
+		intPart = ""
+	}
+
+	body := intPart
+	if hasFraction {
+		if intPart == "" {
+			body = "." + fracPart
+		} else {
+			body = intPart + "." + fracPart
+		}
+	}
+
+	if body == "" {
+		body = "0"
+	}
+
+	body = prefix + body + suffix
+
+	if negative {
+		if useParens {
+			body = "(" + body + ")"
+		} else {
+			body = "-" + body
+		}
+	}
+
+	return body
+}
+
+func applyGrouping(intPart string) string {
+	if len(intPart) <= 3 {
+		return intPart
+	}
+
+	var b strings.Builder
+	first := len(intPart) % 3
+	if first == 0 {
+		first = 3
+	}
+	b.WriteString(intPart[:first])
+	for i := first; i < len(intPart); i += 3 {
+		b.WriteByte(',')
+		end := i + 3
+		if end > len(intPart) {
+			end = len(intPart)
+		}
+		b.WriteString(intPart[i:end])
+	}
+
+	return b.String()
 }
 
 // evalExpression evaluates an expression string using the execution context

@@ -1,5 +1,5 @@
 Quick Instructions for Code Agents (G3 AxonASP)
-Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english.
+Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Document only in English.
 
 1. Architecture Overview
 Main Server: main.go runs HTTP server on :4050, serving ./www.
@@ -42,7 +42,7 @@ Includes: file = relative to current; virtual = relative to www/.
 
 Documentation: Keep instructions in this file. Sync copilot-instructions.md and GEMINI.md on updates. Do not create new .md explanation files.
 
-New Libraries: Name as *_lib.go. Mimic VBScript nomenclature. Document in English.
+New Libraries: Name as *_lib.go. Mimic VBScript nomenclature. Document only in English.
 
 4. Configuration (.env)
 File: .env in root (defaults in code).

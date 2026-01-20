@@ -5,15 +5,17 @@ type Program struct {
 	BaseNode
 	OptionExplicit bool
 	OptionCompare  OptionCompareMode
+	OptionBase     int
 	Body           []Statement
 	Comments       []*Comment
 }
 
 // NewProgram creates a new Program node
-func NewProgram(optionExplicit bool, optionCompare OptionCompareMode) *Program {
+func NewProgram(optionExplicit bool, optionCompare OptionCompareMode, optionBase int) *Program {
 	return &Program{
 		OptionExplicit: optionExplicit,
 		OptionCompare:  optionCompare,
+		OptionBase:     optionBase,
 		Body:           []Statement{},
 		Comments:       []*Comment{},
 	}

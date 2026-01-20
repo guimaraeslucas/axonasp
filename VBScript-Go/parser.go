@@ -54,8 +54,8 @@ func (p *Parser) Parse() *ast.Program {
 	p.createMarker() // marker
 	p.skipCommentsAndNewlines()
 
-	optionExplicit, optionCompare := p.parseOptions()
-	program := ast.NewProgram(optionExplicit, optionCompare)
+	optionExplicit, optionCompare, optionBase := p.parseOptions()
+	program := ast.NewProgram(optionExplicit, optionCompare, optionBase)
 
 	for !p.matchEof() {
 		p.skipCommentsAndNewlines()
@@ -80,9 +80,10 @@ func (p *Parser) reset() {
 	p.lastMarker = NewMarker(p.lexer.Index, p.lexer.CurrentLine, p.lexer.LineIndex())
 }
 
-func (p *Parser) parseOptions() (bool, ast.OptionCompareMode) {
+func (p *Parser) parseOptions() (bool, ast.OptionCompareMode, int) {
 	optionExplicit := false
 	optionCompare := ast.OptionCompareBinary
+	optionBase := 0
 
 	for {
 		p.skipCommentsAndNewlines()
@@ -108,13 +109,35 @@ func (p *Parser) parseOptions() (bool, ast.OptionCompareMode) {
 			}
 			p.skipComments()
 			p.expectEofOrLineTermination()
+		case p.matchKeyword(KeywordBase):
+			p.move()
+			baseValue := 0
+			switch lit := p.next.(type) {
+			case *DecIntegerLiteralToken:
+				baseValue = int(lit.Value)
+			case *OctIntegerLiteralToken:
+				baseValue = int(lit.Value)
+			case *HexIntegerLiteralToken:
+				baseValue = int(lit.Value)
+			default:
+				panic(p.vbSyntaxError(SyntaxError))
+			}
+
+			if baseValue != 0 && baseValue != 1 {
+				panic(p.vbSyntaxError(SyntaxError))
+			}
+
+			optionBase = baseValue
+			p.move()
+			p.skipComments()
+			p.expectEofOrLineTermination()
 		default:
 			p.skipComments()
 			p.expectEofOrLineTermination()
 		}
 	}
 
-	return optionExplicit, optionCompare
+	return optionExplicit, optionCompare, optionBase
 }
 
 // consumeOptionStatement eats an inline Option Explicit (or any Option statement) as a no-op stub.
@@ -126,6 +149,15 @@ func (p *Parser) consumeOptionStatement() {
 	} else if p.matchKeyword(KeywordCompare) {
 		p.move()
 		if p.matchKeyword(KeywordText) || p.matchKeyword(KeywordBinary) {
+			p.move()
+		}
+	} else if p.matchKeyword(KeywordBase) {
+		p.move()
+		if _, ok := p.next.(*DecIntegerLiteralToken); ok {
+			p.move()
+		} else if _, ok := p.next.(*OctIntegerLiteralToken); ok {
+			p.move()
+		} else if _, ok := p.next.(*HexIntegerLiteralToken); ok {
 			p.move()
 		}
 	}

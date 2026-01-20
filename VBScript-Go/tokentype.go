@@ -106,6 +106,7 @@ const (
 	KeywordBinary
 	KeywordCompare
 	KeywordText
+	KeywordBase
 )
 
 // String returns the string representation of a Keyword
@@ -223,6 +224,8 @@ func (k Keyword) String() string {
 		return "Compare"
 	case KeywordText:
 		return "Text"
+	case KeywordBase:
+		return "Base"
 	default:
 		return "Unknown"
 	}
