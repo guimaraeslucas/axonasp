@@ -151,6 +151,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.constants["vblf"] = "\n"
 	ctx.constants["vbnewline"] = "\r\n"
 	ctx.constants["vbtab"] = "\t"
+	ctx.constants["vbnullchar"] = string(rune(0))
 	ctx.constants["vbback"] = string(rune(8))
 	ctx.constants["vbformfeed"] = string(rune(12))
 	ctx.constants["vbverticaltab"] = string(rune(11))
