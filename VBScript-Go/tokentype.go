@@ -103,7 +103,11 @@ const (
 	KeywordLoop
 	KeywordLet
 	KeywordIs
+	KeywordBinary
+	KeywordCompare
+	KeywordText
 )
+
 // String returns the string representation of a Keyword
 func (k Keyword) String() string {
 	switch k {
@@ -213,6 +217,12 @@ func (k Keyword) String() string {
 		return "Let"
 	case KeywordIs:
 		return "Is"
+	case KeywordBinary:
+		return "Binary"
+	case KeywordCompare:
+		return "Compare"
+	case KeywordText:
+		return "Text"
 	default:
 		return "Unknown"
 	}

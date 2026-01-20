@@ -80,7 +80,8 @@ type ExecutionContext struct {
 	libraries map[string]interface{}
 
 	// Configuration
-	RootDir string
+	RootDir     string
+	compareMode ast.OptionCompareMode
 
 	// Session management
 	sessionID      string
@@ -135,6 +136,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		sessionID:      sessionID,
 		sessionManager: sessionManager,
 		isNewSession:   isNew,
+		compareMode:    ast.OptionCompareBinary,
 	}
 
 	// Initialize Server object with context reference
@@ -161,6 +163,21 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.variables["err"] = ctx.Err
 
 	return ctx
+}
+
+// SetOptionCompare updates string comparison mode for this context
+func (ec *ExecutionContext) SetOptionCompare(mode ast.OptionCompareMode) {
+	switch mode {
+	case ast.OptionCompareText:
+		ec.compareMode = ast.OptionCompareText
+	default:
+		ec.compareMode = ast.OptionCompareBinary
+	}
+}
+
+// OptionCompareMode returns the active string comparison mode
+func (ec *ExecutionContext) OptionCompareMode() ast.OptionCompareMode {
+	return ec.compareMode
 }
 
 func (ec *ExecutionContext) ensureRandomSource() {
@@ -835,6 +852,9 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 	if program == nil {
 		return nil
 	}
+
+	// Apply Option Compare for this program before executing any statements
+	ae.context.SetOptionCompare(program.OptionCompare)
 
 	// Create a visitor to traverse the AST
 	v := NewASPVisitor(ae.context, ae)
@@ -1752,8 +1772,8 @@ func (v *ASPVisitor) visitSelect(stmt *ast.SelectStatement) error {
 							}
 
 							// Check range: selectValue >= startVal AND selectValue <= endVal
-							ge, _ := performBinaryOperation(ast.BinaryOperationGreaterOrEqual, selectValue, startVal)
-							le, _ := performBinaryOperation(ast.BinaryOperationLessOrEqual, selectValue, endVal)
+							ge, _ := performBinaryOperation(ast.BinaryOperationGreaterOrEqual, selectValue, startVal, v.context.OptionCompareMode())
+							le, _ := performBinaryOperation(ast.BinaryOperationLessOrEqual, selectValue, endVal, v.context.OptionCompareMode())
 
 							if isTruthy(ge) && isTruthy(le) {
 								matched = true
@@ -1775,7 +1795,7 @@ func (v *ASPVisitor) visitSelect(stmt *ast.SelectStatement) error {
 						}
 
 						// Perform comparison with selectValue as Left
-						res, err := performBinaryOperation(bin.Operation, selectValue, rightVal)
+						res, err := performBinaryOperation(bin.Operation, selectValue, rightVal, v.context.OptionCompareMode())
 						if err != nil {
 							return err
 						}
@@ -1793,7 +1813,7 @@ func (v *ASPVisitor) visitSelect(stmt *ast.SelectStatement) error {
 				}
 
 				// Compare case value with select value
-				if compareEqual(selectValue, val) {
+				if compareEqual(selectValue, val, v.context.OptionCompareMode()) {
 					matched = true
 					break
 				}
@@ -2149,7 +2169,7 @@ func (v *ASPVisitor) visitBinaryExpression(expr *ast.BinaryExpression) (interfac
 	}
 
 	// Perform operation
-	return performBinaryOperation(expr.Operation, left, right)
+	return performBinaryOperation(expr.Operation, left, right, v.context.OptionCompareMode())
 }
 
 // visitUnaryExpression evaluates unary operations
@@ -2791,7 +2811,7 @@ func negateValue(val interface{}) interface{} {
 }
 
 // performBinaryOperation performs a binary operation
-func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (interface{}, error) {
+func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mode ast.OptionCompareMode) (interface{}, error) {
 	switch op {
 	case ast.BinaryOperationAnd:
 		// Check for boolean preservation
@@ -2852,17 +2872,17 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (in
 	case ast.BinaryOperationExponentiation:
 		return math.Pow(toFloat(left), toFloat(right)), nil
 	case ast.BinaryOperationEqual:
-		return compareEqual(left, right), nil
+		return compareEqual(left, right, mode), nil
 	case ast.BinaryOperationNotEqual:
-		return !compareEqual(left, right), nil
+		return !compareEqual(left, right, mode), nil
 	case ast.BinaryOperationLess:
-		return compareLess(left, right), nil
+		return compareLess(left, right, mode), nil
 	case ast.BinaryOperationGreater:
-		return compareLess(right, left), nil
+		return compareLess(right, left, mode), nil
 	case ast.BinaryOperationLessOrEqual:
-		return !compareLess(right, left), nil
+		return !compareLess(right, left, mode), nil
 	case ast.BinaryOperationGreaterOrEqual:
-		return !compareLess(left, right), nil
+		return !compareLess(left, right, mode), nil
 	case ast.BinaryOperationConcatenation:
 		return toString(left) + toString(right), nil
 	case ast.BinaryOperationIs:
@@ -2888,8 +2908,8 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}) (in
 	}
 }
 
-// compareEqual compares two values for equality
-func compareEqual(left, right interface{}) bool {
+// compareEqual compares two values for equality with VBScript rules
+func compareEqual(left, right interface{}, mode ast.OptionCompareMode) bool {
 	if left == nil && right == nil {
 		return true
 	}
@@ -2897,47 +2917,58 @@ func compareEqual(left, right interface{}) bool {
 		return false
 	}
 
-	// Fast path for strings without conversion
 	if ls, ok := left.(string); ok {
 		if rs, ok2 := right.(string); ok2 {
-			return ls == rs
+			return compareStrings(ls, rs, mode) == 0
 		}
 	}
 
-	// Compare as strings first
-	leftStr := toString(left)
-	rightStr := toString(right)
-	if leftStr == rightStr {
-		return true
+	if lb, ok := left.(bool); ok {
+		if rb, ok2 := right.(bool); ok2 {
+			return lb == rb
+		}
 	}
 
-	// Try numeric comparison
 	if ln, lok := toNumeric(left); lok {
 		if rn, rok := toNumeric(right); rok {
 			return ln == rn
 		}
 	}
 
-	return false
+	return compareStrings(toString(left), toString(right), mode) == 0
 }
 
-// compareLess compares if left is less than right
-func compareLess(left, right interface{}) bool {
-	leftNum, lok := toNumeric(left)
-	rightNum, rok := toNumeric(right)
-
-	if lok && rok {
-		return leftNum < rightNum
-	}
-
+// compareLess compares if left is less than right with VBScript rules
+func compareLess(left, right interface{}, mode ast.OptionCompareMode) bool {
 	if ls, ok := left.(string); ok {
 		if rs, ok2 := right.(string); ok2 {
-			return ls < rs
+			return compareStrings(ls, rs, mode) < 0
 		}
 	}
 
-	// String comparison
-	return toString(left) < toString(right)
+	if ln, lok := toNumeric(left); lok {
+		if rn, rok := toNumeric(right); rok {
+			return ln < rn
+		}
+	}
+
+	return compareStrings(toString(left), toString(right), mode) < 0
+}
+
+func compareStrings(left, right string, mode ast.OptionCompareMode) int {
+	if mode == ast.OptionCompareText {
+		left = strings.ToLower(left)
+		right = strings.ToLower(right)
+	}
+
+	switch {
+	case left == right:
+		return 0
+	case left < right:
+		return -1
+	default:
+		return 1
+	}
 }
 
 // toNumeric attempts to convert a value to numeric type

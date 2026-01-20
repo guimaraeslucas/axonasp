@@ -4,18 +4,28 @@ package ast
 type Program struct {
 	BaseNode
 	OptionExplicit bool
+	OptionCompare  OptionCompareMode
 	Body           []Statement
 	Comments       []*Comment
 }
 
 // NewProgram creates a new Program node
-func NewProgram(optionExplicit bool) *Program {
+func NewProgram(optionExplicit bool, optionCompare OptionCompareMode) *Program {
 	return &Program{
 		OptionExplicit: optionExplicit,
+		OptionCompare:  optionCompare,
 		Body:           []Statement{},
 		Comments:       []*Comment{},
 	}
 }
+
+// OptionCompareMode defines how string comparisons are evaluated
+type OptionCompareMode int
+
+const (
+	OptionCompareBinary OptionCompareMode = iota
+	OptionCompareText
+)
 
 func (p *Program) isStatement() {}
 
@@ -67,9 +77,9 @@ const (
 // Parameter represents a function/sub parameter
 type Parameter struct {
 	BaseNode
-	Modifier   ParameterModifier
+	Modifier    ParameterModifier
 	Parentheses bool
-	Identifier *Identifier
+	Identifier  *Identifier
 }
 
 // NewParameter creates a new Parameter
@@ -138,13 +148,13 @@ type VariableDeclarationNode interface {
 // BaseVariableDeclarationNode provides common functionality for variable declarations
 type BaseVariableDeclarationNode struct {
 	BaseNode
-	Identifier    *Identifier
+	Identifier     *Identifier
 	IsDynamicArray bool
 	ArrayDims      []Expression
 }
 
 func (v *BaseVariableDeclarationNode) isVariableDeclarationNode() {}
-func (v *BaseVariableDeclarationNode) isStatement() {}
+func (v *BaseVariableDeclarationNode) isStatement()               {}
 
 // VariableDeclaration represents a variable declaration
 type VariableDeclaration struct {

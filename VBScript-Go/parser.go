@@ -54,8 +54,8 @@ func (p *Parser) Parse() *ast.Program {
 	p.createMarker() // marker
 	p.skipCommentsAndNewlines()
 
-	optionExplicit := p.parseOptionExplicit()
-	program := ast.NewProgram(optionExplicit)
+	optionExplicit, optionCompare := p.parseOptions()
+	program := ast.NewProgram(optionExplicit, optionCompare)
 
 	for !p.matchEof() {
 		p.skipCommentsAndNewlines()
@@ -80,14 +80,41 @@ func (p *Parser) reset() {
 	p.lastMarker = NewMarker(p.lexer.Index, p.lexer.CurrentLine, p.lexer.LineIndex())
 }
 
-func (p *Parser) parseOptionExplicit() bool {
-	if p.optKeyword(KeywordOption) {
-		p.expectKeyword(KeywordExplicit)
-		p.skipComments()
-		p.expectEofOrLineTermination()
-		return true
+func (p *Parser) parseOptions() (bool, ast.OptionCompareMode) {
+	optionExplicit := false
+	optionCompare := ast.OptionCompareBinary
+
+	for {
+		p.skipCommentsAndNewlines()
+		if !p.optKeyword(KeywordOption) {
+			break
+		}
+		switch {
+		case p.matchKeyword(KeywordExplicit):
+			p.move()
+			optionExplicit = true
+			p.skipComments()
+			p.expectEofOrLineTermination()
+		case p.matchKeyword(KeywordCompare):
+			p.move()
+			if p.matchKeyword(KeywordText) {
+				p.move()
+				optionCompare = ast.OptionCompareText
+			} else if p.matchKeyword(KeywordBinary) {
+				p.move()
+				optionCompare = ast.OptionCompareBinary
+			} else {
+				panic(p.vbSyntaxError(SyntaxError))
+			}
+			p.skipComments()
+			p.expectEofOrLineTermination()
+		default:
+			p.skipComments()
+			p.expectEofOrLineTermination()
+		}
 	}
-	return false
+
+	return optionExplicit, optionCompare
 }
 
 // consumeOptionStatement eats an inline Option Explicit (or any Option statement) as a no-op stub.
@@ -96,6 +123,11 @@ func (p *Parser) consumeOptionStatement() {
 	p.move() // consume Option
 	if p.matchKeyword(KeywordExplicit) {
 		p.move()
+	} else if p.matchKeyword(KeywordCompare) {
+		p.move()
+		if p.matchKeyword(KeywordText) || p.matchKeyword(KeywordBinary) {
+			p.move()
+		}
 	}
 	p.skipComments()
 	p.optLineTermination()

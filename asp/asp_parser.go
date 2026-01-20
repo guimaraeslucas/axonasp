@@ -136,6 +136,7 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 		// Bloco vazio é válido
 		return &ast.Program{
 				OptionExplicit: false,
+				OptionCompare:  ast.OptionCompareBinary,
 				Body:           []ast.Statement{},
 			},
 			nil

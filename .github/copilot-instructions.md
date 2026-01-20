@@ -32,6 +32,8 @@ Language: STRICT ENGLISH ONLY. Translate any non-English comments/UI/Code and an
 
 VBScript Compatibility: Strict adherence to VBScript and ASP Classic standards.
 
+Option Compare: Parser honors Option Compare Binary/Text at top of VBScript files; executor applies per-program compare mode (binary vs case-insensitive text) for all string comparisons (including Select Case, =/</> ops).
+
 Variable Lookup: MUST ALWAYS be Case-insensitive (and stored as lowercase internally).
 
 Session/App: Sessions stored in temp/session (Cookie: ASPSESSIONID); Application state in memory.
@@ -80,3 +82,26 @@ Update Default.asp with changes.
 Maintain G3 AxonASP branding.
 
 Prioritize secure, testable, and small implementations.
+
+7. Agent Quick-Start Checklist
+- Keep responses and code comments strictly in ENGLISH (US).
+- Prefer small, safe diffs; avoid touching server/deprecated/ except for reference.
+- Respect VBScript semantics: case-insensitive identifiers, Option Compare rules, ByRef/ByVal behavior.
+- Preserve ASP execution context when adding libraries or functions.
+- When adding a library, name it *_lib.go and register via Server.CreateObject mapping.
+- Sync updates between this file and GEMINI.md whenever instructions change.
+
+8. Coding & Tooling Expectations
+- Run gofmt on touched Go files; keep ASCII unless a file already needs non-ASCII.
+- Compile after Go changes: go build -o go-asp.exe ./...
+- Run tests when applicable: go test ./asp ./server ./VBScript-Go
+- For ASP-only changes, do not rebuild; validate by hitting http://localhost:4050/<test>.asp
+- Favor explicit errors; avoid panics in request path; log via existing error handling helpers.
+- Concurrency: session/app state is shared; guard mutable shared data when introducing goroutines.
+
+9. ASP/VBScript Execution Notes
+- Option Compare Binary/Text at file top sets comparison mode for that program; executor applies the chosen mode to all string comparisons.
+- Includes: file path relative to current file; virtual path relative to www/ root.
+- Session storage: temp/session with cookie ASPSESSIONID; Application lives in-memory.
+- Variable lookup and storage are case-insensitive; store lowercase internally.
+- Custom objects must match classic ASP expectations (e.g., ADODB-like APIs, MSXML2 object models).
