@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	_ "net/http/pprof"
 	"go-asp/server"
 
 	"github.com/joho/godotenv"

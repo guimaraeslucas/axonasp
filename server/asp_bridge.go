@@ -4,6 +4,11 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
+	"os"
+	"sync"
+	"time"
+
+	"go-asp/asp"
 )
 
 // ASPProcessorConfig contains configuration for ASP processing
@@ -16,7 +21,15 @@ type ASPProcessorConfig struct {
 // ASPProcessor handles ASP file execution
 // Delegates to ASPExecutor for actual code execution
 type ASPProcessor struct {
-	config *ASPProcessorConfig
+	config     *ASPProcessorConfig
+	cacheMu    sync.RWMutex
+	parseCache map[string]parseCacheEntry
+}
+
+type parseCacheEntry struct {
+	modTime time.Time
+	content string
+	result  *asp.ASPParserResult
 }
 
 // NewASPProcessor creates a new ASP processor
@@ -28,7 +41,8 @@ func NewASPProcessor(config *ASPProcessorConfig) *ASPProcessor {
 		}
 	}
 	return &ASPProcessor{
-		config: config,
+		config:     config,
+		parseCache: make(map[string]parseCacheEntry),
 	}
 }
 
@@ -36,14 +50,19 @@ func NewASPProcessor(config *ASPProcessorConfig) *ASPProcessor {
 // Takes the file content as string and returns the rendered output
 // Delegates to ASPExecutor in executor.go
 func (ap *ASPProcessor) ExecuteASPFile(fileContent string, filePath string, w http.ResponseWriter, r *http.Request) error {
+	resolvedContent, parsedResult, err := ap.getParsed(filePath, fileContent)
+	if err != nil {
+		return err
+	}
+
 	// Create the executor with configuration
 	executor := NewASPExecutor(ap.config)
 
 	// Generate session ID from request cookie or create new one
 	sessionID := generateSessionID(r)
 
-	// Execute the ASP file using the full executor
-	return executor.Execute(fileContent, filePath, w, r, sessionID)
+	// Execute using cached parse tree
+	return executor.ExecuteWithParsed(resolvedContent, parsedResult, filePath, w, r, sessionID)
 }
 
 // GetConfig returns the configuration of this ASP processor
@@ -74,4 +93,53 @@ func generateUniqueID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	result := fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 	return fmt.Sprintf("AXON%s", result)
+}
+
+func (ap *ASPProcessor) getParsed(filePath, rawContent string) (string, *asp.ASPParserResult, error) {
+	var modTime time.Time
+	if info, err := os.Stat(filePath); err == nil {
+		modTime = info.ModTime()
+	}
+
+	ap.cacheMu.RLock()
+	if entry, ok := ap.parseCache[filePath]; ok && entry.modTime.Equal(modTime) {
+		content := entry.content
+		result := entry.result
+		ap.cacheMu.RUnlock()
+		return content, result, nil
+	}
+	ap.cacheMu.RUnlock()
+
+	resolvedContent, err := asp.ResolveIncludes(rawContent, filePath, ap.config.RootDir, nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("include error: %w", err)
+	}
+
+	parsingOptions := &asp.ASPParsingOptions{
+		SaveComments:      false,
+		StrictMode:        false,
+		AllowImplicitVars: true,
+		DebugMode:         ap.config.DebugASP,
+	}
+	parser := asp.NewASPParserWithOptions(resolvedContent, parsingOptions)
+	result, parseErr := parser.Parse()
+	if parseErr != nil {
+		return "", nil, fmt.Errorf("failed to parse ASP code: %w", parseErr)
+	}
+
+	if len(result.Errors) > 0 {
+		return "", nil, fmt.Errorf("ASP parse error: %v", result.Errors[0])
+	}
+
+	entry := parseCacheEntry{
+		modTime: modTime,
+		content: resolvedContent,
+		result:  result,
+	}
+
+	ap.cacheMu.Lock()
+	ap.parseCache[filePath] = entry
+	ap.cacheMu.Unlock()
+
+	return resolvedContent, result, nil
 }

@@ -531,19 +531,30 @@ func (ae *ASPExecutor) SetContext(ctx *ExecutionContext) {
 
 // Execute processes ASP code and returns rendered output
 func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.ResponseWriter, r *http.Request, sessionID string) error {
+	return ae.executeInternal(fileContent, filePath, w, r, sessionID, nil, false)
+}
+
+// ExecuteWithParsed runs ASP using pre-resolved content and a cached parse result
+func (ae *ASPExecutor) ExecuteWithParsed(resolvedContent string, parsedResult *asp.ASPParserResult, filePath string, w http.ResponseWriter, r *http.Request, sessionID string) error {
+	return ae.executeInternal(resolvedContent, filePath, w, r, sessionID, parsedResult, true)
+}
+
+func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w http.ResponseWriter, r *http.Request, sessionID string, parsedResult *asp.ASPParserResult, alreadyResolved bool) error {
 	// Create execution context
 	timeout := time.Duration(ae.config.ScriptTimeout) * time.Second
 	ae.context = NewExecutionContext(w, r, sessionID, timeout)
 
-	// Pre-process Includes
-	resolvedContent, err := asp.ResolveIncludes(fileContent, filePath, ae.config.RootDir, nil)
-	if err != nil {
-		return fmt.Errorf("include error: %w", err)
+	// Pre-process Includes if not already resolved
+	if !alreadyResolved {
+		resolvedContent, err := asp.ResolveIncludes(fileContent, filePath, ae.config.RootDir, nil)
+		if err != nil {
+			return fmt.Errorf("include error: %w", err)
+		}
+		fileContent = resolvedContent
 	}
-	fileContent = resolvedContent
 
 	// Fast path: if there's no executable ASP (only directives/comments), stream HTML directly
-	if !hasExecutableASP(fileContent) {
+	if parsedResult == nil && !hasExecutableASP(fileContent) {
 		cleanHTML := stripDirectivesAndComments(fileContent)
 		if err := ae.context.Response.Write(cleanHTML); err != nil {
 			return fmt.Errorf("failed to write static HTML: %w", err)
@@ -594,18 +605,21 @@ func (ae *ASPExecutor) Execute(fileContent string, filePath string, w http.Respo
 		}
 	}
 
-	// Parse ASP code
-	parsingOptions := &asp.ASPParsingOptions{
-		SaveComments:      false,
-		StrictMode:        false,
-		AllowImplicitVars: true,
-		DebugMode:         ae.config.DebugASP,
+	result := parsedResult
+	if result == nil {
+		parsingOptions := &asp.ASPParsingOptions{
+			SaveComments:      false,
+			StrictMode:        false,
+			AllowImplicitVars: true,
+			DebugMode:         ae.config.DebugASP,
+		}
+		parser := asp.NewASPParserWithOptions(fileContent, parsingOptions)
+		parsed, err := parser.Parse()
+		if err != nil {
+			return fmt.Errorf("failed to parse ASP code: %w", err)
+		}
+		result = parsed
 	}
-	parser := asp.NewASPParserWithOptions(fileContent, parsingOptions)
-	result, err := parser.Parse()
-	//if err != nil {
-	//	return fmt.Errorf("failed to parse ASP code: %w", err)
-	//}
 
 	// Check for parse errors
 	if len(result.Errors) > 0 {
@@ -2883,6 +2897,13 @@ func compareEqual(left, right interface{}) bool {
 		return false
 	}
 
+	// Fast path for strings without conversion
+	if ls, ok := left.(string); ok {
+		if rs, ok2 := right.(string); ok2 {
+			return ls == rs
+		}
+	}
+
 	// Compare as strings first
 	leftStr := toString(left)
 	rightStr := toString(right)
@@ -2907,6 +2928,12 @@ func compareLess(left, right interface{}) bool {
 
 	if lok && rok {
 		return leftNum < rightNum
+	}
+
+	if ls, ok := left.(string); ok {
+		if rs, ok2 := right.(string); ok2 {
+			return ls < rs
+		}
 	}
 
 	// String comparison

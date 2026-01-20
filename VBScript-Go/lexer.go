@@ -13,10 +13,12 @@ type Lexer struct {
 	CurrentLineStart int
 	Length           int
 	sb               strings.Builder
+	runes            []rune
 }
 
 // NewLexer creates a new Lexer instance
 func NewLexer(code string) *Lexer {
+	r := []rune(code)
 	if code == "" {
 		return &Lexer{
 			Code:             code,
@@ -24,6 +26,7 @@ func NewLexer(code string) *Lexer {
 			CurrentLine:      0,
 			CurrentLineStart: 0,
 			Length:           0,
+			runes:            r,
 		}
 	}
 	return &Lexer{
@@ -31,7 +34,8 @@ func NewLexer(code string) *Lexer {
 		Index:            0,
 		CurrentLine:      1,
 		CurrentLineStart: 0,
-		Length:           len([]rune(code)),
+		Length:           len(r),
+		runes:            r,
 	}
 }
 
@@ -128,14 +132,10 @@ func (l *Lexer) Reset() {
 // Private helper methods
 
 func (l *Lexer) getChar(pos int) rune {
-	if pos < 0 || pos >= len(l.Code) {
+	if pos < 0 || pos >= len(l.runes) {
 		return rune(0)
 	}
-	runes := []rune(l.Code)
-	if pos >= len(runes) {
-		return rune(0)
-	}
-	return runes[pos]
+	return l.runes[pos]
 }
 
 func (l *Lexer) isEof() bool {
@@ -199,8 +199,7 @@ func (l *Lexer) nextExtendedIdentifier() Token {
 		panic(l.vbSyntaxError(ExpectedRBracket))
 	}
 
-	runes := []rune(l.Code)
-	name := string(runes[start : l.Index+1])
+	name := string(l.runes[start : l.Index+1])
 
 	l.Index++
 
@@ -215,6 +214,7 @@ func (l *Lexer) nextExtendedIdentifier() Token {
 			Name: name,
 		},
 	}
+
 }
 
 func (l *Lexer) nextDateLiteral() Token {
@@ -367,8 +367,7 @@ func (l *Lexer) getIdentifierName() string {
 			break
 		}
 	}
-	runes := []rune(l.Code)
-	return string(runes[start:l.Index])
+	return string(l.runes[start:l.Index])
 }
 
 func (l *Lexer) nextStringLiteral() Token {
@@ -519,8 +518,7 @@ func (l *Lexer) getStrByPredicate(predicate func(rune) bool) string {
 		l.Index++
 		c = l.getChar(l.Index)
 	}
-	runes := []rune(l.Code)
-	return string(runes[start:l.Index])
+	return string(l.runes[start:l.Index])
 }
 
 func (l *Lexer) parseInteger(str string, base int) Token {
@@ -851,7 +849,7 @@ func (l *Lexer) nextPunctuation() Token {
 func (l *Lexer) vbSyntaxError(code VBSyntaxErrorCode) error {
 	// Capture the current offending character/token and full line text
 	tokenText := ""
-	if l.Index < len([]rune(l.Code)) {
+	if l.Index < len(l.runes) {
 		r := l.getChar(l.Index)
 		if r != 0 {
 			tokenText = string(r)
@@ -911,16 +909,15 @@ func (l *Lexer) currentLineText() string {
 	}
 	// Scan forward until newline or EOF
 	end := start
-	for end < len([]rune(l.Code)) {
+	for end < len(l.runes) {
 		ch := l.getChar(end)
 		if ch == '\n' || ch == '\r' || ch == 0 {
 			break
 		}
 		end++
 	}
-	runes := []rune(l.Code)
-	if start >= 0 && start < len(runes) && end <= len(runes) && end >= start {
-		return string(runes[start:end])
+	if start >= 0 && start < len(l.runes) && end <= len(l.runes) && end >= start {
+		return string(l.runes[start:end])
 	}
 	return ""
 }
