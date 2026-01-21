@@ -15,7 +15,7 @@ func TestWherePanicHappens(t *testing.T) {
 	code := "x=1 : response.end"
 	parser := NewParser(code)
 	program := parser.Parse()
-	
+
 	if program != nil {
 		fmt.Printf("Success!\n")
 	}

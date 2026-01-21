@@ -359,6 +359,8 @@ func (p *Parser) skipCommentsAndNewlines() {
 			p.move()
 		case *LineTerminationToken:
 			p.move()
+		case *ColonLineTerminationToken:
+			p.move()
 		default:
 			return
 		}
@@ -369,6 +371,21 @@ func (p *Parser) skipCommentsAndNewlines() {
 
 func (p *Parser) parseBlockStatement(inGlobal bool) ast.Statement {
 	p.createMarker() // marker
+
+	// Handle stray comments/colons that should be treated as empty statements
+	if _, ok := p.next.(*CommentToken); ok {
+		p.skipComments()
+		if inGlobal {
+			p.expectEofOrLineTermination()
+		} else {
+			p.expectLineTermination()
+		}
+		return nil
+	}
+	if _, ok := p.next.(*ColonLineTerminationToken); ok {
+		p.move()
+		return nil
+	}
 
 	var stmt ast.Statement
 	if k, ok := p.next.(*KeywordToken); ok {
@@ -819,10 +836,10 @@ func (p *Parser) parseMultiInlineStatement(matchElse bool, line int) ast.Stateme
 		if p.matchEof() {
 			break
 		}
-		
+
 		// Only break for block terminators if we're clearly not in the middle of parsing an expression
 		// Check if the next token is a terminator keyword AND we're not about to parse a member access
-		if (p.matchKeyword(KeywordEnd) || p.matchKeyword(KeywordElse) || p.matchKeyword(KeywordElseIf)) {
+		if p.matchKeyword(KeywordEnd) || p.matchKeyword(KeywordElse) || p.matchKeyword(KeywordElseIf) {
 			// Don't break if we're at an identifier, as it might be starting a statement like "response.end"
 			// Only break if it's really a block terminator
 			if !p.matchIdentifier() {

@@ -29,7 +29,7 @@ func TestKeywordAsMemberName(t *testing.T) {
 
 			parser := NewParser(tt.code)
 			program := parser.Parse()
-			
+
 			if program == nil {
 				t.Errorf("Parsing '%s' returned nil program", tt.code)
 			}

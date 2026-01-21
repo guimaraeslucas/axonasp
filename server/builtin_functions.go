@@ -968,6 +968,8 @@ func getTypeName(val interface{}) string {
 		return "Double"
 	case string:
 		return "String"
+	case time.Time:
+		return "Date"
 	case *VBArray:
 		return "Variant()"
 	case []interface{}:
@@ -1017,6 +1019,8 @@ func getVarType(val interface{}) int {
 		return 5 // vbDouble
 	case string:
 		return 8 // vbString
+	case time.Time:
+		return 7 // vbDate
 	case *VBArray:
 		return 8204
 	case []interface{}:

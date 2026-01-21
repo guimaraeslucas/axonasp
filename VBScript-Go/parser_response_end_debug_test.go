@@ -28,7 +28,7 @@ func TestSimpleResponseEnd(t *testing.T) {
 
 			parser := NewParser(tt.code)
 			program := parser.Parse()
-			
+
 			if program == nil {
 				t.Errorf("Parsing returned nil program")
 			}

@@ -7,7 +7,7 @@ import (
 
 func TestDebugColonParsing(t *testing.T) {
 	code := "x=1 : response.end"
-	
+
 	lexer := NewLexer(code)
 	tokens := []Token{}
 	for {

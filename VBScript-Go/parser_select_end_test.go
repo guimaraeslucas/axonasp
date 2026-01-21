@@ -18,7 +18,7 @@ end select`
 
 	parser := NewParser(code)
 	program := parser.Parse()
-	
+
 	if program == nil {
 		t.Errorf("Parsing returned nil program")
 	}
