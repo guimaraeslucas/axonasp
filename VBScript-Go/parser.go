@@ -1126,26 +1126,33 @@ func (p *Parser) parseExpression() ast.Expression {
 }
 
 func (p *Parser) parseBinaryExpression() ast.Expression {
+	return p.parseBinaryExpressionWithPrecedence(0)
+}
+
+func (p *Parser) parseBinaryExpressionWithPrecedence(minPrec int) ast.Expression {
+	// Handle Not operator as a prefix unary operator
+	if p.optKeyword(KeywordNot) {
+		notPrec := 15 // Not has precedence 15
+		// Parse the operand with higher precedence than Not
+		expr := p.parseBinaryExpressionWithPrecedence(notPrec + 1)
+		return ast.NewUnaryExpression(ast.UnaryOperationNot, expr)
+	}
+
 	expr := p.parseExpExpression()
 
-	op := p.next
-	prec := p.binaryPrecedence(op)
-	if prec > 0 {
-		p.move()
-		right := p.parseExpExpression()
-		expr = ast.NewBinaryExpression(p.getBinaryOperation(op), expr, right)
-
-		for {
-			op = p.next
-			prec = p.binaryPrecedence(op)
-			if prec <= 0 {
-				break
-			}
-
-			p.move()
-			right := p.parseExpExpression()
-			expr = ast.NewBinaryExpression(p.getBinaryOperation(op), expr, right)
+	for {
+		op := p.next
+		prec := p.binaryPrecedence(op)
+		if prec <= minPrec {
+			break
 		}
+
+		p.move()
+		
+		// Parse right side with higher precedence (left-associative)
+		right := p.parseBinaryExpressionWithPrecedence(prec)
+		
+		expr = ast.NewBinaryExpression(p.getBinaryOperation(op), expr, right)
 	}
 
 	return expr
@@ -1168,9 +1175,6 @@ func (p *Parser) parseUnaryExpression() ast.Expression {
 	} else if p.optPunctuation(PunctPlus) {
 		expr := p.parseUnaryExpression()
 		return ast.NewUnaryExpression(ast.UnaryOperationPlus, expr)
-	} else if p.optKeyword(KeywordNot) {
-		expr := p.parseUnaryExpression()
-		return ast.NewUnaryExpression(ast.UnaryOperationNot, expr)
 	}
 
 	return p.parseValueExpression()
@@ -1349,6 +1353,8 @@ func (p *Parser) binaryPrecedence(token Token) int {
 			return 48
 		case KeywordIs:
 			return 25
+		case KeywordNot:
+			return 15
 		case KeywordAnd:
 			return 10
 		case KeywordOr:

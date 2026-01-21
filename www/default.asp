@@ -637,6 +637,13 @@
                     </a>
                 </div>
 
+                <div class="test-item" onclick="loadTest('test_operator_precedence_comprehensive.asp', this)">
+                    <a href="javascript:void(0)" class="test-link">
+                        <div class="test-title">Operator Precedence: Not vs Is</div>
+                        <div class="test-desc">Validates correct precedence of Not operator (lower than Is comparison).</div>
+                    </a>
+                </div>
+
                 <div class="test-item" onclick="loadTest('test_content_type.asp', this)">
                     <a href="javascript:void(0)" class="test-link">
                         <div class="test-title">Content-Type JSON Test</div>
