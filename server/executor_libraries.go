@@ -215,6 +215,11 @@ func NewServerXMLHTTP(ctx *ExecutionContext) *ServerXMLHTTP {
 	}
 }
 
+// GetName returns the name of the object
+func (sx *ServerXMLHTTP) GetName() string {
+	return "MSXML2.ServerXMLHTTP"
+}
+
 // CallMethod calls a method on ServerXMLHTTP
 func (sx *ServerXMLHTTP) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	return sx.lib.CallMethod(name, args...)
@@ -234,6 +239,10 @@ func (sx *ServerXMLHTTP) SetProperty(name string, value interface{}) error {
 // DOMDocument wraps MsXML2DOMDocument for ASPLibrary interface compatibility
 type DOMDocument struct {
 	lib *MsXML2DOMDocument
+}
+
+func (dd *DOMDocument) GetName() string {
+	return "MSXML2.DOMDocument"
 }
 
 // NewDOMDocument creates a new DOMDocument instance

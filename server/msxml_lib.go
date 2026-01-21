@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -17,12 +18,14 @@ type MsXML2ServerXMLHTTP struct {
 	url             string
 	responseText    string
 	responseXML     string
+	responseXMLDoc  *MsXML2DOMDocument
 	status          int
 	statusText      string
 	readyState      int
 	headers         map[string]string
 	responseHeaders map[string]string
 	body            string
+	responseBody    []byte
 	timeout         time.Duration
 	async           bool
 	ctx             *ExecutionContext
@@ -45,7 +48,15 @@ func (s *MsXML2ServerXMLHTTP) GetProperty(name string) interface{} {
 	case "responsetext":
 		return s.responseText
 	case "responsexml":
+		if s.responseXMLDoc != nil {
+			return s.responseXMLDoc
+		}
 		return s.responseXML
+	case "responsebody":
+		if len(s.responseBody) == 0 {
+			return NewVBArrayFromValues(0, []interface{}{})
+		}
+		return bytesToVBArray(s.responseBody)
 	case "status":
 		return s.status
 	case "statustext":
@@ -61,9 +72,7 @@ func (s *MsXML2ServerXMLHTTP) GetProperty(name string) interface{} {
 func (s *MsXML2ServerXMLHTTP) SetProperty(name string, value interface{}) error {
 	switch strings.ToLower(name) {
 	case "timeout":
-		if v, ok := value.(int); ok {
-			s.timeout = time.Duration(v) * time.Second
-		}
+		s.timeout = time.Duration(toInt(value)) * time.Second
 	}
 	return nil
 }
@@ -134,13 +143,19 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 		return nil
 	}
 
+	s.responseBody = nil
+	s.responseXMLDoc = nil
+	s.responseText = ""
+	s.responseXML = ""
+
 	s.readyState = 2
 
 	var bodyReader io.Reader
+	bodyHasContent := false
+	bodyIsBinary := false
 	if len(args) > 0 && args[0] != nil {
-		bodyStr := fmt.Sprintf("%v", args[0])
-		bodyReader = strings.NewReader(bodyStr)
-		s.body = bodyStr
+		bodyReader, bodyIsBinary = s.buildRequestBody(args[0])
+		bodyHasContent = bodyReader != nil
 	}
 
 	req, err := http.NewRequest(s.method, s.url, bodyReader)
@@ -157,8 +172,12 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 	}
 
 	// Set default Content-Type if body exists
-	if s.body != "" && req.Header.Get("Content-Type") == "" {
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if bodyHasContent && req.Header.Get("Content-Type") == "" {
+		if bodyIsBinary {
+			req.Header.Set("Content-Type", "application/octet-stream")
+		} else {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
 	}
 
 	s.readyState = 3
@@ -182,6 +201,7 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 		return nil
 	}
 
+	s.responseBody = data
 	s.responseText = string(data)
 	s.status = resp.StatusCode
 	s.statusText = resp.Status
@@ -195,8 +215,12 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 
 	// Parse XML if response is XML
 	contentType := resp.Header.Get("Content-Type")
-	if strings.Contains(strings.ToLower(contentType), "xml") ||
-		strings.HasPrefix(strings.TrimSpace(s.responseText), "<") {
+	if s.isXMLResponse(contentType, s.responseText) {
+		doc := NewMsXML2DOMDocument(s.ctx)
+		if doc != nil {
+			doc.loadXML([]interface{}{s.responseText})
+			s.responseXMLDoc = doc
+		}
 		s.responseXML = s.responseText
 	}
 
@@ -235,6 +259,52 @@ func (s *MsXML2ServerXMLHTTP) getAllResponseHeaders() interface{} {
 	return result.String()
 }
 
+func (s *MsXML2ServerXMLHTTP) buildRequestBody(arg interface{}) (io.Reader, bool) {
+	switch v := arg.(type) {
+	case *VBArray:
+		buf := vbArrayToBytes(v)
+		return bytes.NewReader(buf), true
+	case []byte:
+		return bytes.NewReader(v), true
+	default:
+		bodyStr := fmt.Sprintf("%v", arg)
+		s.body = bodyStr
+		return strings.NewReader(bodyStr), false
+	}
+}
+
+func (s *MsXML2ServerXMLHTTP) isXMLResponse(contentType string, body string) bool {
+	if strings.Contains(strings.ToLower(contentType), "xml") {
+		return true
+	}
+	trimmed := strings.TrimSpace(body)
+	return strings.HasPrefix(trimmed, "<") && strings.HasSuffix(trimmed, ">")
+}
+
+func vbArrayToBytes(arr *VBArray) []byte {
+	if arr == nil {
+		return nil
+	}
+
+	buf := make([]byte, len(arr.Values))
+	for i, val := range arr.Values {
+		buf[i] = byte(toInt(val))
+	}
+	return buf
+}
+
+func bytesToVBArray(data []byte) *VBArray {
+	if len(data) == 0 {
+		return NewVBArrayFromValues(0, []interface{}{})
+	}
+
+	values := make([]interface{}, len(data))
+	for i, b := range data {
+		values[i] = int(b)
+	}
+	return NewVBArrayFromValues(0, values)
+}
+
 // ============================================================================
 // MsXML2DOMDocument - XML Document Object Model
 // ============================================================================
@@ -256,6 +326,42 @@ type ParseError struct {
 	LinePos     int
 	SrcText     string
 	URL         string
+}
+
+// GetName returns the name of the ParseError object
+func (p *ParseError) GetName() string {
+	return "IXMLDOMParseError"
+}
+
+// GetProperty gets a property from the ParseError
+func (p *ParseError) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "errorcode":
+		return p.ErrorCode
+	case "reason":
+		return p.ErrorReason
+	case "filepos":
+		return p.FilePos
+	case "line":
+		return p.Line
+	case "linepos":
+		return p.LinePos
+	case "srctext":
+		return p.SrcText
+	case "url":
+		return p.URL
+	}
+	return nil
+}
+
+// SetProperty sets a property on the ParseError (read-only, no-op)
+func (p *ParseError) SetProperty(name string, value interface{}) error {
+	return nil
+}
+
+// CallMethod calls a method on ParseError (none available)
+func (p *ParseError) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return nil, nil
 }
 
 // XMLElement represents an XML element node
@@ -283,9 +389,26 @@ func (d *MsXML2DOMDocument) GetName() string {
 func (d *MsXML2DOMDocument) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
 	case "documentelement":
+		// Ensure root is parsed if we have XML content
+		if d.root == nil && d.xmlContent != "" {
+			if parsed, err := d.parseXMLString(d.xmlContent); err == nil {
+				d.root = parsed
+			}
+		}
+		// Return nil (Nothing in VBScript) if no root
+		if d.root == nil {
+			return nil
+		}
 		return d.root
 	case "xml":
-		return d.xmlContent
+		if d.xmlContent != "" {
+			return d.xmlContent
+		}
+		// If no stored XML but we have a root, generate it
+		if d.root != nil {
+			return "<?xml version=\"1.0\"?>" + d.elementToXML(d.root, 0)
+		}
+		return ""
 	case "parseerror":
 		return d.parseError
 	case "async":
@@ -342,14 +465,18 @@ func (d *MsXML2DOMDocument) loadXML(args []interface{}) interface{} {
 	xmlStr := fmt.Sprintf("%v", args[0])
 	d.xmlContent = xmlStr
 
-	// Simple XML parsing - build element tree
-	d.root = d.parseXMLString(xmlStr)
-	if d.root == nil {
+	root, err := d.parseXMLString(xmlStr)
+	if err != nil || root == nil {
 		d.parseError.ErrorCode = -1
-		d.parseError.ErrorReason = "Failed to parse XML"
+		if err != nil {
+			d.parseError.ErrorReason = err.Error()
+		} else {
+			d.parseError.ErrorReason = "Failed to parse XML"
+		}
 		return false
 	}
 
+	d.root = root
 	d.parseError.ErrorCode = 0
 	d.parseError.ErrorReason = ""
 	return true
@@ -366,11 +493,10 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 
 	urlStr := fmt.Sprintf("%v", args[0])
 
-	// Try to fetch from URL or file
+	// Try to fetch from URL or path
 	var content string
 
 	if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
-		// HTTP request
 		resp, err := http.Get(urlStr)
 		if err != nil {
 			d.parseError.ErrorCode = -1
@@ -387,7 +513,6 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 		}
 		content = string(data)
 	} else {
-		// Local file
 		if d.ctx != nil {
 			fullPath := d.ctx.Server_MapPath(urlStr)
 			data, errFile := getFileContent(fullPath)
@@ -405,14 +530,18 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 	}
 
 	d.xmlContent = content
-	d.root = d.parseXMLString(content)
-
-	if d.root == nil {
+	root, err := d.parseXMLString(content)
+	if err != nil || root == nil {
 		d.parseError.ErrorCode = -1
-		d.parseError.ErrorReason = "Failed to parse XML"
+		if err != nil {
+			d.parseError.ErrorReason = err.Error()
+		} else {
+			d.parseError.ErrorReason = "Failed to parse XML"
+		}
 		return false
 	}
 
+	d.root = root
 	d.parseError.ErrorCode = 0
 	d.parseError.ErrorReason = ""
 	return true
@@ -444,7 +573,8 @@ func (d *MsXML2DOMDocument) save(args []interface{}) interface{} {
 // Syntax: GetElementsByTagName(tagName)
 func (d *MsXML2DOMDocument) getElementsByTagName(args []interface{}) interface{} {
 	if len(args) < 1 {
-		return []interface{}{}
+		// Return empty array instead of nil
+		return NewVBArrayFromValues(0, []interface{}{})
 	}
 
 	tagName := strings.ToLower(fmt.Sprintf("%v", args[0]))
@@ -454,13 +584,14 @@ func (d *MsXML2DOMDocument) getElementsByTagName(args []interface{}) interface{}
 		d.findElements(d.root, tagName, &results)
 	}
 
-	// Convert to interface slice
+	// Convert to interface slice for VBArray
 	var interfaceResults []interface{}
 	for _, elem := range results {
 		interfaceResults = append(interfaceResults, elem)
 	}
 
-	return interfaceResults
+	// Return as VBArray with 0-based indexing (even if empty)
+	return NewVBArrayFromValues(0, interfaceResults)
 }
 
 // selectSingleNode finds the first element matching a simple XPath
@@ -471,30 +602,55 @@ func (d *MsXML2DOMDocument) selectSingleNode(args []interface{}) interface{} {
 	}
 
 	xpath := fmt.Sprintf("%v", args[0])
-	// Simple XPath support: //tagname or /root/child
-	tagName := d.extractTagFromXPath(xpath)
+	segments, allowAnywhere := tokenizeXPath(xpath)
 
-	if d.root != nil {
-		elem := d.findFirstElement(d.root, tagName)
-		return elem
+	if d.root == nil && d.xmlContent != "" {
+		if parsed, err := d.parseXMLString(d.xmlContent); err == nil {
+			d.root = parsed
+		}
 	}
 
-	return nil
+	if d.root == nil || len(segments) == 0 {
+		return nil
+	}
+
+	if allowAnywhere {
+		return d.findFirstMatchAnywhere(d.root, segments)
+	}
+
+	if !strings.EqualFold(d.root.Name, segments[0]) {
+		return nil
+	}
+
+	return d.matchFirstFrom(d.root, segments[1:])
 }
 
 // selectNodes finds all elements matching a simple XPath
 // Syntax: SelectNodes(xpath)
 func (d *MsXML2DOMDocument) selectNodes(args []interface{}) interface{} {
 	if len(args) < 1 {
-		return []interface{}{}
+		// Return empty array instead of nil
+		return NewVBArrayFromValues(0, []interface{}{})
 	}
 
 	xpath := fmt.Sprintf("%v", args[0])
-	tagName := d.extractTagFromXPath(xpath)
+	segments, allowAnywhere := tokenizeXPath(xpath)
+
+	if d.root == nil && d.xmlContent != "" {
+		if parsed, err := d.parseXMLString(d.xmlContent); err == nil {
+			d.root = parsed
+		}
+	}
 
 	var results []*XMLElement
 	if d.root != nil {
-		d.findElements(d.root, tagName, &results)
+		if allowAnywhere {
+			d.collectMatchesAnywhere(d.root, segments, &results)
+		} else {
+			if len(segments) > 0 && strings.EqualFold(d.root.Name, segments[0]) {
+				d.collectMatchesFrom(d.root, segments[1:], &results)
+			}
+		}
 	}
 
 	var interfaceResults []interface{}
@@ -502,7 +658,96 @@ func (d *MsXML2DOMDocument) selectNodes(args []interface{}) interface{} {
 		interfaceResults = append(interfaceResults, elem)
 	}
 
-	return interfaceResults
+	// Return as VBArray with 0-based indexing (even if empty)
+	return NewVBArrayFromValues(0, interfaceResults)
+}
+
+// tokenizeXPath returns normalized segments and whether the path should match anywhere (//)
+func tokenizeXPath(xpath string) ([]string, bool) {
+	trimmed := strings.TrimSpace(xpath)
+	allowAnywhere := strings.HasPrefix(trimmed, "//")
+	if allowAnywhere {
+		trimmed = strings.TrimPrefix(trimmed, "//")
+	}
+
+	parts := strings.Split(trimmed, "/")
+	var segments []string
+	for _, part := range parts {
+		seg := strings.TrimSpace(part)
+		if seg == "" || seg == "." {
+			continue
+		}
+		segments = append(segments, strings.ToLower(seg))
+	}
+
+	return segments, allowAnywhere
+}
+
+// matchFirstFrom walks down the tree following the provided path starting at start.
+func (d *MsXML2DOMDocument) matchFirstFrom(start *XMLElement, segments []string) *XMLElement {
+	if len(segments) == 0 {
+		return start
+	}
+
+	for _, child := range start.Children {
+		if strings.EqualFold(child.Name, segments[0]) {
+			if res := d.matchFirstFrom(child, segments[1:]); res != nil {
+				return res
+			}
+		}
+	}
+
+	return nil
+}
+
+// findFirstMatchAnywhere searches depth-first for the first node that satisfies the path.
+func (d *MsXML2DOMDocument) findFirstMatchAnywhere(root *XMLElement, segments []string) *XMLElement {
+	if root == nil || len(segments) == 0 {
+		return nil
+	}
+
+	if strings.EqualFold(root.Name, segments[0]) {
+		if res := d.matchFirstFrom(root, segments[1:]); res != nil {
+			return res
+		}
+	}
+
+	for _, child := range root.Children {
+		if res := d.findFirstMatchAnywhere(child, segments); res != nil {
+			return res
+		}
+	}
+
+	return nil
+}
+
+// collectMatchesFrom gathers all nodes that match the remaining path starting at start.
+func (d *MsXML2DOMDocument) collectMatchesFrom(start *XMLElement, segments []string, results *[]*XMLElement) {
+	if len(segments) == 0 {
+		*results = append(*results, start)
+		return
+	}
+
+	for _, child := range start.Children {
+		if strings.EqualFold(child.Name, segments[0]) {
+			d.collectMatchesFrom(child, segments[1:], results)
+		}
+	}
+}
+
+// collectMatchesAnywhere gathers all nodes anywhere in the tree that satisfy the path.
+func (d *MsXML2DOMDocument) collectMatchesAnywhere(root *XMLElement, segments []string, results *[]*XMLElement) {
+	if root == nil || len(segments) == 0 {
+		return
+	}
+
+	if strings.EqualFold(root.Name, segments[0]) {
+		d.collectMatchesFrom(root, segments[1:], results)
+	}
+
+	for _, child := range root.Children {
+		d.collectMatchesAnywhere(child, segments, results)
+	}
 }
 
 // createElement creates a new element
@@ -511,13 +756,14 @@ func (d *MsXML2DOMDocument) createElement(args []interface{}) interface{} {
 	if len(args) < 1 {
 		return nil
 	}
-
 	tagName := fmt.Sprintf("%v", args[0])
-	return &XMLElement{
+
+	elem := &XMLElement{
 		Name:       tagName,
 		Attributes: make(map[string]string),
 		Children:   make([]*XMLElement, 0),
 	}
+	return elem
 }
 
 // createTextNode creates a text node
@@ -664,7 +910,8 @@ func (e *XMLElement) CallMethod(name string, args ...interface{}) (interface{}, 
 			for _, elem := range results {
 				interfaceResults = append(interfaceResults, elem)
 			}
-			return interfaceResults, nil
+			// Return array even if empty
+			return NewVBArrayFromValues(0, interfaceResults), nil
 		}
 	case "item":
 		if len(args) > 0 {
@@ -736,143 +983,76 @@ func (e *XMLElement) toXML(indent int) string {
 
 // Private helper methods for MsXML2DOMDocument
 
-func (d *MsXML2DOMDocument) parseXMLString(xmlStr string) *XMLElement {
-	// Simple XML parser - handles basic cases
-	xmlStr = strings.TrimSpace(xmlStr)
-
-	// Remove XML declaration if present
-	if strings.HasPrefix(xmlStr, "<?xml") {
-		endIdx := strings.Index(xmlStr, "?>")
-		if endIdx != -1 {
-			xmlStr = strings.TrimSpace(xmlStr[endIdx+2:])
-		}
+func (d *MsXML2DOMDocument) parseXMLString(xmlStr string) (*XMLElement, error) {
+	trimmed := strings.TrimSpace(xmlStr)
+	if trimmed == "" {
+		return nil, fmt.Errorf("empty xml")
 	}
 
-	// Find root element
-	startIdx := strings.Index(xmlStr, "<")
-	if startIdx == -1 {
-		return nil
-	}
+	decoder := xml.NewDecoder(strings.NewReader(trimmed))
+	decoder.Strict = false // be lenient like MSXML
 
-	xmlStr = xmlStr[startIdx:]
+	var root *XMLElement
+	stack := make([]*XMLElement, 0)
 
-	// Parse the root element
-	root, _ := d.parseElement(xmlStr)
-	return root
-}
-
-// parseElement recursively parses an XML element
-func (d *MsXML2DOMDocument) parseElement(xmlStr string) (*XMLElement, int) {
-	xmlStr = strings.TrimSpace(xmlStr)
-
-	if !strings.HasPrefix(xmlStr, "<") {
-		return nil, 0
-	}
-
-	// Find end of opening tag
-	endTagStart := strings.Index(xmlStr, ">")
-	if endTagStart == -1 {
-		return nil, 0
-	}
-
-	tagContent := xmlStr[1:endTagStart]
-
-	// Check for self-closing tag
-	if strings.HasSuffix(tagContent, "/") {
-		// Self-closing tag
-		tagName := strings.TrimSpace(strings.TrimSuffix(tagContent, "/"))
-		elem := &XMLElement{
-			Name:       tagName,
-			Attributes: make(map[string]string),
-			Children:   make([]*XMLElement, 0),
-		}
-		return elem, endTagStart + 1
-	}
-
-	// Parse tag name and attributes
-	parts := strings.Fields(tagContent)
-	if len(parts) == 0 {
-		return nil, 0
-	}
-
-	tagName := parts[0]
-	elem := &XMLElement{
-		Name:       tagName,
-		Attributes: make(map[string]string),
-		Children:   make([]*XMLElement, 0),
-	}
-
-	// Find closing tag
-	closingTag := "</" + tagName + ">"
-	closeIdx := strings.Index(xmlStr, closingTag)
-	if closeIdx == -1 {
-		// Malformed XML - missing closing tag
-		return nil, 0
-	}
-
-	// Extract content between opening and closing tags
-	contentStart := endTagStart + 1
-	contentEnd := closeIdx
-	content := xmlStr[contentStart:contentEnd]
-
-	// Parse child elements and text
-	d.parseContent(elem, content)
-
-	// Return element and position after closing tag
-	return elem, closeIdx + len(closingTag)
-}
-
-// parseContent extracts child elements and text from element content
-func (d *MsXML2DOMDocument) parseContent(parent *XMLElement, content string) {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return
-	}
-
-	// Parse child elements
-	pos := 0
-	for pos < len(content) {
-		// Skip whitespace and text
-		for pos < len(content) && content[pos] != '<' {
-			pos++
-		}
-
-		if pos >= len(content) {
-			break
-		}
-
-		// Check if this is a closing tag
-		if strings.HasPrefix(content[pos:], "</") {
-			break
-		}
-
-		// Parse child element
-		child, consumed := d.parseElement(content[pos:])
-		if child == nil {
-			break
-		}
-
-		parent.Children = append(parent.Children, child)
-		child.Parent = parent
-		pos += consumed
-	}
-
-	// If no children, the content is text
-	if len(parent.Children) == 0 {
-		// Remove tags and store as value
-		textContent := content
-		// Remove any remaining tags
-		for strings.Contains(textContent, "<") && strings.Contains(textContent, ">") {
-			startIdx := strings.Index(textContent, "<")
-			endIdx := strings.Index(textContent, ">")
-			if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
-				textContent = textContent[:startIdx] + textContent[endIdx+1:]
-			} else {
+	for {
+		tok, err := decoder.Token()
+		if err != nil {
+			if err == io.EOF {
 				break
 			}
+			return nil, err
 		}
-		parent.Value = strings.TrimSpace(textContent)
+
+		switch t := tok.(type) {
+		case xml.StartElement:
+			node := &XMLElement{
+				Name:       t.Name.Local,
+				Attributes: make(map[string]string),
+				Children:   make([]*XMLElement, 0),
+			}
+			for _, attr := range t.Attr {
+				node.Attributes[attr.Name.Local] = attr.Value
+			}
+
+			if len(stack) > 0 {
+				parent := stack[len(stack)-1]
+				parent.Children = append(parent.Children, node)
+				node.Parent = parent
+			}
+
+			stack = append(stack, node)
+			if root == nil {
+				root = node
+			}
+
+		case xml.EndElement:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+
+		case xml.CharData:
+			text := string(t)
+			if strings.TrimSpace(text) == "" {
+				continue
+			}
+			if len(stack) == 0 {
+				continue
+			}
+			parent := stack[len(stack)-1]
+			textNode := &XMLElement{
+				Name:  "#text",
+				Value: text,
+			}
+			parent.Children = append(parent.Children, textNode)
+			textNode.Parent = parent
+			if len(parent.Children) == 1 && parent.Value == "" {
+				parent.Value = strings.TrimSpace(text)
+			}
+		}
 	}
+
+	return root, nil
 }
 
 func (d *MsXML2DOMDocument) findElements(root *XMLElement, tagName string, results *[]*XMLElement) {
@@ -938,18 +1118,6 @@ func (d *MsXML2DOMDocument) elementToXML(elem *XMLElement, indent int) string {
 	}
 
 	return buf.String()
-}
-
-func (d *MsXML2DOMDocument) extractTagFromXPath(xpath string) string {
-	// Simple XPath extraction
-	parts := strings.Split(xpath, "/")
-	for i := len(parts) - 1; i >= 0; i-- {
-		part := strings.TrimSpace(parts[i])
-		if part != "" && part != "." && !strings.HasPrefix(part, "@") {
-			return strings.ToLower(part)
-		}
-	}
-	return ""
 }
 
 // Helper functions for file operations (use OS-level functions)
