@@ -182,7 +182,7 @@
                 
                 Set lastError = Server.GetLastError()
                 
-                If Not IsNothing(lastError) And Not IsNull(lastError) Then
+                If (lastError Is Nothing) = False And IsNull(lastError) = False Then
                     Dim i
                     For i = 0 To 8
                         On Error Resume Next
@@ -216,7 +216,7 @@
             <%
             Set lastError = Server.GetLastError()
             
-            If Not IsNothing(lastError) And Not IsNull(lastError) Then
+            If (lastError Is Nothing) = False And IsNull(lastError) = False Then
                 Response.Write "<table>"
                 Response.Write "<tr><th>Property</th><th>Value</th></tr>"
                 
@@ -282,7 +282,7 @@
             Response.Write "<p>First Error Number: " & firstErr & "</p>"
             Response.Write "<p>Second Error Number: " & secondErr & "</p>"
             
-            If Not IsNothing(lastError) And Not IsNull(lastError) Then
+            If (lastError Is Nothing) = False And IsNull(lastError) = False Then
                 Response.Write "<p class='info'>GetLastError() returned error number: " & lastError.Number & "</p>"
                 If lastError.Number = secondErr Then
                     Response.Write "<p class='success'>✓ PASS: GetLastError() returns the most recent error</p>"

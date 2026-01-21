@@ -218,8 +218,12 @@ func (p *Parser) matchEof() bool {
 }
 
 func (p *Parser) matchLineTermination() bool {
-	_, ok := p.next.(*LineTerminationToken)
-	return ok
+	switch p.next.(type) {
+	case *LineTerminationToken, *ColonLineTerminationToken:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p *Parser) matchColonLineTermination() bool {
@@ -322,7 +326,10 @@ func (p *Parser) optColonLineTermination() bool {
 
 func (p *Parser) expectLineTermination() {
 	token := p.move()
-	if _, ok := token.(*LineTerminationToken); !ok {
+	switch token.(type) {
+	case *LineTerminationToken, *ColonLineTerminationToken:
+		return
+	default:
 		panic(p.vbSyntaxError(SyntaxError))
 	}
 }
@@ -330,7 +337,7 @@ func (p *Parser) expectLineTermination() {
 func (p *Parser) expectEofOrLineTermination() {
 	token := p.move()
 	switch token.(type) {
-	case *LineTerminationToken, *EOFToken:
+	case *LineTerminationToken, *ColonLineTerminationToken, *EOFToken:
 		return
 	default:
 		panic(p.vbSyntaxError(SyntaxError))
@@ -661,6 +668,7 @@ func (p *Parser) parseInlineStatement() ast.Statement {
 		case KeywordSub, KeywordFunction:
 			panic(p.vbSyntaxError(SyntaxError))
 		default:
+			// Unhandled keyword in inline statement context
 			panic(p.vbSyntaxError(SyntaxError))
 		}
 	} else if p.inWithBlock && p.matchPunctuation(PunctDot) {
@@ -807,9 +815,19 @@ func (p *Parser) parseMultiInlineStatement(matchElse bool, line int) ast.Stateme
 	for {
 		p.skipComments()
 
-		// Stop if we reached a block terminator or EOF
-		if p.matchKeyword(KeywordEnd) || p.matchKeyword(KeywordElse) || p.matchKeyword(KeywordElseIf) || p.matchEof() {
+		// Stop if we reached EOF
+		if p.matchEof() {
 			break
+		}
+		
+		// Only break for block terminators if we're clearly not in the middle of parsing an expression
+		// Check if the next token is a terminator keyword AND we're not about to parse a member access
+		if (p.matchKeyword(KeywordEnd) || p.matchKeyword(KeywordElse) || p.matchKeyword(KeywordElseIf)) {
+			// Don't break if we're at an identifier, as it might be starting a statement like "response.end"
+			// Only break if it's really a block terminator
+			if !p.matchIdentifier() {
+				break
+			}
 		}
 
 		stmts.Add(p.parseInlineStatement())
@@ -1806,6 +1824,9 @@ func (p *Parser) expectAnyKeywordAsIdentifier() string {
 	token := p.move()
 	if t, ok := token.(*KeywordToken); ok {
 		return t.Keyword.String()
+	}
+	if t, ok := token.(*KeywordOrIdentifierToken); ok {
+		return t.Name
 	}
 
 	panic(p.vbSyntaxError(SyntaxError))
