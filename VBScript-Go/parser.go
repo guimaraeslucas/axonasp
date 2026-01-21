@@ -1148,10 +1148,10 @@ func (p *Parser) parseBinaryExpressionWithPrecedence(minPrec int) ast.Expression
 		}
 
 		p.move()
-		
+
 		// Parse right side with higher precedence (left-associative)
 		right := p.parseBinaryExpressionWithPrecedence(prec)
-		
+
 		expr = ast.NewBinaryExpression(p.getBinaryOperation(op), expr, right)
 	}
 
