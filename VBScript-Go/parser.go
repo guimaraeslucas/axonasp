@@ -289,7 +289,7 @@ func (p *Parser) expectPunctuation(punc Punctuation) {
 
 func (p *Parser) matchIdentifier() bool {
 	switch p.next.(type) {
-	case *IdentifierToken, *KeywordOrIdentifierToken:
+	case *IdentifierToken, *KeywordOrIdentifierToken, *ExtendedIdentifierToken:
 		return true
 	default:
 		return false
@@ -302,6 +302,8 @@ func (p *Parser) expectIdentifier() string {
 	case *IdentifierToken:
 		return t.Name
 	case *KeywordOrIdentifierToken:
+		return t.Name
+	case *ExtendedIdentifierToken:
 		return t.Name
 	default:
 		panic(p.vbSyntaxError(ExpectedIdentifier))
