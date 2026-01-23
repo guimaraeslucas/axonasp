@@ -288,8 +288,16 @@ func (p *Parser) expectPunctuation(punc Punctuation) {
 }
 
 func (p *Parser) matchIdentifier() bool {
-	switch p.next.(type) {
+	switch t := p.next.(type) {
 	case *IdentifierToken, *KeywordOrIdentifierToken, *ExtendedIdentifierToken:
+		return true
+	case *KeywordToken:
+		// Allow keywords to be identifiers unless they are strict block terminators
+		// that rely on this check in parseMultiInlineStatement
+		switch t.Keyword {
+		case KeywordEnd, KeywordElse, KeywordElseIf, KeywordCase, KeywordNext, KeywordLoop, KeywordWEnd:
+			return false
+		}
 		return true
 	default:
 		return false
@@ -298,6 +306,7 @@ func (p *Parser) matchIdentifier() bool {
 
 func (p *Parser) expectIdentifier() string {
 	token := p.move()
+	// fmt.Printf("DEBUG: expectIdentifier got %T: %v\n", token, token)
 	switch t := token.(type) {
 	case *IdentifierToken:
 		return t.Name
@@ -305,6 +314,13 @@ func (p *Parser) expectIdentifier() string {
 		return t.Name
 	case *ExtendedIdentifierToken:
 		return t.Name
+	case *KeywordToken:
+		// Allow keywords to be identifiers unless they are strict block terminators
+		switch t.Keyword {
+		case KeywordEnd, KeywordElse, KeywordElseIf, KeywordCase, KeywordNext, KeywordLoop, KeywordWEnd:
+			panic(p.vbSyntaxError(ExpectedIdentifier))
+		}
+		return t.Keyword.String()
 	default:
 		panic(p.vbSyntaxError(ExpectedIdentifier))
 	}
@@ -1172,15 +1188,18 @@ func (p *Parser) parseBinaryExpression() ast.Expression {
 }
 
 func (p *Parser) parseBinaryExpressionWithPrecedence(minPrec int) ast.Expression {
+	var expr ast.Expression
+
 	// Handle Not operator as a prefix unary operator
 	if p.optKeyword(KeywordNot) {
 		notPrec := 15 // Not has precedence 15
 		// Parse the operand with higher precedence than Not
-		expr := p.parseBinaryExpressionWithPrecedence(notPrec + 1)
-		return ast.NewUnaryExpression(ast.UnaryOperationNot, expr)
+		// If the operand is a binary expression, it must have higher precedence to be part of the Not
+		operand := p.parseBinaryExpressionWithPrecedence(notPrec + 1)
+		expr = ast.NewUnaryExpression(ast.UnaryOperationNot, operand)
+	} else {
+		expr = p.parseExpExpression()
 	}
-
-	expr := p.parseExpExpression()
 
 	for {
 		op := p.next
@@ -1727,7 +1746,10 @@ func (p *Parser) parseAssignmentOrCallStatement() ast.Statement {
 		callstmt := ast.NewCallSubStatement(left)
 
 		p.skipComments()
-		if !p.matchLineTermination() && !p.matchEof() {
+		// Check for block terminators or else/elseif which end the statement list
+		if !p.matchLineTermination() && !p.matchEof() &&
+			!p.matchKeyword(KeywordEnd) && !p.matchKeyword(KeywordElse) && !p.matchKeyword(KeywordElseIf) &&
+			!p.matchKeyword(KeywordNext) && !p.matchKeyword(KeywordLoop) && !p.matchKeyword(KeywordWEnd) {
 			callstmt.Arguments = append(callstmt.Arguments, p.parseExpression())
 
 			for p.optPunctuation(PunctComma) {
