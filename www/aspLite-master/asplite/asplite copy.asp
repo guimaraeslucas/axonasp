@@ -14,12 +14,15 @@ class cls_asplite
 
 	private debug,startTime,stopTime,plugins,p_fso,cacheprefix,multipart,p_json,p_randomizer,p_formmessages,p_value
 
-	Private Sub Class_Initialize()
-
-		public function GetFileExtension(str)
-		Dim Pos : Pos = instrrev(str, ".")
+	public function GetFileExtension(str)
+		Dim Pos
+		Pos = instrrev(str, ".")
 		If Pos>0 Then GetFileExtension = Mid(str, Pos+1)
 	end Function
+
+	Private Sub Class_Initialize()
+
+
 
 		on error resume next
 

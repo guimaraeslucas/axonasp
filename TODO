@@ -8,31 +8,19 @@ OK - Implemente Server.Execute, Server.Transfer e ScriptTimeout de acordo com o 
 OK - Implemente a forma de chamada e set abreviado exemplo: dim asplEvent : asplEvent=aspl.getRequest("asplEvent")
 OK - NOW(), DATE() e TIME(), Day, Hour, Minute, Second, Timer() não estão retornando nenhum valor
 OK - Response.End não está funcionando, a execução continua
-- Date literals não estão funcionando. 
+OK - Date literals não estão funcionando. 
+OK - Template não está funcionando
+OK - Mail não está funcionando
+OK - ADODB Connection & Recordset não estão funcionando - verifique se a librarie está interagindo adequadamente com ASPLibrary, por exemplo, enviando todos os campos requeridos e utilizando os campos com itens corretos. Faça com que test_adodb_advanced.asp funcione.
+OK - Página test_regexp.asp, o teste 6, 7 e 1 estão falhando, os demais funcionam verifique se a librarie está interagindo adequadamente com ASPLibrary, por exemplo, enviando todos os campos requeridos e utilizando os campos com itens corretos
+- MSXML apresenta falhas verifique se a librarie está interagindo adequadamente com ASPLibrary, por exemplo, enviando todos os campos requeridos e utilizando os campos com itens corretos
 - Classes não estão funcionando
 - Server.CreateObject("Scripting.FileSystemObject") não está funcionando
-- ADODB Connection & Recordset não estão funcionando - verifique se a librarie está interagindo adequadamente com ASPLibrary, por exemplo, enviando todos os campos requeridos e utilizando os campos com itens corretos
-- Template não está funcionando
-- Mail não está funcionando
-- Página test_regexp.asp, o teste 6, 7 e 1 estão falhando, os demais funcionam verifique se a librarie está interagindo adequadamente com ASPLibrary, por exemplo, enviando todos os campos requeridos e utilizando os campos com itens corretos
 - GetLastError() did not return the most recent error
-
+- Implemente Option Explicit (faça com que seja interpretada a opção, mas não implemente os bloqueios)
 
 
 - Implemente adequadamente Err.Number, Err.Description, and Err.Source. Implemente On Error Resume Next. Aproveite e modifique a tela de debug para que mostre o nome do arquivo com erro, não apenas a linha, o horário que isso ocorreu e se em uma página HTML retorne também a StackTrace
 
-Missing VBScript functions: Filter (not present in current runtime), InputBox, MsgBox, GetObject, and the Randomize statement (only in deprecated code), leaving common scripts without these built-ins.
 
-Rnd ignores the optional seed and there is no Randomize to set the generator seed, so repeatable random sequences are impossible for parity with VBScript builtin_functions.go:505-515.
 
-Replace is case-sensitive and ignores start/count/compare options; VBScript defaults to case-insensitive and honors those parameters builtin_functions.go:376-395.
-
-DateDiff/DateAdd/DatePart do not accept firstdayofweek/firstweekofyear, so week-based calculations diverge from VBScript datetime_functions.go:179-212.
-
-String(number, character) treats the second argument only as a string; VBScript also accepts a numeric character code, so numeric inputs yield the wrong character builtin_functions.go:421-436.
-
-FormatCurrency/FormatNumber/FormatPercent ignore the optional flags (include leading digit, use parentheses for negatives, group separator), limiting formatting fidelity builtin_functions.go:623-676.
-
-Timer returns an integer (seconds) instead of a Single with fractional seconds, reducing precision compared to VBScript builtin_functions.go:693-701.
-
-Arrays always report LBound=0 with no Option Base support; VBScript allows Option Base 1, so some legacy code may misbehave builtin_functions.go:325-343.

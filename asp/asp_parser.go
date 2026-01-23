@@ -144,7 +144,8 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 
 	// Pre-process colons to handle multi-statement lines
 	// The VBScript parser might panic on colons, so we convert them to newlines
-	processedCode := preProcessColons(trimmedCode)
+	// processedCode := preProcessColons(trimmedCode)
+    processedCode := trimmedCode
 
 	// Usa o parser do VBScript-Go
 	parser := vb.NewParserWithOptions(processedCode, ap.vbOptions)

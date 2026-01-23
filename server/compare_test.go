@@ -58,3 +58,65 @@ func TestOptionCompareAppliedDuringExecution(t *testing.T) {
 		t.Fatalf("expected text comparison to yield true, got %#v", val)
 	}
 }
+
+func TestForwardFunctionCallHoisted(t *testing.T) {
+	code := "result = Answer()\nFunction Answer()\n    Answer = 42\nEnd Function\n"
+	parser := vb.NewParser(code)
+	program := parser.Parse()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+
+	executor := &ASPExecutor{config: &ASPProcessorConfig{RootDir: "./www", ScriptTimeout: 30}}
+	executor.context = NewExecutionContext(rec, req, "test-session", 5*time.Second)
+
+	if err := executor.executeVBProgram(program); err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	val, ok := executor.context.GetVariable("result")
+	if !ok {
+		t.Fatalf("expected result variable to be set")
+	}
+
+	if toInt(val) != 42 {
+		t.Fatalf("expected Answer() to run before declaration and yield 42, got %#v", val)
+	}
+}
+
+func TestForwardCallAcrossBlocksAndClass(t *testing.T) {
+	block1 := "Class C\nSub Run()\n    result = Outside()\nEnd Sub\nEnd Class\nDim o\nSet o = New C\no.Run\n"
+	block2 := "Function Outside()\n    Outside = 99\nEnd Function\n"
+
+	prog1 := vb.NewParser(block1).Parse()
+	prog2 := vb.NewParser(block2).Parse()
+
+	blocks := []*asp.CodeBlock{
+		{Type: "asp", Content: block1, Line: 1},
+		{Type: "asp", Content: block2, Line: 1},
+	}
+
+	result := &asp.ASPParserResult{
+		Blocks:     blocks,
+		VBPrograms: map[int]*ast.Program{0: prog1, 1: prog2},
+	}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+
+	executor := &ASPExecutor{config: &ASPProcessorConfig{RootDir: "./www", ScriptTimeout: 30}}
+	executor.context = NewExecutionContext(rec, req, "test-session", 5*time.Second)
+
+	if err := executor.executeBlocks(result); err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	val, ok := executor.context.GetVariable("result")
+	if !ok {
+		t.Fatalf("expected result variable to be set")
+	}
+
+	if toInt(val) != 99 {
+		t.Fatalf("expected Outside() to be callable from class in earlier block, got %#v", val)
+	}
+}

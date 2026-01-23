@@ -378,7 +378,12 @@ func (p *Parser) parseBlockStatement(inGlobal bool) ast.Statement {
 		if inGlobal {
 			p.expectEofOrLineTermination()
 		} else {
-			p.expectLineTermination()
+			// If we hit EOF inside a block after a comment, we accept it as an empty statement
+			// The surrounding loop (e.g. in parseSubDeclaration) will then check for matchEof()
+			// and trigger the appropriate "Expected End ..." error instead of a generic SyntaxError.
+			if !p.matchEof() {
+				p.expectLineTermination()
+			}
 		}
 		return nil
 	}

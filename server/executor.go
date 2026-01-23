@@ -826,6 +826,11 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 
 // executeBlocks executes all blocks in order (HTML and ASP)
 func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
+	// Hoist declarations across all parsed programs up-front so forward references
+	// across ASP blocks (including class members calling later global functions)
+	// resolve before any execution begins.
+	ae.hoistAllPrograms(result)
+
 	for i, block := range result.Blocks {
 		// Check timeout periodically
 		if i%100 == 0 {
@@ -878,6 +883,9 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 	// Create a visitor to traverse the AST
 	v := NewASPVisitor(ae.context, ae)
 
+	// Hoist all procedure and class declarations so forward references work
+	ae.hoistDeclarations(v, program)
+
 	// Visit all statements in the program
 	if program.Body != nil {
 		for _, stmt := range program.Body {
@@ -907,6 +915,54 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 	}
 
 	return nil
+}
+
+// hoistAllPrograms pre-registers declarations for every parsed VB program so
+// that calls across blocks can resolve forward references.
+func (ae *ASPExecutor) hoistAllPrograms(result *asp.ASPParserResult) {
+	if result == nil || len(result.VBPrograms) == 0 {
+		return
+	}
+
+	visitor := NewASPVisitor(ae.context, ae)
+	for idx, program := range result.VBPrograms {
+		// Skip synthetic combined program (-1) to avoid duplicate registrations
+		if idx < 0 {
+			continue
+		}
+		ae.hoistDeclarations(visitor, program)
+	}
+}
+
+// hoistDeclarations pre-registers procedures and classes before execution
+func (ae *ASPExecutor) hoistDeclarations(v *ASPVisitor, program *ast.Program) {
+	if v == nil || program == nil || len(program.Body) == 0 {
+		return
+	}
+
+	for _, stmt := range program.Body {
+		ae.hoistStatement(v, stmt)
+	}
+}
+
+// hoistStatement walks a statement and registers any declarations it finds
+func (ae *ASPExecutor) hoistStatement(v *ASPVisitor, stmt ast.Statement) {
+	switch s := stmt.(type) {
+	case *ast.SubDeclaration:
+		if s != nil && s.Identifier != nil {
+			_ = v.context.SetVariable(s.Identifier.Name, s)
+		}
+	case *ast.FunctionDeclaration:
+		if s != nil && s.Identifier != nil {
+			_ = v.context.SetVariable(s.Identifier.Name, s)
+		}
+	case *ast.ClassDeclaration:
+		_ = v.visitClassDeclaration(s)
+	case *ast.StatementList:
+		for _, inner := range s.Statements {
+			ae.hoistStatement(v, inner)
+		}
+	}
 }
 
 // Detects whether the content has executable ASP code (non-directive/comment blocks)
