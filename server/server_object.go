@@ -166,43 +166,23 @@ func (s *ServerObject) HTMLEncode(str string) string {
 	return html.EscapeString(str)
 }
 
-// MapPath converts a virtual or relative path to a physical path on the server
-// Supports both absolute (virtual="/path") and relative (file="path") paths
+// MapPath resolves a virtual/relative path to a physical path
+// Delegates to the execution context for script-aware resolution
 func (s *ServerObject) MapPath(path string) string {
-	// Handle empty path
-	if path == "" {
-		return s.rootDir
+	if s.context != nil {
+		return s.context.Server_MapPath(path)
 	}
 
-	// Handle root path
-	if path == "/" || path == "\\" {
+	// Fallback: legacy root-based resolution
+	if path == "" || path == "/" || path == "\\" {
 		return s.rootDir
 	}
-
-	// Normalize path separators
 	path = strings.ReplaceAll(path, "\\", "/")
-
-	// Check if it's an absolute virtual path (starts with /)
-	if strings.HasPrefix(path, "/") {
-		// Remove leading slash and join with root
-		path = strings.TrimPrefix(path, "/")
-		fullPath := filepath.Join(s.rootDir, path)
-		absPath, err := filepath.Abs(fullPath)
-		if err != nil {
-			return fullPath
-		}
-		return absPath
-	}
-
-	// Relative path - needs current script directory
-	// In a full implementation, this would use the current script's directory
-	// For now, treat as relative to root
-	fullPath := filepath.Join(s.rootDir, path)
+	fullPath := filepath.Join(s.rootDir, strings.TrimPrefix(path, "/"))
 	absPath, err := filepath.Abs(fullPath)
 	if err != nil {
 		return fullPath
 	}
-
 	return absPath
 }
 

@@ -81,6 +81,8 @@ type ExecutionContext struct {
 
 	// Configuration
 	RootDir     string
+	CurrentFile string
+	CurrentDir  string
 	compareMode ast.OptionCompareMode
 	optionBase  int
 
@@ -503,14 +505,21 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 		return rootDir
 	}
 
-	// Remove leading slash if present
-	if len(path) > 0 && (path[0] == '/' || path[0] == '\\') {
-		path = path[1:]
+	cleanPath := strings.ReplaceAll(path, "\\", "/")
+
+	// Absolute virtual path (starts with /) -> root-based
+	if strings.HasPrefix(cleanPath, "/") {
+		cleanPath = strings.TrimPrefix(cleanPath, "/")
+		fullPath := filepath.Join(rootDir, cleanPath)
+		return fullPath
 	}
 
-	// Join with root directory
-	fullPath := fmt.Sprintf("%s%c%s", rootDir, '/', strings.ReplaceAll(path, "\\", "/"))
-
+	// Relative path -> prefer current script directory when available
+	baseDir := rootDir
+	if ec.CurrentDir != "" {
+		baseDir = ec.CurrentDir
+	}
+	fullPath := filepath.Join(baseDir, cleanPath)
 	return fullPath
 }
 
@@ -577,6 +586,8 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	// Create execution context
 	timeout := time.Duration(ae.config.ScriptTimeout) * time.Second
 	ae.context = NewExecutionContext(w, r, sessionID, timeout)
+	ae.context.CurrentFile = filePath
+	ae.context.CurrentDir = filepath.Dir(filePath)
 
 	// Pre-process Includes if not already resolved
 	if !alreadyResolved {
@@ -2378,21 +2389,6 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 	}
 
-	// Handle method calls on built-in objects (Default Property / Method)
-	if obj, ok := base.(asp.ASPObject); ok {
-		methodName := ""
-		if ident, ok := objectExpr.(*ast.Identifier); ok {
-			methodName = ident.Name
-		}
-
-		if methodName != "" {
-			return obj.CallMethod(methodName, args...)
-		}
-		// Fallback for expression-based objects (e.g. matches.Item(0) -> Collection(0))
-		// We call with empty name, expecting the object's CallMethod to handle default dispatch (usually "Item")
-		return obj.CallMethod("", args...)
-	}
-
 	// Handle class instance default dispatch (calling the object directly)
 	if classInst, ok := base.(*ClassInstance); ok {
 		methodName := ""
@@ -2408,6 +2404,21 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			methodName = classInst.ClassDef.DefaultMethod
 		}
 		return classInst.CallMethod(methodName, args...)
+	}
+
+	// Handle method calls on built-in objects (Default Property / Method)
+	if obj, ok := base.(asp.ASPObject); ok {
+		methodName := ""
+		if ident, ok := objectExpr.(*ast.Identifier); ok {
+			methodName = ident.Name
+		}
+
+		if methodName != "" {
+			return obj.CallMethod(methodName, args...)
+		}
+		// Fallback for expression-based objects (e.g. matches.Item(0) -> Collection(0))
+		// We call with empty name, expecting the object's CallMethod to handle default dispatch (usually "Item")
+		return obj.CallMethod("", args...)
 	}
 
 	// Handle Member Method Calls (obj.Method(args)) where Method is not a property
@@ -2508,7 +2519,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					}
 				}
 
-				// Try ServerObject methods
+				// Handle ServerObject methods
 				if serverObj, ok := parentObj.(*ServerObject); ok {
 					propNameLower := strings.ToLower(propName)
 					switch propNameLower {

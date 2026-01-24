@@ -141,21 +141,29 @@ func (ci *ClassInstance) SetProperty(name string, value interface{}) error {
 // CallMethod calls a method on the instance (External Access)
 func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	nameLower := strings.ToLower(name)
-	if nameLower == "" && ci.ClassDef != nil && ci.ClassDef.DefaultMethod != "" {
-		nameLower = ci.ClassDef.DefaultMethod
-	} else if nameLower == "" && ci.ClassDef != nil {
-		// Fallback: single-member classes should still allow default-style invocation
-		if len(ci.ClassDef.Functions) == 1 {
-			for k := range ci.ClassDef.Functions {
-				nameLower = k
-			}
-		} else if len(ci.ClassDef.Methods) == 1 {
-			for k := range ci.ClassDef.Methods {
-				nameLower = k
-			}
-		} else if len(ci.ClassDef.Properties) == 1 {
-			for k := range ci.ClassDef.Properties {
-				nameLower = k
+	if nameLower == "" && ci.ClassDef != nil {
+		// Prefer the explicitly declared default member when available
+		if ci.ClassDef.DefaultMethod != "" {
+			nameLower = ci.ClassDef.DefaultMethod
+		} else {
+			// Graceful fallback: allow direct invocation to hit a common Exec entrypoint when no default was recorded
+			if _, ok := ci.ClassDef.Methods["exec"]; ok {
+				nameLower = "exec"
+			} else if _, ok := ci.ClassDef.Functions["exec"]; ok {
+				nameLower = "exec"
+			} else if len(ci.ClassDef.Functions) == 1 {
+				// Single-member classes should still allow default-style invocation
+				for k := range ci.ClassDef.Functions {
+					nameLower = k
+				}
+			} else if len(ci.ClassDef.Methods) == 1 {
+				for k := range ci.ClassDef.Methods {
+					nameLower = k
+				}
+			} else if len(ci.ClassDef.Properties) == 1 {
+				for k := range ci.ClassDef.Properties {
+					nameLower = k
+				}
 			}
 		}
 	}
