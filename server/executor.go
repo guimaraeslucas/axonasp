@@ -2378,14 +2378,30 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// Check if this is a built-in function call
 	if ident, ok := objectExpr.(*ast.Identifier); ok && base == nil {
-		funcName := ident.Name
-		// Try custom functions first
-		if result, handled := evalCustomFunction(funcName, args, v.context); handled {
-			return result, nil
+		// 3. Fallback: Check Built-in Objects again (if variable lookup failed)
+		switch strings.ToLower(ident.Name) {
+		case "response":
+			base = v.context.Response
+		case "request":
+			base = v.context.Request
+		case "server":
+			base = v.context.Server
+		case "session":
+			base = v.context.Session
+		case "application":
+			base = v.context.Application
 		}
-		// Then try built-in functions
-		if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
-			return result, nil
+
+		if base == nil {
+			funcName := ident.Name
+			// Try custom functions first
+			if result, handled := evalCustomFunction(funcName, args, v.context); handled {
+				return result, nil
+			}
+			// Then try built-in functions
+			if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
+				return result, nil
+			}
 		}
 	}
 

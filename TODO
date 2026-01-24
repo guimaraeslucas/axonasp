@@ -18,6 +18,7 @@ OK - Página test_regexp.asp, o teste 6, 7 e 1 estão falhando, os demais funcio
 - Server.CreateObject("Scripting.FileSystemObject") não está funcionando
 - GetLastError() did not return the most recent error
 - Implemente Option Explicit (faça com que seja interpretada a opção, mas não implemente os bloqueios)
+- O global.asa não está sendo realmente interpretado e executado. Realize a implentação completa e correta dele. Ao iniciar o servidor não existe a necessidade de mostrar que ele foi carregado na interface do console. Lembre-se ainda que global.asa 
 
 
 - Implemente adequadamente Err.Number, Err.Description, and Err.Source. Implemente On Error Resume Next. Aproveite e modifique a tela de debug para que mostre o nome do arquivo com erro, não apenas a linha, o horário que isso ocorreu e se em uma página HTML retorne também a StackTrace

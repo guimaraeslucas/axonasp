@@ -980,6 +980,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		// (It's typically already mapped via Server.MapPath in the ASP call)
 		if len(args) < 1 || args[0] == nil {
 			log.Println("Error: LoadFromFile requires a valid filename argument")
+			s.ctx.Err.SetError(fmt.Errorf("LoadFromFile requires a valid filename argument"))
 			return nil
 		}
 
@@ -988,6 +989,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		// Validate filename is not empty or nil
 		if filename == "" || filename == "<nil>" {
 			log.Println("Error: LoadFromFile received empty or nil filename")
+			s.ctx.Err.SetError(fmt.Errorf("LoadFromFile received empty or nil filename"))
 			return nil
 		}
 
@@ -999,11 +1001,13 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		absPath, _ := filepath.Abs(fullPath)
 		if !strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(rootDir)) {
 			log.Printf("Security Warning: Script tried to access %s (Root: %s)\n", absPath, rootDir)
+			s.ctx.Err.SetError(fmt.Errorf("access denied: %s", filename))
 			return nil
 		}
 
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
+			s.ctx.Err.SetError(err)
 			return nil
 		}
 

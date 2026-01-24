@@ -226,6 +226,20 @@ func (ci *ClassInstance) GetMember(name string) (interface{}, bool, error) {
 		}
 	}
 
+	// 4. Check Private Methods (Subs/Functions)
+	if node, ok := ci.ClassDef.PrivateMethods[nameLower]; ok {
+		// Private methods are stored as generic Nodes (Sub/Function/Property)
+		// We need to determine if it can be called as a variable (0-args)
+		// Or if we should return the Node itself to let resolveCall handle it?
+		
+		// In visitExpression/resolveCall logic:
+		// If GetVariable returns a *FunctionDeclaration/*SubDeclaration, it executes it if possible?
+		// resolveCall checks: if val, exists := v.context.GetVariable... if fn, ok := val.(*ast.FunctionDeclaration)...
+		
+		// So we should return the AST Node itself!
+		return node, true, nil
+	}
+
 	return nil, false, nil
 }
 

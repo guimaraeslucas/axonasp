@@ -81,6 +81,61 @@ func (c *Collection) GetData() map[string]interface{} {
 	return c.data
 }
 
+// GetProperty retrieves a property by name (ASPObject interface)
+func (c *Collection) GetProperty(name string) interface{} {
+	nameLower := strings.ToLower(name)
+	switch nameLower {
+	case "count":
+		return c.Count()
+	case "item":
+		// Item property is usually indexed, but can return the whole collection if no index
+		// For property access without index, return self? Or nil?
+		// In VBScript, Collection.Item("key") is handled by CallMethod or Index access.
+		return nil
+	}
+	// Try to get item by key if property name matches a key?
+	// Standard ASP Collections don't expose keys as properties directly, only via Item(key).
+	return nil
+}
+
+// SetProperty sets a property value (ASPObject interface)
+func (c *Collection) SetProperty(name string, value interface{}) error {
+	return nil // Read-only mostly
+}
+
+// CallMethod calls a method on the collection (ASPObject interface)
+func (c *Collection) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	nameLower := strings.ToLower(name)
+	
+	// Default method (Item)
+	if nameLower == "" || nameLower == "item" {
+		if len(args) > 0 {
+			key := fmt.Sprintf("%v", args[0])
+			// If index is integer, it might be numeric index (1-based in ASP?)
+			// ASP Request collections allow string keys or numeric index.
+			// Our Collection only supports string keys effectively.
+			// But lets support string keys.
+			return c.Get(key), nil
+		}
+	}
+	
+	switch nameLower {
+	case "key":
+		// Key(index)
+		if len(args) > 0 {
+			if idx, ok := args[0].(int); ok {
+				keys := c.GetKeys()
+				// ASP collections are 1-based usually
+				if idx >= 1 && idx <= len(keys) {
+					return keys[idx-1], nil
+				}
+			}
+		}
+	}
+	
+	return nil, nil
+}
+
 // RequestObject represents the ASP Request object
 // Provides access to QueryString, Form, Cookies, ServerVariables, and ClientCertificate collections
 // Implements all properties and methods from Classic ASP Request Object

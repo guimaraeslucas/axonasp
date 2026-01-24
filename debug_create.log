@@ -1,0 +1,5 @@
+Application_OnStart defined: false
+Session_OnStart defined: false
+Starting G3pix AxonASP on http://localhost:4050
+Serving files from ./www
+[DEBUG] DEBUG_ASP mode is enabled
