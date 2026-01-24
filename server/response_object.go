@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -529,6 +530,12 @@ func isClientAbortErr(err error) bool {
 // toString converts a value to string following ASP rules
 func (r *ResponseObject) toString(value interface{}) string {
 	if value == nil {
+		return ""
+	}
+
+	// Check for typed nil
+	refVal := reflect.ValueOf(value)
+	if (refVal.Kind() == reflect.Ptr || refVal.Kind() == reflect.Interface || refVal.Kind() == reflect.Slice || refVal.Kind() == reflect.Map) && refVal.IsNil() {
 		return ""
 	}
 
