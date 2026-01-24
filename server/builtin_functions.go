@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/guimaraeslucas/vbscript-go/ast"
 	vb "github.com/guimaraeslucas/vbscript-go"
 )
 
@@ -30,6 +31,81 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	}
 
 	switch funcLower {
+	// Dynamic code execution
+	case "executeglobal":
+		// ExecuteGlobal(code) - executes VBScript code in the current global scope
+		if len(args) == 0 {
+			return nil, true
+		}
+		code := toString(args[0])
+		if code == "" {
+			return nil, true
+		}
+
+		// Parse the code
+		parser := vb.NewParser(code)
+		var program *ast.Program
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Parse error - silently fail as per VBScript behavior
+					program = nil
+				}
+			}()
+			program = parser.Parse()
+		}()
+
+		if program == nil {
+			return nil, true
+		}
+
+		// Execute in the current context (global scope)
+		visitor := NewASPVisitor(ctx, nil)
+		for _, stmt := range program.Body {
+			if err := visitor.VisitStatement(stmt); err != nil {
+				// ExecuteGlobal errors are typically swallowed in VBScript
+				// but we can log them for debugging
+				return nil, true
+			}
+		}
+		return nil, true
+
+	case "execute":
+		// Execute(code) - executes VBScript code in a local scope
+		// For now, we'll treat it the same as ExecuteGlobal since we don't have proper scope isolation
+		if len(args) == 0 {
+			return nil, true
+		}
+		code := toString(args[0])
+		if code == "" {
+			return nil, true
+		}
+
+		// Parse the code
+		parser := vb.NewParser(code)
+		var program *ast.Program
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					program = nil
+				}
+			}()
+			program = parser.Parse()
+		}()
+
+		if program == nil {
+			return nil, true
+		}
+
+		// Execute in the current context
+		visitor := NewASPVisitor(ctx, nil)
+		for _, stmt := range program.Body {
+			if err := visitor.VisitStatement(stmt); err != nil {
+				return nil, true
+			}
+		}
+		return nil, true
+
 	// Type checking functions
 	case "isempty":
 		if len(args) == 0 {

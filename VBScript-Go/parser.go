@@ -448,7 +448,6 @@ func (p *Parser) parseBlockStatement(inGlobal bool) ast.Statement {
 func (p *Parser) parsePublicOrPrivate(inGlobal, inlineOnly bool) ast.Statement {
 	token1 := p.next
 	p.move()
-	token2 := p.next
 
 	var isDefault bool
 	if p.optKeyword(KeywordDefault) {
@@ -460,15 +459,32 @@ func (p *Parser) parsePublicOrPrivate(inGlobal, inlineOnly bool) ast.Statement {
 		panic(p.vbSyntaxError(SyntaxError))
 	}
 
+	// Build the modifier based on token1 and isDefault flag
+	var modifier ast.MethodAccessModifier
+	k, ok := token1.(*KeywordToken)
+	if !ok {
+		modifier = ast.MethodAccessModifierNone
+	} else {
+		switch k.Keyword {
+		case KeywordPrivate:
+			modifier = ast.MethodAccessModifierPrivate
+		case KeywordPublic:
+			if isDefault {
+				modifier = ast.MethodAccessModifierPublicDefault
+			} else {
+				modifier = ast.MethodAccessModifierPublic
+			}
+		default:
+			modifier = ast.MethodAccessModifierNone
+		}
+	}
+
 	var stmt ast.Statement
 	if p.matchKeyword(KeywordSub) {
-		modifier := p.getMethodAccessModifier(token1, token2)
 		stmt = p.parseSubDeclaration(modifier, !inGlobal, inlineOnly)
 	} else if p.matchKeyword(KeywordFunction) {
-		modifier := p.getMethodAccessModifier(token1, token2)
 		stmt = p.parseFunctionDeclaration(modifier, !inGlobal, inlineOnly)
 	} else if (!inGlobal || !isDefault) && p.matchKeyword(KeywordProperty) {
-		modifier := p.getMethodAccessModifier(token1, token2)
 		stmt = p.parsePropertyDeclaration(modifier)
 	} else if !isDefault && p.matchKeyword(KeywordConst) {
 		stmt = p.parseConstDeclaration(ast.MemberAccessModifierNone)
