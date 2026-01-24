@@ -2376,6 +2376,15 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		args = append(args, val)
 	}
 
+	// VBScript allows property access with optional parentheses when no arguments are provided.
+	// Example: Request.QueryString.Count() should behave like Request.QueryString.Count
+	// If the callee is a MemberExpression and base resolved to a value, return it when called with empty args.
+	if base != nil {
+		if _, ok := objectExpr.(*ast.MemberExpression); ok && len(args) == 0 {
+			return base, nil
+		}
+	}
+
 	// Check if this is a built-in function call
 	if ident, ok := objectExpr.(*ast.Identifier); ok && base == nil {
 		// 3. Fallback: Check Built-in Objects again (if variable lookup failed)
@@ -2423,18 +2432,30 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	}
 
 	// Handle method calls on built-in objects (Default Property / Method)
-	if obj, ok := base.(asp.ASPObject); ok {
+	// Support both asp.ASPObject and server-native objects that expose CallMethod
+	{
+		// Determine explicit vs default dispatch
+		// - Identifier with parentheses (e.g., Request("x")) should use default dispatch
+		// - MemberExpression with property (e.g., Response.Write("x")) should use explicit method
 		methodName := ""
-		if ident, ok := objectExpr.(*ast.Identifier); ok {
-			methodName = ident.Name
+		if member, ok := objectExpr.(*ast.MemberExpression); ok && member.Property != nil {
+			methodName = member.Property.Name
 		}
 
-		if methodName != "" {
+		// Generic interface for server-native objects
+		type callMethoder interface {
+			CallMethod(string, ...interface{}) (interface{}, error)
+		}
+
+		// First, try asp.ASPObject
+		if obj, ok := base.(asp.ASPObject); ok {
 			return obj.CallMethod(methodName, args...)
 		}
-		// Fallback for expression-based objects (e.g. matches.Item(0) -> Collection(0))
-		// We call with empty name, expecting the object's CallMethod to handle default dispatch (usually "Item")
-		return obj.CallMethod("", args...)
+
+		// Then, try server-native objects implementing CallMethod (e.g., *RequestObject)
+		if obj, ok := base.(callMethoder); ok {
+			return obj.CallMethod(methodName, args...)
+		}
 	}
 
 	// Handle Member Method Calls (obj.Method(args)) where Method is not a property

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/guimaraeslucas/vbscript-go/ast"
 	vb "github.com/guimaraeslucas/vbscript-go"
+	"github.com/guimaraeslucas/vbscript-go/ast"
 )
 
 // EmptyValue represents VBScript Empty type
