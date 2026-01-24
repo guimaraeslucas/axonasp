@@ -797,7 +797,7 @@ class cls_asplite
 
 	'this function returns the file-extension for str (not including the dot, php, jpg, jpeg etc)
 	public function GetFileExtension(str)
-		Dim Pos  Pos = instrrev(str, ".")
+		Dim Pos : Pos = instrrev(str, ".")
 		If Pos>0 Then GetFileExtension = Mid(str, Pos+1)
 	end Function
 

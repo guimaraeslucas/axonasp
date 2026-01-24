@@ -313,6 +313,9 @@ func (p *Parser) expectIdentifier() string {
 	case *KeywordOrIdentifierToken:
 		return t.Name
 	case *ExtendedIdentifierToken:
+		if len(t.Name) >= 2 && t.Name[0] == '[' && t.Name[len(t.Name)-1] == ']' {
+			return t.Name[1 : len(t.Name)-1]
+		}
 		return t.Name
 	case *KeywordToken:
 		// Allow keywords to be identifiers unless they are strict block terminators
