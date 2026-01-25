@@ -21,7 +21,7 @@ Run: go run main.go.
 
 Build: go build -o go-asp.exe -> ./go-asp.exe.
 
-Testing: Access http://localhost:4050/test_basics.asp or other test_*.asp files in www/.
+Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/.
 
 ASP Debugging: Set <% debug_asp_code = "TRUE" %> in the ASP file for HTML stack traces.
 
@@ -51,27 +51,17 @@ Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAUL
 
 5. API & Library Reference
 Custom G3 Libs (Server.CreateObject):
-
 G3JSON: NewObject, Parse, Stringify, LoadFile.
-
 G3FILES: Read, Write, Append, Exists, Size, List, Delete, MkDir.
-
 G3HTTP: Fetch (method).
-
 G3TEMPLATE: Render.
-
 G3MAIL: Send, SendStandard.
-
 G3CRYPTO: UUID, HashPassword, VerifyPassword.
 
 Standard COM Support:
-
 MSXML2: ServerXMLHTTP, DOMDocument (standard methods supported).
-
 ADODB: Connection, Recordset, Stream.
-
 Databases: SQLite (:memory:, file), MySQL, PostgreSQL, MS SQL Server.
-
 Filtering: Supports in-memory filtering (=, <>, LIKE, etc.).
 
 6. Pull Request Guidelines

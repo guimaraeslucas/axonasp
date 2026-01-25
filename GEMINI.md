@@ -1,5 +1,5 @@
 Quick Instructions for Code Agents (G3 AxonASP)
-Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english.
+Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Document only in English.
 
 1. Architecture Overview
 Main Server: main.go runs HTTP server on :4050, serving ./www.
@@ -21,7 +21,7 @@ Run: go run main.go.
 
 Build: go build -o go-asp.exe -> ./go-asp.exe.
 
-Testing: Access http://localhost:4050/test_basics.asp or other test_*.asp files in www/.
+Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/.
 
 ASP Debugging: Set <% debug_asp_code = "TRUE" %> in the ASP file for HTML stack traces.
 
@@ -42,7 +42,7 @@ Includes: file = relative to current; virtual = relative to www/.
 
 Documentation: Keep instructions in this file. Sync copilot-instructions.md and GEMINI.md on updates. Do not create new .md explanation files.
 
-New Libraries: Name as *_lib.go. Mimic VBScript nomenclature. Document in English.
+New Libraries: Name as *_lib.go. Mimic VBScript nomenclature. Document only in English.
 
 4. Configuration (.env)
 File: .env in root (defaults in code).
@@ -51,27 +51,17 @@ Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAUL
 
 5. API & Library Reference
 Custom G3 Libs (Server.CreateObject):
-
 G3JSON: NewObject, Parse, Stringify, LoadFile.
-
 G3FILES: Read, Write, Append, Exists, Size, List, Delete, MkDir.
-
 G3HTTP: Fetch (method).
-
 G3TEMPLATE: Render.
-
 G3MAIL: Send, SendStandard.
-
 G3CRYPTO: UUID, HashPassword, VerifyPassword.
 
 Standard COM Support:
-
 MSXML2: ServerXMLHTTP, DOMDocument (standard methods supported).
-
 ADODB: Connection, Recordset, Stream.
-
 Databases: SQLite (:memory:, file), MySQL, PostgreSQL, MS SQL Server.
-
 Filtering: Supports in-memory filtering (=, <>, LIKE, etc.).
 
 6. Pull Request Guidelines
@@ -89,7 +79,7 @@ Prioritize secure, testable, and small implementations.
 - Respect VBScript semantics: case-insensitive identifiers, Option Compare rules, ByRef/ByVal behavior.
 - Preserve ASP execution context when adding libraries or functions.
 - When adding a library, name it *_lib.go and register via Server.CreateObject mapping.
-- Sync updates between this file and copilot-instructions.md whenever instructions change.
+- Sync updates between this file and GEMINI.md whenever instructions change.
 
 8. Coding & Tooling Expectations
 - Run gofmt on touched Go files; keep ASCII unless a file already needs non-ASCII.
