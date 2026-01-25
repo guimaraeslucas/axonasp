@@ -91,9 +91,9 @@ type ExecutionContext struct {
 	sessionManager *SessionManager
 
 	// Scoping
-	scopeStack     []map[string]interface{}
-	contextObject  interface{} // For Class Instance (Me)
-	currentExecutor *ASPExecutor  // Current executor for ExecuteGlobal/Execute
+	scopeStack      []map[string]interface{}
+	contextObject   interface{}  // For Class Instance (Me)
+	currentExecutor *ASPExecutor // Current executor for ExecuteGlobal/Execute
 
 	// Mutex for thread safety
 	mu sync.RWMutex
@@ -763,15 +763,11 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 	// Map virtual path to physical path using the current context
 	physicalPath := ae.context.Server_MapPath(path)
 
-	// Read file content
-	// We need a helper to read and resolve includes from a file path
-	// The current ResolveIncludes takes content string.
-	// We should read the file first.
-	contentBytes, err := asp.ReadFile(physicalPath) // We need a file reader helper in asp package or use os
+	// Read file content with proper UTF-8 decoding (handles BOM/UTF-16)
+	content, err := asp.ReadFileText(physicalPath)
 	if err != nil {
 		return err
 	}
-	content := string(contentBytes)
 
 	// Pre-process Includes
 	resolvedContent, err := asp.ResolveIncludes(content, physicalPath, ae.config.RootDir, nil)
@@ -3157,6 +3153,15 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 		rightInt := int(toFloat(right))
 		return leftInt | rightInt, nil
 	case ast.BinaryOperationAddition:
+		// VBScript + operator behavior:
+		// 1. If BOTH operands are strings, perform string concatenation
+		// 2. Otherwise, attempt numeric addition
+		// This is critical for code like: "\u00" + "2F" which expects string concatenation
+		leftStr, leftIsStr := left.(string)
+		rightStr, rightIsStr := right.(string)
+		if leftIsStr && rightIsStr {
+			return leftStr + rightStr, nil
+		}
 		leftNum := toFloat(left)
 		rightNum := toFloat(right)
 		return leftNum + rightNum, nil

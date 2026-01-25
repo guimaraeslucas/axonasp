@@ -2,6 +2,8 @@ package server
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // G3FILES implements Component interface for File operations
@@ -71,7 +74,7 @@ func (f *G3FILES) CallMethod(name string, args ...interface{}) interface{} {
 		if err != nil {
 			return ""
 		}
-		return string(content)
+		return string(decodeTextWithCharset(content, "utf-8"))
 
 	case "write", "writetext":
 		if len(args) < 2 {
@@ -143,6 +146,45 @@ func (f *G3FILES) CallMethod(name string, args ...interface{}) interface{} {
 	}
 
 	return nil
+}
+
+func decodeTextWithCharset(data []byte, charset string) []byte {
+	if len(data) >= 3 && bytes.Equal(data[:3], []byte{0xEF, 0xBB, 0xBF}) {
+		return data[3:]
+	}
+
+	if len(data) >= 2 {
+		switch {
+		case data[0] == 0xFF && data[1] == 0xFE:
+			return []byte(decodeUTF16(data[2:], binary.LittleEndian))
+		case data[0] == 0xFE && data[1] == 0xFF:
+			return []byte(decodeUTF16(data[2:], binary.BigEndian))
+		}
+	}
+
+	switch strings.ToLower(charset) {
+	case "unicode", "utf-16", "utf-16le":
+		return []byte(decodeUTF16(data, binary.LittleEndian))
+	case "utf-16be":
+		return []byte(decodeUTF16(data, binary.BigEndian))
+	default:
+		return data
+	}
+}
+
+func decodeUTF16(data []byte, order binary.ByteOrder) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+
+	u16 := make([]uint16, len(data)/2)
+	for i := range u16 {
+		u16[i] = order.Uint16(data[i*2:])
+	}
+	return string(utf16.Decode(u16))
 }
 
 func FileSystemAPI(method string, args []string, ctx *ExecutionContext) interface{} {
@@ -1014,6 +1056,10 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 			log.Printf("ADODBStream LoadFromFile error reading %s: %v\n", fullPath, err)
 			s.ctx.Err.SetError(err)
 			return nil
+		}
+
+		if s.Type == 2 {
+			data = decodeTextWithCharset(data, s.Charset)
 		}
 
 		// Ensure stream is open

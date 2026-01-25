@@ -1,11 +1,14 @@
 package asp
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf16"
 )
 
 // Include regex: <!--#include file="path"--> or <!--#include virtual="/path"-->
@@ -15,6 +18,15 @@ var includeRegex = regexp.MustCompile(`(?i)<!--\s*#include\s+(file|virtual)\s*=\
 // ReadFile reads a file from the file system
 func ReadFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
+}
+
+// ReadFileText reads a text file and converts it to UTF-8, honoring BOM and common UTF-16 encodings.
+func ReadFileText(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return decodeTextToUTF8(data), nil
 }
 
 // ResolveIncludes processes SSI include directives recursively
@@ -70,7 +82,7 @@ func ResolveIncludes(content, currentFile, rootDir string, visited map[string]bo
 		}
 
 		// Read included file
-		includedContent, err := os.ReadFile(targetPath)
+		includedContent, err := ReadFileText(targetPath)
 		if err != nil {
 			// In ASP, missing include usually throws error
 			// We can append an error message comment or fail
@@ -79,7 +91,7 @@ func ResolveIncludes(content, currentFile, rootDir string, visited map[string]bo
 		}
 
 		// Recursively resolve includes in the included content
-		resolvedIncluded, err := ResolveIncludes(string(includedContent), targetPath, rootDir, visited)
+		resolvedIncluded, err := ResolveIncludes(includedContent, targetPath, rootDir, visited)
 		if err != nil {
 			return "", err
 		}
@@ -93,4 +105,55 @@ func ResolveIncludes(content, currentFile, rootDir string, visited map[string]bo
 	sb.WriteString(content[lastIndex:])
 
 	return sb.String(), nil
+}
+
+// decodeTextToUTF8 converts raw text bytes to UTF-8, removing BOMs and handling UTF-16 LE/BE.
+func decodeTextToUTF8(data []byte) string {
+	if len(data) >= 3 && bytes.Equal(data[:3], []byte{0xEF, 0xBB, 0xBF}) {
+		return string(data[3:])
+	}
+
+	if len(data) >= 2 {
+		switch {
+		case data[0] == 0xFF && data[1] == 0xFE:
+			return decodeUTF16(data[2:], binary.LittleEndian)
+		case data[0] == 0xFE && data[1] == 0xFF:
+			return decodeUTF16(data[2:], binary.BigEndian)
+		}
+	}
+
+	zeroEven, zeroOdd := 0, 0
+	for i := 0; i < len(data); i++ {
+		if data[i] == 0 {
+			if i%2 == 0 {
+				zeroEven++
+			} else {
+				zeroOdd++
+			}
+		}
+	}
+
+	if zeroOdd > len(data)/4 && zeroOdd >= zeroEven {
+		return decodeUTF16(data, binary.LittleEndian)
+	}
+	if zeroEven > len(data)/4 && zeroEven > zeroOdd {
+		return decodeUTF16(data, binary.BigEndian)
+	}
+
+	return string(data)
+}
+
+func decodeUTF16(data []byte, order binary.ByteOrder) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if len(data)%2 != 0 {
+		data = data[:len(data)-1]
+	}
+
+	u16 := make([]uint16, len(data)/2)
+	for i := range u16 {
+		u16[i] = order.Uint16(data[i*2:])
+	}
+	return string(utf16.Decode(u16))
 }

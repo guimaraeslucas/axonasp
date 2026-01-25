@@ -25,7 +25,7 @@ func TestResponseEnd(t *testing.T) {
 	})
 
 	err := processor.ExecuteASPFile(code, "../www/test.asp", w, r)
-	
+
 	// Response.End should NOT return an error - it's a control flow signal
 	if err != nil {
 		t.Logf("ExecuteASPFile returned error: %v (this may be expected)", err)
@@ -37,7 +37,7 @@ func TestResponseEnd(t *testing.T) {
 	if !strings.Contains(output, "Before Response.End") {
 		t.Errorf("Expected 'Before Response.End' in output")
 	}
-	
+
 	if strings.Contains(output, "After Response.End") {
 		t.Errorf("Found 'After Response.End' in output - Response.End did not stop execution!")
 	}
@@ -68,7 +68,7 @@ func TestResponseEndInSubroutine(t *testing.T) {
 	})
 
 	err := processor.ExecuteASPFile(code, "../www/test.asp", w, r)
-	
+
 	if err != nil {
 		t.Logf("ExecuteASPFile returned error: %v", err)
 	}
@@ -79,15 +79,15 @@ func TestResponseEndInSubroutine(t *testing.T) {
 	if !strings.Contains(output, "Before calling TestSub") {
 		t.Errorf("Expected 'Before calling TestSub' in output")
 	}
-	
+
 	if !strings.Contains(output, "In subroutine before Response.End") {
 		t.Errorf("Expected 'In subroutine before Response.End' in output")
 	}
-	
+
 	if strings.Contains(output, "In subroutine after Response.End") {
 		t.Errorf("Found 'In subroutine after Response.End' - Response.End did not stop execution!")
 	}
-	
+
 	if strings.Contains(output, "After calling TestSub") {
 		t.Errorf("Found 'After calling TestSub' - Response.End should have stopped all execution!")
 	}
@@ -118,7 +118,7 @@ func TestResponseEndInExecuteGlobal(t *testing.T) {
 	})
 
 	err := processor.ExecuteASPFile(code, "../www/test.asp", w, r)
-	
+
 	if err != nil {
 		t.Logf("ExecuteASPFile returned error: %v", err)
 	}
@@ -129,15 +129,15 @@ func TestResponseEndInExecuteGlobal(t *testing.T) {
 	if !strings.Contains(output, "Before ExecuteGlobal") {
 		t.Errorf("Expected 'Before ExecuteGlobal' in output")
 	}
-	
+
 	if !strings.Contains(output, "Inside ExecuteGlobal before Response.End") {
 		t.Errorf("Expected 'Inside ExecuteGlobal before Response.End' in output")
 	}
-	
+
 	if strings.Contains(output, "Inside ExecuteGlobal after Response.End") {
 		t.Errorf("Found 'Inside ExecuteGlobal after Response.End' - Response.End did not stop execution!")
 	}
-	
+
 	if strings.Contains(output, "After ExecuteGlobal") {
 		t.Errorf("Found 'After ExecuteGlobal' - Response.End should have stopped all execution!")
 	}

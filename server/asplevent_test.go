@@ -47,7 +47,7 @@ func TestAsplEventHandling(t *testing.T) {
 	if !strings.Contains(output, "asplEvent = 'test1'") {
 		t.Errorf("Expected asplEvent to be 'test1', got: %s", output)
 	}
-	
+
 	if !strings.Contains(output, "Matched: test1") {
 		t.Errorf("Expected 'Matched: test1' in output, got: %s", output)
 	}

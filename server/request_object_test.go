@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -107,7 +108,7 @@ func TestAspLiteEbookFieldsReturnsJSON(t *testing.T) {
 
 // Diagnose aspLite request helpers to ensure QueryString is visible through different access paths.
 func TestAspLiteRequestHelpers(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Response.Write "QS=" & Request.QueryString("asplEvent") & "\n"
 Response.Write "REQ=" & Request("asplEvent") & "\n"
@@ -160,7 +161,7 @@ Response.Write "REQ2=" & request("asplEvent") & "\n"
 
 // Sanity check: aspLite global instance should be available via case-insensitive name.
 func TestAspLiteInstanceCaseInsensitiveAccess(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Response.Write "ASPL_TYPE=" & TypeName(aspl) & "\n"
 Response.Write "ASPL_UPPER=" & TypeName(aspL) & "\n"
@@ -185,9 +186,9 @@ Response.Write "ASPL_UPPER=" & TypeName(aspL) & "\n"
 
 // Ensure aspLite default exec can execute .inc content via ExecuteGlobal.
 func TestAspLiteDefaultExecRunsInclude(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
-aspl("test_aspl_exec.inc")
+aspl("tests/test_aspl_exec.inc")
 %>`
 
 	req := httptest.NewRequest("GET", "http://example.com/test_aspl_exec.asp", nil)
@@ -206,9 +207,9 @@ aspl("test_aspl_exec.inc")
 
 // Explicit call to aspLite exec should run include even if default dispatch fails.
 func TestAspLiteExplicitExecRunsInclude(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
-Call aspl.exec("test_aspl_exec.inc")
+Call aspl.exec("tests/test_aspl_exec.inc")
 %>`
 
 	req := httptest.NewRequest("GET", "http://example.com/test_aspl_exec_explicit.asp", nil)
@@ -245,9 +246,9 @@ func TestExecuteGlobalRunsInline(t *testing.T) {
 
 // aspLite stream helper should read file contents via ADODB.Stream.
 func TestAspLiteStreamLoadText(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
-Response.Write aspl.loadText("test_aspl_exec.inc")
+Response.Write aspl.loadText("tests/test_aspl_exec.inc")
 %>`
 
 	req := httptest.NewRequest("GET", "http://example.com/test_aspl_loadtext.asp", nil)
@@ -264,9 +265,79 @@ Response.Write aspl.loadText("test_aspl_exec.inc")
 	}
 }
 
+// aspLite loadText should return UTF-8 HTML content without introducing NULs or replacements.
+func TestAspLiteLoadTextSampleForm0(t *testing.T) {
+	const page = `<!-- #include file="asplite/asplite.asp"-->
+<%
+Response.Write aspl.loadText("default/html/sampleform0.resx")
+%>`
+
+	req := httptest.NewRequest("GET", "http://example.com/test_aspl_loadtext_sampleform0.asp", nil)
+	rec := httptest.NewRecorder()
+
+	processor := NewASPProcessor(&ASPProcessorConfig{RootDir: filepath.Join("..", "www"), ScriptTimeout: 10})
+	if err := processor.ExecuteASPFile(page, filepath.Join("..", "www", "test_aspl_loadtext_sampleform0.asp"), rec, req); err != nil {
+		t.Fatalf("ExecuteASPFile returned error: %v", err)
+	}
+
+	body := rec.Body.Bytes()
+	if idx := bytes.IndexByte(body, 0); idx >= 0 {
+		window := idx + 8
+		if window > len(body) {
+			window = len(body)
+		}
+		t.Fatalf("response contains unexpected NUL byte near offset %d: %q", idx, body[idx:window])
+	}
+
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "alert alert-success") || !strings.Contains(bodyStr, "Welcome!") {
+		limit := len(body)
+		if limit > 160 {
+			limit = 160
+		}
+		t.Fatalf("loadText output missing expected HTML. got %q", body[:limit])
+	}
+}
+
+// Integration guard: default.asp should render the aspEvent "body" payload without NUL bytes.
+func TestDefaultAspBodyHasNoNulls(t *testing.T) {
+	rootDir := filepath.Join("..", "www")
+	pagePath := filepath.Join(rootDir, "default.asp")
+	fileContent, err := os.ReadFile(pagePath)
+	if err != nil {
+		t.Fatalf("failed to read default.asp: %v", err)
+	}
+
+	req := httptest.NewRequest("GET", "http://example.com/default.asp?asplEvent=body", nil)
+	rec := httptest.NewRecorder()
+
+	processor := NewASPProcessor(&ASPProcessorConfig{RootDir: rootDir, ScriptTimeout: 10})
+	if err := processor.ExecuteASPFile(string(fileContent), pagePath, rec, req); err != nil {
+		t.Fatalf("ExecuteASPFile returned error: %v", err)
+	}
+
+	body := rec.Body.Bytes()
+	if idx := bytes.IndexByte(body, 0); idx >= 0 {
+		window := idx + 8
+		if window > len(body) {
+			window = len(body)
+		}
+		t.Fatalf("default.asp response contains NUL near %d: %q", idx, body[idx:window])
+	}
+
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Welcome!") {
+		limit := len(body)
+		if limit > 160 {
+			limit = 160
+		}
+		t.Fatalf("default.asp body missing welcome content: %q", body[:limit])
+	}
+}
+
 // Ensure regular method dispatch on aspLite instance works.
 func TestAspLiteMethodDispatch(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Response.Write "CONVERT=" & aspl.convertStr("x") & "|EMPTY=" & aspl.isEmpty("") & "|TRIM=" & Trim("") & "|LEN=" & Len("")
 %>`
@@ -290,10 +361,10 @@ Response.Write "CONVERT=" & aspl.convertStr("x") & "|EMPTY=" & aspl.isEmpty("") 
 
 // ExecuteGlobal should work with aspLite loadText + removeCRB output.
 func TestExecuteGlobalFromLoadText(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Dim code
-code = aspl.removeCRB(aspl.loadText("test_aspl_exec.inc"))
+code = aspl.removeCRB(aspl.loadText("tests/test_aspl_exec.inc"))
 ExecuteGlobal code
 %>`
 
@@ -313,9 +384,9 @@ ExecuteGlobal code
 
 // Ensure aspLite removeCRB strips ASP tags as expected.
 func TestAspLiteRemoveCRB(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
-Response.Write aspl.removeCRB(aspl.loadText("test_aspl_exec.inc"))
+Response.Write aspl.removeCRB(aspl.loadText("tests/test_aspl_exec.inc"))
 %>`
 
 	req := httptest.NewRequest("GET", "http://example.com/test_aspl_removecrb.asp", nil)
@@ -337,10 +408,10 @@ Response.Write aspl.removeCRB(aspl.loadText("test_aspl_exec.inc"))
 
 // Ensure aspLite class methods are not leaking to global scope.
 func TestAspLiteLoadTextNotGlobal(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
 On Error Resume Next
-Response.Write loadText("test_aspl_exec.inc")
+Response.Write loadText("tests/test_aspl_exec.inc")
 Response.Write "|ERR=" & Err.Number
 %>`
 
@@ -611,7 +682,7 @@ End If
 
 // aspLite executeASP should run inline ASP code passed as string.
 func TestAspLiteExecuteASP(t *testing.T) {
-	const page = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const page = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Call aspl.executeASP("<% Response.Write ""EXEC_ASP_OK"" %>")
 %>`
@@ -633,10 +704,10 @@ Call aspl.executeASP("<% Response.Write ""EXEC_ASP_OK"" %>")
 // Test aspl default sub exec() is triggered when calling aspl("path")
 func TestAsplDefaultExec(t *testing.T) {
 	// Test aspLite exec method via explicit call
-	const asplExecExplicit = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const asplExecExplicit = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Response.Write "START|"
-Call aspl.exec("test_aspl_exec.inc")
+Call aspl.exec("tests/test_aspl_exec.inc")
 Response.Write "|END"
 %>`
 
@@ -656,10 +727,10 @@ Response.Write "|END"
 	}
 
 	// Test aspLite default sub via aspl("path") syntax
-	const asplExecDefault = `<!-- #include file="aspLite-master/aspLite/aspLite.asp"-->
+	const asplExecDefault = `<!-- #include file="asplite/asplite.asp"-->
 <%
 Response.Write "START|"
-aspl "test_aspl_exec.inc"
+aspl "tests/test_aspl_exec.inc"
 Response.Write "|END"
 %>`
 

@@ -23,7 +23,6 @@ type GlobalASAManager struct {
 
 	// Variables declared with <OBJECT> tags in Global.asa
 	staticObjects map[string]interface{}
-
 	// Global.asa file content
 	globalASAContent string
 
@@ -67,20 +66,18 @@ func (gam *GlobalASAManager) LoadGlobalASA(webRoot string) error {
 		return nil
 	}
 
-	// Read Global.asa content
-	content, err := os.ReadFile(globalASAPath)
+	// Read Global.asa content with UTF-8 decoding
+	content, err := asp.ReadFileText(globalASAPath)
 	if err != nil {
 		return fmt.Errorf("failed to read Global.asa: %w", err)
 	}
 
-	gam.globalASAContent = string(content)
-
+	gam.globalASAContent = content
 	// Parse Global.asa
 	parsingOptions := &asp.ASPParsingOptions{
-		SaveComments:      false,
-		StrictMode:        false,
-		AllowImplicitVars: true,
-		DebugMode:         false,
+		SaveComments: false,
+		StrictMode:   false,
+		DebugMode:    false,
 	}
 
 	parser := asp.NewASPParserWithOptions(gam.globalASAContent, parsingOptions)

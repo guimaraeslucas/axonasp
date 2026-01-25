@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"go-asp/asp"
 	"go-asp/server"
 	"log"
 	"net/http"
@@ -189,7 +190,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Process ASP file
-	content, err := os.ReadFile(fullPath)
+	content, err := asp.ReadFileText(fullPath)
 	if err != nil {
 		http.Error(w, "AxonASP: error reading file", http.StatusInternalServerError)
 		return
@@ -235,7 +236,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		DebugASP:      DebugASP,
 	})
 
-	err = processor.ExecuteASPFile(string(content), fullPath, w, r)
+	err = processor.ExecuteASPFile(content, fullPath, w, r)
 	if err != nil {
 		fmt.Printf("ASP processing error in %s: %v\n", path, err)
 		//http.Error(w, fmt.Sprintf("AxonASP: %v", err), http.StatusInternalServerError)
