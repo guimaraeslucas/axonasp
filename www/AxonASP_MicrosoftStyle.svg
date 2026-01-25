@@ -1,0 +1,32 @@
+<svg id="logoOption1" width="500" height="150" viewBox="0 0 500 150" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <linearGradient id="gradBar" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" style="stop-color:#E63020;stop-opacity:1"></stop> <!-- Red -->
+                        <stop offset="33%" style="stop-color:#209040;stop-opacity:1"></stop> <!-- Green -->
+                        <stop offset="66%" style="stop-color:#2060D0;stop-opacity:1"></stop> <!-- Blue -->
+                        <stop offset="100%" style="stop-color:#F0C000;stop-opacity:1"></stop> <!-- Yellow -->
+                    </linearGradient>
+                    <filter id="dropShadowSoft">
+                        <feGaussianBlur in="SourceAlpha" stdDeviation="2"></feGaussianBlur>
+                        <feOffset dx="2" dy="2"></feOffset>
+                        <feComponentTransfer><feFuncA type="linear" slope="0.3"></feFuncA></feComponentTransfer>
+                        <feMerge><feMergeNode></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+                    </filter>
+                </defs>
+
+                <!-- Tipografia -->
+                <text x="30" y="90" font-family="'Franklin Gothic Medium', 'Arial', sans-serif" font-weight="bold" font-style="italic" font-size="72" fill="#202020" letter-spacing="-2">
+                    Axon<tspan fill="#404040" font-weight="normal">ASP</tspan>
+                </text>
+
+                <!-- Onda Gráfica 4 Cores -->
+                <g transform="translate(30, 105)" filter="url(#dropShadowSoft)">
+                    <!-- A "cauda" ou sublinhado dinâmico -->
+                    <path d="M0 0 Q 200 15, 420 -20 L 440 0 Q 220 35, 0 15 Z" fill="url(#gradBar)"></path>
+                    <!-- Brilho plástico -->
+                    <path d="M10 2 Q 200 15, 410 -15" fill="none" stroke="white" stroke-width="2" opacity="0.4"></path>
+                </g>
+                
+                <!-- Tagline "Technology" pequena -->
+                <text x="340" y="90" font-family="Arial, sans-serif" font-size="12" fill="#666" letter-spacing="3">SERVER</text>
+            </svg>

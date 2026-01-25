@@ -24,14 +24,14 @@ var (
 	DefaultPage       = "default.asp"
 	ScriptTimeout     = 30 // in seconds
 	DebugASP          = false
-	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll"
+	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
 )
 
 func init() {
 	// Load .env file
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Info: No .env file found, using defaults or system environment. Remember to set the working directory if needed.")
+		fmt.Println("Info: No .env file found, using defaults or system environment. If you have an .env file, make sure it's in the currentworking directory.")
 	}
 
 	// Override configuration from Environment Variables
