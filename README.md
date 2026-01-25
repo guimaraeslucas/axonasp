@@ -479,17 +479,12 @@ http://localhost:4050/tests/test_database.asp
 
 ### Enable ASP Debugging
 
-Set in your ASP file:
-```vbscript
-<% debug_asp_code = "TRUE" %>
-```
-
-Or in `.env`:
+In `.env`:
 ```env
 DEBUG_ASP=TRUE
 ```
 
-This enables detailed HTML stack traces for debugging.
+This enables error description for debugging on console.
 
 ---
 
@@ -571,7 +566,7 @@ We welcome contributions! Please follow these guidelines:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MPL License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -579,7 +574,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/guimaraeslucas/axonasp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/guimaraeslucas/axonasp/discussions)
-- **Website**: [https://g3pix.com](https://g3pix.com)
+- **Website**: [https://g3pix.com](https://g3pix.com.br/axonasp)
 
 ---
 

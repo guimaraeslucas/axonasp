@@ -6,6 +6,7 @@
 # Logs and databases #
 *.log
 *.sql
+.env
 
 #TODO
 TODO
