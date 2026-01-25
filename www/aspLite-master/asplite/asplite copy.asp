@@ -387,25 +387,33 @@ class cls_asplite
 
 		err.clear()
 
+		'directly fetch querystring/form values to avoid relying on the Request default aggregator
+		dim qsVal : qsVal = "" & request.querystring(value)
+		dim formVal : formVal = "" & request.form(value)
+
 		if multipart then
-
 			'binary data was submitted with enctype=multipart/form-data
-			'in this case, the request.form collecion cannot be used and even raises an error
+			'in this case, the request.form collection cannot be used and even raises an error
 			'aspLite only returns the querystring in this case
-
-			getRequest=request.querystring(value)
-
+			getRequest = qsVal
 		else
-
-			if not [isEmpty](request.form(value)) then
-				getRequest=request.form(value)
-			elseif [isEmpty](request.querystring(value)) then
-				getRequest=request.querystring(value)
+			if len(formVal) > 0 then
+				getRequest = formVal
+			elseif len(qsVal) > 0 then
+				getRequest = qsVal
 			else
-				getRequest=request(value)
+				getRequest = request(value)
 			end if
-
 		End If
+
+		'final fallback to ensure querystring/form values are returned even if the branches above do not assign
+		if len("" & getRequest) = 0 then
+			if len(qsVal) > 0 then
+				getRequest = qsVal
+			else
+				getRequest = request(value)
+			end if
+		end if
 
 		on error goto 0
 
@@ -867,7 +875,10 @@ class cls_asplite
 
 		isEmpty=false
 
-		if isNull(value) then
+		'consider VBScript Empty/Null values as empty before trimming
+		if IsEmpty(value) then
+			isEmpty=true
+		elseif isNull(value) then
 			isEmpty=true
 		else
 			if trim(value)="" then isEmpty=true
