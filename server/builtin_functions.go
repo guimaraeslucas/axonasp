@@ -1359,3 +1359,56 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 	// Return nil if unable to evaluate
 	return nil
 }
+
+// isBuiltInFunctionName checks if the given name (case-insensitive) is a VBScript built-in function.
+// This is used to ensure built-in functions take precedence over class methods with the same name.
+func isBuiltInFunctionName(name string) bool {
+	nameLower := strings.ToLower(name)
+	switch nameLower {
+	// Type checking functions
+	case "isempty", "isnull", "isnumeric", "isdate", "isarray", "isobject":
+		return true
+	// Conversion functions
+	case "cint", "clng", "cdbl", "csng", "cstr", "cbool", "cdate", "cbyte":
+		return true
+	// String functions
+	case "len", "left", "right", "mid", "trim", "ltrim", "rtrim", "ucase", "lcase":
+		return true
+	case "instr", "instrrev", "replace", "split", "join", "strcomp", "strreverse":
+		return true
+	case "space", "string", "asc", "chr", "ascw", "chrw":
+		return true
+	// Math functions
+	case "abs", "sgn", "int", "fix", "round", "sqr", "exp", "log", "sin", "cos", "tan", "atn":
+		return true
+	case "rnd", "randomize":
+		return true
+	// Array functions
+	case "array", "ubound", "lbound", "filter", "redim":
+		return true
+	// Date/Time functions
+	case "now", "date", "time", "year", "month", "day", "hour", "minute", "second", "weekday":
+		return true
+	case "dateadd", "datediff", "datepart", "dateserial", "timeserial", "datevalue", "timevalue":
+		return true
+	case "monthname", "weekdayname", "formatdatetime":
+		return true
+	// Other common functions
+	case "typename", "vartype", "eval", "execute", "executeglobal":
+		return true
+	case "msgbox", "inputbox":
+		return true
+	case "hex", "oct":
+		return true
+	case "getlocale", "setlocale", "formatcurrency", "formatnumber", "formatpercent":
+		return true
+	case "escape", "unescape":
+		return true
+	case "getref", "getobject", "createobject":
+		return true
+	case "rgb":
+		return true
+	default:
+		return false
+	}
+}

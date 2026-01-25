@@ -211,32 +211,28 @@ func (ci *ClassInstance) GetMember(name string) (interface{}, bool, error) {
 		}
 	}
 
-	// 3. Check Functions (0-args)
-	if fn, ok := ci.ClassDef.Functions[nameLower]; ok {
-		if len(fn.Parameters) == 0 {
-			val, err := ci.executeMethod(fn, []interface{}{})
-			return val, true, err
-		}
+	// NOTE: We deliberately do NOT auto-execute Functions or Methods here.
+	// VBScript functions should only be called when explicitly invoked with parentheses.
+	// This prevents infinite recursion when a function body assigns to the function name:
+	//   Function Foo()
+	//       Foo = "value"  ' <-- This should NOT trigger Foo() again!
+	//   End Function
+	// The caller (resolveCall) will handle explicit function invocation.
+
+	// 3. Check if it's a function/method (return false to indicate not a variable)
+	// The caller can then decide whether to invoke it
+	if _, ok := ci.ClassDef.Functions[nameLower]; ok {
+		return nil, false, nil
 	}
 
-	if sub, ok := ci.ClassDef.Methods[nameLower]; ok {
-		if len(sub.Parameters) == 0 {
-			val, err := ci.executeMethod(sub, []interface{}{})
-			return val, true, err
-		}
+	if _, ok := ci.ClassDef.Methods[nameLower]; ok {
+		return nil, false, nil
 	}
 
 	// 4. Check Private Methods (Subs/Functions)
 	if node, ok := ci.ClassDef.PrivateMethods[nameLower]; ok {
 		// Private methods are stored as generic Nodes (Sub/Function/Property)
-		// We need to determine if it can be called as a variable (0-args)
-		// Or if we should return the Node itself to let resolveCall handle it?
-		
-		// In visitExpression/resolveCall logic:
-		// If GetVariable returns a *FunctionDeclaration/*SubDeclaration, it executes it if possible?
-		// resolveCall checks: if val, exists := v.context.GetVariable... if fn, ok := val.(*ast.FunctionDeclaration)...
-		
-		// So we should return the AST Node itself!
+		// Return the AST Node itself to let resolveCall handle it
 		return node, true, nil
 	}
 

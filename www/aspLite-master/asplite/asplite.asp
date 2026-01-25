@@ -268,12 +268,19 @@ class cls_asplite
 
 	end sub
 
-	public function form
-
-		set form=new cls_asplite_formbuilder
+	public function createForm
+		response.write "DEBUG: Inside createForm. IsObject(aspl): " & IsObject(aspl) & "<br>"
+		dim f
+		on error resume next
+		set f=new cls_asplite_formbuilder
+		if err.number <> 0 then response.write "DEBUG: New error: " & err.description & "<br>"
+		set createForm=f
 
 	end function
 	
+	public function form
+		set form=new cls_asplite_formbuilder
+	end function
 	
 	public function addErr(value)
 		

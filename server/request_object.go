@@ -233,7 +233,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			return r.QueryString, nil
 		}
 		// Return specific value
-		key := args[0].(string)
+		key := fmt.Sprintf("%v", args[0])
 		return r.QueryString.Get(key), nil
 
 	case "form":
@@ -242,7 +242,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			return r.Form, nil
 		}
 		// Return specific value
-		key := args[0].(string)
+		key := fmt.Sprintf("%v", args[0])
 		return r.Form.Get(key), nil
 
 	case "cookies":
@@ -251,7 +251,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			return r.Cookies, nil
 		}
 		// Return specific value
-		key := args[0].(string)
+		key := fmt.Sprintf("%v", args[0])
 		return r.Cookies.Get(key), nil
 
 	case "servervariables":
@@ -260,7 +260,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			return r.ServerVariables, nil
 		}
 		// Return specific value
-		key := args[0].(string)
+		key := fmt.Sprintf("%v", args[0])
 		return r.ServerVariables.Get(key), nil
 
 	case "clientcertificate":
@@ -269,7 +269,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			return r.ClientCertificate, nil
 		}
 		// Return specific value
-		key := args[0].(string)
+		key := fmt.Sprintf("%v", args[0])
 		return r.ClientCertificate.Get(key), nil
 
 	case "binaryread":

@@ -767,7 +767,7 @@ func (p *Parser) parseIfStatement() ast.Statement {
 		if p.matchKeyword(KeywordElse) {
 			alternate = p.parseElseStatement()
 		} else if p.matchKeyword(KeywordElseIf) {
-			block.Add(p.parseElseIfStatement())
+			alternate = p.parseElseIfStatement()
 		}
 
 		p.expectKeyword(KeywordEnd)
@@ -820,7 +820,7 @@ func (p *Parser) parseElseIfStatement() ast.Statement {
 		if p.matchKeyword(KeywordElse) {
 			alternate = p.parseElseStatement()
 		} else if p.matchKeyword(KeywordElseIf) {
-			block.Add(p.parseElseIfStatement())
+			alternate = p.parseElseIfStatement()
 		}
 
 		consequent = block
@@ -831,10 +831,7 @@ func (p *Parser) parseElseIfStatement() ast.Statement {
 		if p.matchKeyword(KeywordElse) {
 			alternate = p.parseElseStatement()
 		} else if p.matchKeyword(KeywordElseIf) {
-			block := ast.NewStatementList()
-			block.Add(consequent)
-			block.Add(p.parseElseIfStatement())
-			consequent = block
+			alternate = p.parseElseIfStatement()
 		}
 	}
 

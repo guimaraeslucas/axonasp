@@ -633,6 +633,10 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	ae.context.Server.SetRootDir(ae.config.RootDir)
 	ae.context.Server.SetScriptTimeout(ae.config.ScriptTimeout)
 	ae.context.Server.SetExecutor(ae) // Set executor for CreateObject calls
+	
+	// Set current script directory for relative path mapping
+	// This is critical for Server.MapPath("relative/file.asp")
+	_ = ae.context.Server.SetProperty("_scriptDir", ae.context.CurrentDir)
 
 	// Populate Request object
 	populateRequestData(ae.context.Request, r, ae.context)
@@ -1146,6 +1150,8 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 		return v.handleStatementError(v.visitReDim(stmt))
 	case *ast.IfStatement:
 		return v.handleStatementError(v.visitIf(stmt))
+	case *ast.ElseIfStatement:
+		return v.handleStatementError(v.visitElseIf(stmt))
 	case *ast.ForStatement:
 		return v.handleStatementError(v.visitFor(stmt))
 	case *ast.ForEachStatement:
@@ -1534,6 +1540,37 @@ func (v *ASPVisitor) preserveCopy(oldArr, newArr *VBArray, dims []int) {
 
 // visitIf handles if-else statements
 func (v *ASPVisitor) visitIf(stmt *ast.IfStatement) error {
+	if stmt == nil || stmt.Test == nil {
+		return nil
+	}
+
+	condition, err := v.visitExpression(stmt.Test)
+	if err != nil {
+		return err
+	}
+
+	// Convert condition to boolean
+	if isTruthy(condition) {
+		// Execute consequent block
+		if stmt.Consequent != nil {
+			if err := v.VisitStatement(stmt.Consequent); err != nil {
+				return err
+			}
+		}
+	} else {
+		// Execute alternate block
+		if stmt.Alternate != nil {
+			if err := v.VisitStatement(stmt.Alternate); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// visitElseIf handles ElseIf statements (same structure as If but separate AST type)
+func (v *ASPVisitor) visitElseIf(stmt *ast.ElseIfStatement) error {
 	if stmt == nil || stmt.Test == nil {
 		return nil
 	}
@@ -2310,6 +2347,62 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 
 // resolveCall evaluates a call or index expression
 func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
+	// Evaluate arguments first (we'll need them for built-in function checks)
+	args := make([]interface{}, 0)
+	for _, arg := range arguments {
+		val, err := v.visitExpression(arg)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, val)
+	}
+
+	// CRITICAL FIX: Check for built-in functions FIRST when inside a class context.
+	// This prevents class methods with the same name (e.g., [isEmpty]) from shadowing
+	// VBScript built-in functions like IsEmpty when called within the class body.
+	if ident, ok := objectExpr.(*ast.Identifier); ok {
+		if isBuiltInFunctionName(ident.Name) {
+			// Check if we should use the built-in function
+			// Only use built-in if it's NOT a direct variable reference in local scope
+			// (i.e., not a FunctionDeclaration or SubDeclaration explicitly defined in current scope)
+			if result, handled := evalBuiltInFunction(ident.Name, args, v.context); handled {
+				return result, nil
+			}
+		}
+	}
+
+	// CRITICAL: Handle member-method dispatch BEFORE evaluating base for MemberExpression
+	// This prevents visitMemberExpression from calling the method with 0 args when
+	// we actually want to call it with the provided arguments.
+	if member, ok := objectExpr.(*ast.MemberExpression); ok {
+		// Evaluate just the parent object, not the full member expression
+		parentObj, err := v.visitExpression(member.Object)
+		if err != nil {
+			return nil, err
+		}
+		if parentObj != nil {
+			propName := ""
+			if member.Property != nil {
+				propName = member.Property.Name
+			}
+
+			// Class instance methods
+			if classInst, ok := parentObj.(*ClassInstance); ok {
+				return classInst.CallMethod(propName, args...)
+			}
+
+			// ASPObject / server-native CallMethod dispatch
+			if aspObj, ok := parentObj.(asp.ASPObject); ok {
+				return aspObj.CallMethod(propName, args...)
+			}
+			if caller, ok := parentObj.(interface {
+				CallMethod(string, ...interface{}) (interface{}, error)
+			}); ok {
+				return caller.CallMethod(propName, args...)
+			}
+		}
+	}
+
 	// 1. Check if objectExpr is an Identifier referring to a User Function/Sub (Manual Lookup)
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
 		if val, exists := v.context.GetVariable(ident.Name); exists {
@@ -2366,16 +2459,6 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 	}
 
-	// Evaluate indexes (arguments)
-	args := make([]interface{}, 0)
-	for _, arg := range arguments {
-		val, err := v.visitExpression(arg)
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, val)
-	}
-
 	// VBScript allows property access with optional parentheses when no arguments are provided.
 	// Example: Request.QueryString.Count() should behave like Request.QueryString.Count
 	// If the callee is a MemberExpression and base resolved to a value, return it when called with empty args.
@@ -2410,6 +2493,23 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			// Then try built-in functions
 			if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
 				return result, nil
+			}
+			// CRITICAL: If we're inside a class context and didn't find a standalone function,
+			// try calling this as a method on the current class instance (implicit Me.FunctionName())
+			if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+				if classInst, ok := ctxObj.(*ClassInstance); ok {
+					// Check if this is actually a method/function in the class
+					funcNameLower := strings.ToLower(funcName)
+					if _, exists := classInst.ClassDef.Functions[funcNameLower]; exists {
+						return classInst.CallMethod(funcName, args...)
+					}
+					if _, exists := classInst.ClassDef.Methods[funcNameLower]; exists {
+						return classInst.CallMethod(funcName, args...)
+					}
+					if _, exists := classInst.ClassDef.PrivateMethods[funcNameLower]; exists {
+						return classInst.CallMethod(funcName, args...)
+					}
+				}
 			}
 		}
 	}
@@ -2471,6 +2571,23 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 				propName := ""
 				if member.Property != nil {
 					propName = member.Property.Name
+				}
+
+				// Handle ClassInstance methods (including default members declared in classes)
+				if classInst, ok := parentObj.(*ClassInstance); ok {
+					return classInst.CallMethod(propName, args...)
+				}
+
+				// Handle generic ASPObject method dispatch
+				if aspObj, ok := parentObj.(asp.ASPObject); ok {
+					return aspObj.CallMethod(propName, args...)
+				}
+
+				// Handle server-native CallMethod implementers
+				if caller, ok := parentObj.(interface {
+					CallMethod(string, ...interface{}) (interface{}, error)
+				}); ok {
+					return caller.CallMethod(propName, args...)
 				}
 
 				// Try ResponseObject methods
@@ -2667,11 +2784,15 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	if err != nil {
 		return nil, err
 	}
-
+	
 	// Get property name
 	propName := ""
 	if expr.Property != nil {
 		propName = expr.Property.Name
+	}
+
+	if obj != nil {
+		// fmt.Printf("DEBUG: visitMemberExpression obj type: %T prop=%s\n", obj, propName)
 	}
 
 	// Handle ASP built-in objects
@@ -2773,6 +2894,19 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 			// Return the Contents collection (as a map for enumeration)
 			return appObj.GetContents(), nil
 		}
+	}
+
+	// Handle ClassInstance
+	if classInst, ok := obj.(*ClassInstance); ok {
+		val, err := classInst.GetProperty(propName)
+		if err != nil {
+			return nil, err
+		}
+		if val != nil {
+			return val, nil
+		}
+		// Fallback to method call (parameterless)
+		return classInst.CallMethod(propName)
 	}
 
 	// Handle Collection properties (Count, etc.)
@@ -3391,7 +3525,18 @@ func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression)
 
 	// Handle ClassInstance
 	if classInst, ok := obj.(*ClassInstance); ok {
-		return classInst.GetProperty(propName)
+		// fmt.Printf("DEBUG: visitMemberExpression ClassInstance prop=%s\n", propName)
+		val, err := classInst.GetProperty(propName)
+		if err != nil {
+			return nil, err
+		}
+		if val != nil {
+			return val, nil
+		}
+		// fmt.Printf("DEBUG: GetProperty returned nil, trying CallMethod for %s\n", propName)
+		// If property not found, try method call (parameterless)
+		// This emulates VBScript behavior where obj.Method is equivalent to obj.Method()
+		return classInst.CallMethod(propName)
 	}
 
 	return nil, nil

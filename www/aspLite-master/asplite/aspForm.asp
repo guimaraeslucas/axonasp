@@ -157,6 +157,7 @@ class cls_asplite_formbuilder
 	end function	
 
 	public sub build()		
+        Response.Write "DEBUG: form.build started<br>"
 	
 		'add the systemmessages
 		dim formmessage,formmessages,m
@@ -215,7 +216,9 @@ class cls_asplite_formbuilder
 		set allFields=nothing
 
 		dim JsonAnswer,JsonHeader
+        Response.Write "DEBUG: converting to json<br>"
 		JsonAnswer=aspl.json.toJson("aspForm", arr, false)
+        Response.Write "DEBUG: json converted<br>"
 
 		'finalizing JSON response - preparing header:
 		JsonHeader = "{""target"":"""& target & ""","
@@ -242,7 +245,9 @@ class cls_asplite_formbuilder
 		JsonAnswer = JsonHeader & JsonAnswer
 
 		'writing a response and stop executing page
+        Response.Write "DEBUG: calling dumpJson<br>"
 		aspL.dumpJson JsonAnswer
+        Response.Write "DEBUG: dumpJson returned (SHOULD NOT HAPPEN)<br>"
 
 	end sub
 

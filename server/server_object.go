@@ -23,9 +23,10 @@ type ServerObject struct {
 	scriptTimeout int // In seconds
 
 	// Internal properties
-	rootDir     string
-	httpRequest *http.Request
-	lastError   *ASPError
+	rootDir            string
+	httpRequest        *http.Request
+	lastError          *ASPError
+	internalProperties map[string]interface{}
 }
 
 // ASPError represents an ASP error object returned by Server.GetLastError()
@@ -51,9 +52,10 @@ type ASPError struct {
 // NewServerObjectWithContext creates a new Server object with execution context
 func NewServerObjectWithContext(ctx *ExecutionContext) *ServerObject {
 	return &ServerObject{
-		context:       ctx,
-		scriptTimeout: 90, // Default ASP timeout is 90 seconds
-		rootDir:       "./www",
+		context:            ctx,
+		scriptTimeout:      90, // Default ASP timeout is 90 seconds
+		rootDir:            "./www",
+		internalProperties: make(map[string]interface{}),
 	}
 }
 
@@ -177,7 +179,36 @@ func (s *ServerObject) MapPath(path string) string {
 	if path == "" || path == "/" || path == "\\" {
 		return s.rootDir
 	}
+	
+	// Check for _scriptDir property (set by executor)
+	scriptDir := ""
+	if val, exists := s.GetProperty("_scriptDir").(string); exists {
+		scriptDir = val
+	}
+
 	path = strings.ReplaceAll(path, "\\", "/")
+	
+	// If path is absolute virtual path (starts with /), map from root
+	if strings.HasPrefix(path, "/") {
+		fullPath := filepath.Join(s.rootDir, strings.TrimPrefix(path, "/"))
+		absPath, err := filepath.Abs(fullPath)
+		if err != nil {
+			return fullPath
+		}
+		return absPath
+	}
+	
+	// If relative path and we have scriptDir, map from scriptDir
+	if scriptDir != "" {
+		fullPath := filepath.Join(scriptDir, path)
+		absPath, err := filepath.Abs(fullPath)
+		if err != nil {
+			return fullPath
+		}
+		return absPath
+	}
+
+	// Default fallback to root
 	fullPath := filepath.Join(s.rootDir, strings.TrimPrefix(path, "/"))
 	absPath, err := filepath.Abs(fullPath)
 	if err != nil {
@@ -241,7 +272,20 @@ func (s *ServerObject) GetProperty(name string) interface{} {
 	switch nameLower {
 	case "scripttimeout":
 		return s.scriptTimeout
+	case "_scriptdir":
+		if val, exists := s.internalProperties["_scriptdir"]; exists {
+			return val
+		}
+		// Fallback to context if available
+		if s.context != nil {
+			return s.context.CurrentDir
+		}
+		return nil
 	default:
+		// Check internal properties
+		if val, exists := s.internalProperties[nameLower]; exists {
+			return val
+		}
 		return nil
 	}
 }
@@ -275,8 +319,11 @@ func (s *ServerObject) SetProperty(name string, value interface{}) error {
 		}
 		return s.SetScriptTimeout(timeout)
 	default:
-		// Allow setting internal properties (used by executor)
-		// Store them in a map if needed
+		// Store internal properties (used by executor)
+		if s.internalProperties == nil {
+			s.internalProperties = make(map[string]interface{})
+		}
+		s.internalProperties[nameLower] = value
 		return nil
 	}
 }
