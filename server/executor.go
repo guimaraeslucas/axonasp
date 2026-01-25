@@ -633,7 +633,7 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	ae.context.Server.SetRootDir(ae.config.RootDir)
 	ae.context.Server.SetScriptTimeout(ae.config.ScriptTimeout)
 	ae.context.Server.SetExecutor(ae) // Set executor for CreateObject calls
-	
+
 	// Set current script directory for relative path mapping
 	// This is critical for Server.MapPath("relative/file.asp")
 	_ = ae.context.Server.SetProperty("_scriptDir", ae.context.CurrentDir)
@@ -2811,7 +2811,7 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Get property name
 	propName := ""
 	if expr.Property != nil {

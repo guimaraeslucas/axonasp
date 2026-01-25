@@ -79,33 +79,45 @@ func main() {
 
 	// Execute Application_OnStart if defined
 	if globalASAManager.HasApplicationOnStart() {
-		// Create temporary executor for Application_OnStart
-		processor := server.NewASPProcessor(&server.ASPProcessorConfig{
-			RootDir:       RootDir,
-			ScriptTimeout: ScriptTimeout,
-			DebugASP:      DebugASP,
-		})
-		executor := server.NewASPExecutor(processor.GetConfig())
+		func() {
+			// Wrap in a function with defer to catch any panics
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("Error executing Application_OnStart: %v\n", r)
+					debug.PrintStack()
+				}
+			}()
 
-		// Create a dummy response writer for Application_OnStart
-		// Since it's not tied to a specific request, we can use a no-op writer
-		dummyWriter := NewDummyResponseWriter()
+			// Create temporary executor for Application_OnStart
+			processor := server.NewASPProcessor(&server.ASPProcessorConfig{
+				RootDir:       RootDir,
+				ScriptTimeout: ScriptTimeout,
+				DebugASP:      DebugASP,
+			})
+			executor := server.NewASPExecutor(processor.GetConfig())
 
-		// Create a dummy request
-		dummyRequest := &http.Request{
-			Header: make(http.Header),
-		}
+			// Create a dummy response writer for Application_OnStart
+			// Since it's not tied to a specific request, we can use a no-op writer
+			dummyWriter := NewDummyResponseWriter()
 
-		// Create execution context for Application_OnStart
-		ctx := server.NewExecutionContext(dummyWriter, dummyRequest, "app_startup", time.Duration(ScriptTimeout)*time.Second)
-		ctx.RootDir = RootDir
+			// Create a dummy request
+			dummyRequest := &http.Request{
+				Header: make(http.Header),
+			}
 
-		// Set the context in executor
-		executor.SetContext(ctx)
+			// Create execution context for Application_OnStart
+			ctx := server.NewExecutionContext(dummyWriter, dummyRequest, "app_startup", time.Duration(ScriptTimeout)*time.Second)
+			ctx.RootDir = RootDir
 
-		if err := globalASAManager.ExecuteApplicationOnStart(executor, ctx); err != nil {
-			fmt.Printf("Error in Application_OnStart: %v\n", err)
-		}
+			// Set the context in executor
+			executor.SetContext(ctx)
+
+			if err := globalASAManager.ExecuteApplicationOnStart(executor, ctx); err != nil {
+				fmt.Printf("Error in Application_OnStart: %v\n", err)
+			} else {
+				fmt.Println("Application_OnStart executed successfully")
+			}
+		}()
 	}
 
 	fmt.Printf("Starting G3pix AxonASP on http://localhost:%s\n", Port)

@@ -1,6 +1,7 @@
 package asp
 
 import (
+	"regexp"
 	"strings"
 )
 
@@ -44,11 +45,24 @@ func (al *ASPLexer) Tokenize() []*CodeBlock {
 	al.blocks = make([]*CodeBlock, 0)
 
 	for al.Index < al.Length {
-		// Procura pelo início de um bloco ASP
+		// Check for <script runat="server"> blocks first
+		scriptStart := al.findNextScriptBlock()
 		aspStart := al.findNextASPBlock()
 
-		if aspStart == -1 {
-			// Não há mais blocos ASP, adiciona o conteúdo restante como HTML
+		// Determine which comes first
+		nextBlockPos := -1
+		isScriptBlock := false
+
+		if scriptStart != -1 && (aspStart == -1 || scriptStart < aspStart) {
+			nextBlockPos = scriptStart
+			isScriptBlock = true
+		} else if aspStart != -1 {
+			nextBlockPos = aspStart
+			isScriptBlock = false
+		}
+
+		if nextBlockPos == -1 {
+			// Não há mais blocos, adiciona o conteúdo restante como HTML
 			if al.Index < al.Length {
 				content := al.Code[al.Index:]
 				if strings.TrimSpace(content) != "" {
@@ -65,25 +79,27 @@ func (al *ASPLexer) Tokenize() []*CodeBlock {
 			break
 		}
 
-		// Adiciona conteúdo HTML anterior ao bloco ASP
-		if aspStart > al.Index {
-			htmlContent := al.Code[al.Index:aspStart]
+		// Adiciona conteúdo HTML anterior ao bloco
+		if nextBlockPos > al.Index {
+			htmlContent := al.Code[al.Index:nextBlockPos]
 			al.blocks = append(al.blocks, &CodeBlock{
 				Type:     "html",
 				Content:  htmlContent,
 				Line:     al.CurrentLine,
 				Column:   al.CurrentColumn,
 				StartPos: al.Index,
-				EndPos:   aspStart,
+				EndPos:   nextBlockPos,
 			})
 			al.updatePosition(htmlContent)
 		}
 
-		// Processa o bloco ASP ou diretiva
-		if al.isDirective(aspStart) {
-			al.processDirective(aspStart)
+		// Processa o bloco correto
+		if isScriptBlock {
+			al.processScriptBlock(nextBlockPos)
+		} else if al.isDirective(nextBlockPos) {
+			al.processDirective(nextBlockPos)
 		} else {
-			al.processASPBlock(aspStart)
+			al.processASPBlock(nextBlockPos)
 		}
 	}
 
@@ -100,6 +116,20 @@ func (al *ASPLexer) findNextASPBlock() int {
 	}
 
 	return al.Index + idx
+}
+
+// findNextScriptBlock finds the next <script runat="server"> block
+func (al *ASPLexer) findNextScriptBlock() int {
+	// Case-insensitive regex to find <script runat="server"> or <script language="vbscript" runat="server">
+	scriptRegex := regexp.MustCompile(`(?i)<script[^>]*runat\s*=\s*["']server["'][^>]*>`)
+	search := al.Code[al.Index:]
+	
+	loc := scriptRegex.FindStringIndex(search)
+	if loc == nil {
+		return -1
+	}
+	
+	return al.Index + loc[0]
 }
 
 // isDirective checks if the block starting at position is a directive (<%@ ... %>)
@@ -264,6 +294,67 @@ func (al *ASPLexer) parseDirectiveAttributes(content string) map[string]string {
 	}
 
 	return attributes
+}
+
+// processScriptBlock processes a <script runat="server"> block
+func (al *ASPLexer) processScriptBlock(startPos int) {
+	// Find the opening tag end
+	openTagEnd := strings.Index(al.Code[startPos:], ">")
+	if openTagEnd == -1 {
+		// Malformed script tag, treat as HTML
+		htmlContent := al.Code[startPos:]
+		al.blocks = append(al.blocks, &CodeBlock{
+			Type:     "html",
+			Content:  htmlContent,
+			Line:     al.CurrentLine,
+			Column:   al.CurrentColumn,
+			StartPos: startPos,
+			EndPos:   al.Length,
+		})
+		al.Index = al.Length
+		return
+	}
+	openTagEnd += startPos + 1 // Adjust to absolute position and skip >
+
+	// Find the closing </script> tag (case-insensitive)
+	closeTagRegex := regexp.MustCompile(`(?i)</script\s*>`)
+	search := al.Code[openTagEnd:]
+	closeLoc := closeTagRegex.FindStringIndex(search)
+	
+	if closeLoc == nil {
+		// Script tag not closed, treat as HTML
+		htmlContent := al.Code[startPos:]
+		al.blocks = append(al.blocks, &CodeBlock{
+			Type:     "html",
+			Content:  htmlContent,
+			Line:     al.CurrentLine,
+			Column:   al.CurrentColumn,
+			StartPos: startPos,
+			EndPos:   al.Length,
+		})
+		al.Index = al.Length
+		return
+	}
+
+	closeTagStart := openTagEnd + closeLoc[0]
+	closeTagEnd := openTagEnd + closeLoc[1]
+
+	// Extract the script content (between > and </script>)
+	content := al.Code[openTagEnd:closeTagStart]
+
+	// Add as ASP block
+	al.blocks = append(al.blocks, &CodeBlock{
+		Type:     "asp",
+		Content:  content,
+		Line:     al.CurrentLine,
+		Column:   al.CurrentColumn,
+		StartPos: startPos,
+		EndPos:   closeTagEnd,
+	})
+
+	// Update position
+	processedContent := al.Code[al.Index:closeTagEnd]
+	al.updatePosition(processedContent)
 }
 
 // Reset reinicia o lexer para o início
