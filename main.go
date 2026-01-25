@@ -18,12 +18,13 @@ import (
 
 // Configuration variables
 var (
-	Port            = "4050"
-	RootDir         = "./www"
-	DefaultTimezone = "America/Sao_Paulo"
-	DefaultPage     = "default.asp"
-	ScriptTimeout   = 30 // in seconds
-	DebugASP        = false
+	Port              = "4050"
+	RootDir           = "./www"
+	DefaultTimezone   = "America/Sao_Paulo"
+	DefaultPage       = "default.asp"
+	ScriptTimeout     = 30 // in seconds
+	DebugASP          = false
+	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll"
 )
 
 func init() {
@@ -54,9 +55,26 @@ func init() {
 	if val := os.Getenv("DEBUG_ASP"); val == "TRUE" {
 		DebugASP = true
 	}
+	if val := os.Getenv("BLOCKED_EXTENSIONS"); val != "" {
+		BlockedExtensions = val
+	}
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
+}
+
+// isBlockedExtension checks if a file extension is in the blocked list
+func isBlockedExtension(ext string) bool {
+	if ext == "" {
+		return false
+	}
+	blockedList := strings.Split(BlockedExtensions, ",")
+	for _, blocked := range blockedList {
+		if strings.EqualFold(strings.TrimSpace(blocked), ext) {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
@@ -167,10 +185,17 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Security check: block direct access to restricted file extensions, we use not found for safety
+	fileExt := strings.ToLower(filepath.Ext(fullPath))
+	if isBlockedExtension(fileExt) {
+		http.Error(w, "AxonASP: 404 not found", http.StatusNotFound)
+		return
+	}
+
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		http.Error(w, "AxonASP: 404 page not found", http.StatusNotFound)
+		http.Error(w, "AxonASP: 404 not found", http.StatusNotFound)
 		return
 	}
 
@@ -178,7 +203,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	if info.IsDir() {
 		fullPath = filepath.Join(fullPath, DefaultPage)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			http.Error(w, "AxonASP: 404 page not found", http.StatusNotFound)
+			http.Error(w, "AxonASP: 404 not found", http.StatusNotFound)
 			return
 		}
 	}
