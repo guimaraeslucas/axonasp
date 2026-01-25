@@ -1689,6 +1689,23 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 
 	// Handle different collection types
 	switch col := collection.(type) {
+	case *VBArray:
+		// Iterate over VBArray (created by ReDim or Array function)
+		for _, item := range col.Values {
+			// Set loop variable
+			_ = v.context.SetVariable(stmt.Identifier.Name, item)
+
+			// Execute loop body
+			for _, body := range stmt.Body {
+				if err := v.VisitStatement(body); err != nil {
+					// Handle Exit For
+					if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
+						break
+					}
+					return err
+				}
+			}
+		}
 	case []interface{}:
 		// Iterate over array
 		for _, item := range col {
@@ -2347,6 +2364,8 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 
 // resolveCall evaluates a call or index expression
 func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
+	fmt.Printf("DEBUG resolveCall ENTRY: objectExpr type=%T, args count=%d\n", objectExpr, len(arguments))
+	
 	// Evaluate arguments first (we'll need them for built-in function checks)
 	args := make([]interface{}, 0)
 	for _, arg := range arguments {
@@ -2356,6 +2375,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 		args = append(args, val)
 	}
+	fmt.Printf("DEBUG resolveCall: evaluated args = %v\n", args)
 
 	// CRITICAL FIX: Handle built-in function vs class method resolution.
 	// When an identifier is BRACKETED [isEmpty], it means the user explicitly wants to call
@@ -2425,17 +2445,21 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// Special handling for Identifier to avoid premature evaluation of built-in functions
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
+		fmt.Printf("DEBUG resolveCall: Identifier name=%s\n", ident.Name)
 		// Try to find variable or simple object (like Response)
 		// But do NOT trigger parameterless built-in function fallback
 
 		// 1. Check Me
 		if strings.EqualFold(ident.Name, "me") {
 			base = v.context.GetContextObject()
+			fmt.Printf("DEBUG: Found 'me', base=%v\n", base)
 		} else {
 			// 2. Check Variable
 			if val, exists := v.context.GetVariable(ident.Name); exists {
 				base = val
+				fmt.Printf("DEBUG: Found variable '%s', type=%T\n", ident.Name, base)
 			} else {
+				fmt.Printf("DEBUG: Variable '%s' NOT FOUND\n", ident.Name)
 				// 3. Check Built-in Objects
 				switch strings.ToLower(ident.Name) {
 				case "response":
@@ -2769,6 +2793,41 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			return val, nil
 		}
 		return nil, nil
+	}
+
+	// Handle DictionaryLibrary access (dict("key"))
+	fmt.Printf("DEBUG: Before DictionaryLibrary check, base type = %T\n", base)
+	if dictLib, ok := base.(*DictionaryLibrary); ok && len(args) > 0 {
+		fmt.Printf("DEBUG: Matched DictionaryLibrary! calling Item with args=%v\n", args)
+		result := dictLib.dict.Item(args)
+		fmt.Printf("DEBUG: Item returned: %v\n", result)
+		return result, nil
+	}
+
+	// Handle Dictionary access (dict("key"))
+	if dict, ok := base.(*Dictionary); ok && len(args) > 0 {
+		return dict.Item(args), nil
+	}
+
+	// Debug: Check what type base actually is when we have args
+	if base != nil && len(args) > 0 {
+		// Log what type we're dealing with
+		fmt.Printf("DEBUG resolveCall: base type = %T, args = %v\n", base, args)
+		
+		// Try to access CallMethod with "Item" for any object that supports it
+		if itemCaller, ok := base.(interface {
+			CallMethod(string, ...interface{}) (interface{}, error)
+		}); ok {
+			fmt.Printf("DEBUG: base implements CallMethod interface\n")
+			if result, err := itemCaller.CallMethod("Item", args...); err == nil {
+				fmt.Printf("DEBUG: CallMethod('Item') returned: %v\n", result)
+				return result, nil
+			} else {
+				fmt.Printf("DEBUG: CallMethod('Item') error: %v\n", err)
+			}
+		} else {
+			fmt.Printf("DEBUG: base does NOT implement CallMethod interface\n")
+		}
 	}
 
 	// Handle Collection access (Request.QueryString("key"), Request.Form("key"), etc.)

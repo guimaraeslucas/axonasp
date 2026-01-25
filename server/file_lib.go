@@ -982,7 +982,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		if len(args) < 1 || args[0] == nil {
 			errMsg := "LoadFromFile requires a valid filename argument"
 			log.Printf("ADODBStream Error: %s\n", errMsg)
-			s.ctx.Err.SetError(fmt.Errorf(errMsg))
+			s.ctx.Err.SetError(fmt.Errorf("%s", errMsg))
 			return nil
 		}
 
@@ -992,7 +992,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		if filename == "" || filename == "<nil>" {
 			errMsg := "LoadFromFile received empty or nil filename"
 			log.Printf("ADODBStream Error: %s\n", errMsg)
-			s.ctx.Err.SetError(fmt.Errorf(errMsg))
+			s.ctx.Err.SetError(fmt.Errorf("%s", errMsg))
 			return nil
 		}
 
