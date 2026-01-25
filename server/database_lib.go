@@ -476,10 +476,10 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 			return nil
 		}
 		sql := fmt.Sprintf("%v", args[0])
-		
+
 		// args[1] should be an ADODBConnection or its wrapper ADOConnection
 		var conn *ADODBConnection
-		
+
 		if c, ok := args[1].(*ADODBConnection); ok {
 			conn = c
 		} else if cWrapper, ok := args[1].(*ADOConnection); ok {
@@ -488,7 +488,7 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 			// Try to find if it's a pointer to the wrapper
 			return nil
 		}
-		
+
 		return rs.openRecordset(sql, conn)
 
 	case "close":

@@ -22,6 +22,8 @@ package server
 
 import (
 	"fmt"
+	vb "go-asp/vbscript"
+	"go-asp/vbscript/ast"
 	"log"
 	"math"
 	"math/rand"
@@ -30,8 +32,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	vb "go-asp/vbscript"
-	"go-asp/vbscript/ast"
 )
 
 // EmptyValue represents VBScript Empty type

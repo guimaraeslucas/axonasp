@@ -131,14 +131,14 @@ func (c *Collection) GetName() string {
 // CallMethod calls a method on the collection (ASPObject interface)
 func (c *Collection) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	nameLower := strings.ToLower(name)
-	
+
 	// Default method (Item)
-	// Also handle collection names because VBScript-Go sometimes passes the property name 
+	// Also handle collection names because VBScript-Go sometimes passes the property name
 	// (e.g. "QueryString") as the method name when accessing Request.QueryString("key")
-	if nameLower == "" || nameLower == "item" || 
-	   nameLower == "querystring" || nameLower == "form" || 
-	   nameLower == "cookies" || nameLower == "servervariables" || 
-	   nameLower == "clientcertificate" {
+	if nameLower == "" || nameLower == "item" ||
+		nameLower == "querystring" || nameLower == "form" ||
+		nameLower == "cookies" || nameLower == "servervariables" ||
+		nameLower == "clientcertificate" {
 		if len(args) > 0 {
 			key := fmt.Sprintf("%v", args[0])
 			// If index is integer, it might be numeric index (1-based in ASP?)
@@ -148,7 +148,7 @@ func (c *Collection) CallMethod(name string, args ...interface{}) (interface{}, 
 			return c.Get(key), nil
 		}
 	}
-	
+
 	switch nameLower {
 	case "key":
 		// Key(index)
@@ -162,7 +162,7 @@ func (c *Collection) CallMethod(name string, args ...interface{}) (interface{}, 
 			}
 		}
 	}
-	
+
 	return nil, nil
 }
 

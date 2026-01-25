@@ -22,9 +22,9 @@ package asp
 
 import (
 	"fmt"
-	"strings"
 	vb "go-asp/vbscript"
 	"go-asp/vbscript/ast"
+	"strings"
 )
 
 // ASPParserResult contém o resultado da análise de código ASP

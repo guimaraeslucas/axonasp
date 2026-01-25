@@ -199,7 +199,7 @@ func (s *ServerObject) MapPath(path string) string {
 	if path == "" || path == "/" || path == "\\" {
 		return s.rootDir
 	}
-	
+
 	// Check for _scriptDir property (set by executor)
 	scriptDir := ""
 	if val, exists := s.GetProperty("_scriptDir").(string); exists {
@@ -207,7 +207,7 @@ func (s *ServerObject) MapPath(path string) string {
 	}
 
 	path = strings.ReplaceAll(path, "\\", "/")
-	
+
 	// If path is absolute virtual path (starts with /), map from root
 	if strings.HasPrefix(path, "/") {
 		fullPath := filepath.Join(s.rootDir, strings.TrimPrefix(path, "/"))
@@ -217,7 +217,7 @@ func (s *ServerObject) MapPath(path string) string {
 		}
 		return absPath
 	}
-	
+
 	// If relative path and we have scriptDir, map from scriptDir
 	if scriptDir != "" {
 		fullPath := filepath.Join(scriptDir, path)

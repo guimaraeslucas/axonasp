@@ -51,8 +51,6 @@ import (
 	"go-asp/vbscript/ast"
 )
 
-
-
 // Parser represents a VBScript parser
 type Parser struct {
 	options     *ParsingOptions

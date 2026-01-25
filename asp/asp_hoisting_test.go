@@ -83,7 +83,7 @@ func TestFunctionHoistingComplex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse error: %v", err)
 	}
-	
+
 	// Ensure we can extract the VB code and it looks sane
 	if !strings.Contains(result.CombinedVBCode, "GetFileExtension") {
 		t.Errorf("Combined VB code should contain function name")

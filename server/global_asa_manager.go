@@ -23,11 +23,11 @@ package server
 import (
 	"fmt"
 	"go-asp/asp"
+	"go-asp/vbscript/ast"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"go-asp/vbscript/ast"
 )
 
 // GlobalASAManager handles Global.asa loading and event callbacks
