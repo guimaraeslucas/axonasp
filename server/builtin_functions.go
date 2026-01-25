@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"os"
@@ -48,10 +49,12 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// Parse the code
 		parser := vb.NewParser(code)
 		var program *ast.Program
+		var parseErr error
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					// Parse error - silently fail as per VBScript behavior
+					// Parse error - log it and set Err object
+					parseErr = fmt.Errorf("ExecuteGlobal parse panic: %v", r)
 					program = nil
 				}
 			}()
@@ -59,6 +62,10 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}()
 
 		if program == nil {
+			if parseErr != nil {
+				log.Printf("ExecuteGlobal parse error: %v\n", parseErr)
+				ctx.Err.SetError(parseErr)
+			}
 			return nil, true
 		}
 
@@ -66,8 +73,16 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		visitor := NewASPVisitor(ctx, nil)
 		for _, stmt := range program.Body {
 			if err := visitor.VisitStatement(stmt); err != nil {
-				// ExecuteGlobal errors are typically swallowed in VBScript
-				// but we can log them for debugging
+				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
+				errMsg := err.Error()
+				if errMsg == "RESPONSE_END" || err == ErrServerTransfer {
+					// Control flow signals should propagate but not be logged as errors
+					return nil, true
+				}
+				// Log actual execution errors for debugging
+				log.Printf("ExecuteGlobal execution error: %v\n", err)
+				ctx.Err.SetError(err)
+				// Continue execution despite errors (VBScript behavior with On Error Resume Next)
 				return nil, true
 			}
 		}
@@ -87,9 +102,11 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// Parse the code
 		parser := vb.NewParser(code)
 		var program *ast.Program
+		var parseErr error
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
+					parseErr = fmt.Errorf("Execute parse panic: %v", r)
 					program = nil
 				}
 			}()
@@ -97,6 +114,10 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}()
 
 		if program == nil {
+			if parseErr != nil {
+				log.Printf("Execute parse error: %v\n", parseErr)
+				ctx.Err.SetError(parseErr)
+			}
 			return nil, true
 		}
 
@@ -104,6 +125,14 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		visitor := NewASPVisitor(ctx, nil)
 		for _, stmt := range program.Body {
 			if err := visitor.VisitStatement(stmt); err != nil {
+				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
+				errMsg := err.Error()
+				if errMsg == "RESPONSE_END" || err == ErrServerTransfer {
+					// Control flow signals should propagate but not be logged as errors
+					return nil, true
+				}
+				log.Printf("Execute execution error: %v\n", err)
+				ctx.Err.SetError(err)
 				return nil, true
 			}
 		}

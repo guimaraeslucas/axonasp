@@ -874,6 +874,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		// ReadText([NumChars]) - reads text data
 		// Returns all text from current position if no argument specified
 		if s.State != 1 {
+			log.Printf("ADODBStream ReadText error: Stream not open (State=%d)\n", s.State)
 			return ""
 		}
 
@@ -979,8 +980,9 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		// FileName should be a full path or relative to the current working directory
 		// (It's typically already mapped via Server.MapPath in the ASP call)
 		if len(args) < 1 || args[0] == nil {
-			log.Println("Error: LoadFromFile requires a valid filename argument")
-			s.ctx.Err.SetError(fmt.Errorf("LoadFromFile requires a valid filename argument"))
+			errMsg := "LoadFromFile requires a valid filename argument"
+			log.Printf("ADODBStream Error: %s\n", errMsg)
+			s.ctx.Err.SetError(fmt.Errorf(errMsg))
 			return nil
 		}
 
@@ -988,8 +990,9 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 
 		// Validate filename is not empty or nil
 		if filename == "" || filename == "<nil>" {
-			log.Println("Error: LoadFromFile received empty or nil filename")
-			s.ctx.Err.SetError(fmt.Errorf("LoadFromFile received empty or nil filename"))
+			errMsg := "LoadFromFile received empty or nil filename"
+			log.Printf("ADODBStream Error: %s\n", errMsg)
+			s.ctx.Err.SetError(fmt.Errorf(errMsg))
 			return nil
 		}
 
@@ -1000,13 +1003,15 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		rootDir, _ := filepath.Abs(s.ctx.RootDir)
 		absPath, _ := filepath.Abs(fullPath)
 		if !strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(rootDir)) {
-			log.Printf("Security Warning: Script tried to access %s (Root: %s)\n", absPath, rootDir)
+			errMsg := fmt.Sprintf("access denied: %s (outside root %s)", absPath, rootDir)
+			log.Printf("ADODBStream Security Error: %s\n", errMsg)
 			s.ctx.Err.SetError(fmt.Errorf("access denied: %s", filename))
 			return nil
 		}
 
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
+			log.Printf("ADODBStream LoadFromFile error reading %s: %v\n", fullPath, err)
 			s.ctx.Err.SetError(err)
 			return nil
 		}
@@ -1016,6 +1021,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		s.buffer = data
 		s.Size = int64(len(data))
 		s.Position = 0
+		// Success - no logging needed for normal operation
 		return nil
 
 	case "savetofile":
