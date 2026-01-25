@@ -3,9 +3,8 @@ package asp
 import (
 	"fmt"
 	"strings"
-
-	vb "github.com/guimaraeslucas/vbscript-go"
-	"github.com/guimaraeslucas/vbscript-go/ast"
+	vb "go-asp/vbscript"
+	"go-asp/vbscript/ast"
 )
 
 // ASPParserResult contém o resultado da análise de código ASP
@@ -145,7 +144,7 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 	// Pre-process colons to handle multi-statement lines
 	// The VBScript parser might panic on colons, so we convert them to newlines
 	// processedCode := preProcessColons(trimmedCode)
-    processedCode := trimmedCode
+	processedCode := trimmedCode
 
 	// Usa o parser do VBScript-Go
 	parser := vb.NewParserWithOptions(processedCode, ap.vbOptions)

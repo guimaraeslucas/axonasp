@@ -7,8 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-
-	"github.com/guimaraeslucas/vbscript-go/ast"
+	"go-asp/vbscript/ast"
 )
 
 // GlobalASAManager handles Global.asa loading and event callbacks

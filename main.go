@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go-asp/asp"
 	"go-asp/server"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -31,7 +30,7 @@ func init() {
 	// Load .env file
 	err := godotenv.Load()
 	if err != nil {
-		fmt.Println("Info: No .env file found, using defaults or system environment.")
+		fmt.Println("Info: No .env file found, using defaults or system environment. Remember to set the working directory if needed.")
 	}
 
 	// Override configuration from Environment Variables
@@ -61,11 +60,15 @@ func init() {
 }
 
 func main() {
+	fmt.Print("\033[2K")
+	fmt.Printf("\033[48;5;240m\033[37mStarting G3pix AxonASP on http://localhost:%s ► \033[0m\n", Port)
+	fmt.Printf("Serving files from %s\n", RootDir)
+
 	http.HandleFunc("/", handleRequest)
 
 	// Initialize session manager and start cleanup routine
 	sessionManager := server.GetSessionManager()
-	sessionManager.StartCleanupRoutine(15 * time.Minute) // Cleanup every 15 minutes
+	sessionManager.StartCleanupRoutine(20 * time.Minute) // Cleanup every 20 minutes
 
 	// Load Global.asa file
 	globalASAManager := server.GetGlobalASAManager()
@@ -74,7 +77,6 @@ func main() {
 		fmt.Printf("Warning: Failed to load Global.asa: %v\n", err)
 	}
 
-	// Check if events are loaded
 	fmt.Printf("Application_OnStart defined: %v\n", globalASAManager.HasApplicationOnStart())
 	fmt.Printf("Session_OnStart defined: %v\n", globalASAManager.HasSessionOnStart())
 
@@ -84,7 +86,7 @@ func main() {
 			// Wrap in a function with defer to catch any panics
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("Error executing Application_OnStart: %v\n", r)
+					fmt.Printf("[DEBUG] Error executing Application_OnStart: %v\n", r)
 					debug.PrintStack()
 				}
 			}()
@@ -114,22 +116,20 @@ func main() {
 			executor.SetContext(ctx)
 
 			if err := globalASAManager.ExecuteApplicationOnStart(executor, ctx); err != nil {
-				fmt.Printf("Error in Application_OnStart: %v\n", err)
+				fmt.Printf("[DEBUG] Error in Application_OnStart: %v\n", err)
 			} else {
-				fmt.Println("Application_OnStart executed successfully")
+				fmt.Println("[DEBUG] Application_OnStart executed successfully")
 			}
 		}()
 	}
 
-	fmt.Printf("Starting G3pix AxonASP on http://localhost:%s\n", Port)
-	fmt.Printf("Serving files from %s\n", RootDir)
 	if DebugASP {
 		fmt.Println("[DEBUG] DEBUG_ASP mode is enabled")
 	}
 
 	err = http.ListenAndServe(":"+Port, nil)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("Fatal error starting AxonASP server:\n  %v\n", err)
 	}
 }
 
@@ -238,7 +238,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	err = processor.ExecuteASPFile(content, fullPath, w, r)
 	if err != nil {
-		fmt.Printf("ASP processing error in %s: %v\n", path, err)
+		fmt.Printf("[DEBUG] ASP processing error in %s: %v\n", path, err)
 		//http.Error(w, fmt.Sprintf("AxonASP: %v", err), http.StatusInternalServerError)
 	}
 }

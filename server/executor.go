@@ -12,8 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/guimaraeslucas/vbscript-go/ast"
+	"go-asp/vbscript/ast"
 )
 
 // LoopExitError represents a loop exit statement (Exit For, Exit Do, etc)

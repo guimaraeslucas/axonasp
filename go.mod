@@ -6,7 +6,6 @@ toolchain go1.24.2
 
 require (
 	github.com/denisenkom/go-mssqldb v0.12.3
-	github.com/guimaraeslucas/vbscript-go v0.9.0
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.47.0
 )
@@ -35,4 +34,3 @@ require (
 	modernc.org/sqlite v1.44.1
 )
 
-replace github.com/guimaraeslucas/vbscript-go => ./VBScript-Go

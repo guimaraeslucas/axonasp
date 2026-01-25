@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	vb "github.com/guimaraeslucas/vbscript-go"
-	"github.com/guimaraeslucas/vbscript-go/ast"
+	vb "go-asp/vbscript"
+	"go-asp/vbscript/ast"
 )
 
 // EmptyValue represents VBScript Empty type

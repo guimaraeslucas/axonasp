@@ -3,8 +3,7 @@ package server
 import (
 	"fmt"
 	"strings"
-
-	"github.com/guimaraeslucas/vbscript-go/ast"
+	"go-asp/vbscript/ast"
 )
 
 type Visibility int
