@@ -2,16 +2,16 @@ package main
 
 import (
 	"fmt"
+	"go-asp/server"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
-	_ "net/http/pprof"
-	"go-asp/server"
 
 	"github.com/joho/godotenv"
 )

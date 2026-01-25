@@ -123,12 +123,12 @@ func (al *ASPLexer) findNextScriptBlock() int {
 	// Case-insensitive regex to find <script runat="server"> or <script language="vbscript" runat="server">
 	scriptRegex := regexp.MustCompile(`(?i)<script[^>]*runat\s*=\s*["']server["'][^>]*>`)
 	search := al.Code[al.Index:]
-	
+
 	loc := scriptRegex.FindStringIndex(search)
 	if loc == nil {
 		return -1
 	}
-	
+
 	return al.Index + loc[0]
 }
 
@@ -320,7 +320,7 @@ func (al *ASPLexer) processScriptBlock(startPos int) {
 	closeTagRegex := regexp.MustCompile(`(?i)</script\s*>`)
 	search := al.Code[openTagEnd:]
 	closeLoc := closeTagRegex.FindStringIndex(search)
-	
+
 	if closeLoc == nil {
 		// Script tag not closed, treat as HTML
 		htmlContent := al.Code[startPos:]
