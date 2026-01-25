@@ -1,0 +1,15 @@
+# Compiler outputs #
+*.a
+*.bat
+*.exe
+
+# Logs and databases #
+*.log
+*.sql
+
+#TODO
+TODO
+
+# OS generated files #
+temp/session/
+.DS_Store

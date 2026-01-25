@@ -288,9 +288,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	err = processor.ExecuteASPFile(content, fullPath, w, r)
 	if err != nil {
-		stack := string(debug.Stack())
+		//stack := string(debug.Stack())
 		fmt.Printf("[DEBUG] ASP processing error in %s: %v\n", path, err)
-		fmt.Printf("[DEBUG] STACK %s\n", stack)
+		//fmt.Printf("[DEBUG] STACK %s\n", stack)
 	}
 }
 
