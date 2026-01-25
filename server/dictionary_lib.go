@@ -98,7 +98,7 @@ func (d *Dictionary) CallMethod(name string, args ...interface{}) interface{} {
 		return d.Add(args)
 	case "exists":
 		return d.Exists(args)
-	case "item":
+	case "item", "": // Default indexing: dict("key") is equivalent to dict.Item("key")
 		return d.Item(args)
 	case "remove":
 		return d.Remove(args)

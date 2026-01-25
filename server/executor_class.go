@@ -178,7 +178,12 @@ func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface
 		return ci.executeMethod(fn, args)
 	}
 
-	// 3. Check Public Property Get (with arguments)
+	// 3. Check Private Methods (Sub/Function) - can be called from within class context
+	if node, ok := ci.ClassDef.PrivateMethods[nameLower]; ok {
+		return ci.executeMethod(node, args)
+	}
+
+	// 4. Check Public Property Get (with arguments)
 	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
 		for _, p := range props {
 			if p.Type == PropGet && p.Visibility == VisPublic {

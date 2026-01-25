@@ -70,7 +70,8 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 
 		// Execute in the current context (global scope)
-		visitor := NewASPVisitor(ctx, nil)
+		// Use current executor to preserve class method access
+		visitor := NewASPVisitor(ctx, ctx.currentExecutor)
 		for _, stmt := range program.Body {
 			if err := visitor.VisitStatement(stmt); err != nil {
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
@@ -122,7 +123,8 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 
 		// Execute in the current context
-		visitor := NewASPVisitor(ctx, nil)
+		// Use current executor to preserve class method access
+		visitor := NewASPVisitor(ctx, ctx.currentExecutor)
 		for _, stmt := range program.Body {
 			if err := visitor.VisitStatement(stmt); err != nil {
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
@@ -1093,6 +1095,8 @@ func getTypeName(val interface{}) string {
 		return "Variant()"
 	case map[string]interface{}:
 		return "Dictionary"
+	case *Dictionary, *DictionaryLibrary:
+		return "Dictionary"
 	case ASPLibrary:
 		return "Object"
 	default:
@@ -1143,6 +1147,8 @@ func getVarType(val interface{}) int {
 	case []interface{}:
 		// Array of Variant: 8192 (vbArray flag) + 12 (vbVariant) = 8204
 		return 8204
+	case *Dictionary, *DictionaryLibrary:
+		return 9 // vbObject
 	case map[string]interface{}, ASPLibrary:
 		return 9 // vbObject
 	default:

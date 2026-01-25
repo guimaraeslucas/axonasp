@@ -299,7 +299,7 @@ func TestASPLiteFormPattern(t *testing.T) {
 	if !strings.Contains(output, "submit:submit") {
 		t.Errorf("Expected 'submit:submit' in output, got: %s", output)
 	}
-	
+
 	// Verify no "NotObject" or "Unknown" entries
 	if strings.Contains(output, "NotObject") {
 		t.Errorf("Found 'NotObject' - items in array are not objects: %s", output)
