@@ -1,3 +1,23 @@
+/*
+ * AxonASP Server - Version 1.0
+ * Copyright (C) 2026 G3pix Ltda. All rights reserved.
+ *
+ * Developed by Lucas Guimarães - G3pix Ltda
+ * Contact: https://g3pix.com.br
+ * Project URL: https://g3pix.com.br/axonasp
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Attribution Notice:
+ * If this software is used in other projects, the name "AxonASP Server"
+ * must be cited in the documentation or "About" section.
+ *
+ * Contribution Policy:
+ * Modifications to the core source code of AxonASP Server must be
+ * made available under this same license terms.
+ */
 package main
 
 import (
@@ -181,21 +201,21 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	cleanPath := filepath.Clean(fullPath)
 	cleanRoot := filepath.Clean(RootDir)
 	if !strings.HasPrefix(cleanPath, cleanRoot) {
-		http.Error(w, "AxonASP: Forbidden", http.StatusForbidden)
+		serveErrorPage(w, 403)
 		return
 	}
 
 	// Security check: block direct access to restricted file extensions, we use not found for safety
 	fileExt := strings.ToLower(filepath.Ext(fullPath))
 	if isBlockedExtension(fileExt) {
-		http.Error(w, "AxonASP: 404 not found", http.StatusNotFound)
+		serveErrorPage(w, 404)
 		return
 	}
 
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		http.Error(w, "AxonASP: 404 not found", http.StatusNotFound)
+		serveErrorPage(w, 404)
 		return
 	}
 
@@ -203,7 +223,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	if info.IsDir() {
 		fullPath = filepath.Join(fullPath, DefaultPage)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			http.Error(w, "AxonASP: 404 not found", http.StatusNotFound)
+			serveErrorPage(w, 404)
 			return
 		}
 	}
@@ -217,7 +237,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Process ASP file
 	content, err := asp.ReadFileText(fullPath)
 	if err != nil {
-		http.Error(w, "AxonASP: error reading file", http.StatusInternalServerError)
+		serveErrorPage(w, 500)
 		return
 	}
 
@@ -228,6 +248,11 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 			// Check if debug mode is enabled
 			isDebug := os.Getenv("DEBUG_ASP") == "TRUE"
+
+			if !isDebug {
+				serveErrorPage(w, 500)
+				return
+			}
 
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusInternalServerError)
@@ -266,4 +291,19 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[DEBUG] ASP processing error in %s: %v\n", path, err)
 		//http.Error(w, fmt.Sprintf("AxonASP: %v", err), http.StatusInternalServerError)
 	}
+}
+
+// serveErrorPage serves a custom HTML error page from the errorpages directory
+func serveErrorPage(w http.ResponseWriter, statusCode int) {
+	filename := fmt.Sprintf("%d.html", statusCode)
+	filePath := filepath.Join("errorpages", filename)
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		// Fallback to default text if custom page is missing
+		http.Error(w, fmt.Sprintf("AxonASP Error: %d", statusCode), statusCode)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(statusCode)
+	w.Write(content)
 }
