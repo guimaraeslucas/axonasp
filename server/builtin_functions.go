@@ -20,6 +20,9 @@ type EmptyValue struct{}
 // NothingValue represents VBScript Nothing type (null object reference)
 type NothingValue struct{}
 
+// NullValue represents VBScript Null type (no valid data)
+type NullValue struct{}
+
 // evalBuiltInFunction evaluates VBScript built-in functions
 // Returns (result, wasHandled) where wasHandled indicates if the function was recognized
 func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionContext) (interface{}, bool) {
@@ -113,11 +116,16 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		val := args[0]
 		// Check if value is Empty (nil or EmptyValue)
+		// NOTE: nil represents an uninitialized variable (Empty), NOT Null
 		if val == nil {
 			return true, true
 		}
 		if _, ok := val.(EmptyValue); ok {
 			return true, true
+		}
+		// NullValue is NOT empty
+		if _, ok := val.(NullValue); ok {
+			return false, true
 		}
 		// Check if it's a newly declared variable (stored as nil in context)
 		return false, true
@@ -128,8 +136,12 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		val := args[0]
 		// In VBScript, Null is a special value indicating no valid data
-		// We represent it as nil
-		return val == nil, true
+		// We represent it as NullValue{}
+		if _, ok := val.(NullValue); ok {
+			return true, true
+		}
+		// nil is NOT Null - it's Empty
+		return false, true
 
 	case "isnothing":
 		if len(args) == 0 {

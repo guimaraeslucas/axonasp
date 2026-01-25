@@ -542,7 +542,7 @@ Response.Write "BRACKET=" & o.isEmpty("")
 	}
 }
 
-// Test bracket method in aspLite-like context with global instance  
+// Test bracket method in aspLite-like context with global instance
 func TestClassBracketMethodGlobalInstance(t *testing.T) {
 	const page = `<%
 Class cls_test
@@ -650,7 +650,7 @@ Response.Write "|END"
 
 	body := rec.Body.String()
 	t.Logf("Explicit exec body: %s", body)
-	
+
 	if !strings.Contains(body, "ASPL_EXEC_OK") {
 		t.Fatalf("expected aspl.exec() explicit output, got body: %s", body)
 	}
@@ -673,7 +673,7 @@ Response.Write "|END"
 
 	body2 := rec2.Body.String()
 	t.Logf("Default exec body: %s", body2)
-	
+
 	if !strings.Contains(body2, "ASPL_EXEC_OK") {
 		t.Fatalf("expected aspl(...) default sub output, got body: %s", body2)
 	}

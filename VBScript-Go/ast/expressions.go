@@ -5,7 +5,8 @@ import "time"
 // Identifier represents a variable or function name
 type Identifier struct {
 	BaseExpression
-	Name string
+	Name        string
+	IsBracketed bool // True if the identifier was written with brackets [name] to escape reserved words
 }
 
 const IdentifierMaxLength = 255
@@ -16,7 +17,20 @@ func NewIdentifier(name string) *Identifier {
 		panic("identifier name cannot be empty")
 	}
 	return &Identifier{
-		Name: name,
+		Name:        name,
+		IsBracketed: false,
+	}
+}
+
+// NewBracketedIdentifier creates a new bracketed Identifier expression
+// Bracketed identifiers [name] are used to escape reserved words in VBScript
+func NewBracketedIdentifier(name string) *Identifier {
+	if name == "" {
+		panic("identifier name cannot be empty")
+	}
+	return &Identifier{
+		Name:        name,
+		IsBracketed: true,
 	}
 }
 

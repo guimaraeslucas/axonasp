@@ -1,0 +1,8 @@
+<div class="card">
+  <a href="[src]" target="_blank">
+	<img src="[src]" class="card-img-top" alt="">
+	  <div class="card-body">   
+		<p class="card-text">[caption]</p>   
+	  </div>
+	</a>
+</div>

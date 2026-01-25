@@ -2246,7 +2246,7 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 
 	case *ast.NullLiteral:
 		// Null in VBScript represents a special value (no valid data)
-		return nil, nil
+		return NullValue{}, nil
 
 	case *ast.EmptyLiteral:
 		// Empty in VBScript represents an uninitialized variable
@@ -2357,14 +2357,16 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		args = append(args, val)
 	}
 
-	// CRITICAL FIX: Check for built-in functions FIRST when inside a class context.
-	// This prevents class methods with the same name (e.g., [isEmpty]) from shadowing
-	// VBScript built-in functions like IsEmpty when called within the class body.
+	// CRITICAL FIX: Handle built-in function vs class method resolution.
+	// When an identifier is BRACKETED [isEmpty], it means the user explicitly wants to call
+	// a local function/method, NOT the built-in function. This is VBScript's way of escaping
+	// reserved words and built-in function names.
+	// When NOT bracketed, built-in functions take precedence.
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
-		if isBuiltInFunctionName(ident.Name) {
-			// Check if we should use the built-in function
-			// Only use built-in if it's NOT a direct variable reference in local scope
-			// (i.e., not a FunctionDeclaration or SubDeclaration explicitly defined in current scope)
+		// Only use built-in function if:
+		// 1. The name matches a built-in function
+		// 2. The identifier is NOT bracketed (i.e., user did NOT explicitly escape it)
+		if isBuiltInFunctionName(ident.Name) && !ident.IsBracketed {
 			if result, handled := evalBuiltInFunction(ident.Name, args, v.context); handled {
 				return result, nil
 			}
@@ -2490,11 +2492,36 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			if result, handled := evalCustomFunction(funcName, args, v.context); handled {
 				return result, nil
 			}
-			// Then try built-in functions
-			if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
-				return result, nil
+
+			// CRITICAL FIX: When identifier is BRACKETED [name], it means the user wants to
+			// call a local function/method, NOT the built-in function. Check class methods
+			// BEFORE built-in functions when bracketed.
+			if ident.IsBracketed {
+				// For bracketed identifiers, prioritize class methods over built-ins
+				if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+					if classInst, ok := ctxObj.(*ClassInstance); ok {
+						funcNameLower := strings.ToLower(funcName)
+						if _, exists := classInst.ClassDef.Functions[funcNameLower]; exists {
+							return classInst.CallMethod(funcName, args...)
+						}
+						if _, exists := classInst.ClassDef.Methods[funcNameLower]; exists {
+							return classInst.CallMethod(funcName, args...)
+						}
+						if _, exists := classInst.ClassDef.PrivateMethods[funcNameLower]; exists {
+							return classInst.CallMethod(funcName, args...)
+						}
+					}
+				}
 			}
-			// CRITICAL: If we're inside a class context and didn't find a standalone function,
+
+			// Then try built-in functions (but skip if identifier was bracketed - they wanted local)
+			if !ident.IsBracketed {
+				if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
+					return result, nil
+				}
+			}
+
+			// If we're inside a class context and didn't find a standalone function,
 			// try calling this as a method on the current class instance (implicit Me.FunctionName())
 			if ctxObj := v.context.GetContextObject(); ctxObj != nil {
 				if classInst, ok := ctxObj.(*ClassInstance); ok {

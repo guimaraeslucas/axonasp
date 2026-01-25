@@ -1,0 +1,9 @@
+<%
+'DataTables / Server Side Processing (Classic ASP)
+dim form : set form=aspl.form
+form.doscroll=true
+
+form.write aspL.loadText("default/html/sampleform21.resx")
+
+form.build()
+%>

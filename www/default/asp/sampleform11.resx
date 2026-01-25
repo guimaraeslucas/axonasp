@@ -1,0 +1,22 @@
+<%
+dim form : set form=aspl.form
+
+'aspLite randomizer example
+dim i, body
+
+for i=1 to 20
+	'generate some random words with random lengths (10-20)
+	body=body & aspL.randomizer.randomtext(aspL.randomizer.randomnumber(5,10)) & " "
+next
+
+'result
+form.write body
+
+form.newline
+
+dim submit : set submit=form.field("submit")
+submit.add "html","Refresh"
+submit.add "class","btn btn-primary"
+
+form.build()
+%>

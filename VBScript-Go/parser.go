@@ -305,25 +305,31 @@ func (p *Parser) matchIdentifier() bool {
 }
 
 func (p *Parser) expectIdentifier() string {
+	name, _ := p.expectIdentifierEx()
+	return name
+}
+
+// expectIdentifierEx returns the identifier name and whether it was bracketed [name]
+func (p *Parser) expectIdentifierEx() (string, bool) {
 	token := p.move()
 	// fmt.Printf("DEBUG: expectIdentifier got %T: %v\n", token, token)
 	switch t := token.(type) {
 	case *IdentifierToken:
-		return t.Name
+		return t.Name, false
 	case *KeywordOrIdentifierToken:
-		return t.Name
+		return t.Name, false
 	case *ExtendedIdentifierToken:
 		if len(t.Name) >= 2 && t.Name[0] == '[' && t.Name[len(t.Name)-1] == ']' {
-			return t.Name[1 : len(t.Name)-1]
+			return t.Name[1 : len(t.Name)-1], true
 		}
-		return t.Name
+		return t.Name, true
 	case *KeywordToken:
 		// Allow keywords to be identifiers unless they are strict block terminators
 		switch t.Keyword {
 		case KeywordEnd, KeywordElse, KeywordElseIf, KeywordCase, KeywordNext, KeywordLoop, KeywordWEnd:
 			panic(p.vbSyntaxError(ExpectedIdentifier))
 		}
-		return t.Keyword.String()
+		return t.Keyword.String(), false
 	default:
 		panic(p.vbSyntaxError(ExpectedIdentifier))
 	}
@@ -1391,9 +1397,12 @@ func (p *Parser) parseConstInitExpression() ast.Expression {
 }
 
 func (p *Parser) parseIdentifier() *ast.Identifier {
-	name := p.expectIdentifier()
+	name, bracketed := p.expectIdentifierEx()
 	if len(name) > ast.IdentifierMaxLength {
 		panic(p.vbSyntaxError(SyntaxError))
+	}
+	if bracketed {
+		return ast.NewBracketedIdentifier(name)
 	}
 	return ast.NewIdentifier(name)
 }
