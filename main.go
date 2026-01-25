@@ -22,8 +22,8 @@ package main
 
 import (
 	"fmt"
-	"go-asp/asp"
-	"go-asp/server"
+	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/server"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -167,7 +167,7 @@ func main() {
 
 	err = http.ListenAndServe(":"+Port, nil)
 	if err != nil {
-		fmt.Printf("Fatal error starting AxonASP server:\n  %v\n", err)
+		fmt.Printf("Fatal error starting G3Pix AxonASP server:\n  %v\n", err)
 	}
 }
 
@@ -244,7 +244,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Recover from panics to avoid crashing server
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Runtime panic in %s: %v\n", path, r)
+			fmt.Printf("G3Pix AxonASP Runtime panic in %s: %v\n", path, r)
 
 			// Check if debug mode is enabled
 			isDebug := os.Getenv("DEBUG_ASP") == "TRUE"
@@ -288,8 +288,9 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	err = processor.ExecuteASPFile(content, fullPath, w, r)
 	if err != nil {
+		stack := string(debug.Stack())
 		fmt.Printf("[DEBUG] ASP processing error in %s: %v\n", path, err)
-		//http.Error(w, fmt.Sprintf("AxonASP: %v", err), http.StatusInternalServerError)
+		fmt.Printf("[DEBUG] STACK %s\n", stack)
 	}
 }
 
@@ -300,7 +301,8 @@ func serveErrorPage(w http.ResponseWriter, statusCode int) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		// Fallback to default text if custom page is missing
-		http.Error(w, fmt.Sprintf("AxonASP Error: %d", statusCode), statusCode)
+		fmt.Printf("[DEBUG] Could not read error page %s: %s\n", filename, err)
+		http.Error(w, fmt.Sprintf("G3Pix AxonASP Error: %d", statusCode), statusCode)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

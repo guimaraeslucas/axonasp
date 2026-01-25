@@ -1,4 +1,4 @@
-module go-asp
+module g3pix.com.br/axonasp
 
 go 1.25.6
 

@@ -48,7 +48,7 @@
 package vbscript
 
 import (
-	"go-asp/vbscript/ast"
+	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
 // Parser represents a VBScript parser

@@ -22,7 +22,7 @@ package server
 
 import (
 	"fmt"
-	"go-asp/vbscript/ast"
+	"g3pix.com.br/axonasp/vbscript/ast"
 	"strings"
 )
 

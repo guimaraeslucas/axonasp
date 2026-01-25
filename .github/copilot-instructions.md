@@ -1,5 +1,5 @@
-Quick Instructions for Code Agents (G3 AxonASP)
-Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Document only in English.
+Quick Instructions for Code Agents (G3Pix AxonASP)
+Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Document only in English. Keep the license reader.
 
 1. Architecture Overview
 Main Server: main.go runs HTTP server on :4050, serving ./www.
@@ -12,16 +12,14 @@ Invoked via Server.CreateObject("LIB_NAME").
 
 Must use the standard ASP execution context.
 
-Deprecated: server/deprecated/ is for reference only. DO NOT MODIFY OR USE IN PRODUCTION.
-
 2. Development & Debugging
 Environment: Windows Powershell.
 
 Run: go run main.go.
 
-Build: go build -o go-asp.exe -> ./go-asp.exe.
+Build: go build -o axonasp.exe -> ./axonasp.exe.
 
-Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/.
+Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/tests.
 
 ASP Debugging: Set <% debug_asp_code = "TRUE" %> in the ASP file for HTML stack traces.
 
@@ -69,7 +67,7 @@ Update/Create test_*.asp in www/ for every fix/feature.
 
 Update Default.asp with changes.
 
-Maintain G3 AxonASP branding.
+Maintain G3Pix AxonASP branding.
 
 Prioritize secure, testable, and small implementations.
 

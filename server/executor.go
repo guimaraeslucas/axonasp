@@ -22,8 +22,8 @@ package server
 
 import (
 	"fmt"
-	"go-asp/asp"
-	"go-asp/vbscript/ast"
+	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/vbscript/ast"
 	"math"
 	"math/rand"
 	"net"

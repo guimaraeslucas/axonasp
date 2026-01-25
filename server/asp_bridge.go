@@ -23,7 +23,7 @@ package server
 import (
 	"crypto/rand"
 	"fmt"
-	"go-asp/asp"
+	"g3pix.com.br/axonasp/asp"
 	"net/http"
 	"os"
 	"sync"
