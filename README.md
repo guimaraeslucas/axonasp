@@ -7,7 +7,7 @@
 <p align="center">
   <strong>High-Performance Classic ASP Runtime Engine</strong>
   <br>
-  Run your legacy ASP Classic applications with modern speed and cross-platform compatibility
+  Run your new and legacy ASP Classic applications with modern speed and cross-platform compatibility
 </p>
 
 <p align="center">
