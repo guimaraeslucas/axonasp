@@ -595,7 +595,7 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 Special thanks to:
 - The Go community for an amazing language and ecosystem
 - Classic ASP developers who keep legacy applications running
-- Contributors and testers who help improve G3Pix AxonASP
+- Contributors and testers who help improve G3Pix AxonASP =)
 
 ---
 

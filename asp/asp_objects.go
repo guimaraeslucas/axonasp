@@ -1,5 +1,5 @@
 /*
- * AxonASP Server - Version 1.0
+ * AxonASP Server 
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
  * Developed by Lucas Guimarães - G3pix Ltda
