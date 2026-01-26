@@ -1,280 +1,288 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Complete installation guide for G3Pix AxonASP - Learn how to install, configure, and deploy your Classic ASP runtime engine.">
-    <title>Installation Guide - G3Pix AxonASP</title>
-    <link rel="stylesheet" href="styles.css">
-    <style>
-        .installation-content {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 4rem 2rem;
-        }
-        
-        .installation-header {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-        
-        .installation-header h1 {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-            background: var(--gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        
-        .toc {
-            background: #f8f9fa;
-            padding: 2rem;
-            border-radius: 10px;
-            margin-bottom: 3rem;
-        }
-        
-        .toc h3 {
-            margin-bottom: 1rem;
-            color: var(--primary-color);
-        }
-        
-        .toc ul {
-            list-style: none;
-        }
-        
-        .toc li {
-            margin-bottom: 0.5rem;
-        }
-        
-        .toc a {
-            color: var(--text-color);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        .toc a:hover {
-            color: var(--primary-color);
-        }
-        
-        .install-section {
-            margin-bottom: 4rem;
-        }
-        
-        .install-section h2 {
-            font-size: 2rem;
-            margin-bottom: 1.5rem;
-            color: var(--primary-color);
-            border-bottom: 2px solid var(--primary-color);
-            padding-bottom: 0.5rem;
-        }
-        
-        .install-section h3 {
-            font-size: 1.5rem;
-            margin-top: 2rem;
-            margin-bottom: 1rem;
-            color: var(--text-color);
-        }
-        
-        .code-block {
-            background: var(--dark-color);
-            color: #f8f9fa;
-            padding: 1.5rem;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin: 1.5rem 0;
-            position: relative;
-        }
-        
-        .code-block pre {
-            margin: 0;
-        }
-        
-        .code-block code {
-            font-family: 'Courier New', monospace;
-            font-size: 0.95rem;
-        }
-        
-        .note {
-            background: #e3f2fd;
-            border-left: 4px solid #2196f3;
-            padding: 1rem 1.5rem;
-            margin: 1.5rem 0;
-            border-radius: 4px;
-        }
-        
-        .warning {
-            background: #fff3e0;
-            border-left: 4px solid #ff9800;
-            padding: 1rem 1.5rem;
-            margin: 1.5rem 0;
-            border-radius: 4px;
-        }
-        
-        .success {
-            background: #e8f5e9;
-            border-left: 4px solid #4caf50;
-            padding: 1rem 1.5rem;
-            margin: 1.5rem 0;
-            border-radius: 4px;
-        }
-        
-        .platform-tabs {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-            border-bottom: 2px solid var(--border-color);
-        }
-        
-        .tab {
-            padding: 0.75rem 1.5rem;
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--text-light);
-            transition: all 0.3s;
-        }
-        
-        .tab.active {
-            color: var(--primary-color);
-            border-bottom: 2px solid var(--primary-color);
-        }
-        
-        .tab-content {
-            display: none;
-        }
-        
-        .tab-content.active {
-            display: block;
-        }
-        
-        .config-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1.5rem 0;
-        }
-        
-        .config-table th,
-        .config-table td {
-            padding: 1rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .config-table th {
-            background: var(--dark-color);
-            color: white;
-            font-weight: 600;
-        }
-        
-        .config-table tr:nth-child(even) {
-            background: #f8f9fa;
-        }
-        
-        .config-table code {
-            background: rgba(0, 173, 216, 0.1);
-            padding: 0.2rem 0.5rem;
-            border-radius: 3px;
-            font-size: 0.9rem;
-        }
-    </style>
-</head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="container">
-            <div class="nav-brand">
-                <img src="axonasp.svg" alt="G3Pix AxonASP" class="logo">
-                <span class="brand-name">G3Pix AxonASP</span>
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description"
+            content="Complete installation guide for G3Pix AxonASP - Learn how to install, configure, and deploy your Classic ASP runtime engine.">
+        <title>Installation Guide - G3Pix AxonASP</title>
+        <link rel="stylesheet" href="styles.css">
+        <style>
+            .installation-content {
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 4rem 2rem;
+            }
+
+            .installation-header {
+                text-align: center;
+                margin-bottom: 3rem;
+            }
+
+            .installation-header h1 {
+                font-size: 3rem;
+                margin-bottom: 1rem;
+                background: var(--gradient);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+            }
+
+            .toc {
+                background: #f8f9fa;
+                padding: 2rem;
+                border-radius: 10px;
+                margin-bottom: 3rem;
+            }
+
+            .toc h3 {
+                margin-bottom: 1rem;
+                color: var(--primary-color);
+            }
+
+            .toc ul {
+                list-style: none;
+            }
+
+            .toc li {
+                margin-bottom: 0.5rem;
+            }
+
+            .toc a {
+                color: var(--text-color);
+                text-decoration: none;
+                transition: color 0.3s;
+            }
+
+            .toc a:hover {
+                color: var(--primary-color);
+            }
+
+            .install-section {
+                margin-bottom: 4rem;
+            }
+
+            .install-section h2 {
+                font-size: 2rem;
+                margin-bottom: 1.5rem;
+                color: var(--primary-color);
+                border-bottom: 2px solid var(--primary-color);
+                padding-bottom: 0.5rem;
+            }
+
+            .install-section h3 {
+                font-size: 1.5rem;
+                margin-top: 2rem;
+                margin-bottom: 1rem;
+                color: var(--text-color);
+            }
+
+            .code-block {
+                background: var(--dark-color);
+                color: #f8f9fa;
+                padding: 1.5rem;
+                border-radius: 8px;
+                overflow-x: auto;
+                margin: 1.5rem 0;
+                position: relative;
+            }
+
+            .code-block pre {
+                margin: 0;
+            }
+
+            .code-block code {
+                font-family: 'Courier New', monospace;
+                font-size: 0.95rem;
+            }
+
+            .note {
+                background: #e3f2fd;
+                border-left: 4px solid #2196f3;
+                padding: 1rem 1.5rem;
+                margin: 1.5rem 0;
+                border-radius: 4px;
+            }
+
+            .warning {
+                background: #fff3e0;
+                border-left: 4px solid #ff9800;
+                padding: 1rem 1.5rem;
+                margin: 1.5rem 0;
+                border-radius: 4px;
+            }
+
+            .success {
+                background: #e8f5e9;
+                border-left: 4px solid #4caf50;
+                padding: 1rem 1.5rem;
+                margin: 1.5rem 0;
+                border-radius: 4px;
+            }
+
+            .platform-tabs {
+                display: flex;
+                gap: 1rem;
+                margin-bottom: 1rem;
+                border-bottom: 2px solid var(--border-color);
+            }
+
+            .tab {
+                padding: 0.75rem 1.5rem;
+                background: none;
+                border: none;
+                cursor: pointer;
+                font-size: 1rem;
+                font-weight: 600;
+                color: var(--text-light);
+                transition: all 0.3s;
+            }
+
+            .tab.active {
+                color: var(--primary-color);
+                border-bottom: 2px solid var(--primary-color);
+            }
+
+            .tab-content {
+                display: none;
+            }
+
+            .tab-content.active {
+                display: block;
+            }
+
+            .config-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 1.5rem 0;
+            }
+
+            .config-table th,
+            .config-table td {
+                padding: 1rem;
+                text-align: left;
+                border-bottom: 1px solid var(--border-color);
+            }
+
+            .config-table th {
+                background: var(--dark-color);
+                color: white;
+                font-weight: 600;
+            }
+
+            .config-table tr:nth-child(even) {
+                background: #f8f9fa;
+            }
+
+            .config-table code {
+                background: rgba(0, 173, 216, 0.1);
+                padding: 0.2rem 0.5rem;
+                border-radius: 3px;
+                font-size: 0.9rem;
+            }
+        </style>
+    </head>
+
+    <body>
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="container">
+                <div class="nav-brand">
+                    <img src="axonasp.svg" alt="G3Pix AxonASP" class="logo">
+                    <span class="brand-name">G3Pix AxonASP</span>
+                </div>
+                <ul class="nav-menu">
+                    <li><a href="index.htm">Home</a></li>
+                    <li><a href="index.htm#features">Features</a></li>
+                    <li><a href="index.htm#quickstart">Quick Start</a></li>
+                    <li><a href="installation.htm" class="active">Installation</a></li>
+                    <li><a href="features.htm">Documentation</a></li>
+                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank"
+                            class="btn-github">GitHub</a></li>
+                </ul>
             </div>
-            <ul class="nav-menu">
-                <li><a href="index.htm">Home</a></li>
-                <li><a href="index.htm#features">Features</a></li>
-                <li><a href="index.htm#quickstart">Quick Start</a></li>
-                <li><a href="installation.htm" class="active">Installation</a></li>
-                <li><a href="features.htm">Documentation</a></li>
-                <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank" class="btn-github">GitHub</a></li>
-            </ul>
-        </div>
-    </nav>
+        </nav>
 
-    <div class="installation-content">
-        <div class="installation-header">
-            <h1>Installation Guide</h1>
-            <p style="font-size: 1.2rem; color: var(--text-light);">Complete guide to install, configure, and deploy G3Pix AxonASP</p>
-        </div>
-
-        <!-- Table of Contents -->
-        <div class="toc">
-            <h3>📋 Table of Contents</h3>
-            <ul>
-                <li><a href="#prerequisites">Prerequisites</a></li>
-                <li><a href="#installation">Installation</a></li>
-                <li><a href="#configuration">Configuration</a></li>
-                <li><a href="#building">Building for Production</a></li>
-                <li><a href="#reverse-proxy">Reverse Proxy Setup</a></li>
-                <li><a href="#multiple-instances">Running Multiple Instances</a></li>
-                <li><a href="#troubleshooting">Troubleshooting</a></li>
-            </ul>
-        </div>
-
-        <!-- Prerequisites -->
-        <div id="prerequisites" class="install-section">
-            <h2>Prerequisites</h2>
-            <p>Before installing G3Pix AxonASP, ensure you have the following:</p>
-            
-            <h3>Required</h3>
-            <ul>
-                <li><strong>Go 1.21 or higher</strong> - Download from <a href="https://golang.org/dl/" target="_blank">golang.org</a></li>
-                <li><strong>Git</strong> - For cloning the repository</li>
-            </ul>
-            
-            <h3>Recommended</h3>
-            <ul>
-                <li>Basic understanding of Classic ASP and VBScript</li>
-                <li>Familiarity with command-line interfaces</li>
-                <li>Text editor or IDE (VS Code, Sublime Text, etc.)</li>
-            </ul>
-            
-            <div class="note">
-                <strong>💡 Note:</strong> G3Pix AxonASP is a standalone application with no external dependencies beyond Go itself.
+        <div class="installation-content">
+            <div class="installation-header">
+                <h1>Installation Guide</h1>
+                <p style="font-size: 1.2rem; color: var(--text-light);">Complete guide to install, configure, and deploy
+                    G3Pix AxonASP</p>
             </div>
-        </div>
 
-        <!-- Installation -->
-        <div id="installation" class="install-section">
-            <h2>Installation</h2>
-            
-            <h3>Step 1: Clone the Repository</h3>
-            <div class="code-block">
-                <pre><code>git clone https://github.com/guimaraeslucas/axonasp.git
+            <!-- Table of Contents -->
+            <div class="toc">
+                <h3>📋 Table of Contents</h3>
+                <ul>
+                    <li><a href="#prerequisites">Prerequisites</a></li>
+                    <li><a href="#installation">Installation</a></li>
+                    <li><a href="#configuration">Configuration</a></li>
+                    <li><a href="#building">Building for Production</a></li>
+                    <li><a href="#reverse-proxy">Reverse Proxy Setup</a></li>
+                    <li><a href="#multiple-instances">Running Multiple Instances</a></li>
+                    <li><a href="#troubleshooting">Troubleshooting</a></li>
+                </ul>
+            </div>
+
+            <!-- Prerequisites -->
+            <div id="prerequisites" class="install-section">
+                <h2>Prerequisites</h2>
+                <p>Before installing G3Pix AxonASP, ensure you have the following:</p>
+
+                <h3>Required</h3>
+                <ul>
+                    <li><strong>Go 1.21 or higher</strong> - Download from <a href="https://golang.org/dl/"
+                            target="_blank">golang.org</a></li>
+                    <li><strong>Git</strong> - For cloning the repository</li>
+                </ul>
+
+                <h3>Recommended</h3>
+                <ul>
+                    <li>Basic understanding of Classic ASP and VBScript</li>
+                    <li>Familiarity with command-line interfaces</li>
+                    <li>Text editor or IDE (VS Code, Sublime Text, etc.)</li>
+                </ul>
+
+                <div class="note">
+                    <strong>💡 Note:</strong> G3Pix AxonASP is a standalone application with no external dependencies
+                    beyond Go itself.
+                </div>
+            </div>
+
+            <!-- Installation -->
+            <div id="installation" class="install-section">
+                <h2>Installation</h2>
+
+                <h3>Step 1: Clone the Repository</h3>
+                <div class="code-block">
+                    <pre><code>git clone https://github.com/guimaraeslucas/axonasp.git
 cd axonasp</code></pre>
-            </div>
-            
-            <h3>Step 2: Download Dependencies</h3>
-            <div class="code-block">
-                <pre><code>go mod download</code></pre>
-            </div>
-            
-            <h3>Step 3: Run the Development Server</h3>
-            <div class="code-block">
-                <pre><code>go run main.go</code></pre>
-            </div>
-            
-            <div class="success">
-                <strong>✅ Success!</strong> Your server should now be running at <code>http://localhost:4050</code>
-            </div>
-        </div>
+                </div>
 
-        <!-- Configuration -->
-        <div id="configuration" class="install-section">
-            <h2>Configuration</h2>
-            <p>G3Pix AxonASP uses environment variables for configuration. Create a <code>.env</code> file in the root directory:</p>
-            
-            <div class="code-block">
-                <pre><code># Server Configuration
+                <h3>Step 2: Download Dependencies</h3>
+                <div class="code-block">
+                    <pre><code>go mod download</code></pre>
+                </div>
+
+                <h3>Step 3: Run the Development Server</h3>
+                <div class="code-block">
+                    <pre><code>go run main.go</code></pre>
+                </div>
+
+                <div class="success">
+                    <strong>✅ Success!</strong> Your server should now be running at <code>http://localhost:4050</code>
+                </div>
+            </div>
+
+            <!-- Configuration -->
+            <div id="configuration" class="install-section">
+                <h2>Configuration</h2>
+                <p>G3Pix AxonASP uses environment variables for configuration. Create a <code>.env</code> file in the
+                    root directory:</p>
+
+                <div class="code-block">
+                    <pre><code># Server Configuration
 SERVER_PORT=4050
 WEB_ROOT=./www
 TIMEZONE=America/Sao_Paulo
@@ -287,145 +295,146 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password</code></pre>
-            </div>
-            
-            <h3>Configuration Options</h3>
-            <table class="config-table">
-                <thead>
-                    <tr>
-                        <th>Variable</th>
-                        <th>Default</th>
-                        <th>Description</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><code>SERVER_PORT</code></td>
-                        <td>4050</td>
-                        <td>HTTP server port</td>
-                    </tr>
-                    <tr>
-                        <td><code>WEB_ROOT</code></td>
-                        <td>./www</td>
-                        <td>Root directory for ASP files</td>
-                    </tr>
-                    <tr>
-                        <td><code>TIMEZONE</code></td>
-                        <td>America/Sao_Paulo</td>
-                        <td>Server timezone</td>
-                    </tr>
-                    <tr>
-                        <td><code>DEFAULT_PAGE</code></td>
-                        <td>default.asp</td>
-                        <td>Default document name</td>
-                    </tr>
-                    <tr>
-                        <td><code>SCRIPT_TIMEOUT</code></td>
-                        <td>30</td>
-                        <td>Script execution timeout (seconds)</td>
-                    </tr>
-                    <tr>
-                        <td><code>DEBUG_ASP</code></td>
-                        <td>FALSE</td>
-                        <td>Enable HTML stack traces</td>
-                    </tr>
-                    <tr>
-                        <td><code>SMTP_HOST</code></td>
-                        <td>-</td>
-                        <td>SMTP server hostname</td>
-                    </tr>
-                    <tr>
-                        <td><code>SMTP_PORT</code></td>
-                        <td>587</td>
-                        <td>SMTP server port</td>
-                    </tr>
-                    <tr>
-                        <td><code>SMTP_USER</code></td>
-                        <td>-</td>
-                        <td>SMTP authentication username</td>
-                    </tr>
-                    <tr>
-                        <td><code>SMTP_PASS</code></td>
-                        <td>-</td>
-                        <td>SMTP authentication password</td>
-                    </tr>
-                </tbody>
-            </table>
-            
-            <div class="warning">
-                <strong>⚠️ Important:</strong> Set <code>DEBUG_ASP=FALSE</code> in production to prevent exposing sensitive error information.
-            </div>
-        </div>
+                </div>
 
-        <!-- Building for Production -->
-        <div id="building" class="install-section">
-            <h2>Building for Production</h2>
-            
-            <div class="platform-tabs">
-                <button class="tab active" onclick="showTab('current')">Current Platform</button>
-                <button class="tab" onclick="showTab('windows')">Windows</button>
-                <button class="tab" onclick="showTab('linux')">Linux</button>
-                <button class="tab" onclick="showTab('macos')">macOS</button>
-            </div>
-            
-            <div id="current" class="tab-content active">
-                <h3>Build for Current Platform</h3>
-                <div class="code-block">
-                    <pre><code>go build -o axonasp</code></pre>
-                </div>
-                <p>This creates an executable for your current operating system.</p>
-            </div>
-            
-            <div id="windows" class="tab-content">
-                <h3>Windows (64-bit)</h3>
-                <div class="code-block">
-                    <pre><code>GOOS=windows GOARCH=amd64 go build -o axonasp.exe</code></pre>
-                </div>
-                <p>Run the executable:</p>
-                <div class="code-block">
-                    <pre><code>axonasp.exe</code></pre>
-                </div>
-            </div>
-            
-            <div id="linux" class="tab-content">
-                <h3>Linux (64-bit)</h3>
-                <div class="code-block">
-                    <pre><code>GOOS=linux GOARCH=amd64 go build -o axonasp</code></pre>
-                </div>
-                <p>Make it executable and run:</p>
-                <div class="code-block">
-                    <pre><code>chmod +x axonasp
-./axonasp</code></pre>
-                </div>
-            </div>
-            
-            <div id="macos" class="tab-content">
-                <h3>macOS (Intel)</h3>
-                <div class="code-block">
-                    <pre><code>GOOS=darwin GOARCH=amd64 go build -o axonasp</code></pre>
-                </div>
-                
-                <h3>macOS (Apple Silicon)</h3>
-                <div class="code-block">
-                    <pre><code>GOOS=darwin GOARCH=arm64 go build -o axonasp</code></pre>
-                </div>
-                
-                <p>Make it executable and run:</p>
-                <div class="code-block">
-                    <pre><code>chmod +x axonasp
-./axonasp</code></pre>
-                </div>
-            </div>
-        </div>
+                <h3>Configuration Options</h3>
+                <table class="config-table">
+                    <thead>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Default</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>SERVER_PORT</code></td>
+                            <td>4050</td>
+                            <td>HTTP server port</td>
+                        </tr>
+                        <tr>
+                            <td><code>WEB_ROOT</code></td>
+                            <td>./www</td>
+                            <td>Root directory for ASP files</td>
+                        </tr>
+                        <tr>
+                            <td><code>TIMEZONE</code></td>
+                            <td>America/Sao_Paulo</td>
+                            <td>Server timezone</td>
+                        </tr>
+                        <tr>
+                            <td><code>DEFAULT_PAGE</code></td>
+                            <td>default.asp</td>
+                            <td>Default document name</td>
+                        </tr>
+                        <tr>
+                            <td><code>SCRIPT_TIMEOUT</code></td>
+                            <td>30</td>
+                            <td>Script execution timeout (seconds)</td>
+                        </tr>
+                        <tr>
+                            <td><code>DEBUG_ASP</code></td>
+                            <td>FALSE</td>
+                            <td>Enable HTML stack traces</td>
+                        </tr>
+                        <tr>
+                            <td><code>SMTP_HOST</code></td>
+                            <td>-</td>
+                            <td>SMTP server hostname</td>
+                        </tr>
+                        <tr>
+                            <td><code>SMTP_PORT</code></td>
+                            <td>587</td>
+                            <td>SMTP server port</td>
+                        </tr>
+                        <tr>
+                            <td><code>SMTP_USER</code></td>
+                            <td>-</td>
+                            <td>SMTP authentication username</td>
+                        </tr>
+                        <tr>
+                            <td><code>SMTP_PASS</code></td>
+                            <td>-</td>
+                            <td>SMTP authentication password</td>
+                        </tr>
+                    </tbody>
+                </table>
 
-        <!-- Reverse Proxy -->
-        <div id="reverse-proxy" class="install-section">
-            <h2>Reverse Proxy Setup</h2>
-            <p>For production deployments, use a reverse proxy like Nginx, Apache, or IIS in front of AxonASP.</p>
-            
-            <h3>Nginx Configuration</h3>
-            <div class="code-block">
-                <pre><code>server {
+                <div class="warning">
+                    <strong>⚠️ Important:</strong> Set <code>DEBUG_ASP=FALSE</code> in production to prevent exposing
+                    sensitive error information.
+                </div>
+            </div>
+
+            <!-- Building for Production -->
+            <div id="building" class="install-section">
+                <h2>Building for Production</h2>
+
+                <div class="platform-tabs">
+                    <button class="tab active" onclick="showTab('current')">Current Platform</button>
+                    <button class="tab" onclick="showTab('windows')">Windows</button>
+                    <button class="tab" onclick="showTab('linux')">Linux</button>
+                    <button class="tab" onclick="showTab('macos')">macOS</button>
+                </div>
+
+                <div id="current" class="tab-content active">
+                    <h3>Build for Current Platform</h3>
+                    <div class="code-block">
+                        <pre><code>go build -o axonasp</code></pre>
+                    </div>
+                    <p>This creates an executable for your current operating system.</p>
+                </div>
+
+                <div id="windows" class="tab-content">
+                    <h3>Windows (64-bit)</h3>
+                    <div class="code-block">
+                        <pre><code>GOOS=windows GOARCH=amd64 go build -o axonasp.exe</code></pre>
+                    </div>
+                    <p>Run the executable:</p>
+                    <div class="code-block">
+                        <pre><code>axonasp.exe</code></pre>
+                    </div>
+                </div>
+
+                <div id="linux" class="tab-content">
+                    <h3>Linux (64-bit)</h3>
+                    <div class="code-block">
+                        <pre><code>GOOS=linux GOARCH=amd64 go build -o axonasp</code></pre>
+                    </div>
+                    <p>Make it executable and run:</p>
+                    <div class="code-block">
+                        <pre><code>chmod +x axonasp
+./axonasp</code></pre>
+                    </div>
+                </div>
+
+                <div id="macos" class="tab-content">
+                    <h3>macOS (Intel)</h3>
+                    <div class="code-block">
+                        <pre><code>GOOS=darwin GOARCH=amd64 go build -o axonasp</code></pre>
+                    </div>
+
+                    <h3>macOS (Apple Silicon)</h3>
+                    <div class="code-block">
+                        <pre><code>GOOS=darwin GOARCH=arm64 go build -o axonasp</code></pre>
+                    </div>
+
+                    <p>Make it executable and run:</p>
+                    <div class="code-block">
+                        <pre><code>chmod +x axonasp
+./axonasp</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reverse Proxy -->
+            <div id="reverse-proxy" class="install-section">
+                <h2>Reverse Proxy Setup</h2>
+                <p>For production deployments, use a reverse proxy like Nginx, Apache, or IIS in front of AxonASP.</p>
+
+                <h3>Nginx Configuration</h3>
+                <div class="code-block">
+                    <pre><code>server {
     listen 80;
     server_name yourdomain.com;
 
@@ -437,11 +446,11 @@ SMTP_PASS=your-app-password</code></pre>
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }</code></pre>
-            </div>
-            
-            <h3>Apache Configuration</h3>
-            <div class="code-block">
-                <pre><code>&lt;VirtualHost *:80&gt;
+                </div>
+
+                <h3>Apache Configuration</h3>
+                <div class="code-block">
+                    <pre><code>&lt;VirtualHost *:80&gt;
     ServerName yourdomain.com
     
     ProxyPreserveHost On
@@ -453,12 +462,13 @@ SMTP_PASS=your-app-password</code></pre>
         Allow from all
     &lt;/Proxy&gt;
 &lt;/VirtualHost&gt;</code></pre>
-            </div>
-            
-            <h3>IIS URL Rewrite</h3>
-            <p>Install ARR (Application Request Routing) and URL Rewrite modules, then add to <code>web.config</code>:</p>
-            <div class="code-block">
-                <pre><code>&lt;configuration&gt;
+                </div>
+
+                <h3>IIS URL Rewrite</h3>
+                <p>Install ARR (Application Request Routing) and URL Rewrite modules, then add to
+                    <code>web.config</code>:</p>
+                <div class="code-block">
+                    <pre><code>&lt;configuration&gt;
     &lt;system.webServer&gt;
         &lt;rewrite&gt;
             &lt;rules&gt;
@@ -470,16 +480,17 @@ SMTP_PASS=your-app-password</code></pre>
         &lt;/rewrite&gt;
     &lt;/system.webServer&gt;
 &lt;/configuration&gt;</code></pre>
+                </div>
             </div>
-        </div>
 
-        <!-- Multiple Instances -->
-        <div id="multiple-instances" class="install-section">
-            <h2>Running Multiple Instances</h2>
-            <p>G3Pix AxonASP supports <strong>one application per instance</strong> due to global.asa loading. To host multiple applications, run multiple instances on different ports.</p>
-            
-            <div class="code-block">
-                <pre><code># Terminal 1 - Application 1
+            <!-- Multiple Instances -->
+            <div id="multiple-instances" class="install-section">
+                <h2>Running Multiple Instances</h2>
+                <p>G3Pix AxonASP supports <strong>one application per instance</strong> due to global.asa loading. To
+                    host multiple applications, run multiple instances on different ports.</p>
+
+                <div class="code-block">
+                    <pre><code># Terminal 1 - Application 1
 SERVER_PORT=4050 WEB_ROOT=./app1/www ./axonasp
 
 # Terminal 2 - Application 2
@@ -487,71 +498,76 @@ SERVER_PORT=4051 WEB_ROOT=./app2/www ./axonasp
 
 # Terminal 3 - Application 3
 SERVER_PORT=4052 WEB_ROOT=./app3/www ./axonasp</code></pre>
-            </div>
-            
-            <p>Then configure your reverse proxy to route different domains to different ports.</p>
-        </div>
-
-        <!-- Troubleshooting -->
-        <div id="troubleshooting" class="install-section">
-            <h2>Troubleshooting</h2>
-            
-            <h3>Port Already in Use</h3>
-            <p>If you see "address already in use", change the <code>SERVER_PORT</code> in your <code>.env</code> file.</p>
-            
-            <h3>ASP Errors Not Showing</h3>
-            <p>Set <code>DEBUG_ASP=TRUE</code> in your <code>.env</code> file to see detailed error messages.</p>
-            
-            <h3>Database Connection Issues</h3>
-            <p>Ensure your database drivers are properly configured and connection strings are correct.</p>
-            
-            <h3>Session Not Persisting</h3>
-            <p>Check that the <code>temp/session</code> directory exists and is writable.</p>
-            
-            <div class="note">
-                <strong>💡 Need Help?</strong> Visit our <a href="https://github.com/guimaraeslucas/axonasp/issues" target="_blank">GitHub Issues</a> or <a href="https://github.com/guimaraeslucas/axonasp/discussions" target="_blank">Discussions</a> page.
-            </div>
-        </div>
-
-        <div style="text-align: center; margin-top: 4rem;">
-            <a href="features.htm" class="btn btn-primary">View Features & API Documentation →</a>
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-section">
-                    <h4>G3Pix AxonASP</h4>
-                    <p>High-Performance Classic ASP Runtime Engine</p>
                 </div>
-                <div class="footer-section">
-                    <h4>Documentation</h4>
-                    <ul>
-                        <li><a href="installation.htm">Installation Guide</a></li>
-                        <li><a href="features.htm">Features & API</a></li>
-                        <li><a href="https://github.com/guimaraeslucas/axonasp">GitHub</a></li>
-                    </ul>
+
+                <p>Then configure your reverse proxy to route different domains to different ports.</p>
+            </div>
+
+            <!-- Troubleshooting -->
+            <div id="troubleshooting" class="install-section">
+                <h2>Troubleshooting</h2>
+
+                <h3>Port Already in Use</h3>
+                <p>If you see "address already in use", change the <code>SERVER_PORT</code> in your <code>.env</code>
+                    file.</p>
+
+                <h3>ASP Errors Not Showing</h3>
+                <p>Set <code>DEBUG_ASP=TRUE</code> in your <code>.env</code> file to see detailed error messages.</p>
+
+                <h3>Database Connection Issues</h3>
+                <p>Ensure your database drivers are properly configured and connection strings are correct.</p>
+
+                <h3>Session Not Persisting</h3>
+                <p>Check that the <code>temp/session</code> directory exists and is writable.</p>
+
+                <div class="note">
+                    <strong>💡 Need Help?</strong> Visit our <a href="https://github.com/guimaraeslucas/axonasp/issues"
+                        target="_blank">GitHub Issues</a> or <a
+                        href="https://github.com/guimaraeslucas/axonasp/discussions" target="_blank">Discussions</a>
+                    page.
                 </div>
             </div>
-            <div class="footer-bottom">
-                <p>&copy; 2026 G3Pix. Built with ❤️ for the Classic ASP community.</p>
+
+            <div style="text-align: center; margin-top: 4rem;">
+                <a href="features.htm" class="btn btn-primary">View Features & API Documentation →</a>
             </div>
         </div>
-    </footer>
 
-    <script>
-        function showTab(tabName) {
-            const tabs = document.querySelectorAll('.tab');
-            const contents = document.querySelectorAll('.tab-content');
-            
-            tabs.forEach(tab => tab.classList.remove('active'));
-            contents.forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName).classList.add('active');
-        }
-    </script>
-</body>
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="container">
+                <div class="footer-content">
+                    <div class="footer-section">
+                        <h4>G3Pix AxonASP</h4>
+                        <p>High-Performance Classic ASP Runtime Engine</p>
+                    </div>
+                    <div class="footer-section">
+                        <h4>Documentation</h4>
+                        <ul>
+                            <li><a href="installation.htm">Installation Guide</a></li>
+                            <li><a href="features.htm">Features & API</a></li>
+                            <li><a href="https://github.com/guimaraeslucas/axonasp">GitHub</a></li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="footer-bottom">
+                    <p>&copy; 2026 G3Pix. Built with ❤️ for the Classic ASP community.</p>
+                </div>
+            </div>
+        </footer>
+
+        <script>
+            function showTab(tabName) {
+                const tabs = document.querySelectorAll('.tab');
+                const contents = document.querySelectorAll('.tab-content');
+
+                tabs.forEach(tab => tab.classList.remove('active'));
+                contents.forEach(content => content.classList.remove('active'));
+
+                event.target.classList.add('active');
+                document.getElementById(tabName).classList.add('active');
+            }
+        </script>
+    </body>
+
 </html>
