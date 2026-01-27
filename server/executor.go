@@ -155,7 +155,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		httpRequest:    r,
 		startTime:      time.Now(),
 		timeout:        timeout,
-		rng:            rand.New(rand.NewSource(1)),
+		rng:            rand.New(rand.NewSource(time.Now().UnixNano())),
 		sessionID:      sessionID,
 		sessionManager: sessionManager,
 		isNewSession:   isNew,
