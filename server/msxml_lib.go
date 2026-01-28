@@ -196,10 +196,13 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 
 	// Provide default headers similar to MSXML
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+		req.Header.Set("User-Agent", "Mozilla/4.0 (compatible; MSXML 6.0; Windows NT 10.0)")
 	}
 	if req.Header.Get("Accept") == "" {
 		req.Header.Set("Accept", "*/*")
+	}
+	if req.Header.Get("Accept-Language") == "" {
+		req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	}
 
 	// Set default Content-Type if body exists
@@ -365,6 +368,57 @@ type ParseError struct {
 	LinePos     int
 	SrcText     string
 	URL         string
+}
+
+// XMLNodeList represents an MSXML IXMLDOMNodeList
+type XMLNodeList struct {
+	items []*XMLElement
+}
+
+func (l *XMLNodeList) GetName() string {
+	return "IXMLDOMNodeList"
+}
+
+func (l *XMLNodeList) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "length":
+		return len(l.items)
+	}
+	return nil
+}
+
+func (l *XMLNodeList) SetProperty(name string, value interface{}) error {
+	return nil
+}
+
+func (l *XMLNodeList) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	method := strings.ToLower(strings.TrimSpace(name))
+	if method == "" {
+		method = "item"
+	}
+	switch method {
+	case "item":
+		if len(args) < 1 {
+			return nil, nil
+		}
+		idx := toInt(args[0])
+		if idx < 0 || idx >= len(l.items) {
+			return nil, nil
+		}
+		return l.items[idx], nil
+	case "nextnode":
+		// Simple iterator behavior is not implemented; return nil to match MSXML end.
+		return nil, nil
+	}
+	return nil, nil
+}
+
+func (l *XMLNodeList) Enumeration() []interface{} {
+	items := make([]interface{}, 0, len(l.items))
+	for _, item := range l.items {
+		items = append(items, item)
+	}
+	return items
 }
 
 // GetName returns the name of the ParseError object
@@ -582,6 +636,9 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 		if req.Header.Get("Accept") == "" {
 			req.Header.Set("Accept", "*/*")
 		}
+		if req.Header.Get("Accept-Language") == "" {
+			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+		}
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -668,8 +725,7 @@ func (d *MsXML2DOMDocument) save(args []interface{}) interface{} {
 // Syntax: GetElementsByTagName(tagName)
 func (d *MsXML2DOMDocument) getElementsByTagName(args []interface{}) interface{} {
 	if len(args) < 1 {
-		// Return empty array instead of nil
-		return NewVBArrayFromValues(0, []interface{}{})
+		return &XMLNodeList{items: []*XMLElement{}}
 	}
 
 	tagName := strings.ToLower(fmt.Sprintf("%v", args[0]))
@@ -679,14 +735,7 @@ func (d *MsXML2DOMDocument) getElementsByTagName(args []interface{}) interface{}
 		d.findElements(d.root, tagName, &results)
 	}
 
-	// Convert to interface slice for VBArray
-	var interfaceResults []interface{}
-	for _, elem := range results {
-		interfaceResults = append(interfaceResults, elem)
-	}
-
-	// Return as VBArray with 0-based indexing (even if empty)
-	return NewVBArrayFromValues(0, interfaceResults)
+	return &XMLNodeList{items: results}
 }
 
 // selectSingleNode finds the first element matching a simple XPath
@@ -724,8 +773,7 @@ func (d *MsXML2DOMDocument) selectSingleNode(args []interface{}) interface{} {
 // Syntax: SelectNodes(xpath)
 func (d *MsXML2DOMDocument) selectNodes(args []interface{}) interface{} {
 	if len(args) < 1 {
-		// Return empty array instead of nil
-		return NewVBArrayFromValues(0, []interface{}{})
+		return &XMLNodeList{items: []*XMLElement{}}
 	}
 
 	xpath := fmt.Sprintf("%v", args[0])
@@ -748,13 +796,7 @@ func (d *MsXML2DOMDocument) selectNodes(args []interface{}) interface{} {
 		}
 	}
 
-	var interfaceResults []interface{}
-	for _, elem := range results {
-		interfaceResults = append(interfaceResults, elem)
-	}
-
-	// Return as VBArray with 0-based indexing (even if empty)
-	return NewVBArrayFromValues(0, interfaceResults)
+	return &XMLNodeList{items: results}
 }
 
 // tokenizeXPath returns normalized segments and whether the path should match anywhere (//)

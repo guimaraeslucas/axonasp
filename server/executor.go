@@ -1669,6 +1669,9 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 			if stmt.Body != nil {
 				for _, s := range stmt.Body {
 					if err := v.VisitStatement(s); err != nil {
+						if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+							return nil
+						}
 						return err
 					}
 				}
@@ -1684,6 +1687,9 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 			if stmt.Body != nil {
 				for _, s := range stmt.Body {
 					if err := v.VisitStatement(s); err != nil {
+						if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+							return nil
+						}
 						return err
 					}
 				}
@@ -1720,8 +1726,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 			for _, body := range stmt.Body {
 				if err := v.VisitStatement(body); err != nil {
 					// Handle Exit For
-					if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
-						break
+					if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+						return nil
 					}
 					return err
 				}
@@ -1737,8 +1743,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 			for _, body := range stmt.Body {
 				if err := v.VisitStatement(body); err != nil {
 					// Handle Exit For
-					if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
-						break
+					if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+						return nil
 					}
 					return err
 				}
@@ -1754,8 +1760,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 			for _, body := range stmt.Body {
 				if err := v.VisitStatement(body); err != nil {
 					// Handle Exit For
-					if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
-						break
+					if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+						return nil
 					}
 					return err
 				}
@@ -1772,8 +1778,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 			for _, body := range stmt.Body {
 				if err := v.VisitStatement(body); err != nil {
 					// Handle Exit For
-					if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
-						break
+					if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+						return nil
 					}
 					return err
 				}
@@ -1791,8 +1797,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 				for _, body := range stmt.Body {
 					if err := v.VisitStatement(body); err != nil {
 						// Handle Exit For
-						if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "for" {
-							break
+						if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+							return nil
 						}
 						return err
 					}
