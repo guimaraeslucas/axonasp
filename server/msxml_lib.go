@@ -27,8 +27,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html/charset"
 )
 
 // MsXML2ServerXMLHTTP implements the MSXML2.ServerXMLHTTP object
@@ -191,6 +194,14 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 		req.Header.Set(k, v)
 	}
 
+	// Provide default headers similar to MSXML
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Set("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36")
+	}
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "*/*")
+	}
+
 	// Set default Content-Type if body exists
 	if bodyHasContent && req.Header.Get("Content-Type") == "" {
 		if bodyIsBinary {
@@ -222,7 +233,8 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 	}
 
 	s.responseBody = data
-	s.responseText = string(data)
+	contentType := resp.Header.Get("Content-Type")
+	s.responseText = decodeResponseText(data, contentType)
 	s.status = resp.StatusCode
 	s.statusText = resp.Status
 
@@ -234,11 +246,12 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 	}
 
 	// Parse XML if response is XML
-	contentType := resp.Header.Get("Content-Type")
 	if s.isXMLResponse(contentType, s.responseText) {
 		doc := NewMsXML2DOMDocument(s.ctx)
 		if doc != nil {
-			doc.loadXML([]interface{}{s.responseText})
+			if ok := doc.loadXMLBytes(data, contentType); !ok {
+				doc.loadXML([]interface{}{s.responseText})
+			}
 			s.responseXMLDoc = doc
 		}
 		s.responseXML = s.responseText
@@ -330,11 +343,17 @@ func bytesToVBArray(data []byte) *VBArray {
 // ============================================================================
 
 type MsXML2DOMDocument struct {
-	xmlContent string
-	root       *XMLElement
-	async      bool
-	parseError *ParseError
-	ctx        *ExecutionContext
+	xmlContent          string
+	root                *XMLElement
+	async               bool
+	parseError          *ParseError
+	serverHTTPRequest   bool
+	resolveExternals    bool
+	validateOnParse     bool
+	preserveWhiteSpace  bool
+	selectionLanguage   string
+	selectionNamespaces string
+	ctx                 *ExecutionContext
 }
 
 // ParseError represents XML parsing errors
@@ -433,6 +452,18 @@ func (d *MsXML2DOMDocument) GetProperty(name string) interface{} {
 		return d.parseError
 	case "async":
 		return d.async
+	case "serverhttprequest":
+		return d.serverHTTPRequest
+	case "resolveexternals":
+		return d.resolveExternals
+	case "validateonparse":
+		return d.validateOnParse
+	case "preservewhitespace":
+		return d.preserveWhiteSpace
+	case "selectionlanguage":
+		return d.selectionLanguage
+	case "selectionnamespaces":
+		return d.selectionNamespaces
 	}
 	return nil
 }
@@ -443,6 +474,26 @@ func (d *MsXML2DOMDocument) SetProperty(name string, value interface{}) error {
 		if v, ok := value.(bool); ok {
 			d.async = v
 		}
+	case "serverhttprequest":
+		if v, ok := value.(bool); ok {
+			d.serverHTTPRequest = v
+		}
+	case "resolveexternals":
+		if v, ok := value.(bool); ok {
+			d.resolveExternals = v
+		}
+	case "validateonparse":
+		if v, ok := value.(bool); ok {
+			d.validateOnParse = v
+		}
+	case "preservewhitespace":
+		if v, ok := value.(bool); ok {
+			d.preserveWhiteSpace = v
+		}
+	case "selectionlanguage":
+		d.selectionLanguage = fmt.Sprintf("%v", value)
+	case "selectionnamespaces":
+		d.selectionNamespaces = fmt.Sprintf("%v", value)
 	}
 	return nil
 }
@@ -517,21 +568,45 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 	var content string
 
 	if strings.HasPrefix(urlStr, "http://") || strings.HasPrefix(urlStr, "https://") {
-		resp, err := http.Get(urlStr)
+		client := &http.Client{Timeout: 30 * time.Second}
+		req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 		if err != nil {
 			d.parseError.ErrorCode = -1
 			d.parseError.ErrorReason = err.Error()
+			d.parseError.URL = urlStr
+			return false
+		}
+		if req.Header.Get("User-Agent") == "" {
+			req.Header.Set("User-Agent", "Mozilla/4.0 (compatible; MSXML 6.0; Windows NT 10.0)")
+		}
+		if req.Header.Get("Accept") == "" {
+			req.Header.Set("Accept", "*/*")
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			d.parseError.ErrorCode = -1
+			d.parseError.ErrorReason = err.Error()
+			d.parseError.URL = urlStr
 			return false
 		}
 		defer resp.Body.Close()
+
+		if resp.StatusCode >= 400 {
+			d.parseError.ErrorCode = resp.StatusCode
+			d.parseError.ErrorReason = resp.Status
+			d.parseError.URL = urlStr
+			return false
+		}
 
 		data, err := io.ReadAll(resp.Body)
 		if err != nil {
 			d.parseError.ErrorCode = -1
 			d.parseError.ErrorReason = err.Error()
+			d.parseError.URL = urlStr
 			return false
 		}
-		content = string(data)
+		content = decodeResponseText(data, resp.Header.Get("Content-Type"))
 	} else {
 		if d.ctx != nil {
 			fullPath := d.ctx.Server_MapPath(urlStr)
@@ -1011,6 +1086,7 @@ func (d *MsXML2DOMDocument) parseXMLString(xmlStr string) (*XMLElement, error) {
 
 	decoder := xml.NewDecoder(strings.NewReader(trimmed))
 	decoder.Strict = false // be lenient like MSXML
+	decoder.CharsetReader = charset.NewReaderLabel
 
 	var root *XMLElement
 	stack := make([]*XMLElement, 0)
@@ -1073,6 +1149,115 @@ func (d *MsXML2DOMDocument) parseXMLString(xmlStr string) (*XMLElement, error) {
 	}
 
 	return root, nil
+}
+
+func (d *MsXML2DOMDocument) loadXMLBytes(data []byte, contentType string) bool {
+	if len(data) == 0 {
+		d.parseError.ErrorCode = -1
+		d.parseError.ErrorReason = "Empty XML"
+		return false
+	}
+
+	decoded := decodeResponseText(data, contentType)
+	d.xmlContent = decoded
+	root, err := d.parseXMLString(decoded)
+	if err != nil || root == nil {
+		d.parseError.ErrorCode = -1
+		if err != nil {
+			d.parseError.ErrorReason = err.Error()
+		} else {
+			d.parseError.ErrorReason = "Failed to parse XML"
+		}
+		return false
+	}
+
+	d.root = root
+	d.parseError.ErrorCode = 0
+	d.parseError.ErrorReason = ""
+	return true
+}
+
+func parseCharsetFromContentType(contentType string) string {
+	if contentType == "" {
+		return ""
+	}
+	parts := strings.Split(contentType, ";")
+	for _, part := range parts[1:] {
+		p := strings.TrimSpace(part)
+		if strings.HasPrefix(strings.ToLower(p), "charset=") {
+			return strings.Trim(strings.TrimSpace(p[len("charset="):]), "\"")
+		}
+	}
+	return ""
+}
+
+func parseXMLDeclEncoding(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	limit := len(data)
+	if limit > 512 {
+		limit = 512
+	}
+	chunk := string(data[:limit])
+	re := regexp.MustCompile(`(?i)encoding\s*=\s*['\"]([^'\"]+)['\"]`)
+	match := re.FindStringSubmatch(chunk)
+	if len(match) >= 2 {
+		return strings.TrimSpace(match[1])
+	}
+	return ""
+}
+
+func decodeBytesWithCharset(data []byte, charsetName string) ([]byte, error) {
+	if charsetName == "" {
+		return data, nil
+	}
+	r, err := charset.NewReaderLabel(strings.ToLower(charsetName), bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	decoded, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return decoded, nil
+}
+
+func decodeResponseText(data []byte, contentType string) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	if charsetName := parseCharsetFromContentType(contentType); charsetName != "" {
+		if decoded, err := decodeBytesWithCharset(data, charsetName); err == nil {
+			return string(decoded)
+		}
+	}
+
+	if enc := parseXMLDeclEncoding(data); enc != "" {
+		if decoded, err := decodeBytesWithCharset(data, enc); err == nil {
+			return string(decoded)
+		}
+	}
+
+	if len(data) >= 3 && bytes.Equal(data[:3], []byte{0xEF, 0xBB, 0xBF}) {
+		data = data[3:]
+	}
+
+	if len(data) >= 2 {
+		switch {
+		case data[0] == 0xFF && data[1] == 0xFE:
+			if decoded, err := decodeBytesWithCharset(data, "utf-16le"); err == nil {
+				return string(decoded)
+			}
+		case data[0] == 0xFE && data[1] == 0xFF:
+			if decoded, err := decodeBytesWithCharset(data, "utf-16be"); err == nil {
+				return string(decoded)
+			}
+		}
+	}
+
+	return string(data)
 }
 
 func (d *MsXML2DOMDocument) findElements(root *XMLElement, tagName string, results *[]*XMLElement) {

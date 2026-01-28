@@ -22,8 +22,6 @@ package server
 
 import (
 	"fmt"
-	vb "g3pix.com.br/axonasp/vbscript"
-	"g3pix.com.br/axonasp/vbscript/ast"
 	"log"
 	"math"
 	"math/rand"
@@ -32,6 +30,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	vb "g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
 // EmptyValue represents VBScript Empty type

@@ -22,8 +22,6 @@ package server
 
 import (
 	"fmt"
-	"g3pix.com.br/axonasp/asp"
-	"g3pix.com.br/axonasp/vbscript/ast"
 	"math"
 	"math/rand"
 	"net"
@@ -33,6 +31,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
 // LoopExitError represents a loop exit statement (Exit For, Exit Do, etc)
