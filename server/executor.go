@@ -112,6 +112,7 @@ type ExecutionContext struct {
 
 	// Scoping
 	scopeStack      []map[string]interface{}
+	scopeConstStack []map[string]interface{}
 	contextObject   interface{}  // For Class Instance (Me)
 	currentExecutor *ASPExecutor // Current executor for ExecuteGlobal/Execute
 
@@ -304,6 +305,7 @@ func (ec *ExecutionContext) PushScope() {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 	ec.scopeStack = append(ec.scopeStack, make(map[string]interface{}))
+	ec.scopeConstStack = append(ec.scopeConstStack, make(map[string]interface{}))
 }
 
 // PopScope pops the last local scope
@@ -312,6 +314,9 @@ func (ec *ExecutionContext) PopScope() {
 	defer ec.mu.Unlock()
 	if len(ec.scopeStack) > 0 {
 		ec.scopeStack = ec.scopeStack[:len(ec.scopeStack)-1]
+	}
+	if len(ec.scopeConstStack) > 0 {
+		ec.scopeConstStack = ec.scopeConstStack[:len(ec.scopeConstStack)-1]
 	}
 }
 
@@ -337,7 +342,12 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 
-	// Check if this is a constant
+	// Check if this is a constant (local scopes and global)
+	for i := len(ec.scopeConstStack) - 1; i >= 0; i-- {
+		if _, exists := ec.scopeConstStack[i][nameLower]; exists {
+			return fmt.Errorf("cannot reassign constant '%s'", name)
+		}
+	}
 	if _, exists := ec.constants[nameLower]; exists {
 		return fmt.Errorf("cannot reassign constant '%s'", name)
 	}
@@ -384,6 +394,17 @@ func (ec *ExecutionContext) DefineVariable(name string, value interface{}) error
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 
+	// Prevent defining a variable with the same name as a constant in the current scope
+	if len(ec.scopeConstStack) > 0 {
+		if _, exists := ec.scopeConstStack[len(ec.scopeConstStack)-1][nameLower]; exists {
+			return fmt.Errorf("cannot define variable with name of existing constant '%s'", name)
+		}
+	} else {
+		if _, exists := ec.constants[nameLower]; exists {
+			return fmt.Errorf("cannot define variable with name of existing constant '%s'", name)
+		}
+	}
+
 	if len(ec.scopeStack) > 0 {
 		// Define in top scope
 		ec.scopeStack[len(ec.scopeStack)-1][nameLower] = value
@@ -401,19 +422,26 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
 
-	// 1. Check constants
+	// 1. Check local constants (top-down)
+	for i := len(ec.scopeConstStack) - 1; i >= 0; i-- {
+		if val, exists := ec.scopeConstStack[i][nameLower]; exists {
+			return val, true
+		}
+	}
+
+	// 2. Check global constants
 	if val, exists := ec.constants[nameLower]; exists {
 		return val, true
 	}
 
-	// 2. Check Local Scopes (Top to Bottom)
+	// 3. Check Local Scopes (Top to Bottom)
 	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
 		if val, exists := ec.scopeStack[i][nameLower]; exists {
 			return val, true
 		}
 	}
 
-	// 3. Check Context Object (Class Member)
+	// 4. Check Context Object (Class Member)
 	if ec.contextObject != nil {
 		// Try internal access first (allows Private members)
 		if internal, ok := ec.contextObject.(interface {
@@ -430,7 +458,7 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		}
 	}
 
-	// 4. Check Global Variables
+	// 5. Check Global Variables
 	val, exists := ec.variables[nameLower]
 	return val, exists
 }
@@ -446,12 +474,21 @@ func (ec *ExecutionContext) GetVariableFromParentScope(name string) (interface{}
 	// We need at least 2 scopes: current and parent
 	if len(ec.scopeStack) >= 2 {
 		parentIndex := len(ec.scopeStack) - 2
+
+		// Constants in parent scope
+		if val, exists := ec.scopeConstStack[parentIndex][nameLower]; exists {
+			return val, true
+		}
+
 		if val, exists := ec.scopeStack[parentIndex][nameLower]; exists {
 			return val, true
 		}
 	}
 
 	// Check globals as fallback (variable might be global)
+	if val, exists := ec.constants[nameLower]; exists {
+		return val, true
+	}
 	if val, exists := ec.variables[nameLower]; exists {
 		return val, true
 	}
@@ -469,17 +506,28 @@ func (ec *ExecutionContext) SetVariableInParentScope(name string, value interfac
 	// Set in parent scope (one level up from current)
 	if len(ec.scopeStack) >= 2 {
 		parentIndex := len(ec.scopeStack) - 2
+
+		if _, exists := ec.scopeConstStack[parentIndex][nameLower]; exists {
+			return fmt.Errorf("cannot reassign constant '%s'", name)
+		}
+
 		ec.scopeStack[parentIndex][nameLower] = value
 		return nil
 	}
 
 	// If no parent scope (at global level), set globally
 	if len(ec.scopeStack) == 0 {
+		if _, exists := ec.constants[nameLower]; exists {
+			return fmt.Errorf("cannot reassign constant '%s'", name)
+		}
 		ec.variables[nameLower] = value
 		return nil
 	}
 
 	// If we have only one scope, treat parent as global
+	if _, exists := ec.constants[nameLower]; exists {
+		return fmt.Errorf("cannot reassign constant '%s'", name)
+	}
 	ec.variables[nameLower] = value
 	return nil
 }
@@ -492,12 +540,28 @@ func (ec *ExecutionContext) SetConstant(name string, value interface{}) error {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 
-	// Check if constant already exists
+	// If we are inside a local scope, bind the constant to that scope
+	if len(ec.scopeStack) > 0 {
+		topIndex := len(ec.scopeConstStack) - 1
+		consts := ec.scopeConstStack[topIndex]
+
+		if _, exists := consts[nameLower]; exists {
+			return fmt.Errorf("constant '%s' already defined", name)
+		}
+
+		if _, exists := ec.scopeStack[topIndex][nameLower]; exists {
+			return fmt.Errorf("cannot define constant with name of existing variable '%s'", name)
+		}
+
+		consts[nameLower] = value
+		return nil
+	}
+
+	// Global constant
 	if _, exists := ec.constants[nameLower]; exists {
 		return fmt.Errorf("constant '%s' already defined", name)
 	}
 
-	// Check if variable with same name exists
 	if _, exists := ec.variables[nameLower]; exists {
 		return fmt.Errorf("cannot define constant with name of existing variable '%s'", name)
 	}

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0-blue.svg" alt="Version 1.0"/>
+  <img src="https://img.shields.io/badge/version-0.2-blue.svg" alt="Version 0.2"/>
   <img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MPL-green.svg" alt="License"/>
@@ -574,7 +574,7 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/guimaraeslucas/axonasp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/guimaraeslucas/axonasp/discussions)
-- **Website**: [https://g3pix.com](https://g3pix.com.br/axonasp)
+- **Website**: [https://g3pix.com.br/axonasp](https://g3pix.com.br/axonasp)
 
 ---
 
