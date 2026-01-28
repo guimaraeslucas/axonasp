@@ -21,6 +21,7 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"math"
@@ -269,12 +270,123 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		return int(runes[0]), true
 
+	case "ascb":
+		if len(args) == 0 {
+			return 0, true
+		}
+		b := toANSIBytes(toString(args[0]))
+		if len(b) == 0 {
+			return 0, true
+		}
+		return int(b[0]), true
+
 	case "chrw":
 		if len(args) == 0 {
 			return "", true
 		}
 		code := toInt(args[0])
 		return string(rune(code)), true
+
+	case "chrb":
+		if len(args) == 0 {
+			return "", true
+		}
+		code := toInt(args[0]) & 0xFF
+		return string([]byte{byte(code)}), true
+
+	case "lenb":
+		if len(args) == 0 {
+			return 0, true
+		}
+		return len(toANSIBytes(toString(args[0]))), true
+
+	case "leftb":
+		if len(args) < 2 {
+			return "", true
+		}
+		bs := toANSIBytes(toString(args[0]))
+		n := toInt(args[1])
+		if n < 0 {
+			n = 0
+		}
+		if n > len(bs) {
+			n = len(bs)
+		}
+		return string(bs[:n]), true
+
+	case "rightb":
+		if len(args) < 2 {
+			return "", true
+		}
+		bs := toANSIBytes(toString(args[0]))
+		n := toInt(args[1])
+		if n < 0 {
+			n = 0
+		}
+		if n > len(bs) {
+			n = len(bs)
+		}
+		return string(bs[len(bs)-n:]), true
+
+	case "midb":
+		// MidB(string, start [, length]) uses byte positions (1-based)
+		if len(args) < 2 {
+			return "", true
+		}
+		bs := toANSIBytes(toString(args[0]))
+		start := toInt(args[1])
+		if start < 1 {
+			start = 1
+		}
+		start-- // to zero-based
+		if start >= len(bs) {
+			return "", true
+		}
+		end := len(bs)
+		if len(args) >= 3 {
+			ln := toInt(args[2])
+			if ln < 0 {
+				ln = 0
+			}
+			if start+ln < end {
+				end = start + ln
+			}
+		}
+		return string(bs[start:end]), true
+
+	case "instrb":
+		// InStrB([start, ]string1, string2[, compare])
+		if len(args) < 2 {
+			return 0, true
+		}
+
+		startIndex := 1
+		str1Idx := 0
+		str2Idx := 1
+
+		if len(args) >= 3 {
+			startIndex = toInt(args[0])
+			if startIndex < 1 {
+				startIndex = 1
+			}
+			str1Idx = 1
+			str2Idx = 2
+		}
+
+		bs1 := toANSIBytes(toString(args[str1Idx]))
+		bs2 := toANSIBytes(toString(args[str2Idx]))
+		if len(bs2) == 0 {
+			return startIndex, true
+		}
+		startPos := startIndex - 1
+		if startPos < 0 || startPos >= len(bs1) {
+			return 0, true
+		}
+		idx := bytes.Index(bs1[startPos:], bs2)
+		if idx == -1 {
+			return 0, true
+		}
+		return startPos + idx + 1, true
 
 	case "env":
 		// Env(name) - Returns environment variable value
@@ -786,16 +898,18 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if len(args) == 0 {
 			return "", true
 		}
-		num := toInt(args[0])
-		return strings.ToUpper(fmt.Sprintf("%X", num)), true
+		num := toFloat(args[0])
+		u := uint32(int64(num)) // VBScript uses 32-bit twos-complement for Hex
+		return strings.ToUpper(strconv.FormatUint(uint64(u), 16)), true
 
 	case "oct":
 		// OCT(number) - converts number to octal string
 		if len(args) == 0 {
 			return "", true
 		}
-		num := toInt(args[0])
-		return fmt.Sprintf("%o", num), true
+		num := toFloat(args[0])
+		u := uint32(int64(num)) // Match VBScript 32-bit wrapping
+		return strconv.FormatUint(uint64(u), 8), true
 
 	// Math Functions
 	case "abs":
@@ -1084,6 +1198,23 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	default:
 		return nil, false
 	}
+}
+
+// toANSIBytes converts a Go string to a best-effort ANSI byte slice, matching VBScript AscB/LenB semantics.
+// Characters outside 0-255 are replaced with '?'.
+func toANSIBytes(s string) []byte {
+	if s == "" {
+		return []byte{}
+	}
+	bs := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r <= 0xFF {
+			bs = append(bs, byte(r))
+		} else {
+			bs = append(bs, byte('?'))
+		}
+	}
+	return bs
 }
 
 // getTypeName returns the VBScript type name for a value
@@ -1415,10 +1546,10 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 
 	// Check for variable reference
 	//if ctx != nil {
-		varName := strings.ToLower(exprStr)
-		if val, ok := ctx.GetVariable(varName); ok {
-			return val
-	//	}
+	varName := strings.ToLower(exprStr)
+	if val, ok := ctx.GetVariable(varName); ok {
+		return val
+		//	}
 	}
 
 	// Return nil if unable to evaluate

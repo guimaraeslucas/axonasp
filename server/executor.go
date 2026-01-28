@@ -2115,9 +2115,23 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 				vis = VisPrivate
 			}
 			for _, field := range m.Fields {
+				dims := []int{}
+				if len(field.ArrayDims) > 0 {
+					dims = make([]int, len(field.ArrayDims))
+					for i, dimExpr := range field.ArrayDims {
+						dimVal, err := v.visitExpression(dimExpr)
+						if err != nil {
+							return err
+						}
+						dims[i] = toInt(dimVal)
+					}
+				}
+
 				classDef.Variables[strings.ToLower(field.Identifier.Name)] = ClassMemberVar{
 					Name:       field.Identifier.Name,
 					Visibility: vis,
+					Dims:       dims,
+					IsDynamic:  field.IsDynamicArray,
 				}
 			}
 		case *ast.SubDeclaration:
@@ -2425,8 +2439,9 @@ func (v *ASPVisitor) visitUnaryExpression(expr *ast.UnaryExpression) (interface{
 			return !b, nil
 		}
 		// In VBScript, Not works as bitwise operator (invert all bits)
-		operandInt := int(toFloat(operand))
-		return ^operandInt, nil
+		// Truncate to int32 before complementing to match VBScript 32-bit semantics
+		operandInt := int32(toFloat(operand))
+		return int(^operandInt), nil
 	case ast.UnaryOperationMinus:
 		return negateValue(operand), nil
 	case ast.UnaryOperationPlus:
@@ -3104,6 +3119,14 @@ func isNothingValue(val interface{}) bool {
 	return false
 }
 
+func isNullValue(val interface{}) bool {
+	if val == nil {
+		return false
+	}
+	_, ok := val.(NullValue)
+	return ok
+}
+
 // toString converts a value to string
 func toString(val interface{}) string {
 	if val == nil {
@@ -3218,6 +3241,13 @@ func negateValue(val interface{}) interface{} {
 
 // performBinaryOperation performs a binary operation
 func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mode ast.OptionCompareMode) (interface{}, error) {
+	// VBScript: if either operand is Null, most operations yield Null (no runtime error)
+	if op != ast.BinaryOperationIs {
+		if isNullValue(left) || isNullValue(right) {
+			return NullValue{}, nil
+		}
+	}
+
 	switch op {
 	case ast.BinaryOperationAnd:
 		// Check for boolean preservation
@@ -3228,9 +3258,10 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 		}
 		// In VBScript, And works as bitwise operator
 		// When used in conditional context, VBScript evaluates truthiness first
-		leftInt := int(toFloat(left))
-		rightInt := int(toFloat(right))
-		return leftInt & rightInt, nil
+		// Enforce 32-bit signed integer semantics
+		leftInt := int32(toFloat(left))
+		rightInt := int32(toFloat(right))
+		return int(leftInt & rightInt), nil
 	case ast.BinaryOperationOr:
 		// Check for boolean preservation
 		if b1, ok1 := left.(bool); ok1 {
@@ -3239,9 +3270,10 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 			}
 		}
 		// In VBScript, Or works as bitwise operator
-		leftInt := int(toFloat(left))
-		rightInt := int(toFloat(right))
-		return leftInt | rightInt, nil
+		// Enforce 32-bit signed integer semantics
+		leftInt := int32(toFloat(left))
+		rightInt := int32(toFloat(right))
+		return int(leftInt | rightInt), nil
 	case ast.BinaryOperationAddition:
 		// VBScript + operator behavior:
 		// 1. If BOTH operands are strings, perform string concatenation
@@ -3315,9 +3347,39 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 
 		// For other objects, compare references
 		return left == right, nil
-	case ast.BinaryOperationXor, ast.BinaryOperationEqv, ast.BinaryOperationImp:
-		// TODO: implement bitwise operations
-		return nil, fmt.Errorf("binary operation %d not yet implemented", op)
+	case ast.BinaryOperationXor:
+		// Boolean XOR
+		if b1, ok1 := left.(bool); ok1 {
+			if b2, ok2 := right.(bool); ok2 {
+				return b1 != b2, nil
+			}
+		}
+		// Enforce 32-bit semantics
+		l := int32(toFloat(left))
+		r := int32(toFloat(right))
+		return int(l ^ r), nil
+	case ast.BinaryOperationEqv:
+		// Boolean equivalence (Not XOR)
+		if b1, ok1 := left.(bool); ok1 {
+			if b2, ok2 := right.(bool); ok2 {
+				return b1 == b2, nil
+			}
+		}
+		// Enforce 32-bit semantics
+		l := int32(toFloat(left))
+		r := int32(toFloat(right))
+		return int(^(l ^ r)), nil
+	case ast.BinaryOperationImp:
+		// Boolean implication: (Not A) Or B
+		if b1, ok1 := left.(bool); ok1 {
+			if b2, ok2 := right.(bool); ok2 {
+				return (!b1) || b2, nil
+			}
+		}
+		// Enforce 32-bit semantics
+		l := int32(toFloat(left))
+		r := int32(toFloat(right))
+		return int((^l) | r), nil
 	default:
 		return nil, fmt.Errorf("unknown binary operator: %d", op)
 	}

@@ -36,6 +36,8 @@ const (
 type ClassMemberVar struct {
 	Name       string
 	Visibility Visibility
+	Dims       []int
+	IsDynamic  bool
 }
 
 type PropertyType int
@@ -70,6 +72,31 @@ type ClassInstance struct {
 	Context   *ExecutionContext
 }
 
+// makeNestedArrayWithBase mirrors ASPVisitor.makeNestedArray but accepts an explicit base.
+func makeNestedArrayWithBase(base int, dims []int) *VBArray {
+	if len(dims) == 0 {
+		return NewVBArray(base, 0)
+	}
+
+	lower := base
+	upper := dims[0]
+	size := upper - lower + 1
+	if size < 0 {
+		size = 0
+	}
+
+	arr := NewVBArray(lower, size)
+
+	if len(dims) > 1 {
+		innerDims := dims[1:]
+		for i := 0; i < size; i++ {
+			arr.Values[i] = makeNestedArrayWithBase(base, innerDims)
+		}
+	}
+
+	return arr
+}
+
 // NewClassInstance creates a new instance and initializes variables
 func NewClassInstance(def *ClassDef, ctx *ExecutionContext) (*ClassInstance, error) {
 	inst := &ClassInstance{
@@ -79,8 +106,13 @@ func NewClassInstance(def *ClassDef, ctx *ExecutionContext) (*ClassInstance, err
 	}
 
 	// Initialize variables
-	for name := range def.Variables {
-		inst.Variables[strings.ToLower(name)] = nil
+	for name, vdef := range def.Variables {
+		key := strings.ToLower(name)
+		if len(vdef.Dims) > 0 {
+			inst.Variables[key] = makeNestedArrayWithBase(ctx.OptionBase(), vdef.Dims)
+		} else {
+			inst.Variables[key] = nil
+		}
 	}
 
 	// Initialize Class_Initialize if present
