@@ -329,8 +329,7 @@ func (s *ServerObject) SetProperty(name string, value interface{}) error {
 			timeout = int(v)
 		case string:
 			// Try parsing string
-			var err error
-			fmt.Sscanf(v, "%d", &timeout)
+			_, err := fmt.Sscanf(v, "%d", &timeout)
 			if err != nil {
 				return fmt.Errorf("invalid ScriptTimeout value: %v", value)
 			}

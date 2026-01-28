@@ -364,9 +364,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "array":
 		// Array(elem1, elem2, ...) - creates an array
 		result := make([]interface{}, len(args))
-		for i, arg := range args {
-			result[i] = arg
-		}
+		copy(result, args)
 		return NewVBArrayFromValues(0, result), true
 
 	case "isarray":
@@ -1416,11 +1414,11 @@ func evalExpression(exprStr string, ctx *ExecutionContext) interface{} {
 	}
 
 	// Check for variable reference
-	if ctx != nil {
+	//if ctx != nil {
 		varName := strings.ToLower(exprStr)
 		if val, ok := ctx.GetVariable(varName); ok {
 			return val
-		}
+	//	}
 	}
 
 	// Return nil if unable to evaluate

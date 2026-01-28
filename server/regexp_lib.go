@@ -307,7 +307,7 @@ func (r *G3REGEXP) Execute(inputStr string) interface{} {
 	} else {
 		// Find first match only
 		matchIdx := r.compiled.FindStringIndex(inputStr)
-		if matchIdx != nil && len(matchIdx) >= 2 {
+		if len(matchIdx) >= 2 {
 			matchValue := inputStr[matchIdx[0]:matchIdx[1]]
 			matches = append(matches, &RegExpMatch{
 				Value:  matchValue,

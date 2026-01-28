@@ -631,7 +631,7 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 			return false
 		}
 		if req.Header.Get("User-Agent") == "" {
-			req.Header.Set("User-Agent", "Mozilla/4.0 (compatible; MSXML 6.0; Windows NT 10.0)")
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0")
 		}
 		if req.Header.Get("Accept") == "" {
 			req.Header.Set("Accept", "*/*")
