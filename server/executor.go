@@ -2511,12 +2511,12 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 				propName = member.Property.Name
 			}
 
-			// Class instance methods
+			// Class instance methods - PASS EXPRESSIONS for ByRef support
 			if classInst, ok := parentObj.(*ClassInstance); ok {
-				return classInst.CallMethod(propName, args...)
+				return v.callClassMethodWithRefs(classInst, propName, arguments)
 			}
 
-			// ASPObject / server-native CallMethod dispatch
+			// ASPObject / server-native CallMethod dispatch (no ByRef support needed)
 			if aspObj, ok := parentObj.(asp.ASPObject); ok {
 				return aspObj.CallMethod(propName, args...)
 			}
@@ -2530,6 +2530,27 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// 1. Check if objectExpr is an Identifier referring to a User Function/Sub (Manual Lookup)
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
+		// First check if we're inside a class and this is a class method call
+		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+			if classInst, ok := ctxObj.(*ClassInstance); ok {
+				// Check if this identifier refers to a class method
+				nameLower := strings.ToLower(ident.Name)
+				if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
+					// Call the class method with ByRef support
+					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+				if _, exists := classInst.ClassDef.Functions[nameLower]; exists {
+					// Call the class function with ByRef support
+					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+				if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
+					// Call the private method with ByRef support
+					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+			}
+		}
+		
+		// Regular function/sub lookup
 		if val, exists := v.context.GetVariable(ident.Name); exists {
 			if fn, ok := val.(*ast.FunctionDeclaration); ok {
 				// For ByRef support, we need to pass the original expressions, not evaluated values
@@ -3303,19 +3324,21 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 		}
 		return leftNum / rightNum, nil
 	case ast.BinaryOperationIntDivision:
-		leftNum := int(toFloat(left))
-		rightNum := int(toFloat(right))
+		// VBScript IntDiv: Round both operands to Long first (banker's rounding), then divide
+		leftNum := int32(math.Round(toFloat(left)))
+		rightNum := int32(math.Round(toFloat(right)))
 		if rightNum == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
-		return leftNum / rightNum, nil
+		return int(leftNum / rightNum), nil
 	case ast.BinaryOperationMod:
-		leftNum := int(toFloat(left))
-		rightNum := int(toFloat(right))
+		// VBScript Mod: Round both operands to Long first (banker's rounding), then mod
+		leftNum := int32(math.Round(toFloat(left)))
+		rightNum := int32(math.Round(toFloat(right)))
 		if rightNum == 0 {
 			return nil, fmt.Errorf("division by zero")
 		}
-		return leftNum % rightNum, nil
+		return int(leftNum % rightNum), nil
 	case ast.BinaryOperationExponentiation:
 		return math.Pow(toFloat(left), toFloat(right)), nil
 	case ast.BinaryOperationEqual:
@@ -3839,9 +3862,17 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 		var val interface{}
 
 		if i < len(arguments) {
-			// Check if parameter is ByRef
-			if param.Modifier == ast.ParameterModifierByRef {
-				// For ByRef, we need the original variable name
+			// VBScript default: parameters are ByRef unless explicitly ByVal
+			// Check if parameter is ByVal (explicitly)
+			if param.Modifier == ast.ParameterModifierByVal {
+				// ByVal: evaluate the argument
+				var err error
+				val, err = visitor.visitExpression(arguments[i])
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				// ByRef (explicit or default): we need the original variable name
 				if ident, ok := arguments[i].(*ast.Identifier); ok {
 					byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
 					// Get value from caller's scope (could be parent scope or global)
@@ -3858,13 +3889,6 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 					if err != nil {
 						return nil, err
 					}
-				}
-			} else {
-				// ByVal or default: evaluate the argument
-				var err error
-				val, err = visitor.visitExpression(arguments[i])
-				if err != nil {
-					return nil, err
 				}
 			}
 		}
@@ -3953,9 +3977,17 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 		var val interface{}
 
 		if i < len(arguments) {
-			// Check if parameter is ByRef
-			if param.Modifier == ast.ParameterModifierByRef {
-				// For ByRef, we need the original variable name
+			// VBScript default: parameters are ByRef unless explicitly ByVal
+			// Check if parameter is ByVal (explicitly)
+			if param.Modifier == ast.ParameterModifierByVal {
+				// ByVal: evaluate the argument
+				var err error
+				val, err = visitor.visitExpression(arguments[i])
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				// ByRef (explicit or default): we need the original variable name
 				if ident, ok := arguments[i].(*ast.Identifier); ok {
 					byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
 					// Get value from caller's scope (could be parent scope or global)
@@ -3972,13 +4004,6 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 					if err != nil {
 						return nil, err
 					}
-				}
-			} else {
-				// ByVal or default: evaluate the argument
-				var err error
-				val, err = visitor.visitExpression(arguments[i])
-				if err != nil {
-					return nil, err
 				}
 			}
 		}
@@ -4014,4 +4039,137 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 	}
 
 	return nil, nil
+}
+
+// callClassMethodWithRefs calls a class instance method with ByRef parameter support
+func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodName string, arguments []ast.Expression) (interface{}, error) {
+nameLower := strings.ToLower(methodName)
+var methodNode ast.Node
+var params []*ast.Parameter
+var funcName string
+if sub, ok := classInst.ClassDef.Methods[nameLower]; ok {
+methodNode = sub
+params = sub.Parameters
+}
+if fn, ok := classInst.ClassDef.Functions[nameLower]; ok {
+methodNode = fn
+params = fn.Parameters
+funcName = fn.Identifier.Name
+}
+if node, ok := classInst.ClassDef.PrivateMethods[nameLower]; ok {
+methodNode = node
+switch n := node.(type) {
+case *ast.SubDeclaration:
+params = n.Parameters
+case *ast.FunctionDeclaration:
+params = n.Parameters
+funcName = n.Identifier.Name
+}
+}
+if methodNode == nil {
+args := make([]interface{}, len(arguments))
+for i, arg := range arguments {
+val, err := v.visitExpression(arg)
+if err != nil {
+return nil, err
+}
+args[i] = val
+}
+return classInst.CallMethod(methodName, args...)
+}
+classInst.Context.PushScope()
+defer classInst.Context.PopScope()
+
+// Set the context object so nested method calls can find the class instance
+oldCtxObj := classInst.Context.GetContextObject()
+classInst.Context.SetContextObject(classInst)
+defer classInst.Context.SetContextObject(oldCtxObj)
+
+byRefMap := make(map[string]string)
+for i, param := range params {
+var val interface{}
+if i < len(arguments) {
+if param.Modifier == ast.ParameterModifierByVal {
+var err error
+val, err = v.visitExpression(arguments[i])
+if err != nil {
+return nil, err
+}
+} else {
+if ident, ok := arguments[i].(*ast.Identifier); ok {
+byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
+// Get value from caller's context (which should be the class context)
+if existingVal, exists := v.context.GetVariable(ident.Name); exists {
+val = existingVal
+} else if existingVal, exists := classInst.Context.GetVariable(ident.Name); exists {
+val = existingVal
+}
+} else {
+var err error
+val, err = v.visitExpression(arguments[i])
+if err != nil {
+return nil, err
+}
+}
+}
+}
+_ = classInst.Context.DefineVariable(param.Identifier.Name, val)
+}
+if funcName != "" {
+_ = classInst.Context.DefineVariable(funcName, nil)
+}
+classVisitor := NewASPVisitor(classInst.Context, v.executor)
+switch n := methodNode.(type) {
+case *ast.SubDeclaration:
+if n.Body != nil {
+if list, ok := n.Body.(*ast.StatementList); ok {
+for _, stmt := range list.Statements {
+if err := classVisitor.VisitStatement(stmt); err != nil {
+if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "sub" {
+break
+}
+return nil, err
+}
+}
+} else {
+if err := classVisitor.VisitStatement(n.Body); err != nil {
+return nil, err
+}
+}
+}
+case *ast.FunctionDeclaration:
+if n.Body != nil {
+if list, ok := n.Body.(*ast.StatementList); ok {
+for _, stmt := range list.Statements {
+if err := classVisitor.VisitStatement(stmt); err != nil {
+if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "function" {
+break
+}
+return nil, err
+}
+}
+} else {
+if err := classVisitor.VisitStatement(n.Body); err != nil {
+return nil, err
+}
+}
+}
+}
+for paramName, origVarName := range byRefMap {
+if newVal, exists := classInst.Context.GetVariable(paramName); exists {
+// Write back to caller's context (class context)
+if _, exists := v.context.GetVariable(origVarName); exists {
+v.context.SetVariable(origVarName, newVal)
+} else {
+// If variable is in class instance context, update it there
+classInst.Context.SetVariable(origVarName, newVal)
+}
+}
+}
+if funcName != "" {
+if val, exists := classInst.Context.GetVariable(funcName); exists {
+return val, nil
+}
+}
+return nil, nil
 }

@@ -1046,8 +1046,9 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		return toFloat(args[0]), true
 
 	case "clng":
-		// CLNG(expression) - convert to long integer
-		return toInt(args[0]), true
+		// CLNG(expression) - convert to long integer (32-bit with banker's rounding)
+		val := toFloat(args[0])
+		return int(math.Round(val)), true
 
 	case "csng":
 		// CSNG(expression) - convert to single precision float

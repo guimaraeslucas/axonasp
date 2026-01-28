@@ -22,8 +22,9 @@ package server
 
 import (
 	"fmt"
-	"g3pix.com.br/axonasp/vbscript/ast"
 	"strings"
+
+	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
 type Visibility int
@@ -401,7 +402,8 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 		return nil, fmt.Errorf("invalid method node")
 	}
 
-	// 6. BIND ARGUMENTS
+	// 6. BIND ARGUMENTS with ByRef support
+	// Note: ByRef for class methods is now handled in callClassMethodWithRefs
 	for i, param := range params {
 		paramName := param.Identifier.Name
 		var val interface{}
