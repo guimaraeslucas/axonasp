@@ -1,5 +1,5 @@
 /*
- * AxonASP Server 
+ * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
  * Developed by Lucas Guimarães - G3pix Ltda
@@ -242,7 +242,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if f.maxFileSize > 0 {
 		parseLimit = f.maxFileSize + (5 << 20) // Add 5MB buffer for form headers
 	}
-	
+
 	err := f.ctx.httpRequest.ParseMultipartForm(parseLimit)
 	if err != nil {
 		if f.debugMode {
@@ -392,17 +392,17 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	relPath, _ := filepath.Rel(f.ctx.RootDir, finalPath)
 
 	return map[string]interface{}{
-		"IsSuccess":         true,
-		"OriginalFileName":  fileName,
-		"NewFileName":       finalFileName,
-		"Size":              fileSize,
-		"MimeType":          mimeType,
-		"Extension":         ext,
-		"TemporaryPath":     "",
-		"FinalPath":         finalPath,
-		"RelativePath":      relPath,
-		"UploadedAt":        getCurrentTimeString(),
-		"ErrorMessage":      "",
+		"IsSuccess":        true,
+		"OriginalFileName": fileName,
+		"NewFileName":      finalFileName,
+		"Size":             fileSize,
+		"MimeType":         mimeType,
+		"Extension":        ext,
+		"TemporaryPath":    "",
+		"FinalPath":        finalPath,
+		"RelativePath":     relPath,
+		"UploadedAt":       getCurrentTimeString(),
+		"ErrorMessage":     "",
 	}
 }
 
@@ -413,7 +413,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 	if f.maxFileSize > 0 {
 		parseLimit = f.maxFileSize + (5 << 20) // Add 5MB buffer for form headers
 	}
-	
+
 	err := f.ctx.httpRequest.ParseMultipartForm(parseLimit)
 	if err != nil {
 		if f.debugMode {
@@ -444,7 +444,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 		if f.debugMode {
 			fmt.Printf("[G3FileUploader DEBUG] ProcessAll - field %s has %d files\n", fieldName, len(fileHeaders))
 		}
-		
+
 		// Process each file in this field
 		for _, fileHeader := range fileHeaders {
 			// We need to handle each file individually
@@ -468,9 +468,9 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 			// Validate extension
 			if !f.isValidExtension(ext) {
 				results = append(results, map[string]interface{}{
-					"IsSuccess":    false,
+					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage": fmt.Sprintf("File extension '%s' is not allowed", ext),
+					"ErrorMessage":     fmt.Sprintf("File extension '%s' is not allowed", ext),
 				})
 				continue
 			}
@@ -478,9 +478,9 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 			// Check file size
 			if f.maxFileSize > 0 && fileSize > f.maxFileSize {
 				results = append(results, map[string]interface{}{
-					"IsSuccess":    false,
+					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage": fmt.Sprintf("File size exceeds maximum allowed size of %d bytes", f.maxFileSize),
+					"ErrorMessage":     fmt.Sprintf("File size exceeds maximum allowed size of %d bytes", f.maxFileSize),
 				})
 				continue
 			}
@@ -509,9 +509,9 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 			tempFile, err := os.CreateTemp(tempDir, "upload_*.tmp")
 			if err != nil {
 				results = append(results, map[string]interface{}{
-					"IsSuccess":    false,
+					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage": fmt.Sprintf("Failed to create temporary file: %v", err),
+					"ErrorMessage":     fmt.Sprintf("Failed to create temporary file: %v", err),
 				})
 				continue
 			}
@@ -526,9 +526,9 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 					fmt.Printf("[G3FileUploader DEBUG] io.Copy error: %v (bytes written: %d)\n", err, bytesWritten)
 				}
 				results = append(results, map[string]interface{}{
-					"IsSuccess":    false,
+					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage": fmt.Sprintf("Failed to write temporary file: %v", err),
+					"ErrorMessage":     fmt.Sprintf("Failed to write temporary file: %v", err),
 				})
 				continue
 			}
@@ -542,9 +542,9 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 					fmt.Printf("[G3FileUploader DEBUG] Sync error: %v\n", err)
 				}
 				results = append(results, map[string]interface{}{
-					"IsSuccess":    false,
+					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage": fmt.Sprintf("Failed to sync temporary file: %v", err),
+					"ErrorMessage":     fmt.Sprintf("Failed to sync temporary file: %v", err),
 				})
 				continue
 			}
@@ -556,9 +556,9 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 			if err != nil {
 				os.Remove(tempPath)
 				results = append(results, map[string]interface{}{
-					"IsSuccess":    false,
+					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage": fmt.Sprintf("Failed to move file to final location: %v", err),
+					"ErrorMessage":     fmt.Sprintf("Failed to move file to final location: %v", err),
 				})
 				continue
 			}
@@ -573,17 +573,17 @@ func (f *G3FileUploader) processAllUploads(targetDir string) interface{} {
 			relPath, _ := filepath.Rel(f.ctx.RootDir, finalPath)
 
 			results = append(results, map[string]interface{}{
-				"IsSuccess":         true,
-				"OriginalFileName":  fileName,
-				"NewFileName":       finalFileName,
-				"Size":              fileSize,
-				"MimeType":          mimeType,
-				"Extension":         ext,
-				"TemporaryPath":     "",
-				"FinalPath":         finalPath,
-				"RelativePath":      relPath,
-				"UploadedAt":        getCurrentTimeString(),
-				"ErrorMessage":      "",
+				"IsSuccess":        true,
+				"OriginalFileName": fileName,
+				"NewFileName":      finalFileName,
+				"Size":             fileSize,
+				"MimeType":         mimeType,
+				"Extension":        ext,
+				"TemporaryPath":    "",
+				"FinalPath":        finalPath,
+				"RelativePath":     relPath,
+				"UploadedAt":       getCurrentTimeString(),
+				"ErrorMessage":     "",
 			})
 		}
 	}
@@ -598,7 +598,7 @@ func (f *G3FileUploader) getFileInfo(fieldName string) interface{} {
 	if f.maxFileSize > 0 {
 		parseLimit = f.maxFileSize + (5 << 20) // Add 5MB buffer for form headers
 	}
-	
+
 	err := f.ctx.httpRequest.ParseMultipartForm(parseLimit)
 	if err != nil {
 		if f.debugMode {

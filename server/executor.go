@@ -3546,7 +3546,6 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 		}
 	}
 
-
 	// Set cookies
 	for _, cookie := range r.Cookies() {
 		req.Cookies.Add(cookie.Name, cookie.Value)
