@@ -163,6 +163,18 @@ func main() {
 
 	if DebugASP {
 		fmt.Println("[DEBUG] DEBUG_ASP mode is enabled")
+		//Display build info for debugging purposes
+		if info, ok := debug.ReadBuildInfo(); ok {
+			fmt.Printf("[DEBUG] Go Version: %s\n", info.GoVersion)
+			for _, setting := range info.Settings {
+				switch setting.Key {
+				case "vcs.revision":
+					fmt.Printf("[DEBUG] VCS Revision: %s\n", setting.Value)
+				case "vcs.time":
+					fmt.Printf("[DEBUG] Build Date: %s\n", setting.Value)
+				}
+			}
+		}
 	}
 
 	err = http.ListenAndServe(":"+Port, nil)
