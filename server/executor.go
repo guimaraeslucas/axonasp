@@ -1131,6 +1131,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewCryptoLibrary(ae.context), nil
 	case "G3REGEXP", "REGEXP":
 		return NewRegExpLibrary(ae.context), nil
+	case "G3FILEUPLOADER", "FILEUPLOADER":
+		return NewFileUploaderLibrary(ae.context), nil
 
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":
@@ -3507,8 +3509,11 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 	// Set the HTTP request for BinaryRead support
 	req.SetHTTPRequest(r)
 
-	// Parse form data
-	r.ParseForm()
+	// Parse form data - but skip if multipart (let multipart handlers do it)
+	// Only parse if it's NOT multipart/form-data
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		r.ParseForm()
+	}
 
 	// Set query string parameters (from URL only)
 	for key, values := range r.URL.Query() {
@@ -3517,16 +3522,30 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 		}
 	}
 
-	// Set form parameters (POST data only)
+	// Set form parameters (POST data only) - only for non-multipart
 	// We need to check both PostForm and Form to handle different content types
-	if r.Method == "POST" || r.Method == "PUT" {
+	if (r.Method == "POST" || r.Method == "PUT") && !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		for key, values := range r.Form {
 			// Only add if not in QueryString (to avoid duplicates)
 			if !req.QueryString.Exists(key) && len(values) > 0 {
 				req.Form.Add(key, values[0])
 			}
 		}
+	} else if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		// For multipart, parse and extract form fields (but not files)
+		// ParseMultipartForm needs to be called first
+		// But we'll let the app do it. Here we just add regular form fields.
+		// To avoid conflicts, we parse with a reasonable limit
+		if err := r.ParseMultipartForm(32 << 20); err == nil {
+			// Add form fields (non-file fields) to Request.Form
+			for key, values := range r.MultipartForm.Value {
+				if len(values) > 0 && !req.QueryString.Exists(key) {
+					req.Form.Add(key, values[0])
+				}
+			}
+		}
 	}
+
 
 	// Set cookies
 	for _, cookie := range r.Cookies() {
