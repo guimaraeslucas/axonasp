@@ -4043,133 +4043,147 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 
 // callClassMethodWithRefs calls a class instance method with ByRef parameter support
 func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodName string, arguments []ast.Expression) (interface{}, error) {
-nameLower := strings.ToLower(methodName)
-var methodNode ast.Node
-var params []*ast.Parameter
-var funcName string
-if sub, ok := classInst.ClassDef.Methods[nameLower]; ok {
-methodNode = sub
-params = sub.Parameters
-}
-if fn, ok := classInst.ClassDef.Functions[nameLower]; ok {
-methodNode = fn
-params = fn.Parameters
-funcName = fn.Identifier.Name
-}
-if node, ok := classInst.ClassDef.PrivateMethods[nameLower]; ok {
-methodNode = node
-switch n := node.(type) {
-case *ast.SubDeclaration:
-params = n.Parameters
-case *ast.FunctionDeclaration:
-params = n.Parameters
-funcName = n.Identifier.Name
-}
-}
-if methodNode == nil {
-args := make([]interface{}, len(arguments))
-for i, arg := range arguments {
-val, err := v.visitExpression(arg)
-if err != nil {
-return nil, err
-}
-args[i] = val
-}
-return classInst.CallMethod(methodName, args...)
-}
-classInst.Context.PushScope()
-defer classInst.Context.PopScope()
+	nameLower := strings.ToLower(methodName)
+	var methodNode ast.Node
+	var params []*ast.Parameter
+	var funcName string
+	if sub, ok := classInst.ClassDef.Methods[nameLower]; ok {
+		methodNode = sub
+		params = sub.Parameters
+	}
+	if fn, ok := classInst.ClassDef.Functions[nameLower]; ok {
+		methodNode = fn
+		params = fn.Parameters
+		funcName = fn.Identifier.Name
+	}
+	if node, ok := classInst.ClassDef.PrivateMethods[nameLower]; ok {
+		methodNode = node
+		switch n := node.(type) {
+		case *ast.SubDeclaration:
+			params = n.Parameters
+		case *ast.FunctionDeclaration:
+			params = n.Parameters
+			funcName = n.Identifier.Name
+		}
+	}
+	if methodNode == nil {
+		args := make([]interface{}, len(arguments))
+		for i, arg := range arguments {
+			val, err := v.visitExpression(arg)
+			if err != nil {
+				return nil, err
+			}
+			args[i] = val
+		}
+		return classInst.CallMethod(methodName, args...)
+	}
 
-// Set the context object so nested method calls can find the class instance
-oldCtxObj := classInst.Context.GetContextObject()
-classInst.Context.SetContextObject(classInst)
-defer classInst.Context.SetContextObject(oldCtxObj)
+	classInst.Context.PushScope()
+	defer classInst.Context.PopScope()
 
-byRefMap := make(map[string]string)
-for i, param := range params {
-var val interface{}
-if i < len(arguments) {
-if param.Modifier == ast.ParameterModifierByVal {
-var err error
-val, err = v.visitExpression(arguments[i])
-if err != nil {
-return nil, err
-}
-} else {
-if ident, ok := arguments[i].(*ast.Identifier); ok {
-byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
-// Get value from caller's context (which should be the class context)
-if existingVal, exists := v.context.GetVariable(ident.Name); exists {
-val = existingVal
-} else if existingVal, exists := classInst.Context.GetVariable(ident.Name); exists {
-val = existingVal
-}
-} else {
-var err error
-val, err = v.visitExpression(arguments[i])
-if err != nil {
-return nil, err
-}
-}
-}
-}
-_ = classInst.Context.DefineVariable(param.Identifier.Name, val)
-}
-if funcName != "" {
-_ = classInst.Context.DefineVariable(funcName, nil)
-}
-classVisitor := NewASPVisitor(classInst.Context, v.executor)
-switch n := methodNode.(type) {
-case *ast.SubDeclaration:
-if n.Body != nil {
-if list, ok := n.Body.(*ast.StatementList); ok {
-for _, stmt := range list.Statements {
-if err := classVisitor.VisitStatement(stmt); err != nil {
-if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "sub" {
-break
-}
-return nil, err
-}
-}
-} else {
-if err := classVisitor.VisitStatement(n.Body); err != nil {
-return nil, err
-}
-}
-}
-case *ast.FunctionDeclaration:
-if n.Body != nil {
-if list, ok := n.Body.(*ast.StatementList); ok {
-for _, stmt := range list.Statements {
-if err := classVisitor.VisitStatement(stmt); err != nil {
-if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "function" {
-break
-}
-return nil, err
-}
-}
-} else {
-if err := classVisitor.VisitStatement(n.Body); err != nil {
-return nil, err
-}
-}
-}
-}
-for paramName, origVarName := range byRefMap {
-if newVal, exists := classInst.Context.GetVariable(paramName); exists {
-// Write back to caller's context (class context)
-if _, exists := v.context.GetVariable(origVarName); exists {
-v.context.SetVariable(origVarName, newVal)
-} else {
-// If variable is in class instance context, update it there
-classInst.Context.SetVariable(origVarName, newVal)
-}
-}
-}
-if funcName != "" {
-if val, exists := classInst.Context.GetVariable(funcName); exists {
-return val, nil
-}
-}
-return nil, nil
+	// Evaluate all arguments in the CALLER'S context BEFORE switching context
+	evaluatedArgs := make([]interface{}, len(arguments))
+	byRefMap := make(map[string]string)
+
+	for i, arg := range arguments {
+		if i < len(params) {
+			param := params[i]
+			if param.Modifier == ast.ParameterModifierByVal {
+				// ByVal: evaluate in caller's context
+				val, err := v.visitExpression(arg)
+				if err != nil {
+					return nil, err
+				}
+				evaluatedArgs[i] = val
+			} else {
+				// ByRef: evaluate in caller's context and track variable name
+				if ident, ok := arg.(*ast.Identifier); ok {
+					paramNameLower := strings.ToLower(param.Identifier.Name)
+					identNameLower := strings.ToLower(ident.Name)
+					byRefMap[paramNameLower] = identNameLower
+					// Get value from caller's context
+					if existingVal, exists := v.context.GetVariable(ident.Name); exists {
+						evaluatedArgs[i] = existingVal
+					} else {
+						evaluatedArgs[i] = nil
+					}
+				} else {
+					// Non-identifier ByRef argument, evaluate in caller's context
+					val, err := v.visitExpression(arg)
+					if err != nil {
+						return nil, err
+					}
+					evaluatedArgs[i] = val
+				}
+			}
+		}
+	}
+
+	// NOW switch the context to the class instance
+	oldCtxObj := classInst.Context.GetContextObject()
+	classInst.Context.SetContextObject(classInst)
+	defer classInst.Context.SetContextObject(oldCtxObj)
+
+	// Define parameters in the class instance context with the evaluated values
+	for i, param := range params {
+		if i < len(evaluatedArgs) {
+			_ = classInst.Context.DefineVariable(param.Identifier.Name, evaluatedArgs[i])
+		}
+	}
+
+	if funcName != "" {
+		_ = classInst.Context.DefineVariable(funcName, nil)
+	}
+
+	classVisitor := NewASPVisitor(classInst.Context, v.executor)
+	switch n := methodNode.(type) {
+	case *ast.SubDeclaration:
+		if n.Body != nil {
+			if list, ok := n.Body.(*ast.StatementList); ok {
+				for _, stmt := range list.Statements {
+					if err := classVisitor.VisitStatement(stmt); err != nil {
+						if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "sub" {
+							break
+						}
+						return nil, err
+					}
+				}
+			} else {
+				if err := classVisitor.VisitStatement(n.Body); err != nil {
+					return nil, err
+				}
+			}
+		}
+	case *ast.FunctionDeclaration:
+		if n.Body != nil {
+			if list, ok := n.Body.(*ast.StatementList); ok {
+				for _, stmt := range list.Statements {
+					if err := classVisitor.VisitStatement(stmt); err != nil {
+						if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "function" {
+							break
+						}
+						return nil, err
+					}
+				}
+			} else {
+				if err := classVisitor.VisitStatement(n.Body); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	// Apply ByRef updates back to the caller's context
+	for paramName, origVarName := range byRefMap {
+		if newVal, exists := classInst.Context.GetVariable(paramName); exists {
+			v.context.SetVariable(origVarName, newVal)
+		}
+	}
+
+	if funcName != "" {
+		if val, exists := classInst.Context.GetVariable(funcName); exists {
+			return val, nil
+		}
+	}
+	return nil, nil
 }
