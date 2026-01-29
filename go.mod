@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	github.com/denisenkom/go-mssqldb v0.12.3
+	github.com/go-ole/go-ole v1.3.0
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/crypto v0.47.0
 	golang.org/x/net v0.48.0

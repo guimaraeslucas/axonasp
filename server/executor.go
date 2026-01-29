@@ -2917,6 +2917,16 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		return nil, nil
 	}
 
+	// Handle objects with CallMethod interface - subscript access via default property (typically "Item")
+	// This handles OLE objects like ADODBOLEFields when accessed as flds("iId")
+	if obj, ok := base.(interface {
+		CallMethod(string, ...interface{}) (interface{}, error)
+	}); ok && len(args) > 0 {
+		// Call the default property method "Item" with the subscript argument
+		result, _ := obj.CallMethod("item", args...)
+		return result, nil
+	}
+
 	// Handle DictionaryLibrary access (dict("key"))
 	if dictLib, ok := base.(*DictionaryLibrary); ok && len(args) > 0 {
 		return dictLib.dict.Item(args), nil

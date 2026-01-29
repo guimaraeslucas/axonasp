@@ -90,7 +90,8 @@ Class cls_asplite_database
 			select case aspL.convertNmbr(dbms)			
 			
 				'Access
-				case 1 : p_getConn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=" & server.mappath(path)
+				'case 1 : p_getConn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=" & server.mappath(path)
+				case 1 : p_getConn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & server.mappath(path)
 								
 				'SQL Server SSPI - no username/password required
 				case 2 : p_getConn.Open "Provider=SQLOLEDB;SERVER=" & sqlserver & ";initial catalog=" & initial_catalog  & ";Integrated Security=SSPI;"

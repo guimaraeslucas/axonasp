@@ -23,9 +23,12 @@ package server
 import (
 	"database/sql"
 	"fmt"
+	"runtime"
 	"sort"
 	"strings"
 
+	"github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole/oleutil"
 	_ "github.com/denisenkom/go-mssqldb"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
@@ -107,6 +110,7 @@ type ADODBConnection struct {
 	ctx              *ExecutionContext
 	dbDriver         string // Track which driver is in use
 	Errors           *ErrorsCollection
+	oleConnection    *ole.IDispatch // For Access databases via OLE
 }
 
 // NewADODBConnection creates a new connection object
@@ -159,25 +163,68 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		if c.db != nil {
 			c.db.Close()
 			c.db = nil
-			c.State = 0
 		}
+		if c.oleConnection != nil {
+			// Safely close OLE connection
+			defer func() {
+				if r := recover(); r != nil {
+					// Silently recover from any panic during OLE cleanup
+				}
+			}()
+			oleutil.CallMethod(c.oleConnection, "Close")
+			c.oleConnection.Release()
+			c.oleConnection = nil
+		}
+		c.State = 0
 		return nil
 
 	case "execute":
 		// Execute(CommandText, [RecordsAffected], [Options])
 		c.Errors.Clear()
-		if len(args) < 1 || c.db == nil {
-			c.Errors.AddError(-1, "Invalid parameters or connection not open", "ADODB.Connection", "")
+		if len(args) < 1 {
+			c.Errors.AddError(-1, "Invalid parameters", "ADODB.Connection", "")
 			return nil
 		}
+		
+		// Check if connection is open
+		if c.db == nil && c.oleConnection == nil {
+			c.Errors.AddError(-1, "Connection not open", "ADODB.Connection", "")
+			return nil
+		}
+
 		sql := fmt.Sprintf("%v", args[0])
-		result, err := c.db.Exec(sql)
-		if err != nil {
-			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+		
+		// Handle SQL driver connections
+		if c.db != nil {
+			result, err := c.db.Exec(sql)
+			if err != nil {
+				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+				return nil
+			}
+			affected, _ := result.RowsAffected()
+			return int(affected)
+		}
+		
+		// Handle OLE/Access connections - return Recordset
+		if c.oleConnection != nil {
+			result, err := oleutil.CallMethod(c.oleConnection, "Execute", sql)
+			if err != nil {
+				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+				return nil
+			}
+			
+			// Wrap the OLE Recordset in our ADODBOLERecordset wrapper, then in ASPLibrary wrapper
+			if result != nil {
+				oleRs := result.ToIDispatch()
+				if oleRs != nil {
+					// Return the ASPLibrary wrapper, not the raw OLE recordset
+					return NewADOOLERecordset(NewADODBOLERecordset(oleRs, c.ctx))
+				}
+			}
 			return nil
 		}
-		affected, _ := result.RowsAffected()
-		return int(affected)
+		
+		return nil
 
 	case "begintrans":
 		if c.db == nil {
@@ -210,13 +257,20 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 // - MySQL: "Driver={MySQL ODBC Driver};Server=localhost;Database=dbname;UID=user;PWD=pass"
 // - PostgreSQL: "Driver={PostgreSQL ODBC Driver};Server=localhost;Database=dbname;UID=user;PWD=pass"
 // - MS SQL: "Driver={ODBC Driver 17 for SQL Server};Server=localhost;Database=dbname;UID=user;PWD=pass"
+// - Access: "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=path" or "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=path"
 func (c *ADODBConnection) openDatabase() interface{} {
 	connStr := strings.TrimSpace(c.ConnectionString)
 	if connStr == "" {
 		return nil
 	}
 
-	// Parse ODBC-style connection string
+	// Check for Microsoft Access formats - use OLE method
+	connStrLower := strings.ToLower(connStr)
+	if (strings.Contains(connStrLower, "microsoft.jet.oledb") || strings.Contains(connStrLower, "microsoft.ace.oledb")) && runtime.GOOS == "windows" {
+		return c.openAccessDatabase(connStr)
+	}
+
+	// Parse ODBC-style connection string for other drivers
 	driver, dsn := parseConnectionString(connStr)
 
 	if driver == "" || dsn == "" {
@@ -240,14 +294,58 @@ func (c *ADODBConnection) openDatabase() interface{} {
 	return nil
 }
 
+// openAccessDatabase opens an Access database using OLE/OLEDB
+func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
+	// Only supported on Windows
+	if runtime.GOOS != "windows" {
+		fmt.Println("Warning: Direct Access database support is only available on Windows. Please use a different database system for cross-platform compatibility.")
+		return nil
+	}
+
+	// Try to create ADODB.Connection via OLE
+	ole.CoInitialize(0)
+	defer ole.CoUninitialize()
+
+	unknown, err := oleutil.CreateObject("ADODB.Connection")
+	if err != nil {
+		fmt.Println("Warning: ADODB.Connection COM object cannot be created. Make sure you have Windows COM support and OLEDB drivers installed.")
+		return nil
+	}
+	defer unknown.Release()
+
+	connection, err := unknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		fmt.Println("Warning: Cannot query ADODB.Connection interface. COM support may not be available.")
+		return nil
+	}
+
+	// Open the connection
+	_, err = oleutil.CallMethod(connection, "Open", connStr)
+	if err != nil {
+		fmt.Printf("Warning: Cannot open Access database. Error details: %v\n", err)
+		fmt.Printf("Connection string: %s\n", connStr)
+		connection.Release()
+		return nil
+	}
+
+// Access database opened successfully
+
+	// Store the OLE connection object and do NOT defer release here
+	// It needs to stay alive for the lifetime of the ADODB.Connection object
+	c.oleConnection = connection
+	c.State = 1
+	return nil
+}
+
+
 // parseConnectionString converts ODBC connection string to Go SQL driver and DSN
 func parseConnectionString(connStr string) (driver string, dsn string) {
-	connStr = strings.ToLower(connStr)
+	connStrLower := strings.ToLower(connStr)
 
 	// Handle SQLite formats
-	if strings.HasPrefix(connStr, "sqlite:") {
+	if strings.HasPrefix(connStrLower, "sqlite:") {
 		driver = "sqlite"
-		dbPath := strings.TrimPrefix(connStr, "sqlite:")
+		dbPath := strings.TrimPrefix(connStrLower, "sqlite:")
 		dsn = dbPath
 		if dsn == "" {
 			dsn = ":memory:"
@@ -255,9 +353,18 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 		return
 	}
 
+	// Access databases should be handled via OLE (see openAccessDatabase)
+	// If we reach here, Access is not supported on this platform
+	if strings.Contains(connStrLower, "microsoft.jet.oledb") || strings.Contains(connStrLower, "microsoft.ace.oledb") {
+		fmt.Println("Warning: Direct Access database support is only available on Windows. Please use a different database system for cross-platform compatibility.")
+		driver = "sqlite"
+		dsn = ":memory:"
+		return
+	}
+
 	// Parse ODBC-style: Driver={...};Server=...;Database=...;UID=...;PWD=...
 	params := make(map[string]string)
-	parts := strings.Split(connStr, ";")
+	parts := strings.Split(connStrLower, ";")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if idx := strings.Index(part, "="); idx > 0 {
@@ -1133,4 +1240,285 @@ func (rs *ADODBRecordset) supportsFeature(option int) bool {
 		// By default, return true for common operations
 		return true
 	}
+}
+
+// --- ADODB.Recordset (OLE Wrapper) ---
+
+// ADODBOLERecordset wraps an OLE/COM Recordset object for Access databases
+type ADODBOLERecordset struct {
+	oleRecordset *ole.IDispatch
+	ctx          *ExecutionContext
+}
+
+// NewADODBOLERecordset creates a new OLE recordset wrapper
+func NewADODBOLERecordset(oleRs *ole.IDispatch, ctx *ExecutionContext) *ADODBOLERecordset {
+	return &ADODBOLERecordset{
+		oleRecordset: oleRs,
+		ctx:          ctx,
+	}
+}
+
+func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
+	if rs.oleRecordset == nil {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently recover from OLE errors
+		}
+	}()
+
+	switch strings.ToLower(name) {
+	case "eof":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "EOF")
+		if err == nil {
+			return result.Value()
+		}
+	case "bof":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "BOF")
+		if err == nil {
+			return result.Value()
+		}
+	case "recordcount":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "RecordCount")
+		if err == nil {
+			return result.Value()
+		}
+	case "fields":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "Fields")
+		if err == nil {
+			fieldsDisp := result.ToIDispatch()
+			if fieldsDisp != nil {
+				// Return the ASPLibrary wrapper, not the raw OLE object
+				return NewADOOLEFields(NewADODBOLEFields(fieldsDisp))
+			}
+		}
+	case "absoluteposition":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "AbsolutePosition")
+		if err == nil {
+			return result.Value()
+		}
+	case "pagesize":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "PageSize")
+		if err == nil {
+			return result.Value()
+		}
+	case "absolutepage":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "AbsolutePage")
+		if err == nil {
+			return result.Value()
+		}
+	case "state":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "State")
+		if err == nil {
+			return result.Value()
+		}
+	}
+	return nil
+}
+
+func (rs *ADODBOLERecordset) SetProperty(name string, value interface{}) {
+	if rs.oleRecordset == nil {
+		return
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently recover from OLE errors
+		}
+	}()
+
+	switch strings.ToLower(name) {
+	case "pagesize":
+		oleutil.PutProperty(rs.oleRecordset, "PageSize", value)
+	case "absolutepage":
+		oleutil.PutProperty(rs.oleRecordset, "AbsolutePage", value)
+	case "absoluteposition":
+		oleutil.PutProperty(rs.oleRecordset, "AbsolutePosition", value)
+	}
+}
+
+func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interface{} {
+	if rs.oleRecordset == nil {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently recover from OLE errors
+		}
+	}()
+
+	method := strings.ToLower(name)
+
+	switch method {
+	case "fields":
+		// Handle rs.Fields("fieldName") shortcut - common VBScript pattern
+		if len(args) > 0 {
+			// Get the Fields collection
+			result, err := oleutil.GetProperty(rs.oleRecordset, "Fields")
+			if err != nil {
+				return nil
+			}
+			fieldsDisp := result.ToIDispatch()
+			if fieldsDisp != nil {
+				// Get the field by name/index
+				fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", args[0])
+				if err != nil {
+					return nil
+				}
+				fieldDisp := fieldResult.ToIDispatch()
+				if fieldDisp != nil {
+					// Get the field value
+					valueResult, err := oleutil.GetProperty(fieldDisp, "Value")
+					if err != nil {
+						return nil
+					}
+					return valueResult.Value()
+				}
+			}
+		}
+		return nil
+	case "movenext":
+		oleutil.CallMethod(rs.oleRecordset, "MoveNext")
+		return nil
+	case "moveprevious":
+		oleutil.CallMethod(rs.oleRecordset, "MovePrevious")
+		return nil
+	case "movefirst":
+		oleutil.CallMethod(rs.oleRecordset, "MoveFirst")
+		return nil
+	case "movelast":
+		oleutil.CallMethod(rs.oleRecordset, "MoveLast")
+		return nil
+	case "move":
+		if len(args) > 0 {
+			oleutil.CallMethod(rs.oleRecordset, "Move", args[0])
+		}
+		return nil
+	case "open":
+		if len(args) > 0 {
+			oleutil.CallMethod(rs.oleRecordset, "Open", args...)
+		}
+		return nil
+	case "close":
+		oleutil.CallMethod(rs.oleRecordset, "Close")
+		if rs.oleRecordset != nil {
+			rs.oleRecordset.Release()
+			rs.oleRecordset = nil
+		}
+		return nil
+	case "addnew":
+		oleutil.CallMethod(rs.oleRecordset, "AddNew")
+		return nil
+	case "update":
+		if len(args) > 0 {
+			oleutil.CallMethod(rs.oleRecordset, "Update", args...)
+		} else {
+			oleutil.CallMethod(rs.oleRecordset, "Update")
+		}
+		return nil
+	case "delete":
+		oleutil.CallMethod(rs.oleRecordset, "Delete")
+		return nil
+	case "cancelupdate":
+		oleutil.CallMethod(rs.oleRecordset, "CancelUpdate")
+		return nil
+	}
+
+	return nil
+}
+
+// --- ADODB.Fields (OLE Wrapper) ---
+
+// ADODBOLEFields wraps an OLE/COM Fields collection
+type ADODBOLEFields struct {
+	oleFields *ole.IDispatch
+}
+
+// NewADODBOLEFields creates a new OLE fields wrapper
+func NewADODBOLEFields(oleFields *ole.IDispatch) *ADODBOLEFields {
+	return &ADODBOLEFields{
+		oleFields: oleFields,
+	}
+}
+
+func (f *ADODBOLEFields) GetProperty(name string) interface{} {
+	if f.oleFields == nil {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently recover from OLE errors
+		}
+	}()
+
+	nameLower := strings.ToLower(name)
+	switch nameLower {
+	case "count":
+		result, err := oleutil.GetProperty(f.oleFields, "Count")
+		if err == nil {
+			return result.Value()
+		}
+	case "item":
+		// "Item" is not a field property - it's a method
+		// Return nil to indicate this should be handled as CallMethod instead
+		return nil
+	default:
+		// Try to access as a field name directly (subscript access)
+		result, err := oleutil.GetProperty(f.oleFields, "Item", name)
+		if err != nil {
+			return nil
+		}
+		fieldDisp := result.ToIDispatch()
+		if fieldDisp != nil {
+			valueResult, err := oleutil.GetProperty(fieldDisp, "Value")
+			if err != nil {
+				return nil
+			}
+			return valueResult.Value()
+		}
+	}
+	return nil
+}
+
+func (f *ADODBOLEFields) SetProperty(name string, value interface{}) {}
+
+func (f *ADODBOLEFields) CallMethod(name string, args ...interface{}) interface{} {
+	if f.oleFields == nil {
+		return nil
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			// Silently recover from OLE errors
+		}
+	}()
+
+	switch strings.ToLower(name) {
+	case "item":
+		if len(args) > 0 {
+			result, err := oleutil.GetProperty(f.oleFields, "Item", args[0])
+			if err != nil {
+				return nil
+			}
+			fieldDisp := result.ToIDispatch()
+			if fieldDisp != nil {
+				// Get field value
+				valueResult, err := oleutil.GetProperty(fieldDisp, "Value")
+				if err != nil {
+					return nil
+				}
+				return valueResult.Value()
+			}
+		}
+	case "count":
+		result, err := oleutil.GetProperty(f.oleFields, "Count")
+		if err == nil {
+			return result.Value()
+		}
+	}
+	return nil
 }

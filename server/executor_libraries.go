@@ -354,6 +354,72 @@ func (ar *ADORecordset) GetName() string {
 	return "ADODB.Recordset"
 }
 
+// ADOOLERecordset wraps ADODBOLERecordset for ASPLibrary interface compatibility
+type ADOOLERecordset struct {
+	lib *ADODBOLERecordset
+}
+
+// NewADOOLERecordset creates a new ADOOLERecordset instance
+func NewADOOLERecordset(oleRs *ADODBOLERecordset) *ADOOLERecordset {
+	return &ADOOLERecordset{
+		lib: oleRs,
+	}
+}
+
+// CallMethod calls a method on ADOOLERecordset
+func (ar *ADOOLERecordset) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return ar.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from ADOOLERecordset
+func (ar *ADOOLERecordset) GetProperty(name string) interface{} {
+	return ar.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on ADOOLERecordset
+func (ar *ADOOLERecordset) SetProperty(name string, value interface{}) error {
+	ar.lib.SetProperty(name, value)
+	return nil
+}
+
+// GetName returns the name of the object
+func (ar *ADOOLERecordset) GetName() string {
+	return "ADODB.Recordset"
+}
+
+// ADOOLEFields wraps ADODBOLEFields for ASPLibrary interface compatibility
+type ADOOLEFields struct {
+	lib *ADODBOLEFields
+}
+
+// NewADOOLEFields creates a new ADOOLEFields instance
+func NewADOOLEFields(oleFields *ADODBOLEFields) *ADOOLEFields {
+	return &ADOOLEFields{
+		lib: oleFields,
+	}
+}
+
+// CallMethod calls a method on ADOOLEFields
+func (af *ADOOLEFields) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return af.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from ADOOLEFields
+func (af *ADOOLEFields) GetProperty(name string) interface{} {
+	return af.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on ADOOLEFields
+func (af *ADOOLEFields) SetProperty(name string, value interface{}) error {
+	af.lib.SetProperty(name, value)
+	return nil
+}
+
+// GetName returns the name of the object
+func (af *ADOOLEFields) GetName() string {
+	return "ADODB.Fields"
+}
+
 // ADOStream wraps ADODBStream for ASPLibrary interface compatibility
 type ADOStream struct {
 	lib *ADODBStream

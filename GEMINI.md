@@ -153,8 +153,13 @@ Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAUL
 - `BeginTrans()`, `CommitTrans()`, `RollbackTrans()` - Transactions
 - `State` property - 0=closed, 1=open
 - `Errors` collection for error details
-- Supports: SQLite, MySQL, PostgreSQL, MS SQL Server
+- Supports: SQLite, MySQL, PostgreSQL, MS SQL Server, Microsoft Access (Windows only)
 - Parameter binding prevents SQL injection
+- **Access Support (Windows only):**
+  * `Provider=Microsoft.Jet.OLEDB.4.0;Data Source=path` - Older Access format (.mdb)
+  * `Provider=Microsoft.ACE.OLEDB.12.0;Data Source=path` - Newer Access format (.accdb)
+  * Non-Windows platforms log warning and fail gracefully
+  * See docs/ACCESS_DATABASE_SUPPORT.md for details
 
 **ADODB.Recordset** (database_lib.go)
 - Navigation: `MoveFirst()`, `MoveLast()`, `MoveNext()`, `MovePrevious()`, `Move()`
@@ -212,6 +217,12 @@ Driver={PostgreSQL};Server=localhost;Database=dbname;uid=postgres;pwd=pass
 **MS SQL Server**:
 ```
 Provider=SQLOLEDB;Server=servername;Database=dbname;uid=sa;pwd=pass
+```
+
+**Microsoft Access (Windows only)**:
+```
+Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\path\database.mdb
+Provider=Microsoft.ACE.OLEDB.12.0;Data Source=C:\path\database.accdb
 ```
 
 ### Documentation
