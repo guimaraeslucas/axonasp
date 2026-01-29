@@ -42,7 +42,7 @@ Say goodbye to Windows-only hosting and IIS dependencies. G3Pix AxonASP empowers
 
 ### Prerequisites
 
-- **Go 1.21+** installed on your system
+- **Go 1.25+** installed on your system
 - Basic understanding of Classic ASP and VBScript
 
 ### Quick Start

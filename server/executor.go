@@ -2549,7 +2549,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 				}
 			}
 		}
-		
+
 		// Regular function/sub lookup
 		if val, exists := v.context.GetVariable(ident.Name); exists {
 			if fn, ok := val.(*ast.FunctionDeclaration); ok {
