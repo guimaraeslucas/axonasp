@@ -81,6 +81,13 @@ func toVBArray(val interface{}) (*VBArray, bool) {
 		return v, true
 	case []interface{}:
 		return &VBArray{Lower: 0, Values: v}, true
+	case [][]interface{}:
+		// Convert 2D slice to VBArray of VBArrays
+		values := make([]interface{}, len(v))
+		for i, row := range v {
+			values[i] = &VBArray{Lower: 0, Values: row}
+		}
+		return &VBArray{Lower: 0, Values: values}, true
 	default:
 		return nil, false
 	}

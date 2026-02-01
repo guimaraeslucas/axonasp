@@ -388,6 +388,24 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 	return nil
 }
 
+// SetVariableGlobal sets a variable directly in global scope, bypassing local scopes
+// Used by ExecuteGlobal to ensure variables are set globally even when called from class methods
+func (ec *ExecutionContext) SetVariableGlobal(name string, value interface{}) error {
+	nameLower := lowerKey(name)
+
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	// Check if this is a constant
+	if _, exists := ec.constants[nameLower]; exists {
+		return fmt.Errorf("cannot reassign constant '%s'", name)
+	}
+
+	// Set directly in global scope
+	ec.variables[nameLower] = value
+	return nil
+}
+
 // DefineVariable defines a variable in the current scope (Dim)
 func (ec *ExecutionContext) DefineVariable(name string, value interface{}) error {
 	nameLower := lowerKey(name)
@@ -415,6 +433,23 @@ func (ec *ExecutionContext) DefineVariable(name string, value interface{}) error
 	return nil
 }
 
+// DefineVariableGlobal defines a variable directly in the global scope (for ExecuteGlobal)
+// This bypasses local scopes, ensuring variables are always defined globally
+func (ec *ExecutionContext) DefineVariableGlobal(name string, value interface{}) error {
+	nameLower := lowerKey(name)
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+
+	// Prevent defining a variable with the same name as a global constant
+	if _, exists := ec.constants[nameLower]; exists {
+		return fmt.Errorf("cannot define variable with name of existing constant '%s'", name)
+	}
+
+	// Always define in global scope
+	ec.variables[nameLower] = value
+	return nil
+}
+
 // GetVariable gets a variable from the execution context (case-insensitive)
 func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	nameLower := lowerKey(name)
@@ -434,14 +469,17 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		return val, true
 	}
 
-	// 3. Check Local Scopes (Top to Bottom)
-	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
-		if val, exists := ec.scopeStack[i][nameLower]; exists {
+	// 3. Check current local scope (topmost only)
+	if len(ec.scopeStack) > 0 {
+		currentScope := ec.scopeStack[len(ec.scopeStack)-1]
+		if val, exists := currentScope[nameLower]; exists {
 			return val, true
 		}
 	}
 
-	// 4. Check Context Object (Class Member)
+	// 4. Check Context Object (Class Member) BEFORE checking parent scopes
+	// This ensures class member variables take precedence over variables from
+	// parent function scopes (preventing shadowing issues)
 	if ec.contextObject != nil {
 		// Try internal access first (allows Private members)
 		if internal, ok := ec.contextObject.(interface {
@@ -458,7 +496,14 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		}
 	}
 
-	// 5. Check Global Variables
+	// 5. Check parent Local Scopes (excluding the topmost which was checked above)
+	for i := len(ec.scopeStack) - 2; i >= 0; i-- {
+		if val, exists := ec.scopeStack[i][nameLower]; exists {
+			return val, true
+		}
+	}
+
+	// 6. Check Global Variables
 	val, exists := ec.variables[nameLower]
 	return val, exists
 }
@@ -935,6 +980,11 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 			}
 		}
 
+		// Check if Response.End() was already called (which should stop all further execution)
+		if ae.context.Response != nil && ae.context.Response.IsEnded() {
+			return nil
+		}
+
 		switch block.Type {
 		case "html":
 			// Write HTML content directly
@@ -992,6 +1042,11 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 			// Check timeout
 			if err := ae.context.CheckTimeout(); err != nil {
 				return err
+			}
+
+			// Check if Response.End() was already called (which should stop execution)
+			if ae.context.Response != nil && ae.context.Response.IsEnded() {
+				return fmt.Errorf("RESPONSE_END")
 			}
 
 			// Execute statement
@@ -1166,6 +1221,7 @@ type ASPVisitor struct {
 	depth         int
 	withStack     []interface{}
 	resumeOnError bool
+	forceGlobal   bool // When true, Dim statements define variables in global scope (for ExecuteGlobal)
 }
 
 // NewASPVisitor creates a new ASP visitor for AST traversal
@@ -1180,7 +1236,15 @@ func NewASPVisitor(ctx *ExecutionContext, executor *ASPExecutor) *ASPVisitor {
 		depth:         0,
 		withStack:     make([]interface{}, 0),
 		resumeOnError: false,
+		forceGlobal:   false,
 	}
+}
+
+// NewASPVisitorGlobal creates a new ASP visitor that forces global scope for variable definitions
+func NewASPVisitorGlobal(ctx *ExecutionContext, executor *ASPExecutor) *ASPVisitor {
+	v := NewASPVisitor(ctx, executor)
+	v.forceGlobal = true
+	return v
 }
 
 // handleStatementError applies VBScript-style error handling semantics, respecting On Error Resume Next.
@@ -1218,7 +1282,21 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	}
 
-	v.depth++
+
+
+			// DEBUG: Trace statement execution
+
+
+
+			// fmt.Printf("DEBUG: VisitStatement type=%T\n", node)
+
+
+
+		
+
+
+
+			v.depth++
 
 	if v.depth > 1000 {
 		return fmt.Errorf("maximum call depth exceeded")
@@ -1317,8 +1395,15 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 
 	// Case 1: Simple variable assignment (Dim x = 5 or x = 5)
 	if ident, ok := stmt.Left.(*ast.Identifier); ok {
-		if err := v.context.SetVariable(ident.Name, value); err != nil {
-			return err
+		// Use SetVariableGlobal when forceGlobal is active (ExecuteGlobal context)
+		if v.forceGlobal {
+			if err := v.context.SetVariableGlobal(ident.Name, value); err != nil {
+				return err
+			}
+		} else {
+			if err := v.context.SetVariable(ident.Name, value); err != nil {
+				return err
+			}
 		}
 		return nil
 	}
@@ -1481,6 +1566,11 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		propName := ""
 		if member.Property != nil {
 			propName = member.Property.Name
+		}
+
+		// Handle ClassInstance first (VBScript user-defined classes)
+		if classInst, ok := obj.(*ClassInstance); ok {
+			return classInst.SetProperty(propName, value)
 		}
 
 		// If it's an ASP object, set the property
@@ -1804,6 +1894,27 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		for _, item := range col {
 			// Set loop variable
 			_ = v.context.SetVariable(stmt.Identifier.Name, item)
+
+			// Execute loop body
+			for _, body := range stmt.Body {
+				if err := v.VisitStatement(body); err != nil {
+					// Handle Exit For
+					if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+						return nil
+					}
+					return err
+				}
+			}
+		}
+	case [][]interface{}:
+		// Iterate over 2D array (e.g., from GetRows)
+		for _, row := range col {
+			// Convert row to []interface{} for consistency
+			rowInterface := make([]interface{}, len(row))
+			copy(rowInterface, row)
+			
+			// Set loop variable
+			_ = v.context.SetVariable(stmt.Identifier.Name, rowInterface)
 
 			// Execute loop body
 			for _, body := range stmt.Body {
@@ -2146,6 +2257,22 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 					classDef.DefaultMethod = nameLower
 				}
 			}
+		case *ast.InitializeSubDeclaration:
+			nameLower := strings.ToLower(m.Identifier.Name)
+			// Treat as regular sub
+			if m.AccessModifier == ast.MethodAccessModifierPrivate {
+				classDef.PrivateMethods[nameLower] = &m.SubDeclaration
+			} else {
+				classDef.Methods[nameLower] = &m.SubDeclaration
+			}
+		case *ast.TerminateSubDeclaration:
+			nameLower := strings.ToLower(m.Identifier.Name)
+			// Treat as regular sub
+			if m.AccessModifier == ast.MethodAccessModifierPrivate {
+				classDef.PrivateMethods[nameLower] = &m.SubDeclaration
+			} else {
+				classDef.Methods[nameLower] = &m.SubDeclaration
+			}
 		case *ast.FunctionDeclaration:
 			nameLower := strings.ToLower(m.Identifier.Name)
 			if m.AccessModifier == ast.MethodAccessModifierPrivate {
@@ -2201,6 +2328,14 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 
 	varName := stmt.Identifier.Name
 
+	// Helper to define variable in the appropriate scope
+	defineVar := func(name string, value interface{}) error {
+		if v.forceGlobal {
+			return v.context.DefineVariableGlobal(name, value)
+		}
+		return v.context.DefineVariable(name, value)
+	}
+
 	// Check if it's an array declaration
 	if len(stmt.ArrayDims) > 0 {
 		// Fixed-size array: Dim arr(5) or Dim arr(2,3)
@@ -2215,17 +2350,17 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 
 		// Create multi-dimensional array
 		arr := v.makeNestedArray(dims)
-		if err := v.context.DefineVariable(varName, arr); err != nil {
+		if err := defineVar(varName, arr); err != nil {
 			return err
 		}
 	} else if stmt.IsDynamicArray {
 		// Dynamic array: Dim arr() - initialize as empty array
-		if err := v.context.DefineVariable(varName, NewVBArray(v.context.OptionBase(), 0)); err != nil {
+		if err := defineVar(varName, NewVBArray(v.context.OptionBase(), 0)); err != nil {
 			return err
 		}
 	} else {
 		// Regular variable - initialize to nil (VBScript Empty)
-		if err := v.context.DefineVariable(varName, nil); err != nil {
+		if err := defineVar(varName, nil); err != nil {
 			return err
 		}
 	}
@@ -2472,6 +2607,8 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 
 // resolveCall evaluates a call or index expression
 func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
+	// fmt.Printf("DEBUG: resolveCall ENTRY objectExpr=%T\n", objectExpr)
+
 	// Evaluate arguments first (we'll need them for built-in function checks)
 	args := make([]interface{}, 0)
 	for _, arg := range arguments {
@@ -2493,6 +2630,10 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		// 2. The identifier is NOT bracketed (i.e., user did NOT explicitly escape it)
 		if isBuiltInFunctionName(ident.Name) && !ident.IsBracketed {
 			if result, handled := evalBuiltInFunction(ident.Name, args, v.context); handled {
+				// Check if Response.End() was called during execution (e.g., inside ExecuteGlobal)
+				if v.context.Response != nil && v.context.Response.IsEnded() {
+					return result, fmt.Errorf("RESPONSE_END")
+				}
 				return result, nil
 			}
 		}
@@ -2519,6 +2660,29 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			}
 
 			// ASPObject / server-native CallMethod dispatch (no ByRef support needed)
+			if aspObj, ok := parentObj.(asp.ASPObject); ok {
+				return aspObj.CallMethod(propName, args...)
+			}
+			if caller, ok := parentObj.(interface {
+				CallMethod(string, ...interface{}) (interface{}, error)
+			}); ok {
+				return caller.CallMethod(propName, args...)
+			}
+		}
+	}
+
+	// Handle WithMemberAccessExpression (e.g. .Open "..." inside With block)
+	if withMember, ok := objectExpr.(*ast.WithMemberAccessExpression); ok {
+		if len(v.withStack) > 0 {
+			parentObj := v.withStack[len(v.withStack)-1]
+			propName := withMember.Property.Name
+
+			// Class instance methods
+			if classInst, ok := parentObj.(*ClassInstance); ok {
+				return v.callClassMethodWithRefs(classInst, propName, arguments)
+			}
+
+			// ASPObject dispatch
 			if aspObj, ok := parentObj.(asp.ASPObject); ok {
 				return aspObj.CallMethod(propName, args...)
 			}
@@ -3091,6 +3255,24 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 
 	// Handle ClassInstance
 	if classInst, ok := obj.(*ClassInstance); ok {
+		// Check for internal access (Me) to allow Private members/variables
+		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+			if currentInst, ok := ctxObj.(*ClassInstance); ok && currentInst == classInst {
+				// Internal access: use GetMember to allow private members
+				val, found, err := classInst.GetMember(propName)
+				if err != nil {
+					return nil, err
+				}
+				if found {
+					// If it's an AST node (method definition), we treat it as not a value property
+					// unless it's a Property Get (which GetMember executes and returns value for)
+					if _, isNode := val.(ast.Node); !isNode {
+						return val, nil
+					}
+				}
+			}
+		}
+
 		val, err := classInst.GetProperty(propName)
 		if err != nil {
 			return nil, err
@@ -3201,6 +3383,26 @@ func toInt(val interface{}) int {
 		return 0
 	case int:
 		return v
+	case int8:
+		return int(v)
+	case int16:
+		return int(v)
+	case int32:
+		return int(v)
+	case int64:
+		return int(v)
+	case uint:
+		return int(v)
+	case uint8:
+		return int(v)
+	case uint16:
+		return int(v)
+	case uint32:
+		return int(v)
+	case uint64:
+		return int(v)
+	case float32:
+		return int(v)
 	case float64:
 		return int(v)
 	case string:
@@ -3233,6 +3435,26 @@ func toFloat(val interface{}) float64 {
 	case EmptyValue, NothingValue:
 		return 0
 	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	case float32:
 		return float64(v)
 	case float64:
 		return v
@@ -3792,6 +4014,24 @@ func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression)
 
 	// Handle ClassInstance
 	if classInst, ok := obj.(*ClassInstance); ok {
+		// Check for internal access (Me) to allow Private members/variables
+		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+			if currentInst, ok := ctxObj.(*ClassInstance); ok && currentInst == classInst {
+				// Internal access: use GetMember to allow private members
+				val, found, err := classInst.GetMember(propName)
+				if err != nil {
+					return nil, err
+				}
+				if found {
+					// If it's an AST node (method definition), we treat it as not a value property
+					// unless it's a Property Get (which GetMember executes and returns value for)
+					if _, isNode := val.(ast.Node); !isNode {
+						return val, nil
+					}
+				}
+			}
+		}
+
 		// fmt.Printf("DEBUG: visitMemberExpression ClassInstance prop=%s\n", propName)
 		val, err := classInst.GetProperty(propName)
 		if err != nil {

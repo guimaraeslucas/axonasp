@@ -9,6 +9,7 @@ The AxonASP ADODB.Connection object now supports direct connections to Microsoft
 #### Microsoft Jet OLEDB 4.0 (Older Access)
 ```
 Provider=Microsoft.Jet.OLEDB.4.0;Data Source=<path_to_database.mdb>
+Will only work on Windows systems and if the server is compiled in 32-bit mode. If you need 32-bit support, install the 32-bit version of the Access Database Engine.
 ```
 
 **Example:**
@@ -22,6 +23,7 @@ conn.Open
 #### Microsoft ACE OLEDB 12.0 (Newer Access)
 ```
 Provider=Microsoft.ACE.OLEDB.12.0;Data Source=<path_to_database.accdb>
+Will only work on Windows systems and if the server is compiled in 64-bit mode. 
 ```
 
 **Example:**

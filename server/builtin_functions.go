@@ -90,9 +90,15 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return nil, true
 		}
 
-		// Execute in the current context (global scope)
-		// Use current executor to preserve class method access
-		visitor := NewASPVisitor(ctx, ctx.currentExecutor)
+		// Execute in global scope - use NewASPVisitorGlobal to force variables into global scope
+		// This is critical for ExecuteGlobal called from within class methods (like aspL.exec)
+		visitor := NewASPVisitorGlobal(ctx, ctx.currentExecutor)
+
+		// Hoist declarations (Classes, Subs, Functions) before execution to support forward references
+		if ctx.currentExecutor != nil {
+			ctx.currentExecutor.hoistDeclarations(visitor, program)
+		}
+
 		for _, stmt := range program.Body {
 			if err := visitor.VisitStatement(stmt); err != nil {
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
@@ -146,6 +152,12 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// Execute in the current context
 		// Use current executor to preserve class method access
 		visitor := NewASPVisitor(ctx, ctx.currentExecutor)
+
+		// Hoist declarations (Classes, Subs, Functions) before execution to support forward references
+		if ctx.currentExecutor != nil {
+			ctx.currentExecutor.hoistDeclarations(visitor, program)
+		}
+
 		for _, stmt := range program.Body {
 			if err := visitor.VisitStatement(stmt); err != nil {
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
@@ -214,6 +226,10 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return false, true
 		}
 		val := args[0]
+		// time.Time is NOT an object in VBScript - it's a date value type
+		if _, isTime := val.(time.Time); isTime {
+			return false, true
+		}
 		// Check if value is an object (map, array, component, library)
 		switch val.(type) {
 		case map[string]interface{}, []interface{}, ASPLibrary, *VBArray:
@@ -1056,20 +1072,35 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 	// Type Checking Functions (some already handled above)
 	case "isnumeric":
-		// ISNUMERIC(expression) - checks if string is numeric
+		// ISNUMERIC(expression) - checks if value is numeric or can be parsed as numeric
 		if len(args) == 0 {
 			return false, true
 		}
-		s := toString(args[0])
+		val := args[0]
+		// Check if already a numeric type
+		switch val.(type) {
+		case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+			return true, true
+		case float32, float64:
+			return true, true
+		}
+		// Try parsing string as number
+		s := toString(val)
 		_, err := strconv.ParseFloat(s, 64)
 		return err == nil, true
 
 	case "isdate":
-		// ISDATE(expression) - checks if string is a valid date
+		// ISDATE(expression) - checks if value is a date or can be parsed as one
 		if len(args) == 0 {
 			return false, true
 		}
-		s := toString(args[0])
+		val := args[0]
+		// Check if already a time.Time
+		if _, ok := val.(time.Time); ok {
+			return true, true
+		}
+		// Try parsing string as date
+		s := toString(val)
 		// Try parsing with common date formats
 		formats := []string{
 			"01/02/2006",
@@ -1241,13 +1272,26 @@ func getTypeName(val interface{}) string {
 		return "Date"
 	case *VBArray:
 		return "Variant()"
-	case []interface{}:
+	case []interface{}, [][]interface{}:
 		return "Variant()"
 	case map[string]interface{}:
 		return "Dictionary"
 	case *Dictionary, *DictionaryLibrary:
 		return "Dictionary"
+	case *ADODBRecordset, *ADORecordset:
+		return "Recordset"
+	case *FieldsCollection:
+		return "Fields"
+	case *Field:
+		return "Field"
 	case ASPLibrary:
+		// Check if it has a GetName method that returns a recognizable type
+		if namer, ok := v.(interface{ GetName() string }); ok {
+			name := namer.GetName()
+			if strings.Contains(name, "Recordset") {
+				return "Recordset"
+			}
+		}
 		return "Object"
 	default:
 		// Check if it's a struct/custom type

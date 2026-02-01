@@ -27,9 +27,9 @@ import (
 	"sort"
 	"strings"
 
+	_ "github.com/denisenkom/go-mssqldb"
 	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
-	_ "github.com/denisenkom/go-mssqldb"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
@@ -141,6 +141,7 @@ func (c *ADODBConnection) SetProperty(name string, value interface{}) {
 	switch strings.ToLower(name) {
 	case "connectionstring":
 		c.ConnectionString = fmt.Sprintf("%v", value)
+		fmt.Printf("ADODB.Connection ConnectionString set to: %s\n", c.ConnectionString)
 	case "mode":
 		if v, ok := value.(int); ok {
 			c.Mode = v
@@ -185,7 +186,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			c.Errors.AddError(-1, "Invalid parameters", "ADODB.Connection", "")
 			return nil
 		}
-		
+
 		// Check if connection is open
 		if c.db == nil && c.oleConnection == nil {
 			c.Errors.AddError(-1, "Connection not open", "ADODB.Connection", "")
@@ -193,7 +194,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		}
 
 		sql := fmt.Sprintf("%v", args[0])
-		
+
 		// Handle SQL driver connections
 		if c.db != nil {
 			result, err := c.db.Exec(sql)
@@ -204,7 +205,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			affected, _ := result.RowsAffected()
 			return int(affected)
 		}
-		
+
 		// Handle OLE/Access connections - return Recordset
 		if c.oleConnection != nil {
 			result, err := oleutil.CallMethod(c.oleConnection, "Execute", sql)
@@ -212,7 +213,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 				return nil
 			}
-			
+
 			// Wrap the OLE Recordset in our ADODBOLERecordset wrapper, then in ASPLibrary wrapper
 			if result != nil {
 				oleRs := result.ToIDispatch()
@@ -223,7 +224,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			}
 			return nil
 		}
-		
+
 		return nil
 
 	case "begintrans":
@@ -252,12 +253,6 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 }
 
 // openDatabase parses connection string and opens database
-// Supports formats:
-// - SQLite: "Driver={SQLite3};DBQ=path.db" or "sqlite::memory:"
-// - MySQL: "Driver={MySQL ODBC Driver};Server=localhost;Database=dbname;UID=user;PWD=pass"
-// - PostgreSQL: "Driver={PostgreSQL ODBC Driver};Server=localhost;Database=dbname;UID=user;PWD=pass"
-// - MS SQL: "Driver={ODBC Driver 17 for SQL Server};Server=localhost;Database=dbname;UID=user;PWD=pass"
-// - Access: "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=path" or "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=path"
 func (c *ADODBConnection) openDatabase() interface{} {
 	connStr := strings.TrimSpace(c.ConnectionString)
 	if connStr == "" {
@@ -308,7 +303,7 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 
 	unknown, err := oleutil.CreateObject("ADODB.Connection")
 	if err != nil {
-		fmt.Println("Warning: ADODB.Connection COM object cannot be created. Make sure you have Windows COM support and OLEDB drivers installed.")
+		fmt.Printf("Warning: ADODB.Connection COM object cannot be created. Error: %v. Make sure you have Windows COM support and OLEDB drivers installed.\n", err)
 		return nil
 	}
 	defer unknown.Release()
@@ -328,15 +323,15 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		return nil
 	}
 
-// Access database opened successfully
+	// Access database opened successfully
 
 	// Store the OLE connection object and do NOT defer release here
 	// It needs to stay alive for the lifetime of the ADODB.Connection object
+
 	c.oleConnection = connection
 	c.State = 1
 	return nil
 }
-
 
 // parseConnectionString converts ODBC connection string to Go SQL driver and DSN
 func parseConnectionString(connStr string) (driver string, dsn string) {
@@ -428,12 +423,44 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 // --- ADODB.Recordset ---
 
 // Field represents a database field with Name and Value
+// Implements asp.ASPObject interface for VBScript compatibility
 type Field struct {
 	Name  string
 	Value interface{}
 }
 
+func (f *Field) GetName() string {
+	return "Field"
+}
+
+func (f *Field) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "name":
+		return f.Name
+	case "value":
+		return f.Value
+	}
+	return nil
+}
+
+func (f *Field) SetProperty(name string, value interface{}) error {
+	switch strings.ToLower(name) {
+	case "value":
+		f.Value = value
+	}
+	return nil
+}
+
+func (f *Field) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	// Default method returns value
+	if strings.ToLower(name) == "" {
+		return f.Value, nil
+	}
+	return nil, nil
+}
+
 // FieldsCollection holds a collection of Field objects
+// Implements asp.ASPObject interface for VBScript compatibility
 type FieldsCollection struct {
 	fields []*Field
 	data   map[string]interface{}
@@ -446,54 +473,105 @@ func NewFieldsCollection() *FieldsCollection {
 	}
 }
 
-func (fc *FieldsCollection) GetProperty(name string) interface{} {
-	// Return nil for now; accessed via CallMethod("Item", ...)
-	return nil
+func (fc *FieldsCollection) GetName() string {
+	return "Fields"
 }
 
-func (fc *FieldsCollection) SetProperty(name string, value interface{}) {}
-
-func (fc *FieldsCollection) CallMethod(name string, args ...interface{}) interface{} {
+func (fc *FieldsCollection) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {
-	case "item":
-		if len(args) < 1 {
-			return nil
-		}
-		key := fmt.Sprintf("%v", args[0])
-		// Item can be by index (int) or by name (string)
-		if idx, ok := args[0].(int); ok && idx < len(fc.fields) {
-			return fc.fields[idx].Value
-		}
-		return fc.data[strings.ToLower(key)]
 	case "count":
 		return len(fc.fields)
+	case "item":
+		// Item requires an argument, return nil to indicate method call needed
+		return nil
+	default:
+		// Try to access as a field name directly
+		if val, ok := fc.data[strings.ToLower(name)]; ok {
+			return val
+		}
 	}
 	return nil
 }
 
+func (fc *FieldsCollection) SetProperty(name string, value interface{}) error {
+	return nil
+}
+
+func (fc *FieldsCollection) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	nameLower := strings.ToLower(name)
+	// Default method is "Item" - handle empty name, "item", or any direct subscript access
+	if nameLower == "" || nameLower == "item" {
+		if len(args) < 1 {
+			return nil, nil
+		}
+		// Item can be by index (int) or by name (string)
+		// Returns the Field object (not just the value) so .name and .value can be accessed
+		if idx, ok := args[0].(int); ok && idx >= 0 && idx < len(fc.fields) {
+			return fc.fields[idx], nil
+		}
+		// Also try int32 (common from VBScript)
+		if idx, ok := args[0].(int32); ok && int(idx) >= 0 && int(idx) < len(fc.fields) {
+			return fc.fields[int(idx)], nil
+		}
+		// Also try int64
+		if idx, ok := args[0].(int64); ok && int(idx) >= 0 && int(idx) < len(fc.fields) {
+			return fc.fields[int(idx)], nil
+		}
+		// Also try float64 (common from JSON/VBScript integer literals)
+		if idx, ok := args[0].(float64); ok && int(idx) >= 0 && int(idx) < len(fc.fields) {
+			return fc.fields[int(idx)], nil
+		}
+		// Try by name
+		key := strings.ToLower(fmt.Sprintf("%v", args[0]))
+		for _, field := range fc.fields {
+			if strings.ToLower(field.Name) == key {
+				return field, nil
+			}
+		}
+		return nil, nil
+	}
+	switch nameLower {
+	case "count":
+		return len(fc.fields), nil
+	}
+	return nil, nil
+}
+
+// Enumeration returns all Field objects for For Each iteration
+func (fc *FieldsCollection) Enumeration() []interface{} {
+	result := make([]interface{}, len(fc.fields))
+	for i, field := range fc.fields {
+		result[i] = field
+	}
+	return result
+}
+
 // ADODBRecordset simulates ADODB.Recordset for result sets
 type ADODBRecordset struct {
-	EOF             bool
-	BOF             bool
-	RecordCount     int
-	State           int // 0 = closed, 1 = open
-	CurrentRow      int
-	Fields          *FieldsCollection
-	rows            *sql.Rows
-	db              *sql.DB
-	columns         []string
-	currentData     map[string]interface{}
-	allData         []map[string]interface{}
-	newData         map[string]interface{} // For AddNew
-	ctx             *ExecutionContext
-	PageSize        int    // Number of records per page
-	AbsolutePage    int    // Current page number (1-based)
-	PageCount       int    // Total number of pages
-	SortField       string // Field name for sorting
-	SortOrder       string // ASC or DESC
-	FilterCriteria  string // Filter expression
-	filteredIndices []int  // Indices of filtered records
-	isFiltered      bool   // Whether filter is active
+	EOF              bool
+	BOF              bool
+	RecordCount      int
+	State            int // 0 = closed, 1 = open
+	CurrentRow       int
+	Fields           *FieldsCollection
+	rows             *sql.Rows
+	db               *sql.DB
+	columns          []string
+	currentData      map[string]interface{}
+	allData          []map[string]interface{}
+	newData          map[string]interface{} // For AddNew
+	ctx              *ExecutionContext
+	PageSize         int    // Number of records per page
+	AbsolutePage     int    // Current page number (1-based)
+	PageCount        int    // Total number of pages
+	SortField        string // Field name for sorting
+	SortOrder        string // ASC or DESC
+	FilterCriteria   string // Filter expression
+	filteredIndices  []int  // Indices of filtered records
+	isFiltered       bool   // Whether filter is active
+	ActiveConnection interface{} // Stored connection for later use
+	CursorType       int    // Cursor type
+	LockType         int    // Lock type
 }
 
 // NewADODBRecordset creates a new recordset
@@ -545,6 +623,16 @@ func (rs *ADODBRecordset) GetProperty(name string) interface{} {
 
 func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 	switch strings.ToLower(name) {
+	case "activeconnection":
+		rs.ActiveConnection = value
+	case "cursortype":
+		if v, ok := value.(int); ok {
+			rs.CursorType = v
+		}
+	case "locktype":
+		if v, ok := value.(int); ok {
+			rs.LockType = v
+		}
 	case "pagesize":
 		if v, ok := value.(int); ok && v > 0 {
 			rs.PageSize = v
@@ -576,23 +664,57 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
+	// Handle default method (empty name) - returns field VALUE, not Field object
+	if method == "" && len(args) > 0 {
+		// Get the field by name or index and return its value
+		field, _ := rs.Fields.CallMethod("item", args...)
+		if f, ok := field.(*Field); ok {
+			return f.Value
+		}
+		return field // In case it's already a value
+	}
+
 	switch method {
+	case "fields":
+		// rs.fields(i) - delegate to FieldsCollection
+		// If called with args, return the field at that index/name
+		// If called without args, return the Fields collection itself
+		if len(args) > 0 {
+			result, _ := rs.Fields.CallMethod("item", args...)
+			return result
+		}
+		return rs.Fields
+
 	case "open":
-		// Open(Source, ActiveConnection, [CursorType], [LockType], [Options])
-		if len(args) < 2 {
+		// Open(Source, [ActiveConnection], [CursorType], [LockType], [Options])
+		if len(args) < 1 {
 			return nil
 		}
 		sql := fmt.Sprintf("%v", args[0])
 
-		// args[1] should be an ADODBConnection or its wrapper ADOConnection
+		// Try to get connection from args[1] or from stored ActiveConnection
 		var conn *ADODBConnection
 
-		if c, ok := args[1].(*ADODBConnection); ok {
-			conn = c
-		} else if cWrapper, ok := args[1].(*ADOConnection); ok {
-			conn = cWrapper.lib
-		} else {
-			// Try to find if it's a pointer to the wrapper
+		if len(args) >= 2 && args[1] != nil {
+			// Connection provided as argument
+			if c, ok := args[1].(*ADODBConnection); ok {
+				conn = c
+			} else if cWrapper, ok := args[1].(*ADOConnection); ok {
+				conn = cWrapper.lib
+			}
+		}
+
+		// If no connection in args, try stored ActiveConnection
+		if conn == nil && rs.ActiveConnection != nil {
+			if c, ok := rs.ActiveConnection.(*ADODBConnection); ok {
+				conn = c
+			} else if cWrapper, ok := rs.ActiveConnection.(*ADOConnection); ok {
+				conn = cWrapper.lib
+			}
+		}
+
+		if conn == nil {
+			fmt.Println("Warning: ADODBRecordset.Open called without connection")
 			return nil
 		}
 
@@ -730,9 +852,13 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		return nil
 
 	case "item", "collect":
-		// rs.Item("FieldName") or rs(0) style access
+		// rs.Item("FieldName") or rs(0) style access - returns value
 		if len(args) > 0 {
-			return rs.Fields.CallMethod("item", args...)
+			field, _ := rs.Fields.CallMethod("item", args...)
+			if f, ok := field.(*Field); ok {
+				return f.Value
+			}
+			return field
 		}
 		return nil
 
@@ -764,7 +890,11 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 	default:
 		// Fallback for default property access (rs("field"))
 		if len(args) > 0 {
-			return rs.Fields.CallMethod("item", args...)
+			field, _ := rs.Fields.CallMethod("item", args...)
+			if f, ok := field.(*Field); ok {
+				return f.Value
+			}
+			return field
 		}
 	}
 
@@ -772,6 +902,92 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 }
 
 func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) interface{} {
+	// Try OLE connection first (for Access databases)
+	if conn.oleConnection != nil {
+		// Use the stored OLE connection to execute a query and get a recordset
+		result, err := oleutil.CallMethod(conn.oleConnection, "Execute", sqlStr)
+		if err != nil {
+			fmt.Printf("Warning: ADODBRecordset.Open OLE Execute failed: %v\n", err)
+			return nil
+		}
+
+		if result != nil {
+			oleRs := result.ToIDispatch()
+			if oleRs != nil {
+				// Read all data from the OLE recordset into memory
+				rs.State = 1
+				rs.allData = make([]map[string]interface{}, 0)
+
+				// Get fields
+				fieldsResult, err := oleutil.GetProperty(oleRs, "Fields")
+				if err != nil {
+					oleRs.Release()
+					return nil
+				}
+				fieldsObj := fieldsResult.ToIDispatch()
+
+				countResult, _ := oleutil.GetProperty(fieldsObj, "Count")
+				fieldCount := int(countResult.Val)
+
+				// Get column names
+				rs.columns = make([]string, fieldCount)
+				for i := 0; i < fieldCount; i++ {
+					itemResult, _ := oleutil.GetProperty(fieldsObj, "Item", i)
+					field := itemResult.ToIDispatch()
+					nameResult, _ := oleutil.GetProperty(field, "Name")
+					rs.columns[i] = nameResult.ToString()
+					field.Release()
+				}
+
+				// Read all rows
+				for {
+					eofResult, err := oleutil.GetProperty(oleRs, "EOF")
+					if err != nil || eofResult.Val != 0 {
+						break
+					}
+
+					row := make(map[string]interface{})
+					for i := 0; i < fieldCount; i++ {
+						itemResult, _ := oleutil.GetProperty(fieldsObj, "Item", i)
+						field := itemResult.ToIDispatch()
+						valueResult, err := oleutil.GetProperty(field, "Value")
+						colName := strings.ToLower(rs.columns[i])
+						if err != nil {
+							row[colName] = nil
+						} else {
+							row[colName] = valueResult.Value()
+						}
+						field.Release()
+					}
+					rs.allData = append(rs.allData, row)
+
+					oleutil.CallMethod(oleRs, "MoveNext")
+				}
+
+				fieldsObj.Release()
+				oleRs.Release()
+
+				rs.RecordCount = len(rs.allData)
+
+				// Move to first record
+				if len(rs.allData) > 0 {
+					rs.CurrentRow = 0
+					rs.currentData = rs.allData[0]
+					rs.BOF = false
+					rs.EOF = false
+					rs.updateFieldsCollection()
+				} else {
+					rs.EOF = true
+					rs.BOF = true
+				}
+
+				return nil
+			}
+		}
+		return nil
+	}
+
+	// Use SQL driver connection
 	if conn.db == nil {
 		return nil
 	}
@@ -844,9 +1060,20 @@ func (rs *ADODBRecordset) updateFieldsCollection() {
 	rs.Fields.data = make(map[string]interface{})
 
 	if rs.currentData != nil {
-		for name, value := range rs.currentData {
-			rs.Fields.fields = append(rs.Fields.fields, &Field{Name: name, Value: value})
-			rs.Fields.data[strings.ToLower(name)] = value
+		// Use column order if available to maintain consistent field ordering
+		if len(rs.columns) > 0 {
+			for _, col := range rs.columns {
+				colLower := strings.ToLower(col)
+				value := rs.currentData[colLower]
+				rs.Fields.fields = append(rs.Fields.fields, &Field{Name: col, Value: value})
+				rs.Fields.data[colLower] = value
+			}
+		} else {
+			// Fallback to map iteration (unordered)
+			for name, value := range rs.currentData {
+				rs.Fields.fields = append(rs.Fields.fields, &Field{Name: name, Value: value})
+				rs.Fields.data[strings.ToLower(name)] = value
+			}
 		}
 	}
 }
@@ -1292,6 +1519,8 @@ func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
 			if fieldsDisp != nil {
 				// Return the ASPLibrary wrapper, not the raw OLE object
 				return NewADOOLEFields(NewADODBOLEFields(fieldsDisp))
+			}else{
+				return nil
 			}
 		}
 	case "absoluteposition":
@@ -1342,11 +1571,11 @@ func (rs *ADODBOLERecordset) SetProperty(name string, value interface{}) {
 func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interface{} {
 	if rs.oleRecordset == nil {
 		return nil
+		
 	}
 
 	defer func() {
 		if r := recover(); r != nil {
-			// Silently recover from OLE errors
 		}
 	}()
 
@@ -1366,6 +1595,7 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 				// Get the field by name/index
 				fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", args[0])
 				if err != nil {
+					fmt.Printf("Error> ADODB.Recordset CallMethod Fields Item error: %s\n", err.Error())
 					return nil
 				}
 				fieldDisp := fieldResult.ToIDispatch()
@@ -1373,6 +1603,7 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 					// Get the field value
 					valueResult, err := oleutil.GetProperty(fieldDisp, "Value")
 					if err != nil {
+						fmt.Printf("Error> ADODB.Recordset CallMethod Fields Item Value error: %s\n", err.Error())
 						return nil
 					}
 					return valueResult.Value()
@@ -1497,8 +1728,9 @@ func (f *ADODBOLEFields) CallMethod(name string, args ...interface{}) interface{
 		}
 	}()
 
-	switch strings.ToLower(name) {
-	case "item":
+	nameLower := strings.ToLower(name)
+	// Default method is "Item" - empty name means default dispatch
+	if nameLower == "" || nameLower == "item" {
 		if len(args) > 0 {
 			result, err := oleutil.GetProperty(f.oleFields, "Item", args[0])
 			if err != nil {
@@ -1514,6 +1746,10 @@ func (f *ADODBOLEFields) CallMethod(name string, args ...interface{}) interface{
 				return valueResult.Value()
 			}
 		}
+		return nil
+	}
+
+	switch nameLower {
 	case "count":
 		result, err := oleutil.GetProperty(f.oleFields, "Count")
 		if err == nil {

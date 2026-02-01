@@ -534,9 +534,11 @@ func (d *FSODrive) GetProperty(name string) interface{} {
 	case "rootfolder":
 		return &FSOFolder{path: d.letter + ":\\"}
 	case "totalsize":
-		return 1024 * 1024 * 1024 * 100 // Mock 100GB
+		return 10000
+		//return 1024 * 1024 * 1024 * 100 // Mock 100GB
 	case "freespace", "availablespace":
-		return 1024 * 1024 * 1024 * 50 // Mock 50GB
+		return 10000
+		//return 1024 * 1024 * 1024 * 50 // Mock 50GB
 	}
 	return nil
 }

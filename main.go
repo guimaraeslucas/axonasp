@@ -172,6 +172,8 @@ func main() {
 					fmt.Printf("[DEBUG] VCS Revision: %s\n", setting.Value)
 				case "vcs.time":
 					fmt.Printf("[DEBUG] Build Date: %s\n", setting.Value)
+				case "GOARCH":
+					fmt.Printf("[DEBUG] GOARCH: %s\n", setting.Value)
 				}
 			}
 		}
@@ -313,7 +315,7 @@ func serveErrorPage(w http.ResponseWriter, statusCode int) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		// Fallback to default text if custom page is missing
-		fmt.Printf("[DEBUG] Could not read error page %s: %s\n", filename, err)
+		fmt.Printf("[DEBUG] Could not find error page %s: %s\n", filename, err)
 		http.Error(w, fmt.Sprintf("G3Pix AxonASP Error: %d", statusCode), statusCode)
 		return
 	}
