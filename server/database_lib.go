@@ -111,6 +111,7 @@ type ADODBConnection struct {
 	dbDriver         string // Track which driver is in use
 	Errors           *ErrorsCollection
 	oleConnection    *ole.IDispatch // For Access databases via OLE
+	oleInitialized   bool           // Track if COM was initialized for this connection
 }
 
 // NewADODBConnection creates a new connection object
@@ -175,6 +176,11 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			oleutil.CallMethod(c.oleConnection, "Close")
 			c.oleConnection.Release()
 			c.oleConnection = nil
+		}
+		// Uninitialize COM if it was initialized for this connection
+		if c.oleInitialized {
+			ole.CoUninitialize()
+			c.oleInitialized = false
 		}
 		c.State = 0
 		return nil
@@ -297,20 +303,26 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		return nil
 	}
 
-	// Try to create ADODB.Connection via OLE
+	// Initialize COM for this thread - DO NOT uninitialize here, it will be done in Close()
 	ole.CoInitialize(0)
-	defer ole.CoUninitialize()
+	c.oleInitialized = true
 
 	unknown, err := oleutil.CreateObject("ADODB.Connection")
 	if err != nil {
 		fmt.Printf("Warning: ADODB.Connection COM object cannot be created. Error: %v. Make sure you have Windows COM support and OLEDB drivers installed.\n", err)
+		ole.CoUninitialize()
+		c.oleInitialized = false
 		return nil
 	}
-	defer unknown.Release()
 
 	connection, err := unknown.QueryInterface(ole.IID_IDispatch)
+	// Release unknown after getting IDispatch - we don't need it anymore
+	unknown.Release()
+
 	if err != nil {
 		fmt.Println("Warning: Cannot query ADODB.Connection interface. COM support may not be available.")
+		ole.CoUninitialize()
+		c.oleInitialized = false
 		return nil
 	}
 
@@ -320,14 +332,13 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		fmt.Printf("Warning: Cannot open Access database. Error details: %v\n", err)
 		fmt.Printf("Connection string: %s\n", connStr)
 		connection.Release()
+		ole.CoUninitialize()
+		c.oleInitialized = false
 		return nil
 	}
 
 	// Access database opened successfully
-
-	// Store the OLE connection object and do NOT defer release here
-	// It needs to stay alive for the lifetime of the ADODB.Connection object
-
+	// Store the OLE connection object - it needs to stay alive for queries
 	c.oleConnection = connection
 	c.State = 1
 	return nil
@@ -561,17 +572,17 @@ type ADODBRecordset struct {
 	allData          []map[string]interface{}
 	newData          map[string]interface{} // For AddNew
 	ctx              *ExecutionContext
-	PageSize         int    // Number of records per page
-	AbsolutePage     int    // Current page number (1-based)
-	PageCount        int    // Total number of pages
-	SortField        string // Field name for sorting
-	SortOrder        string // ASC or DESC
-	FilterCriteria   string // Filter expression
-	filteredIndices  []int  // Indices of filtered records
-	isFiltered       bool   // Whether filter is active
+	PageSize         int         // Number of records per page
+	AbsolutePage     int         // Current page number (1-based)
+	PageCount        int         // Total number of pages
+	SortField        string      // Field name for sorting
+	SortOrder        string      // ASC or DESC
+	FilterCriteria   string      // Filter expression
+	filteredIndices  []int       // Indices of filtered records
+	isFiltered       bool        // Whether filter is active
 	ActiveConnection interface{} // Stored connection for later use
-	CursorType       int    // Cursor type
-	LockType         int    // Lock type
+	CursorType       int         // Cursor type
+	LockType         int         // Lock type
 }
 
 // NewADODBRecordset creates a new recordset
@@ -592,7 +603,8 @@ func NewADODBRecordset(ctx *ExecutionContext) *ADODBRecordset {
 }
 
 func (rs *ADODBRecordset) GetProperty(name string) interface{} {
-	switch strings.ToLower(name) {
+	nameLower := strings.ToLower(name)
+	switch nameLower {
 	case "eof":
 		return rs.EOF
 	case "bof":
@@ -617,6 +629,9 @@ func (rs *ADODBRecordset) GetProperty(name string) interface{} {
 		return rs.SortField
 	case "filter":
 		return rs.FilterCriteria
+	case "getrows":
+		// getRows called without parentheses - call as method with no args
+		return rs.CallMethod("getrows")
 	}
 	return nil
 }
@@ -942,7 +957,28 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 				// Read all rows
 				for {
 					eofResult, err := oleutil.GetProperty(oleRs, "EOF")
-					if err != nil || eofResult.Val != 0 {
+					if err != nil {
+						break
+					}
+					// EOF can be bool or int
+					eofVal := eofResult.Value()
+					isEOF := false
+					switch v := eofVal.(type) {
+					case bool:
+						isEOF = v
+					case int:
+						isEOF = v != 0
+					case int32:
+						isEOF = v != 0
+					case int64:
+						isEOF = v != 0
+					default:
+						// Also check the raw Val field
+						if eofResult.Val != 0 {
+							isEOF = true
+						}
+					}
+					if isEOF {
 						break
 					}
 
@@ -1079,9 +1115,20 @@ func (rs *ADODBRecordset) updateFieldsCollection() {
 }
 
 // getRows returns a 2D array containing all records from current position to end
+// NOTE: In classic ADO, GetRows advances the cursor to EOF. However, to support
+// scenarios where the expression is evaluated multiple times (e.g., when passed
+// directly as a function argument), we reset to the first record if EOF is true
+// but data is available.
 func (rs *ADODBRecordset) getRows(args []interface{}) interface{} {
-	if rs.EOF || len(rs.allData) == 0 {
+	if len(rs.allData) == 0 {
 		return [][]interface{}{}
+	}
+
+	// If EOF but we have data, reset to beginning (defensive handling)
+	if rs.EOF && len(rs.allData) > 0 {
+		rs.CurrentRow = 0
+		rs.EOF = false
+		rs.BOF = false
 	}
 
 	// Determine how many rows to fetch
@@ -1519,7 +1566,7 @@ func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
 			if fieldsDisp != nil {
 				// Return the ASPLibrary wrapper, not the raw OLE object
 				return NewADOOLEFields(NewADODBOLEFields(fieldsDisp))
-			}else{
+			} else {
 				return nil
 			}
 		}
@@ -1571,7 +1618,7 @@ func (rs *ADODBOLERecordset) SetProperty(name string, value interface{}) {
 func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interface{} {
 	if rs.oleRecordset == nil {
 		return nil
-		
+
 	}
 
 	defer func() {
@@ -1656,9 +1703,124 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 	case "cancelupdate":
 		oleutil.CallMethod(rs.oleRecordset, "CancelUpdate")
 		return nil
+	case "getrows":
+		// GetRows returns a 2D array [field][record] from current position
+		return rs.getRows(args)
 	}
 
 	return nil
+}
+
+// getRows returns a 2D array containing all records from current position to end
+// Returns array(field, record) - same as classic ADO
+func (rs *ADODBOLERecordset) getRows(args []interface{}) interface{} {
+	if rs.oleRecordset == nil {
+		return [][]interface{}{}
+	}
+
+	// Check if EOF
+	eofResult, err := oleutil.GetProperty(rs.oleRecordset, "EOF")
+	if err != nil {
+		return [][]interface{}{}
+	}
+	if eofResult.Value() == true {
+		return [][]interface{}{}
+	}
+
+	// Get Fields collection to know column count and names
+	fieldsResult, err := oleutil.GetProperty(rs.oleRecordset, "Fields")
+	if err != nil {
+		return [][]interface{}{}
+	}
+	fieldsDisp := fieldsResult.ToIDispatch()
+	if fieldsDisp == nil {
+		return [][]interface{}{}
+	}
+
+	countResult, err := oleutil.GetProperty(fieldsDisp, "Count")
+	if err != nil {
+		return [][]interface{}{}
+	}
+	fieldCount := int(countResult.Value().(int32))
+	if fieldCount == 0 {
+		return [][]interface{}{}
+	}
+
+	// Determine how many rows to fetch
+	maxRows := -1 // -1 means all remaining rows
+	if len(args) > 0 {
+		switch v := args[0].(type) {
+		case int:
+			maxRows = v
+		case int32:
+			maxRows = int(v)
+		case int64:
+			maxRows = int(v)
+		case float64:
+			maxRows = int(v)
+		}
+	}
+
+	// Collect all rows from current position
+	var allRows [][]interface{}
+	rowCount := 0
+	for {
+		// Check EOF
+		eofCheck, _ := oleutil.GetProperty(rs.oleRecordset, "EOF")
+		if eofCheck.Value() == true {
+			break
+		}
+
+		// Check row limit
+		if maxRows > 0 && rowCount >= maxRows {
+			break
+		}
+
+		// Read current row
+		rowData := make([]interface{}, fieldCount)
+		for i := 0; i < fieldCount; i++ {
+			fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", i)
+			if err != nil {
+				rowData[i] = nil
+				continue
+			}
+			fieldDisp := fieldResult.ToIDispatch()
+			if fieldDisp != nil {
+				valueResult, err := oleutil.GetProperty(fieldDisp, "Value")
+				if err == nil {
+					rowData[i] = valueResult.Value()
+				} else {
+					rowData[i] = nil
+				}
+			}
+		}
+		allRows = append(allRows, rowData)
+		rowCount++
+
+		// Move to next record
+		oleutil.CallMethod(rs.oleRecordset, "MoveNext")
+	}
+
+	if len(allRows) == 0 {
+		return [][]interface{}{}
+	}
+
+	// Transpose to [field][record] format (classic ADO GetRows format)
+	numRecords := len(allRows)
+	result := make([][]interface{}, fieldCount)
+	for i := range result {
+		result[i] = make([]interface{}, numRecords)
+	}
+
+	for recIdx, row := range allRows {
+		for fieldIdx := 0; fieldIdx < fieldCount; fieldIdx++ {
+			if fieldIdx < len(row) {
+				result[fieldIdx][recIdx] = row[fieldIdx]
+			}
+		}
+	}
+
+	return result
 }
 
 // --- ADODB.Fields (OLE Wrapper) ---

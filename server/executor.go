@@ -1282,21 +1282,11 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	}
 
+	// DEBUG: Trace statement execution
 
+	// fmt.Printf("DEBUG: VisitStatement type=%T\n", node)
 
-			// DEBUG: Trace statement execution
-
-
-
-			// fmt.Printf("DEBUG: VisitStatement type=%T\n", node)
-
-
-
-		
-
-
-
-			v.depth++
+	v.depth++
 
 	if v.depth > 1000 {
 		return fmt.Errorf("maximum call depth exceeded")
@@ -1912,7 +1902,7 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 			// Convert row to []interface{} for consistency
 			rowInterface := make([]interface{}, len(row))
 			copy(rowInterface, row)
-			
+
 			// Set loop variable
 			_ = v.context.SetVariable(stmt.Identifier.Name, rowInterface)
 
@@ -3072,13 +3062,33 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 	}
 
-	// Handle array access
+	// Handle array access (including multi-dimensional arrays)
 	if arr, ok := toVBArray(base); ok && len(args) > 0 {
-		idx := toInt(args[0])
-		if val, ok := arr.Get(idx); ok {
-			return val, nil
+		// For single-dimensional access: arr(0)
+		if len(args) == 1 {
+			idx := toInt(args[0])
+			if val, ok := arr.Get(idx); ok {
+				return val, nil
+			}
+			return nil, nil
 		}
-		return nil, nil
+		// For multi-dimensional access: arr(0, 1) or arr(0, 1, 2), etc.
+		// Navigate through dimensions
+		current := interface{}(arr)
+		for i := 0; i < len(args); i++ {
+			idx := toInt(args[i])
+			if currArr, ok := toVBArray(current); ok {
+				if val, exists := currArr.Get(idx); exists {
+					current = val
+				} else {
+					return nil, nil // Out of bounds
+				}
+			} else {
+				// current is not an array, can't index further
+				return nil, nil
+			}
+		}
+		return current, nil
 	}
 
 	// Handle objects with CallMethod interface - subscript access via default property (typically "Item")
