@@ -17,7 +17,7 @@ End If
 
 ' Try to find items
 Set items = xmlDoc.GetElementsByTagName("item")
-If Not items Is Nothing Then
+If items Is Not Nothing Then
     ' For array checking, create a test variable
     On Error Resume Next
     testCount = UBound(items)
@@ -46,7 +46,7 @@ End If
 ' Test 2: Root element access
 Response.Write "<h3>Test 2: Root Element Access</h3>"
 Set root = xmlDoc.DocumentElement
-If Not root Is Nothing Then
+If root Is Not Nothing Then
     Response.Write "Root element name: " & root.NodeName & "<br>"
 Else
     Response.Write "DocumentElement is Nothing<br>"
@@ -55,11 +55,11 @@ End If
 ' Test 3: Create and manipulate elements
 Response.Write "<h3>Test 3: CreateElement and AppendChild</h3>"
 Set newElem = xmlDoc.CreateElement("newitem")
-If Not newElem Is Nothing Then
+If newElem Is Not Nothing Then
     Response.Write "Created new element: " & newElem.NodeName & "<br>"
     
     Set textNode = xmlDoc.CreateTextNode("Test Content")
-    If Not textNode Is Nothing Then
+    If textNode Is Not Nothing Then
         Response.Write "Created text node<br>"
     End If
 Else
@@ -75,7 +75,7 @@ Response.Write "PICS value: " & Response.PICS & "<br>"
 ' Test 5: ServerXMLHTTP basic test
 Response.Write "<h3>Test 5: ServerXMLHTTP Object</h3>"
 Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")
-If Not http Is Nothing Then
+If http Is Not Nothing Then
     Response.Write "ServerXMLHTTP created successfully<br>"
     Response.Write "ReadyState: " & http.ReadyState & "<br>"
     Response.Write "Timeout: " & http.Timeout & " seconds<br>"

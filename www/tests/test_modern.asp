@@ -24,33 +24,32 @@
             <p>Tests modern ASP features like environment variables and external API consumption with Fetch.</p>
         </div>
         <div class="result">
-            <%
-                ' 1. Pegar configuração do ambiente
-                Dim apiKey
-                apiKey = Env("API_KEY") 
-                Response.Write("Chave da API do Ambiente: " & apiKey & "<br><br>")
-                
-                ' 2. Consumir uma API real (JSONPlaceholder)
-                Dim http, todo
-                Set http = Server.CreateObject("G3HTTP")
-                Set todo = http.Fetch("https://jsonplaceholder.typicode.com/todos/1")
-                
-                Response.Write("<h3>Teste de Modernização</h3>")
-                
-                If IsObject(todo) Then
-                    Response.Write("ID: " & todo("id") & "<br>")
-                    Response.Write("Título: " & todo("title") & "<br>")
-                    
-                    If todo("completed") Then
-                        Response.Write("Status: <span style='color:green'>Concluído</span><br>")
-                    Else
-                        Response.Write("Status: <span style='color:red'>Pendente</span><br>")
-                    End If
-                Else
-                    Response.Write("<span class='error'>Erro ao buscar dados. Verificar console.</span><br>")
-                End If
-            %>
-        </div>
+<%
+    ' 1. Pegar configuração do ambiente (Simulado)
+    Dim apiKey
+    apiKey = Env("API_KEY") 
+    Response.Write("Chave da API do Ambiente: " & apiKey & "<br><br>")
+    
+    ' 2. Consumir uma API real (ex: JSONPlaceholder)
+    Dim http, todo
+    Set http = Server.CreateObject("G3HTTP")
+    Set todo = http.Fetch("https://jsonplaceholder.typicode.com/todos/1")
+    
+    Response.Write("<h3>Teste de Modernização</h3>")
+    
+    If IsObject(todo) Then
+        Response.Write("ID: " & todo("id") & "<br>")
+        Response.Write("Título: " & todo("title") & "<br>")
+        
+        If todo("completed") Then
+            Response.Write("Status: <span style='color:green'>Concluído</span>")
+        Else
+            Response.Write("Status: <span style='color:red'>Pendente</span>")
+        End If
+    Else
+        Response.Write("Erro ao buscar dados.")
+    End If
+%>        </div>
     </div>
 </body>
 </html>

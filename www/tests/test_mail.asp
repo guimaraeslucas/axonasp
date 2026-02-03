@@ -29,15 +29,26 @@
             <h3>1. Envio Manual (Mail.Send)</h3>
             <p>Tentando enviar usando dados hardcoded (Simulação)...</p>
             <%
-                Dim mail, result
-                Set mail = Server.CreateObject("G3MAIL")
+                ' Configure SMTP settings (Use dummy data for safety/demo)
+                host = "smtp.example.com"
+                port = 587
+                username = "user@example.com"
+                password = "password"
+                from = "sender@example.com"
+                to = "recipient@example.com"
+                subject = "Test Email from Go ASP (Manual)"
+                body = "<h1>Hello!</h1><p>This is a test email sent manually.</p>"
+                isHtml = true
+
+                Response.Write("Target: " & to & "<br>")
                 
-                If IsObject(mail) Then
-                    Response.Write "<span class='success'>✓ Objeto G3MAIL criado com sucesso</span><br>"
-                    Response.Write "<p><strong>Método Send:</strong> mail.Send(host, port, username, password, from, to, subject, body, isHTML)</p>"
-                    Response.Write "<p><em>Nota: Para testar o envio real, configure os parâmetros SMTP corretamente.</em></p>"
+                ' Call Mail.Send
+                result = Mail.Send(host, port, username, password, from, to, subject, body, isHtml)
+
+                If result = True Then
+                    Response.Write("<span class='success'>Email enviado com sucesso (Mock)!</span>")
                 Else
-                    Response.Write "<span class='error'>✗ Falha ao criar objeto G3MAIL</span>"
+                    Response.Write("<span class='error'>Falha ao enviar: " & result & "</span>")
                 End If
             %>
         </div>
@@ -46,12 +57,16 @@
             <h3>2. Envio via Env (Mail.SendStandard)</h3>
             <p>Tentando enviar usando variáveis de ambiente (SMTP_HOST, etc)...</p>
             <%
-                If IsObject(mail) Then
-                    Response.Write "<span class='success'>✓ Objeto G3MAIL disponível</span><br>"
-                    Response.Write "<p><strong>Método SendStandard:</strong> mail.SendStandard(to, subject, body, isHTML)</p>"
-                    Response.Write "<p><em>Nota: Configure as variáveis SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM no arquivo .env</em></p>"
+                toEnv = "recipient@example.com"
+                subjectEnv = "Test Email from Go ASP (Env)"
+                bodyEnv = "This uses the .env configuration."
+                
+                resultEnv = mail.SendStandard(toEnv, subjectEnv, bodyEnv, True)
+
+                If resultEnv = True Then
+                     Response.Write("<span class='success'>Email enviado com sucesso!</span>")
                 Else
-                    Response.Write "<span class='error'>✗ Objeto Mail não disponível</span>"
+                     Response.Write("<span class='error'>Falha ao enviar: " & resultEnv & "</span>")
                 End If
             %>
         </div>

@@ -1,3 +1,4 @@
+<%@ Language=VBScript %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,8 +40,12 @@
                 user("Role") = "Administrator"
                 data("User") = user
 
-                ' Array - use VBScript Array() function
-                data("Items") = Array("Apple", "Banana", "Cherry")
+                ' Array
+                Set items = json.NewArray()
+                items(0) = "Apple"
+                items(1) = "Banana"
+                items(2) = "Cherry"
+                data("Items") = items
                 
                 Response.Write("Dados JSON preparados com sucesso.<br>")
             %>

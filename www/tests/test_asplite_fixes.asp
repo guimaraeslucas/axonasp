@@ -67,15 +67,6 @@ Else
     Response.Write "<span style='color:red'>Dictionary Enumeration FAIL (Expected Key1;Key2;, got " & keysStr & ")</span><br>"
 End If
 
-If InStr(keysStr, "Key1") > 0 Then
-    Response.Write "<span style='color:green'>Dictionary Enumeration for Key1 ok</span><br>"
-End If
-
-If InStr(keysStr, "Key2") > 0 Then
-    Response.Write "<span style='color:green'>Dictionary Enumeration for Key2 ok</span><br>"
-End If
-
-
 ' 3. Test VarType
 Response.Write "<hr>"
 Dim arr(2)

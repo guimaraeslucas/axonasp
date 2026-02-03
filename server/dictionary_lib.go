@@ -200,12 +200,12 @@ func (d *Dictionary) Item(args []interface{}) interface{} {
 		// We need to upgrade to write lock
 		d.mutex.Lock()
 		defer d.mutex.Unlock()
-		
+
 		// Double check
 		if val, ok := d.store[key]; ok {
 			return val
 		}
-		
+
 		d.order = append(d.order, key)
 		d.store[key] = "" // Empty value (string or interface{}?) usually Empty. "" is safe for concatenation.
 		return ""

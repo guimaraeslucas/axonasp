@@ -101,7 +101,7 @@ func (r *ResponseObject) Write(content interface{}) error {
 	defer r.mu.Unlock()
 
 	str := fmt.Sprintf("%v", content)
-	
+
 	// Debug log for troubleshooting script output
 	preview := str
 	if len(preview) > 50 {

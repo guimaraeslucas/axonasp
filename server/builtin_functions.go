@@ -75,7 +75,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		codePreview = strings.ReplaceAll(codePreview, "\n", " ")
 		codePreview = strings.ReplaceAll(codePreview, "\r", "")
 		//fmt.Printf("[DEBUG] ExecuteGlobal START: %s (len=%d)\n", codePreview, len(code))
-		
+
 		// Parse the code
 		//log.Printf("[DEBUG] ExecuteGlobal: about to parse %d bytes\n", len(code))
 		parser := vb.NewParser(code)
@@ -425,7 +425,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 		bs1 := toBinaryBytes(args[str1Idx])
 		bs2 := toBinaryBytes(args[str2Idx])
-		
+
 		// Log less frequently or only for uploader to avoid spam, but for now we need to catch the loop
 		// Only log if searching for the boundary (likely long search) or typical tokens
 		if len(bs2) > 0 {
@@ -723,19 +723,19 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		s := toString(args[0])
 		start := toInt(args[1]) - 1 // VBScript is 1-based
 		runes := []rune(s)
-		
+
 		if start < 0 {
 			start = 0
 		}
 		if start >= len(runes) {
 			return "", true
 		}
-		
+
 		length := len(runes)
 		if len(args) >= 3 {
 			length = toInt(args[2])
 		}
-		
+
 		end := start + length
 		if end > len(runes) {
 			end = len(runes)
@@ -756,33 +756,33 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		} else {
 			return 0, true
 		}
-		
+
 		runes1 := []rune(s1)
-		
+
 		if start < 1 {
 			start = 1
 		}
 		if start > len(runes1) {
 			return 0, true
 		}
-		
+
 		// Convert to rune slice for indexing
 		// Note: strings.Index works on bytes, so we need to be careful.
 		// If we use runes, we can implement manual search or convert indices.
 		// Simple implementation with strings.Index requires substring slicing
-		
+
 		s1Runes := runes1[start-1:]
 		s1Part := string(s1Runes)
 		s2Lower := strings.ToLower(s2)
 		s1Lower := strings.ToLower(s1Part)
-		
+
 		idx := strings.Index(s1Lower, s2Lower)
 		if idx == -1 {
 			// Fallback: full string search (maybe case issue with slicing?)
 			// Should verify if we need to search whole string
 			return 0, true
 		}
-		
+
 		// Convert byte index to rune index
 		matchRunes := []rune(s1Part[:idx])
 		return start + len(matchRunes), true
@@ -795,9 +795,9 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		s1 := toString(args[0])
 		s2 := toString(args[1])
-		
+
 		runes1 := []rune(s1)
-		
+
 		// Default: start from end of string
 		start := len(runes1)
 		if len(args) >= 3 {
@@ -812,23 +812,23 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				return 0, true
 			}
 		}
-		
+
 		if start > len(runes1) {
 			start = len(runes1)
 		}
 		if start < 1 || len(s2) == 0 {
 			return 0, true
 		}
-		
+
 		// Search within s1[0:start] (runes)
 		searchInRunes := runes1[:start]
 		searchIn := string(searchInRunes)
-		
+
 		idx := strings.LastIndex(strings.ToLower(searchIn), strings.ToLower(s2))
 		if idx == -1 {
 			return 0, true
 		}
-		
+
 		// Convert byte index to rune index
 		matchRunes := []rune(searchIn[:idx])
 		return len(matchRunes) + 1, true

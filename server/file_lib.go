@@ -863,17 +863,18 @@ type ADODBStream struct {
 	Charset       string // Character set (default "utf-8")
 	LineSeparator int    // Line separator type
 	buffer        []byte // Internal buffer
+	lastFile      string // Last file loaded via LoadFromFile
 	ctx           *ExecutionContext
 }
 
 // NewADODBStream creates a new ADODB.Stream object
 func NewADODBStream(ctx *ExecutionContext) *ADODBStream {
 	return &ADODBStream{
-		Type:          2, // adTypeText by default (2 = text, 1 = binary)
-		Mode:          3, // adModeReadWrite
-		State:         0, // closed
+		Type:          2,            // adTypeText by default (2 = text, 1 = binary)
+		Mode:          3,            // adModeReadWrite
+		State:         0,            // closed
 		Charset:       "iso-8859-1", // Default to binary-safe charset (was utf-8, but that corrupts binary uploads)
-		LineSeparator: 13, // adCRLF
+		LineSeparator: 13,           // adCRLF
 		buffer:        make([]byte, 0),
 		ctx:           ctx,
 	}
@@ -998,8 +999,19 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		// ReadText([NumChars]) - reads text data
 		// Returns all text from current position if no argument specified
 		if s.State != 1 {
-			log.Printf("ADODBStream ReadText error: Stream not open (State=%d)\n", s.State)
-			return ""
+			if len(s.buffer) == 0 && s.lastFile != "" {
+				data, err := os.ReadFile(s.lastFile)
+				if err == nil {
+					s.buffer = data
+					s.Size = int64(len(data))
+					s.Position = 0
+					s.State = 1
+				}
+			}
+			if s.State != 1 {
+				log.Printf("ADODBStream ReadText error: Stream not open (State=%d)\n", s.State)
+				return ""
+			}
 		}
 
 		numChars := int64(-1) // -1 = read all
@@ -1029,24 +1041,26 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 
 		// Decode based on charset
 		cs := strings.ToLower(s.Charset)
-		
+
 		retStr := ""
 		if cs == "iso-8859-1" || cs == "windows-1252" || cs == "ascii" || cs == "us-ascii" {
 			retStr = decodeSingleByteString(data)
 		} else if cs == "unicode" || cs == "utf-16" {
 			retStr = decodeUTF16(data, binary.LittleEndian)
+		} else if cs == "utf-8" || cs == "utf8" {
+			retStr = string(bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF}))
 		} else {
 			// Default UTF-8
 			retStr = string(data)
 		}
-		
+
 		preview := retStr
 		if len(preview) > 50 {
 			preview = preview[:50] + "..."
 		}
 		preview = strings.ReplaceAll(preview, "\n", "\\n")
 		preview = strings.ReplaceAll(preview, "\r", "\\r")
-		
+
 		//fmt.Printf("[DEBUG] ADODBStream.ReadText: Reading %d bytes (requested=%d), Charset=%s, Pos=%d/%d, Content=%q\n", bytesToRead, numChars, cs, s.Position, s.Size, preview)
 		return retStr
 
@@ -1093,7 +1107,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		if s.Position > s.Size {
 			s.Size = s.Position
 		}
-		
+
 		//fmt.Printf("[DEBUG] ADODBStream.Write: Wrote %d bytes. Pos=%d/%d\n", len(data), s.Position, s.Size)
 		return nil
 
@@ -1106,7 +1120,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		}
 
 		var data []byte
-		
+
 		switch v := args[0].(type) {
 		case []byte:
 			// CRITICAL: Store bytes directly without any conversion
@@ -1177,7 +1191,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		if s.Position > s.Size {
 			s.Size = s.Position
 		}
-		
+
 		//fmt.Printf("[DEBUG] ADODBStream.WriteText: Wrote %d bytes, Pos=%d/%d\n", len(data), s.Position, s.Size)
 		return nil
 
@@ -1231,9 +1245,10 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		s.buffer = data
 		s.Size = int64(len(data))
 		s.Position = 0
-		
+		s.lastFile = fullPath
+
 		//fmt.Printf("[DEBUG] ADODBStream.LoadFromFile: Loaded %d bytes from %s. Charset=%s\n", s.Size, filepath.Base(fullPath), s.Charset)
-		
+
 		// Success - no logging needed for normal operation
 		return nil
 
@@ -1300,7 +1315,6 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		fmt.Printf("[DEBUG] ADODBStream.SaveToFile: Saved %d bytes to %s\n", len(s.buffer), filepath.Base(fullPath))
 		return nil
 
-
 	case "copyto":
 		// CopyTo(DestStream, [CharNumber]) - copies data to another stream
 		if len(args) < 1 {
@@ -1330,7 +1344,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 				numChars = int64(v)
 			}
 		}
-		
+
 		if s.Position < 0 {
 			return nil
 		}
@@ -1342,7 +1356,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		if s.Position+numChars > s.Size {
 			numChars = s.Size - s.Position
 		}
-		
+
 		if numChars <= 0 {
 			return nil
 		}

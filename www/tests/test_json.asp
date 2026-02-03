@@ -1,3 +1,4 @@
+<%@ Language=VBScript %>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,7 +24,7 @@
         <div class="intro">
             <p>Tests JSON object creation, serialization, parsing and iteration.</p>
         </div>
-    <%    
+    <%
     ' 0. Instanciar Biblioteca
     Dim json
     Set json = Server.CreateObject("G3JSON")

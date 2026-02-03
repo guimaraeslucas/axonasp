@@ -68,10 +68,10 @@ type ClassDef struct {
 
 // ClassInstance represents an instance of a Class
 type ClassInstance struct {
-	ClassDef           *ClassDef
-	Variables          map[string]interface{}
-	Context            *ExecutionContext
-	executingProps     map[string]bool // Track properties currently being executed to prevent infinite recursion
+	ClassDef       *ClassDef
+	Variables      map[string]interface{}
+	Context        *ExecutionContext
+	executingProps map[string]bool // Track properties currently being executed to prevent infinite recursion
 }
 
 // makeNestedArrayWithBase mirrors ASPVisitor.makeNestedArray but accepts an explicit base.

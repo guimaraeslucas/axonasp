@@ -29,6 +29,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -653,7 +654,7 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 	if rootDir == "" {
 		rootDir = "./www"
 	}
-	
+
 	// Get absolute rootDir
 	absRootDir, err := filepath.Abs(rootDir)
 	if err != nil {
@@ -685,6 +686,18 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 		}
 	}
 	fullPath := filepath.Join(baseDir, cleanPath)
+
+	// Compatibility: if a relative path does not exist from current script dir,
+	// fall back to web root for root-relative style paths used by frameworks.
+	if baseDir != absRootDir && !strings.HasPrefix(cleanPath, "./") && !strings.HasPrefix(cleanPath, "../") {
+		if _, err := os.Stat(fullPath); err != nil {
+			rootPath := filepath.Join(absRootDir, cleanPath)
+			if _, rootErr := os.Stat(rootPath); rootErr == nil {
+				return rootPath
+			}
+		}
+	}
+
 	return fullPath
 }
 
@@ -1257,12 +1270,13 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 
 // ASPVisitor traverses and executes the VBScript AST
 type ASPVisitor struct {
-	context       *ExecutionContext
-	executor      *ASPExecutor
-	depth         int
-	withStack     []interface{}
-	resumeOnError bool
-	forceGlobal   bool // When true, Dim statements define variables in global scope (for ExecuteGlobal)
+	context             *ExecutionContext
+	executor            *ASPExecutor
+	depth               int
+	withStack           []interface{}
+	resumeOnError       bool
+	forceGlobal         bool   // When true, Dim statements define variables in global scope (for ExecuteGlobal)
+	currentFunctionName string // Tracks the current function being executed (for return value assignment)
 }
 
 // NewASPVisitor creates a new ASP visitor for AST traversal
@@ -1426,8 +1440,16 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 
 	// Case 1: Simple variable assignment (Dim x = 5 or x = 5)
 	if ident, ok := stmt.Left.(*ast.Identifier); ok {
-		// Use SetVariableGlobal when forceGlobal is active (ExecuteGlobal context)
-		if v.forceGlobal {
+		// Check if this is a function return value assignment
+		// If we're inside a function and assigning to the function name, use SetVariable (local scope)
+		// even if forceGlobal is true, because the function return variable was defined in local scope
+		if v.currentFunctionName != "" && strings.EqualFold(ident.Name, v.currentFunctionName) {
+			// Function return value - always set in current scope
+			if err := v.context.SetVariable(ident.Name, value); err != nil {
+				return err
+			}
+		} else if v.forceGlobal {
+			// Use SetVariableGlobal when forceGlobal is active (ExecuteGlobal context)
 			if err := v.context.SetVariableGlobal(ident.Name, value); err != nil {
 				return err
 			}
@@ -2772,13 +2794,13 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 						}
 					}
 					//fmt.Printf("[DEBUG] BinaryRead ByRef: count requested=%d\n", count)
-					
+
 					// Call BinaryRead
 					data, err := reqObj.BinaryRead(count)
 					if err != nil {
 						return nil, err
 					}
-					
+
 					// Update the ByRef parameter with actual bytes read
 					actualBytesRead := int64(len(data))
 					//fmt.Printf("[DEBUG] BinaryRead ByRef: actual bytes read=%d\n", actualBytesRead)
@@ -2789,7 +2811,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					} else {
 						//fmt.Printf("[DEBUG] BinaryRead ByRef: argument is NOT an Identifier, type=%T\n", arguments[0])
 					}
-					
+
 					return data, nil
 				}
 			}
@@ -3968,7 +3990,7 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 	// For multipart, we parse to extract text fields but preserve the raw body for BinaryRead
 	contentType := r.Header.Get("Content-Type")
 	isMultipart := strings.HasPrefix(contentType, "multipart/form-data")
-	
+
 	if isMultipart {
 		// For multipart, we need to parse to get form fields but body is already preserved
 		// Restore body for parsing
@@ -4308,7 +4330,7 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
 			//log.Printf("[DEBUG] visitNewExpression: creating instance of %q\n", className)
 			return NewClassInstance(classDef, v.context)
 		}
-		
+
 		// Also support *ast.ClassDeclaration (which is how ExecuteGlobal stores classes)
 		if classDecl, ok := classDefVal.(*ast.ClassDeclaration); ok {
 			// Create a ClassDef from the declaration
@@ -4387,11 +4409,15 @@ func (v *ASPVisitor) NewClassDefFromDecl(stmt *ast.ClassDeclaration) *ClassDef {
 	return classDef
 }
 
-
 // executeFunction executes a user defined function
 func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interface{}) (interface{}, error) {
 	v.context.PushScope()
 	defer v.context.PopScope()
+
+	// Track current function name for return value assignment
+	prevFunctionName := v.currentFunctionName
+	v.currentFunctionName = fn.Identifier.Name
+	defer func() { v.currentFunctionName = prevFunctionName }()
 
 	// Bind parameters
 	for i, param := range fn.Parameters {
@@ -4430,6 +4456,11 @@ func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interfa
 func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, arguments []ast.Expression, visitor *ASPVisitor) (interface{}, error) {
 	v.context.PushScope()
 	defer v.context.PopScope()
+
+	// Track current function name for return value assignment
+	prevFunctionName := v.currentFunctionName
+	v.currentFunctionName = fn.Identifier.Name
+	defer func() { v.currentFunctionName = prevFunctionName }()
 
 	// Map to track ByRef parameters and their original variable names
 	byRefMap := make(map[string]string) // param name -> original var name

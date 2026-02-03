@@ -13,7 +13,7 @@ xml1 = "<root><data>Test</data></root>"
 xmlDoc1.LoadXML(xml1)
 
 Set docElem = xmlDoc1.DocumentElement
-If Not docElem Is Nothing Then
+If docElem Is Not Nothing Then
     Response.Write "DocumentElement NodeName: " & docElem.NodeName & "<br>"
 Else
     Response.Write "ERROR: DocumentElement is Nothing<br>"
@@ -84,7 +84,7 @@ xml5 = "<root><users><user><id>1</id><name>Alice</name></user></users></root>"
 xmlDoc5.LoadXML(xml5)
 
 Set nameNode = xmlDoc5.SelectSingleNode("//name")
-If Not nameNode Is Nothing Then
+If nameNode Is Not Nothing Then
     Response.Write "Found name node: " & nameNode.Text & "<br>"
 Else
     Response.Write "SelectSingleNode returned Nothing<br>"
@@ -111,7 +111,7 @@ End If
 Response.Write "<h3>Test 7: CreateElement</h3>"
 Set xmlDoc7 = Server.CreateObject("MSXML2.DOMDocument")
 Set newElement = xmlDoc7.CreateElement("custom")
-If Not newElement Is Nothing Then
+If newElement Is Not Nothing Then
     Response.Write "Created element: " & newElement.NodeName & "<br>"
     newElement.SetProperty "text", "Custom Content"
     Response.Write "Element content: " & newElement.Text & "<br>"
@@ -122,7 +122,7 @@ End If
 ' ==== Test 8: ServerXMLHTTP Properties ====
 Response.Write "<h3>Test 8: ServerXMLHTTP Object</h3>"
 Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")
-If Not http Is Nothing Then
+If http Is Not Nothing Then
     Response.Write "ServerXMLHTTP object created<br>"
     Response.Write "  ReadyState: " & http.ReadyState & "<br>"
     Response.Write "  Status: " & http.Status & "<br>"

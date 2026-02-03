@@ -431,7 +431,7 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 	}
 
 	r.bytesRead += int64(n)
-	
+
 	// Reset empty read counter when we successfully read data
 	if n > 0 {
 		r.emptyReadCount = 0
@@ -439,7 +439,7 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 		// Track empty reads
 		r.emptyReadCount++
 	}
-	
+
 	//fmt.Printf("[DEBUG] Request.BinaryRead: Returning %d bytes. TotalRead=%d/%d\n", n, r.bytesRead, r.totalBytes)
 	return buffer[:n], nil
 }
