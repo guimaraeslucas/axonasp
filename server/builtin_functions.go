@@ -67,7 +67,17 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return nil, true
 		}
 
+		// Debug: log first 50 chars of code being executed to trace execution flow
+		codePreview := code
+		if len(codePreview) > 50 {
+			codePreview = codePreview[:50] + "..."
+		}
+		codePreview = strings.ReplaceAll(codePreview, "\n", " ")
+		codePreview = strings.ReplaceAll(codePreview, "\r", "")
+		//fmt.Printf("[DEBUG] ExecuteGlobal START: %s (len=%d)\n", codePreview, len(code))
+		
 		// Parse the code
+		//log.Printf("[DEBUG] ExecuteGlobal: about to parse %d bytes\n", len(code))
 		parser := vb.NewParser(code)
 		var program *ast.Program
 		var parseErr error
@@ -81,12 +91,14 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			}()
 			program = parser.Parse()
 		}()
+		//log.Printf("[DEBUG] ExecuteGlobal: parse completed, program=%v, parseErr=%v\n", program != nil, parseErr)
 
 		if program == nil {
 			if parseErr != nil {
 				log.Printf("ExecuteGlobal parse error: %v\n", parseErr)
 				ctx.Err.SetError(parseErr)
 			}
+			fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Parse Error)\n")
 			return nil, true
 		}
 
@@ -96,24 +108,34 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 		// Hoist declarations (Classes, Subs, Functions) before execution to support forward references
 		if ctx.currentExecutor != nil {
+			//log.Printf("[DEBUG] ExecuteGlobal: hoisting declarations for %d statements\n", len(program.Body))
 			ctx.currentExecutor.hoistDeclarations(visitor, program)
+			//log.Printf("[DEBUG] ExecuteGlobal: hoisting completed\n")
+		} else {
+			//log.Printf("[DEBUG] ExecuteGlobal: no currentExecutor, skipping hoisting\n")
 		}
 
+		//log.Printf("[DEBUG] ExecuteGlobal: starting execution of %d statements\n", len(program.Body))
 		for _, stmt := range program.Body {
+			// stmtType := fmt.Sprintf("%T", stmt)
+			// log.Printf("[DEBUG] ExecuteGlobal: executing statement %d/%d: %s\n", i+1, len(program.Body), stmtType)
 			if err := visitor.VisitStatement(stmt); err != nil {
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
 				errMsg := err.Error()
 				if errMsg == "RESPONSE_END" || err == ErrServerTransfer {
-					// Control flow signals should propagate but not be logged as errors
-					return nil, true
+					// Control flow signals should propagate via panic to bypass evalBuiltInFunction signature
+					//fmt.Printf("[DEBUG] ExecuteGlobal END (Control Flow: %s)\n", errMsg)
+					panic(err)
 				}
 				// Log actual execution errors for debugging
 				log.Printf("ExecuteGlobal execution error: %v\n", err)
 				ctx.Err.SetError(err)
 				// Continue execution despite errors (VBScript behavior with On Error Resume Next)
+				fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Exec Error)\n")
 				return nil, true
 			}
 		}
+		//fmt.Printf("[DEBUG] ExecuteGlobal END\n")
 		return nil, true
 
 	case "execute":
@@ -163,14 +185,16 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
 				errMsg := err.Error()
 				if errMsg == "RESPONSE_END" || err == ErrServerTransfer {
-					// Control flow signals should propagate but not be logged as errors
-					return nil, true
+					// Control flow signals should propagate via panic
+					fmt.Printf("[DEBUG] Execute END (Control Flow: %s)\n", errMsg)
+					panic(err)
 				}
 				log.Printf("Execute execution error: %v\n", err)
 				ctx.Err.SetError(err)
 				return nil, true
 			}
 		}
+		fmt.Printf("[DEBUG] Execute END\n")
 		return nil, true
 
 	// Type checking functions
@@ -290,7 +314,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if len(args) == 0 {
 			return 0, true
 		}
-		b := toANSIBytes(toString(args[0]))
+		b := toBinaryBytes(args[0])
 		if len(b) == 0 {
 			return 0, true
 		}
@@ -308,19 +332,20 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return "", true
 		}
 		code := toInt(args[0]) & 0xFF
-		return string([]byte{byte(code)}), true
+		// Return as []byte to preserve binary data
+		return []byte{byte(code)}, true
 
 	case "lenb":
 		if len(args) == 0 {
 			return 0, true
 		}
-		return len(toANSIBytes(toString(args[0]))), true
+		return len(toBinaryBytes(args[0])), true
 
 	case "leftb":
 		if len(args) < 2 {
 			return "", true
 		}
-		bs := toANSIBytes(toString(args[0]))
+		bs := toBinaryBytes(args[0])
 		n := toInt(args[1])
 		if n < 0 {
 			n = 0
@@ -328,13 +353,16 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if n > len(bs) {
 			n = len(bs)
 		}
-		return string(bs[:n]), true
+		// Return []byte to preserve binary data
+		result := make([]byte, n)
+		copy(result, bs[:n])
+		return result, true
 
 	case "rightb":
 		if len(args) < 2 {
 			return "", true
 		}
-		bs := toANSIBytes(toString(args[0]))
+		bs := toBinaryBytes(args[0])
 		n := toInt(args[1])
 		if n < 0 {
 			n = 0
@@ -342,14 +370,17 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if n > len(bs) {
 			n = len(bs)
 		}
-		return string(bs[len(bs)-n:]), true
+		// Return []byte to preserve binary data
+		result := make([]byte, n)
+		copy(result, bs[len(bs)-n:])
+		return result, true
 
 	case "midb":
 		// MidB(string, start [, length]) uses byte positions (1-based)
 		if len(args) < 2 {
 			return "", true
 		}
-		bs := toANSIBytes(toString(args[0]))
+		bs := toBinaryBytes(args[0])
 		start := toInt(args[1])
 		if start < 1 {
 			start = 1
@@ -368,7 +399,10 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				end = start + ln
 			}
 		}
-		return string(bs[start:end]), true
+		// Return []byte to preserve binary data without UTF-8 interpretation
+		result := make([]byte, end-start)
+		copy(result, bs[start:end])
+		return result, true
 
 	case "instrb":
 		// InStrB([start, ]string1, string2[, compare])
@@ -389,20 +423,40 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			str2Idx = 2
 		}
 
-		bs1 := toANSIBytes(toString(args[str1Idx]))
-		bs2 := toANSIBytes(toString(args[str2Idx]))
+		bs1 := toBinaryBytes(args[str1Idx])
+		bs2 := toBinaryBytes(args[str2Idx])
+		
+		// Log less frequently or only for uploader to avoid spam, but for now we need to catch the loop
+		// Only log if searching for the boundary (likely long search) or typical tokens
+		if len(bs2) > 0 {
+			tokenHex := ""
+			if len(bs2) <= 10 {
+				tokenHex = fmt.Sprintf("%x", bs2)
+			} else {
+				tokenHex = fmt.Sprintf("%x...", bs2[:10])
+			}
+			fmt.Printf("[DEBUG] InstrB: start=%d, len(s1)=%d, len(s2)=%d, token=%s\n", startIndex, len(bs1), len(bs2), tokenHex)
+		}
+
 		if len(bs2) == 0 {
 			return startIndex, true
 		}
 		startPos := startIndex - 1
-		if startPos < 0 || startPos >= len(bs1) {
+		if startPos < 0 {
+			startPos = 0
+		}
+		if startPos >= len(bs1) {
+			//fmt.Printf("[DEBUG] InstrB RESULT: 0 (start position %d >= len %d)\n", startPos, len(bs1))
 			return 0, true
 		}
 		idx := bytes.Index(bs1[startPos:], bs2)
 		if idx == -1 {
+			//fmt.Printf("[DEBUG] InstrB RESULT: 0 (token not found after pos %d)\n", startPos)
 			return 0, true
 		}
-		return startPos + idx + 1, true
+		result := startPos + idx + 1
+		//fmt.Printf("[DEBUG] InstrB RESULT: %d\n", result)
+		return result, true
 
 	case "env":
 		// Env(name) - Returns environment variable value
@@ -622,11 +676,12 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 	// String Functions
 	case "len":
-		// LEN(string) - returns length of string
+		// LEN(string) - returns length of string (number of characters)
 		if len(args) == 0 {
 			return 0, true
 		}
-		return len(toString(args[0])), true
+		s := toString(args[0])
+		return len([]rune(s)), true
 
 	case "left":
 		// LEFT(string, length) - returns leftmost characters
@@ -635,13 +690,14 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		s := toString(args[0])
 		n := toInt(args[1])
-		if n > len(s) {
-			n = len(s)
+		runes := []rune(s)
+		if n > len(runes) {
+			n = len(runes)
 		}
 		if n < 0 {
 			n = 0
 		}
-		return s[:n], true
+		return string(runes[:n]), true
 
 	case "right":
 		// RIGHT(string, length) - returns rightmost characters
@@ -650,13 +706,14 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		s := toString(args[0])
 		n := toInt(args[1])
-		if n > len(s) {
-			n = len(s)
+		runes := []rune(s)
+		if n > len(runes) {
+			n = len(runes)
 		}
 		if n < 0 {
 			n = 0
 		}
-		return s[len(s)-n:], true
+		return string(runes[len(runes)-n:]), true
 
 	case "mid":
 		// MID(string, start, [length]) - returns substring
@@ -665,21 +722,25 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		s := toString(args[0])
 		start := toInt(args[1]) - 1 // VBScript is 1-based
-		length := len(s)
-		if len(args) >= 3 {
-			length = toInt(args[2])
-		}
+		runes := []rune(s)
+		
 		if start < 0 {
 			start = 0
 		}
-		if start >= len(s) {
+		if start >= len(runes) {
 			return "", true
 		}
-		end := start + length
-		if end > len(s) {
-			end = len(s)
+		
+		length := len(runes)
+		if len(args) >= 3 {
+			length = toInt(args[2])
 		}
-		return s[start:end], true
+		
+		end := start + length
+		if end > len(runes) {
+			end = len(runes)
+		}
+		return string(runes[start:end]), true
 
 	case "instr":
 		// INSTR([start], string1, string2) - find substring position
@@ -695,47 +756,82 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		} else {
 			return 0, true
 		}
+		
+		runes1 := []rune(s1)
+		
 		if start < 1 {
 			start = 1
 		}
-		if start > len(s1) {
+		if start > len(runes1) {
 			return 0, true
 		}
-		s1Lower := strings.ToLower(s1)
+		
+		// Convert to rune slice for indexing
+		// Note: strings.Index works on bytes, so we need to be careful.
+		// If we use runes, we can implement manual search or convert indices.
+		// Simple implementation with strings.Index requires substring slicing
+		
+		s1Runes := runes1[start-1:]
+		s1Part := string(s1Runes)
 		s2Lower := strings.ToLower(s2)
-		idx := strings.Index(s1Lower[start-1:], s2Lower)
+		s1Lower := strings.ToLower(s1Part)
+		
+		idx := strings.Index(s1Lower, s2Lower)
 		if idx == -1 {
-			// Fallback: scan full string in case of unexpected start math issues
-			fullIdx := strings.Index(s1Lower, s2Lower)
-			if fullIdx == -1 {
-				return 0, true
-			}
-			return fullIdx + 1, true
+			// Fallback: full string search (maybe case issue with slicing?)
+			// Should verify if we need to search whole string
+			return 0, true
 		}
-		return idx + start, true // Return 1-based position
+		
+		// Convert byte index to rune index
+		matchRunes := []rune(s1Part[:idx])
+		return start + len(matchRunes), true
 
 	case "instrrev":
-		// INSTRREV(string, substring, [start]) - find substring from right
+		// INSTRREV(string, substring, [start], [compare]) - find substring from right
+		// start parameter: -1 or omitted means start from end of string
 		if len(args) < 2 {
 			return 0, true
 		}
 		s1 := toString(args[0])
 		s2 := toString(args[1])
-		start := -1
+		
+		runes1 := []rune(s1)
+		
+		// Default: start from end of string
+		start := len(runes1)
 		if len(args) >= 3 {
-			start = toInt(args[2]) - 1 // VBScript is 1-based
+			startArg := toInt(args[2])
+			if startArg == -1 {
+				// -1 means start from end (default behavior)
+				start = len(runes1)
+			} else if startArg > 0 {
+				start = startArg
+			} else {
+				// Invalid start position
+				return 0, true
+			}
 		}
-		if start == -1 {
-			start = len(s1) - 1
+		
+		if start > len(runes1) {
+			start = len(runes1)
 		}
-		if start < 0 || start >= len(s1) {
+		if start < 1 || len(s2) == 0 {
 			return 0, true
 		}
-		idx := strings.LastIndex(strings.ToLower(s1[:start+1]), strings.ToLower(s2))
+		
+		// Search within s1[0:start] (runes)
+		searchInRunes := runes1[:start]
+		searchIn := string(searchInRunes)
+		
+		idx := strings.LastIndex(strings.ToLower(searchIn), strings.ToLower(s2))
 		if idx == -1 {
 			return 0, true
 		}
-		return idx + 1, true // Return 1-based position
+		
+		// Convert byte index to rune index
+		matchRunes := []rune(searchIn[:idx])
+		return len(matchRunes) + 1, true
 
 	case "replace":
 		// REPLACE(string, find, replace, [start], [count], [compare])
@@ -1249,6 +1345,26 @@ func toANSIBytes(s string) []byte {
 	return bs
 }
 
+// toBinaryBytes converts any value to binary bytes for B-functions (MidB, LenB, InstrB, etc.)
+// This preserves raw bytes from []byte without UTF-8 interpretation.
+func toBinaryBytes(val interface{}) []byte {
+	if val == nil {
+		return []byte{}
+	}
+	switch v := val.(type) {
+	case []byte:
+		// Direct pass-through for binary data - no conversion needed
+		return v
+	case string:
+		// For strings, use the raw bytes (Go stores strings as UTF-8 bytes)
+		// But VBScript expects ANSI, so we need to convert properly
+		return toANSIBytes(v)
+	default:
+		// For other types, convert to string first then to bytes
+		return toANSIBytes(toString(val))
+	}
+}
+
 // getTypeName returns the VBScript type name for a value
 func getTypeName(val interface{}) string {
 	if val == nil {
@@ -1268,6 +1384,9 @@ func getTypeName(val interface{}) string {
 		return "Double"
 	case string:
 		return "String"
+	case []byte:
+		// Binary data from Request.BinaryRead
+		return "Byte()"
 	case time.Time:
 		return "Date"
 	case *VBArray:
@@ -1334,6 +1453,9 @@ func getVarType(val interface{}) int {
 		return 5 // vbDouble
 	case string:
 		return 8 // vbString
+	case []byte:
+		// Array of bytes: 8192 (vbArray flag) + 17 (vbByte) = 8209
+		return 8209
 	case time.Time:
 		return 7 // vbDate
 	case *VBArray:

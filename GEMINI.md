@@ -1,5 +1,5 @@
 Quick Instructions for Code Agents (G3Pix AxonASP)
-Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Document only in English. Keep the license reader.
+Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Create, update and keep everything in English. Keep the license reader.
 
 1. Architecture Overview
 Main Server: main.go runs HTTP server on :4050, serving ./www.
@@ -15,20 +15,22 @@ Must use the standard ASP execution context.
 2. Development & Debugging
 Environment: Windows Powershell.
 
-Run: go run main.go.
+Run: go run main.go
 
-Build: go build -o axonasp.exe -> ./axonasp.exe.
+Build: go build -o axonasp.exe -> ./axonasp.exe
 
-Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/tests.
+Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/tests/.
 
 ASP Debugging: Set <% debug_asp_code = "TRUE" %> in the ASP file for HTML stack traces.
 
 Compilation Rule: ALWAYS compile Go code after editing to verify success. Do not compile for pure ASP edits.
 
-3. Coding Standards & Conventions
-Language: STRICT ENGLISH ONLY. Translate any non-English comments/UI/Code and any output or answer immediately.
+Always start the server process in background
 
-VBScript Compatibility: Strict adherence to VBScript and ASP Classic standards.
+3. Coding Standards & Conventions
+Language: *STRICT ENGLISH ONLY.* Translate any non-English comments/UI/Code and any output or answer immediately to English (US).
+
+VBScript Compatibility: *Strict adherence to VBScript and ASP Classic standards.*
 
 Option Compare: Parser honors Option Compare Binary/Text at top of VBScript files; executor applies per-program compare mode (binary vs case-insensitive text) for all string comparisons (including Select Case, =/</> ops).
 
@@ -277,10 +279,14 @@ func (lib *G3NEWLIB) CallMethod(name string, args ...interface{}) interface{} {
 - Return nil for errors (not panic)
 - Use ExecutionContext for path resolution: `ctx.Server_MapPath()`
 - Log errors via existing helpers, not stdout
-- Preserve VBScript type semantics in return values
+- Preserve and keep VBScript type semantics in return values
 - Support both common names and abbreviations (e.g., Read/ReadText)
 - Guard mutable state with mutexes if concurrent access possible
 - Test with both uppercase and mixed-case method calls
+- Always start the server as a background process during development to avoid blocking the terminal
+- Keep ALL the documentation and chat in english.
+- If tests are necessary, try to implement them first in GoLang, then in asp if necessary, as usually the problem is within our GoLang code and not in the asp code.
+- RESX and INC files can't be loaded directly, they need to be loaded throught an asp page always.
 
 7. Pull Request Guidelines
 Update/Create test_*.asp in www/tests/ for every fix/feature.

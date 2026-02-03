@@ -1,0 +1,7 @@
+
+- Server.CreateObject("Scripting.FileSystemObject") não está funcionando
+- GetLastError() did not return the most recent error
+- Implemente Option Explicit adequadamente
+- Implemente adequadamente Err.Number, Err.Description, and Err.Source. Implemente On Error Resume Next. Aproveite e modifique a tela de debug para que mostre o nome do arquivo com erro, não apenas a linha, o horário que isso ocorreu e se em uma página HTML retorne também a StackTrace
+
+http://www.apache-asp.org/config.html#MailAlertTo

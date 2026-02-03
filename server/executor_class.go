@@ -68,9 +68,10 @@ type ClassDef struct {
 
 // ClassInstance represents an instance of a Class
 type ClassInstance struct {
-	ClassDef  *ClassDef
-	Variables map[string]interface{}
-	Context   *ExecutionContext
+	ClassDef           *ClassDef
+	Variables          map[string]interface{}
+	Context            *ExecutionContext
+	executingProps     map[string]bool // Track properties currently being executed to prevent infinite recursion
 }
 
 // makeNestedArrayWithBase mirrors ASPVisitor.makeNestedArray but accepts an explicit base.
@@ -101,9 +102,10 @@ func makeNestedArrayWithBase(base int, dims []int) *VBArray {
 // NewClassInstance creates a new instance and initializes variables
 func NewClassInstance(def *ClassDef, ctx *ExecutionContext) (*ClassInstance, error) {
 	inst := &ClassInstance{
-		ClassDef:  def,
-		Variables: make(map[string]interface{}),
-		Context:   ctx,
+		ClassDef:       def,
+		Variables:      make(map[string]interface{}),
+		Context:        ctx,
+		executingProps: make(map[string]bool),
 	}
 
 	// Initialize variables
@@ -258,11 +260,21 @@ func (ci *ClassInstance) GetMember(name string) (interface{}, bool, error) {
 		return val, true, nil
 	}
 
-	// 2. Check Property Get
+	// 2. Check Property Get - with recursion protection
 	if props, ok := ci.ClassDef.Properties[nameLower]; ok {
 		for _, p := range props {
 			if p.Type == PropGet {
+				// Prevent infinite recursion by checking if we're already executing this property
+				if ci.executingProps == nil {
+					ci.executingProps = make(map[string]bool)
+				}
+				if ci.executingProps[nameLower] {
+					// Already executing this property, return not found to avoid recursion
+					return nil, false, nil
+				}
+				ci.executingProps[nameLower] = true
 				val, err := ci.executeMethod(p.Node, []interface{}{})
+				delete(ci.executingProps, nameLower)
 				return val, true, err
 			}
 		}

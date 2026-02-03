@@ -178,12 +178,16 @@ type RequestObject struct {
 	properties        map[string]interface{}
 
 	// Internal state for BinaryRead
-	httpRequest *http.Request
-	bodyBytes   []byte
-	bodyBuffer  *bytes.Reader
-	totalBytes  int64
-	bytesRead   int64
-	mu          sync.RWMutex
+	httpRequest    *http.Request
+	bodyBytes      []byte
+	bodyBuffer     *bytes.Reader
+	totalBytes     int64
+	bytesRead      int64
+	emptyReadCount int // Track consecutive empty reads to prevent infinite loops
+	mu             sync.RWMutex
+
+	// Reference to Response for emergency termination on infinite loops
+	response *ResponseObject
 }
 
 // NewRequestObject creates a new Request object
@@ -356,9 +360,27 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 // BinaryRead reads binary data from the request body
 // Usage: byteArray = Request.BinaryRead(count)
 // Classic ASP: Once BinaryRead is called, Form collection cannot be accessed
+// Note: To prevent infinite loops in legacy upload code, this tracks consecutive
+// empty reads and terminates script after detecting the pattern
 func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	// fmt.Printf("[DEBUG] Request.BinaryRead: Requested=%d, TotalBytes=%d, BytesRead=%d\n", count, r.totalBytes, r.bytesRead)
+
+	// Check if we've already signaled script termination
+	if r.response != nil && r.response.IsEnded() {
+		return []byte{}, nil
+	}
+
+	// Prevent infinite loop: after multiple consecutive empty reads, terminate script
+	if r.emptyReadCount >= 3 {
+		if r.response != nil {
+			//fmt.Println("[DEBUG] Request.BinaryRead: Infinite loop detected (3 empty reads), ending response.")
+			r.response.End()
+		}
+		return []byte{}, nil
+	}
 
 	if count <= 0 {
 		return []byte{}, nil
@@ -366,7 +388,10 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 
 	// If we haven't read the body yet, read it now
 	if r.bodyBuffer == nil {
-		if r.httpRequest == nil || r.httpRequest.Body == nil {
+		if r.httpRequest == nil {
+			return []byte{}, nil
+		}
+		if r.httpRequest.Body == nil {
 			return []byte{}, nil
 		}
 
@@ -380,6 +405,8 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 		r.bodyBytes = bodyBytes
 		r.bodyBuffer = bytes.NewReader(bodyBytes)
 		r.totalBytes = int64(len(bodyBytes))
+		r.emptyReadCount = 0
+		//fmt.Printf("[DEBUG] Request.BinaryRead: Initialized body buffer. Size=%d bytes\n", r.totalBytes)
 	}
 
 	// Calculate how many bytes to read
@@ -389,6 +416,10 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 	}
 
 	if count <= 0 {
+		// Track consecutive empty reads to detect infinite loop pattern
+		r.emptyReadCount++
+		// After reaching threshold, terminate script on next iteration
+		//fmt.Printf("[DEBUG] Request.BinaryRead: EOF reached (count=%d, remaining=%d). EmptyReadCount=%d\n", count, remaining, r.emptyReadCount)
 		return []byte{}, nil
 	}
 
@@ -400,7 +431,24 @@ func (r *RequestObject) BinaryRead(count int64) ([]byte, error) {
 	}
 
 	r.bytesRead += int64(n)
+	
+	// Reset empty read counter when we successfully read data
+	if n > 0 {
+		r.emptyReadCount = 0
+	} else {
+		// Track empty reads
+		r.emptyReadCount++
+	}
+	
+	//fmt.Printf("[DEBUG] Request.BinaryRead: Returning %d bytes. TotalRead=%d/%d\n", n, r.bytesRead, r.totalBytes)
 	return buffer[:n], nil
+}
+
+// SetResponse links the Response object for emergency termination
+func (r *RequestObject) SetResponse(resp *ResponseObject) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.response = resp
 }
 
 // SetHTTPRequest sets the underlying HTTP request for BinaryRead support
@@ -420,9 +468,58 @@ func (r *RequestObject) SetHTTPRequest(req *http.Request) {
 	}
 }
 
+// PreloadBody pre-populates the body buffer with data that was already read
+// This is used when the body needs to be read before SetHTTPRequest is called
+// (e.g., to preserve it before ParseForm consumes it)
+func (r *RequestObject) PreloadBody(data []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.bodyBytes = data
+	r.bodyBuffer = bytes.NewReader(data)
+	r.totalBytes = int64(len(data))
+	r.bytesRead = 0
+	r.emptyReadCount = 0
+}
+
 // GetTotalBytes returns the total bytes in the request body
 func (r *RequestObject) GetTotalBytes() int64 {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.totalBytes
+}
+
+// RequestBinaryReadWrapper wraps Request.BinaryRead as a callable object
+// This allows Request.BinaryRead(count) to work when the AST is parsed as
+// a MemberExpression followed by a Call expression
+type RequestBinaryReadWrapper struct {
+	reqObj *RequestObject
+}
+
+// GetName returns the name for ASPObject interface
+func (w *RequestBinaryReadWrapper) GetName() string {
+	return "Request.BinaryRead"
+}
+
+// GetProperty returns nil - BinaryRead is a method
+func (w *RequestBinaryReadWrapper) GetProperty(name string) interface{} {
+	return nil
+}
+
+// SetProperty returns error - BinaryRead is read-only
+func (w *RequestBinaryReadWrapper) SetProperty(name string, value interface{}) error {
+	return fmt.Errorf("Request.BinaryRead is a method, not a settable property")
+}
+
+// CallMethod implements the actual BinaryRead call
+func (w *RequestBinaryReadWrapper) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	// When called with empty method name (default call), execute BinaryRead
+	if name == "" && len(args) > 0 {
+		return w.reqObj.CallMethod("binaryread", args...)
+	}
+	// When called with explicit method name
+	if strings.ToLower(name) == "binaryread" || name == "" {
+		return w.reqObj.CallMethod("binaryread", args...)
+	}
+	return nil, fmt.Errorf("unknown method: %s", name)
 }

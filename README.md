@@ -580,13 +580,17 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
+- [ ] Better error handling
+- [ ] FastCGI support
 - [ ] WebSocket support
+- [ ] web.config support
+- [ ] Custom 404 handling
 - [ ] Built-in Redis session storage
 - [ ] Performance monitoring dashboard
 - [ ] Docker official images
 - [ ] Additional database drivers
 - [ ] REST API generator
-- [ ] Hot-reload development mode
+- [ ] OAuth2 authentication library
 
 ---
 

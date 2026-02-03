@@ -273,7 +273,9 @@ Class cls_asplite_uploader
 	    objStream.Open
 	    
 	    ' write bytes into stream
-	    StreamRequest.Position = start+1
+	    ' InstrB returns 1-based position, Stream.Position is 0-based
+	    ' So we subtract 1 to convert from 1-based to 0-based
+	    StreamRequest.Position = start - 1
 	    StreamRequest.CopyTo objStream, length
 	    objStream.Flush
 	    

@@ -159,6 +159,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		if len(args) > 0 {
 			c.ConnectionString = fmt.Sprintf("%v", args[0])
 		}
+		//fmt.Printf("[DEBUG] ADODB.Connection.Open: %s\n", c.ConnectionString)
 		return c.openDatabase()
 
 	case "close":

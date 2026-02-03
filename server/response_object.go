@@ -95,29 +95,22 @@ func NewResponseObject(w http.ResponseWriter, r *http.Request) *ResponseObject {
 
 // ==================== METHODS ====================
 
-// Write outputs content to the HTTP response
-// Usage: Response.Write(data)
-func (r *ResponseObject) Write(data interface{}) error {
+// Write adds content to the response buffer
+func (r *ResponseObject) Write(content interface{}) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.isEnded {
-		return nil
+	str := fmt.Sprintf("%v", content)
+	
+	// Debug log for troubleshooting script output
+	preview := str
+	if len(preview) > 50 {
+		preview = preview[:50] + "..."
 	}
+	preview = strings.ReplaceAll(preview, "\n", "\\n")
+	//fmt.Printf("[DEBUG] Response.Write: %q\n", preview)
 
-	str := r.toString(data)
 	r.buffer = append(r.buffer, []byte(str)...)
-
-	// If buffering is disabled, flush immediately
-	if !r.bufferEnabled {
-		return r.flushInternal()
-	}
-
-	// When buffer grows beyond threshold, flush to start streaming
-	if len(r.buffer) >= responseFlushThreshold {
-		return r.flushInternal()
-	}
-
 	return nil
 }
 

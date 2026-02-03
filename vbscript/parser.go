@@ -713,9 +713,22 @@ func (p *Parser) parsePropertyDeclaration(modifier ast.MethodAccessModifier) ast
 	id := p.parseIdentifier()
 	stmt := ctor(modifier, id)
 
+	// Helper function to get the embedded BasePropertyDeclaration
+	getBaseDecl := func() *ast.BasePropertyDeclaration {
+		switch d := stmt.(type) {
+		case *ast.PropertyGetDeclaration:
+			return &d.BasePropertyDeclaration
+		case *ast.PropertySetDeclaration:
+			return &d.BasePropertyDeclaration
+		case *ast.PropertyLetDeclaration:
+			return &d.BasePropertyDeclaration
+		}
+		return nil
+	}
+
 	if p.optPunctuation(PunctLParen) {
 		if params := p.parseParameterList(); params != nil {
-			if decl, ok := stmt.(*ast.BasePropertyDeclaration); ok {
+			if decl := getBaseDecl(); decl != nil {
 				decl.Parameters = params
 			}
 		}
@@ -731,7 +744,7 @@ func (p *Parser) parsePropertyDeclaration(modifier ast.MethodAccessModifier) ast
 			break
 		}
 
-		if decl, ok := stmt.(*ast.BasePropertyDeclaration); ok {
+		if decl := getBaseDecl(); decl != nil {
 			if p.matchKeyword(KeywordConst) {
 				decl.Body = append(decl.Body, p.parseConstDeclaration(ast.MemberAccessModifierNone))
 			} else {

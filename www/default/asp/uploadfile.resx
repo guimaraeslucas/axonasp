@@ -19,7 +19,7 @@ for each fileKey in Upload.UploadedFiles.keys
 	filename=Upload.UploadedFiles(fileKey).filename
 	
 	'for security reasons, I immediately remove the uploaded files.
-	Upload.UploadedFiles(fileKey).delete()
+	'Upload.UploadedFiles(fileKey).delete()
 	
 next
 

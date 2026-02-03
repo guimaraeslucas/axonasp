@@ -21,7 +21,10 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"log"
 	"math"
 	"math/rand"
 	"net"
@@ -168,6 +171,9 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	// Initialize Server object with context reference
 	ctx.Server = NewServerObjectWithContext(ctx)
 	ctx.Server.SetHttpRequest(r)
+
+	// Link Response to Request for emergency termination on infinite BinaryRead loops
+	ctx.Request.SetResponse(ctx.Response)
 
 	// Built-in VBScript constants (case-insensitive)
 	ctx.constants["vbcrlf"] = "\r\n"
@@ -455,17 +461,18 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	nameLower := lowerKey(name)
 
 	ec.mu.RLock()
-	defer ec.mu.RUnlock()
 
 	// 1. Check local constants (top-down)
 	for i := len(ec.scopeConstStack) - 1; i >= 0; i-- {
 		if val, exists := ec.scopeConstStack[i][nameLower]; exists {
+			ec.mu.RUnlock()
 			return val, true
 		}
 	}
 
 	// 2. Check global constants
 	if val, exists := ec.constants[nameLower]; exists {
+		ec.mu.RUnlock()
 		return val, true
 	}
 
@@ -473,6 +480,7 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	if len(ec.scopeStack) > 0 {
 		currentScope := ec.scopeStack[len(ec.scopeStack)-1]
 		if val, exists := currentScope[nameLower]; exists {
+			ec.mu.RUnlock()
 			return val, true
 		}
 	}
@@ -480,21 +488,34 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	// 4. Check Context Object (Class Member) BEFORE checking parent scopes
 	// This ensures class member variables take precedence over variables from
 	// parent function scopes (preventing shadowing issues)
-	if ec.contextObject != nil {
+	// NOTE: We must release the lock BEFORE calling GetMember/GetProperty because
+	// those can trigger property execution which needs to acquire the lock for PushScope
+	ctxObj := ec.contextObject
+
+	// Release lock before checking context object (may call property getters)
+	ec.mu.RUnlock()
+
+	// Check context object without holding the lock - this is step 4
+	// It must come BEFORE parent scopes and global variables to maintain proper precedence
+	if ctxObj != nil {
 		// Try internal access first (allows Private members)
-		if internal, ok := ec.contextObject.(interface {
+		if internal, ok := ctxObj.(interface {
 			GetMember(string) (interface{}, bool, error)
 		}); ok {
 			if val, found, _ := internal.GetMember(nameLower); found {
 				return val, true
 			}
-		} else if getter, ok := ec.contextObject.(interface{ GetProperty(string) interface{} }); ok {
+		} else if getter, ok := ctxObj.(interface{ GetProperty(string) interface{} }); ok {
 			val := getter.GetProperty(nameLower)
 			if val != nil {
 				return val, true
 			}
 		}
 	}
+
+	// Re-acquire lock to check remaining scopes
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
 
 	// 5. Check parent Local Scopes (excluding the topmost which was checked above)
 	for i := len(ec.scopeStack) - 2; i >= 0; i-- {
@@ -504,8 +525,11 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	}
 
 	// 6. Check Global Variables
-	val, exists := ec.variables[nameLower]
-	return val, exists
+	if val, exists := ec.variables[nameLower]; exists {
+		return val, true
+	}
+
+	return nil, false
 }
 
 // GetVariableFromParentScope gets a variable from the parent scope (for ByRef parameters)
@@ -629,10 +653,16 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 	if rootDir == "" {
 		rootDir = "./www"
 	}
+	
+	// Get absolute rootDir
+	absRootDir, err := filepath.Abs(rootDir)
+	if err != nil {
+		absRootDir = rootDir
+	}
 
 	// Handle different path formats
 	if path == "/" || path == "" {
-		return rootDir
+		return absRootDir
 	}
 
 	cleanPath := strings.ReplaceAll(path, "\\", "/")
@@ -640,14 +670,19 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 	// Absolute virtual path (starts with /) -> root-based
 	if strings.HasPrefix(cleanPath, "/") {
 		cleanPath = strings.TrimPrefix(cleanPath, "/")
-		fullPath := filepath.Join(rootDir, cleanPath)
+		fullPath := filepath.Join(absRootDir, cleanPath)
 		return fullPath
 	}
 
 	// Relative path -> prefer current script directory when available
-	baseDir := rootDir
+	baseDir := absRootDir
 	if ec.CurrentDir != "" {
-		baseDir = ec.CurrentDir
+		absCurrentDir, err := filepath.Abs(ec.CurrentDir)
+		if err == nil {
+			baseDir = absCurrentDir
+		} else {
+			baseDir = ec.CurrentDir
+		}
 	}
 	fullPath := filepath.Join(baseDir, cleanPath)
 	return fullPath
@@ -833,7 +868,7 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	select {
 	case err := <-done:
 		if err != nil {
-			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer {
+			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer || strings.Contains(err.Error(), "runtime panic: RESPONSE_END") {
 				return nil
 			}
 			return err
@@ -1092,6 +1127,7 @@ func (ae *ASPExecutor) hoistDeclarations(v *ASPVisitor, program *ast.Program) {
 	}
 
 	for _, stmt := range program.Body {
+		//log.Printf("[DEBUG] hoistDeclarations: stmt %d is type %T\n", i, stmt)
 		ae.hoistStatement(v, stmt)
 	}
 }
@@ -1101,13 +1137,18 @@ func (ae *ASPExecutor) hoistStatement(v *ASPVisitor, stmt ast.Statement) {
 	switch s := stmt.(type) {
 	case *ast.SubDeclaration:
 		if s != nil && s.Identifier != nil {
+			//log.Printf("[DEBUG] Hoisting Sub: %s\n", s.Identifier.Name)
 			_ = v.context.SetVariable(s.Identifier.Name, s)
 		}
 	case *ast.FunctionDeclaration:
 		if s != nil && s.Identifier != nil {
+			//log.Printf("[DEBUG] Hoisting Function: %s\n", s.Identifier.Name)
 			_ = v.context.SetVariable(s.Identifier.Name, s)
 		}
 	case *ast.ClassDeclaration:
+		if s != nil && s.Identifier != nil {
+			//log.Printf("[DEBUG] Hoisting Class: %s\n", s.Identifier.Name)
+		}
 		_ = v.visitClassDeclaration(s)
 	case *ast.StatementList:
 		for _, inner := range s.Statements {
@@ -1284,7 +1325,7 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	// DEBUG: Trace statement execution
 
-	// fmt.Printf("DEBUG: VisitStatement type=%T\n", node)
+	// log.Printf("DEBUG: VisitStatement type=%T\n", node)
 
 	v.depth++
 
@@ -1809,6 +1850,10 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 
 	if step > 0 {
 		for current <= end {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			_ = v.context.SetVariable(varName, current)
 
 			// Execute body
@@ -1827,6 +1872,10 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 		}
 	} else if step < 0 {
 		for current >= end {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			_ = v.context.SetVariable(varName, current)
 
 			// Execute body
@@ -1865,6 +1914,10 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case *VBArray:
 		// Iterate over VBArray (created by ReDim or Array function)
 		for _, item := range col.Values {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			// Set loop variable
 			_ = v.context.SetVariable(stmt.Identifier.Name, item)
 
@@ -1882,6 +1935,10 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case []interface{}:
 		// Iterate over array
 		for _, item := range col {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			// Set loop variable
 			_ = v.context.SetVariable(stmt.Identifier.Name, item)
 
@@ -1899,6 +1956,10 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case [][]interface{}:
 		// Iterate over 2D array (e.g., from GetRows)
 		for _, row := range col {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			// Convert row to []interface{} for consistency
 			rowInterface := make([]interface{}, len(row))
 			copy(rowInterface, row)
@@ -1920,6 +1981,10 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case map[string]interface{}:
 		// Iterate over map (VBScript dictionary)
 		for key := range col {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			// Set loop variable to key
 			_ = v.context.SetVariable(stmt.Identifier.Name, key)
 
@@ -1938,6 +2003,10 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		// Iterate over Collection (Request.QueryString, Request.Form, etc.)
 		keys := col.GetKeys()
 		for _, key := range keys {
+			// Check if Response.End() was called
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			// Set loop variable to key
 			_ = v.context.SetVariable(stmt.Identifier.Name, key)
 
@@ -1957,6 +2026,10 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		if enumerable, ok := collection.(interface{ Enumeration() []interface{} }); ok {
 			items := enumerable.Enumeration()
 			for _, item := range items {
+				// Check if Response.End() was called
+				if v.context.Response != nil && v.context.Response.IsEnded() {
+					return nil
+				}
 				// Set loop variable
 				_ = v.context.SetVariable(stmt.Identifier.Name, item)
 
@@ -1984,6 +2057,11 @@ func (v *ASPVisitor) visitDo(stmt *ast.DoStatement) error {
 	}
 
 	for {
+		// Check if Response.End() was called - exit loop immediately
+		if v.context.Response != nil && v.context.Response.IsEnded() {
+			return nil
+		}
+
 		// Check pre-test condition if needed
 		if stmt.TestType == ast.ConditionTestTypePreTest {
 			condition, err := v.visitExpression(stmt.Condition)
@@ -2004,6 +2082,10 @@ func (v *ASPVisitor) visitDo(stmt *ast.DoStatement) error {
 
 		// Execute loop body
 		for _, body := range stmt.Body {
+			// Check if Response.End() was called during body execution
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			if err := v.VisitStatement(body); err != nil {
 				// Handle Exit Do
 				if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "do" {
@@ -2042,6 +2124,11 @@ func (v *ASPVisitor) visitWhile(stmt *ast.WhileStatement) error {
 	}
 
 	for {
+		// Check if Response.End() was called - exit loop immediately
+		if v.context.Response != nil && v.context.Response.IsEnded() {
+			return nil
+		}
+
 		condition, err := v.visitExpression(stmt.Condition)
 		if err != nil {
 			return err
@@ -2053,6 +2140,10 @@ func (v *ASPVisitor) visitWhile(stmt *ast.WhileStatement) error {
 
 		// Execute loop body
 		for _, body := range stmt.Body {
+			// Check if Response.End() was called during body execution
+			if v.context.Response != nil && v.context.Response.IsEnded() {
+				return nil
+			}
 			if err := v.VisitStatement(body); err != nil {
 				// Handle Exit While
 				if _, ok := err.(*LoopExitError); ok && err.(*LoopExitError).LoopType == "while" {
@@ -2597,7 +2688,13 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 
 // resolveCall evaluates a call or index expression
 func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
-	// fmt.Printf("DEBUG: resolveCall ENTRY objectExpr=%T\n", objectExpr)
+
+	// Debug: log what we're resolving
+	//if member, ok := objectExpr.(*ast.MemberExpression); ok {
+	//	if ident, ok := member.Object.(*ast.Identifier); ok {
+	//		fmt.Printf("[DEBUG] resolveCall: MemberExpression base=%q property=%q argCount=%d\n", ident.Name, member.Property.Name, len(arguments))
+	//	}
+	//}
 
 	// Evaluate arguments first (we'll need them for built-in function checks)
 	args := make([]interface{}, 0)
@@ -2643,10 +2740,58 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			if member.Property != nil {
 				propName = member.Property.Name
 			}
+			// Debug: log all member expressions on built-in objects
+			//if _, isReq := parentObj.(*RequestObject); isReq {
+			//	log.Printf("[DEBUG] MemberExpression on RequestObject: property=%q, args=%d\n", propName, len(arguments))
+			//}
+			// Log only for debugging specific methods
+			// log.Printf("[DEBUG] resolveCall: MemberExpression parentObj=%T propName=%q\n", parentObj, propName)
 
 			// Class instance methods - PASS EXPRESSIONS for ByRef support
 			if classInst, ok := parentObj.(*ClassInstance); ok {
 				return v.callClassMethodWithRefs(classInst, propName, arguments)
+			}
+
+			// Special handling for Request.BinaryRead with ByRef parameter
+			// In Classic ASP, BinaryRead(count) modifies count to reflect bytes actually read
+			if reqObj, ok := parentObj.(*RequestObject); ok {
+				propNameLower := strings.ToLower(propName)
+				if propNameLower == "binaryread" && len(arguments) > 0 {
+					// Get the count value
+					count := int64(0)
+					if len(args) > 0 {
+						switch c := args[0].(type) {
+						case int:
+							count = int64(c)
+						case int32:
+							count = int64(c)
+						case int64:
+							count = c
+						case float64:
+							count = int64(c)
+						}
+					}
+					//fmt.Printf("[DEBUG] BinaryRead ByRef: count requested=%d\n", count)
+					
+					// Call BinaryRead
+					data, err := reqObj.BinaryRead(count)
+					if err != nil {
+						return nil, err
+					}
+					
+					// Update the ByRef parameter with actual bytes read
+					actualBytesRead := int64(len(data))
+					//fmt.Printf("[DEBUG] BinaryRead ByRef: actual bytes read=%d\n", actualBytesRead)
+					if ident, ok := arguments[0].(*ast.Identifier); ok {
+						// Update the variable with actual bytes read
+						//fmt.Printf("[DEBUG] BinaryRead ByRef: updating variable '%s' to %d\n", ident.Name, actualBytesRead)
+						v.context.SetVariable(ident.Name, actualBytesRead)
+					} else {
+						//fmt.Printf("[DEBUG] BinaryRead ByRef: argument is NOT an Identifier, type=%T\n", arguments[0])
+					}
+					
+					return data, nil
+				}
 			}
 
 			// ASPObject / server-native CallMethod dispatch (no ByRef support needed)
@@ -2976,6 +3121,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					propNameLower := strings.ToLower(propName)
 					switch propNameLower {
 					case "binaryread":
+						log.Printf("[DEBUG] BinaryRead called with %d args\n", len(args))
 						if len(args) > 0 {
 							result, err := reqObj.CallMethod("binaryread", args...)
 							if err != nil {
@@ -3176,6 +3322,34 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		return v.context.Application, nil
 	}
 
+	// Handle RequestObject properties and methods
+	// Must be before generic asp.ASPObject to handle methods like BinaryRead correctly
+	if reqObj, ok := obj.(*RequestObject); ok {
+		propNameLower := strings.ToLower(propName)
+		log.Printf("[DEBUG] visitMemberAccessExpression: RequestObject property=%q\n", propName)
+		switch propNameLower {
+		case "querystring":
+			return reqObj.QueryString, nil
+		case "form":
+			return reqObj.Form, nil
+		case "cookies":
+			return reqObj.Cookies, nil
+		case "servervariables":
+			return reqObj.ServerVariables, nil
+		case "clientcertificate":
+			return reqObj.ClientCertificate, nil
+		case "totalbytes":
+			return reqObj.GetTotalBytes(), nil
+		case "binaryread":
+			// BinaryRead is a method, not a property - return a callable wrapper
+			// This allows Request.BinaryRead(count) to work when parsed as member+call
+			log.Println("[DEBUG] visitMemberAccessExpression: Returning RequestBinaryReadWrapper")
+			return &RequestBinaryReadWrapper{reqObj: reqObj}, nil
+		}
+		// For other properties, use generic GetProperty
+		return reqObj.GetProperty(propName), nil
+	}
+
 	// Handle generic property access
 	if aspObj, ok := obj.(asp.ASPObject); ok {
 		return aspObj.GetProperty(propName), nil
@@ -3364,6 +3538,14 @@ func toString(val interface{}) string {
 		return ""
 	case string:
 		return v
+	case []byte:
+		// Binary data from BinaryRead - convert to string preserving each byte as a rune
+		// This is similar to Latin-1 encoding where each byte maps directly to a Unicode code point
+		runes := make([]rune, len(v))
+		for i, b := range v {
+			runes[i] = rune(b)
+		}
+		return string(runes)
 	case bool:
 		if v {
 			return "True"
@@ -3598,6 +3780,23 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 	case ast.BinaryOperationGreaterOrEqual:
 		return !compareLess(left, right, mode), nil
 	case ast.BinaryOperationConcatenation:
+		// For binary data ([]byte), concatenate bytes directly
+		leftBytes, leftIsBinary := left.([]byte)
+		rightBytes, rightIsBinary := right.([]byte)
+		if leftIsBinary || rightIsBinary {
+			// At least one operand is binary, so treat both as binary
+			if !leftIsBinary {
+				leftBytes = []byte(toString(left))
+			}
+			if !rightIsBinary {
+				rightBytes = []byte(toString(right))
+			}
+			result := make([]byte, len(leftBytes)+len(rightBytes))
+			copy(result, leftBytes)
+			copy(result[len(leftBytes):], rightBytes)
+			return result, nil
+		}
+		// Normal string concatenation
 		return toString(left) + toString(right), nil
 	case ast.BinaryOperationIs:
 		// Is operator for object comparison (checks if same reference)
@@ -3748,12 +3947,39 @@ func isBoolType(val interface{}) bool {
 
 // populateRequestData fills a RequestObject with data from HTTP request
 func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionContext) {
-	// Set the HTTP request for BinaryRead support
-	req.SetHTTPRequest(r)
+	// IMPORTANT: Read and preserve the body BEFORE ParseForm consumes it
+	// This is needed because Classic ASP scripts may use Request.BinaryRead to read raw body
+	var bodyBytes []byte
+	if r.Body != nil && r.ContentLength > 0 {
+		bodyBytes, _ = io.ReadAll(r.Body)
+		r.Body.Close()
+		// Restore body for ParseForm AND for potential BinaryRead later
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	}
 
-	// Parse form data - but skip if multipart (let multipart handlers do it)
-	// Only parse if it's NOT multipart/form-data
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+	// Set the HTTP request for BinaryRead support
+	// Also pre-populate the body buffer so BinaryRead has data to read
+	req.SetHTTPRequest(r)
+	if len(bodyBytes) > 0 {
+		req.PreloadBody(bodyBytes)
+	}
+
+	// Parse form data
+	// For multipart, we parse to extract text fields but preserve the raw body for BinaryRead
+	contentType := r.Header.Get("Content-Type")
+	isMultipart := strings.HasPrefix(contentType, "multipart/form-data")
+	
+	if isMultipart {
+		// For multipart, we need to parse to get form fields but body is already preserved
+		// Restore body for parsing
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		err := r.ParseMultipartForm(32 << 20) // 32MB max memory
+		if err != nil {
+			// Log error but continue - parsing may fail but body is preserved
+		}
+	} else {
+		// For non-multipart, restore body and parse
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 		r.ParseForm()
 	}
 
@@ -3764,29 +3990,26 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 		}
 	}
 
-	// Set form parameters (POST data only) - only for non-multipart
-	// We need to check both PostForm and Form to handle different content types
-	if (r.Method == "POST" || r.Method == "PUT") && !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+	// Set form parameters (POST data only)
+	// For multipart, r.Form contains the text fields (not file fields)
+	// For non-multipart, r.Form contains URL-encoded data
+	if r.Method == "POST" || r.Method == "PUT" {
 		for key, values := range r.Form {
 			// Only add if not in QueryString (to avoid duplicates)
 			if !req.QueryString.Exists(key) && len(values) > 0 {
 				req.Form.Add(key, values[0])
 			}
 		}
-	} else if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
-		// For multipart, parse and extract form fields (but not files)
-		// ParseMultipartForm needs to be called first
-		// But we'll let the app do it. Here we just add regular form fields.
-		// To avoid conflicts, we parse with a reasonable limit
-		if err := r.ParseMultipartForm(32 << 20); err == nil {
-			// Add form fields (non-file fields) to Request.Form
-			for key, values := range r.MultipartForm.Value {
-				if len(values) > 0 && !req.QueryString.Exists(key) {
+		// For multipart, also check r.PostForm which may have additional fields
+		if isMultipart && r.PostForm != nil {
+			for key, values := range r.PostForm {
+				if !req.QueryString.Exists(key) && !req.Form.Exists(key) && len(values) > 0 {
 					req.Form.Add(key, values[0])
 				}
 			}
 		}
 	}
+	// NOTE: The raw body is preserved via PreloadBody() for BinaryRead to work
 
 	// Set cookies
 	for _, cookie := range r.Cookies() {
@@ -4068,6 +4291,7 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
 	// Arg should be Identifier
 	if ident, ok := expr.Argument.(*ast.Identifier); ok {
 		className := ident.Name
+		//log.Printf("[DEBUG] visitNewExpression: looking for class %q\n", className)
 
 		// Lookup ClassDef
 		classDefVal, exists := v.context.GetVariable(className)
@@ -4076,10 +4300,19 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
 			if strings.ToLower(className) == "regexp" {
 				return NewRegExpLibrary(v.context), nil
 			}
+			//log.Printf("[DEBUG] visitNewExpression: class %q not defined\n", className)
 			return nil, fmt.Errorf("class not defined: %s", className)
 		}
 
 		if classDef, ok := classDefVal.(*ClassDef); ok {
+			//log.Printf("[DEBUG] visitNewExpression: creating instance of %q\n", className)
+			return NewClassInstance(classDef, v.context)
+		}
+		
+		// Also support *ast.ClassDeclaration (which is how ExecuteGlobal stores classes)
+		if classDecl, ok := classDefVal.(*ast.ClassDeclaration); ok {
+			// Create a ClassDef from the declaration
+			classDef := v.NewClassDefFromDecl(classDecl)
 			return NewClassInstance(classDef, v.context)
 		}
 
@@ -4088,6 +4321,72 @@ func (v *ASPVisitor) visitNewExpression(expr *ast.NewExpression) (interface{}, e
 
 	return nil, fmt.Errorf("invalid New expression")
 }
+
+// NewClassDefFromDecl converts a ClassDeclaration AST node to a ClassDef runtime object
+func (v *ASPVisitor) NewClassDefFromDecl(stmt *ast.ClassDeclaration) *ClassDef {
+	classDef := &ClassDef{
+		Name:           stmt.Identifier.Name,
+		Variables:      make(map[string]ClassMemberVar),
+		Methods:        make(map[string]*ast.SubDeclaration),
+		Functions:      make(map[string]*ast.FunctionDeclaration),
+		Properties:     make(map[string][]PropertyDef),
+		PrivateMethods: make(map[string]ast.Node),
+	}
+
+	for _, member := range stmt.Members {
+		switch m := member.(type) {
+		case *ast.FieldsDeclaration:
+			vis := VisPublic
+			if m.Modifier == ast.FieldAccessModifierPrivate {
+				vis = VisPrivate
+			}
+			for _, field := range m.Fields {
+				dims := []int{}
+				if len(field.ArrayDims) > 0 {
+					dims = make([]int, len(field.ArrayDims))
+					for i, dimExpr := range field.ArrayDims {
+						dimVal, _ := v.visitExpression(dimExpr)
+						dims[i] = toInt(dimVal)
+					}
+				}
+				classDef.Variables[strings.ToLower(field.Identifier.Name)] = ClassMemberVar{
+					Name:       field.Identifier.Name,
+					Visibility: vis,
+					Dims:       dims,
+					IsDynamic:  field.IsDynamicArray,
+				}
+			}
+		case *ast.SubDeclaration:
+			nameLower := strings.ToLower(m.Identifier.Name)
+			if m.AccessModifier == ast.MethodAccessModifierPrivate {
+				classDef.PrivateMethods[nameLower] = m
+			} else {
+				classDef.Methods[nameLower] = m
+				if m.AccessModifier == ast.MethodAccessModifierPublicDefault {
+					classDef.DefaultMethod = nameLower
+				}
+			}
+		case *ast.FunctionDeclaration:
+			nameLower := strings.ToLower(m.Identifier.Name)
+			if m.AccessModifier == ast.MethodAccessModifierPrivate {
+				classDef.PrivateMethods[nameLower] = m
+			} else {
+				classDef.Functions[nameLower] = m
+				if m.AccessModifier == ast.MethodAccessModifierPublicDefault {
+					classDef.DefaultMethod = nameLower
+				}
+			}
+		case *ast.PropertyGetDeclaration:
+			v.addPropertyDef(classDef, m.Identifier.Name, PropGet, m, m.AccessModifier)
+		case *ast.PropertyLetDeclaration:
+			v.addPropertyDef(classDef, m.Identifier.Name, PropLet, m, m.AccessModifier)
+		case *ast.PropertySetDeclaration:
+			v.addPropertyDef(classDef, m.Identifier.Name, PropSet, m, m.AccessModifier)
+		}
+	}
+	return classDef
+}
+
 
 // executeFunction executes a user defined function
 func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interface{}) (interface{}, error) {

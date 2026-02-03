@@ -84,6 +84,24 @@ func (d *Dictionary) GetProperty(name string) interface{} {
 		return int64(len(d.store))
 	case "comparemode":
 		return int64(d.compareMode)
+	case "keys":
+		// Keys can be accessed as a property or method in VBScript
+		// Return a copy of keys array without releasing the lock
+		keys := make([]interface{}, 0, len(d.order))
+		for _, k := range d.order {
+			keys = append(keys, k)
+		}
+		return keys
+	case "items":
+		// Items can be accessed as a property or method in VBScript
+		// Return a copy of items array without releasing the lock
+		items := make([]interface{}, 0, len(d.order))
+		for _, k := range d.order {
+			if v, exists := d.store[k]; exists {
+				items = append(items, v)
+			}
+		}
+		return items
 	default:
 		return nil
 	}
@@ -143,6 +161,7 @@ func (d *Dictionary) Add(args []interface{}) interface{} {
 	defer d.mutex.Unlock()
 
 	key := d.keyToString(args[0])
+	//fmt.Printf("[DEBUG] Dictionary.Add: Key=%s\n", key)
 	if _, exists := d.store[key]; !exists {
 		d.order = append(d.order, key)
 	}
@@ -171,12 +190,25 @@ func (d *Dictionary) Item(args []interface{}) interface{} {
 	}
 
 	d.mutex.RLock()
-	defer d.mutex.RUnlock()
-
+	// Check existence first with read lock
 	key := d.keyToString(args[0])
 	value, exists := d.store[key]
+	d.mutex.RUnlock()
+
 	if !exists {
-		return nil
+		// VBScript behavior: Accessing a non-existent key adds it with Empty value
+		// We need to upgrade to write lock
+		d.mutex.Lock()
+		defer d.mutex.Unlock()
+		
+		// Double check
+		if val, ok := d.store[key]; ok {
+			return val
+		}
+		
+		d.order = append(d.order, key)
+		d.store[key] = "" // Empty value (string or interface{}?) usually Empty. "" is safe for concatenation.
+		return ""
 	}
 	return value
 }
@@ -218,14 +250,16 @@ func (d *Dictionary) Keys(args []interface{}) interface{} {
 	return keys
 }
 
-// Items returns all values from the Dictionary
+// Items returns all values from the Dictionary in insertion order
 func (d *Dictionary) Items(args []interface{}) interface{} {
 	d.mutex.RLock()
 	defer d.mutex.RUnlock()
 
-	items := make([]interface{}, 0, len(d.store))
-	for _, v := range d.store {
-		items = append(items, v)
+	items := make([]interface{}, 0, len(d.order))
+	for _, k := range d.order {
+		if v, exists := d.store[k]; exists {
+			items = append(items, v)
+		}
 	}
 	return items
 }
