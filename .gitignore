@@ -14,3 +14,4 @@ TODO
 # OS generated files #
 temp/session/
 .DS_Store
+Thumbs.db

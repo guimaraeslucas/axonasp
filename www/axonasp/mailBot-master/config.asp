@@ -1,0 +1,3 @@
+<%
+const adminpassword="admin"
+%>
