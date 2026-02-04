@@ -226,12 +226,10 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 				return nil
 			}
 
-			// Materialize the OLE recordset immediately to avoid cross-thread COM access
 			if result != nil {
 				oleRs := result.ToIDispatch()
-				materialized := NewADODBRecordset(c.ctx)
-				if populateRecordsetFromOLE(oleRs, materialized) {
-					return &ADORecordset{lib: materialized}
+				if oleRs != nil {
+					return NewADOOLERecordset(NewADODBOLERecordset(oleRs, c.ctx))
 				}
 			}
 			return nil
@@ -528,6 +526,48 @@ func (f *Field) CallMethod(name string, args ...interface{}) (interface{}, error
 	return nil, nil
 }
 
+// OLEFieldProxy provides field access for OLE recordsets without holding COM references.
+// It resolves the field value dynamically via the parent recordset.
+type OLEFieldProxy struct {
+	recordset *ADODBOLERecordset
+	name      string
+}
+
+func (f *OLEFieldProxy) GetName() string {
+	return "Field"
+}
+
+func (f *OLEFieldProxy) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "name":
+		return f.name
+	case "value":
+		if f.recordset == nil {
+			return nil
+		}
+		value, _ := f.recordset.getFieldValue(f.name)
+		return value
+	}
+	return nil
+}
+
+func (f *OLEFieldProxy) SetProperty(name string, value interface{}) error {
+	switch strings.ToLower(name) {
+	case "value":
+		if f.recordset != nil {
+			_ = f.recordset.setFieldValue(f.name, value)
+		}
+	}
+	return nil
+}
+
+func (f *OLEFieldProxy) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	if strings.ToLower(name) == "" {
+		return f.GetProperty("value"), nil
+	}
+	return nil, nil
+}
+
 // FieldsCollection holds a collection of Field objects
 // Implements asp.ASPObject interface for VBScript compatibility
 type FieldsCollection struct {
@@ -641,6 +681,7 @@ type ADODBRecordset struct {
 	ActiveConnection interface{} // Stored connection for later use
 	CursorType       int         // Cursor type
 	LockType         int         // Lock type
+	oleRecordset     *ADODBOLERecordset
 }
 
 // NewADODBRecordset creates a new recordset
@@ -661,6 +702,9 @@ func NewADODBRecordset(ctx *ExecutionContext) *ADODBRecordset {
 }
 
 func (rs *ADODBRecordset) GetProperty(name string) interface{} {
+	if rs.oleRecordset != nil {
+		return rs.oleRecordset.GetProperty(name)
+	}
 	nameLower := strings.ToLower(name)
 	switch nameLower {
 	case "eof":
@@ -695,7 +739,16 @@ func (rs *ADODBRecordset) GetProperty(name string) interface{} {
 }
 
 func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
-	switch strings.ToLower(name) {
+	nameLower := strings.ToLower(name)
+	if nameLower == "activeconnection" {
+		rs.ActiveConnection = value
+		return
+	}
+	if rs.oleRecordset != nil {
+		rs.oleRecordset.SetProperty(name, value)
+		return
+	}
+	switch nameLower {
 	case "activeconnection":
 		rs.ActiveConnection = value
 	case "cursortype":
@@ -736,6 +789,17 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 
 func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
+	if rs.oleRecordset != nil && method != "open" {
+		if method == "close" {
+			rs.oleRecordset.CallMethod("close")
+			rs.oleRecordset = nil
+			rs.State = 0
+			rs.EOF = true
+			rs.BOF = true
+			return nil
+		}
+		return rs.oleRecordset.CallMethod(name, args...)
+	}
 
 	// Handle default method (empty name) - returns field VALUE, not Field object
 	if method == "" && len(args) > 0 {
@@ -791,6 +855,9 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		if conn == nil {
 			fmt.Println("[DEBUG] Warning: ADODBRecordset.Open called without connection")
 			return nil
+		}
+		if conn.oleConnection != nil {
+			return rs.openOLERecordset(args, conn)
 		}
 		//fmt.Printf("[DEBUG] Recordset.Open calling openRecordset with conn state=%d\n", conn.State)
 
@@ -984,25 +1051,6 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 	}
 	//fmt.Printf("[DEBUG] openRecordset: SQL=%s, conn.oleConnection=%v, conn.db=%v\n", sqlPreview, conn.oleConnection != nil, conn.db != nil)
 
-	// Try OLE connection first (for Access databases)
-	if conn.oleConnection != nil {
-		// Use the stored OLE connection to execute a query and get a recordset
-		result, err := oleutil.CallMethod(conn.oleConnection, "Execute", sqlStr)
-		if err != nil {
-			fmt.Printf("Warning: ADODBRecordset.Open OLE Execute failed: %v\n", err)
-			return nil
-		}
-
-		if result != nil {
-			oleRs := result.ToIDispatch()
-			if populateRecordsetFromOLE(oleRs, rs) {
-				//fmt.Printf("[DEBUG] openRecordset OLE: loaded %d records, EOF=%v\n", len(rs.allData), rs.EOF)
-				return nil
-			}
-		}
-		return nil
-	}
-
 	// Use SQL driver connection
 	if conn.db == nil {
 		return nil
@@ -1061,6 +1109,63 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 		rs.EOF = true
 		rs.BOF = true
 	}
+	return nil
+}
+
+func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnection) interface{} {
+	if conn == nil || conn.oleConnection == nil {
+		return nil
+	}
+
+	if rs.oleRecordset != nil {
+		rs.oleRecordset.CallMethod("close")
+		rs.oleRecordset = nil
+	}
+
+	unknown, err := oleutil.CreateObject("ADODB.Recordset")
+	if err != nil {
+		return nil
+	}
+	defer unknown.Release()
+
+	disp, err := unknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return nil
+	}
+
+	openArgs := make([]interface{}, 0, len(args)+1)
+	if len(args) > 0 {
+		openArgs = append(openArgs, args[0])
+	}
+	if len(args) >= 2 {
+		switch args[1].(type) {
+		case *ADODBConnection, *ADOConnection:
+			openArgs = append(openArgs, conn.oleConnection)
+		default:
+			openArgs = append(openArgs, args[1])
+		}
+	} else {
+		openArgs = append(openArgs, conn.oleConnection)
+	}
+	if len(args) >= 3 {
+		openArgs = append(openArgs, args[2])
+	}
+	if len(args) >= 4 {
+		openArgs = append(openArgs, args[3])
+	}
+	if len(args) >= 5 {
+		openArgs = append(openArgs, args[4])
+	}
+
+	if _, err = oleutil.CallMethod(disp, "Open", openArgs...); err != nil {
+		disp.Release()
+		return nil
+	}
+
+	rs.oleRecordset = NewADODBOLERecordset(disp, rs.ctx)
+	rs.State = 1
+	rs.EOF = false
+	rs.BOF = false
 	return nil
 }
 
@@ -1616,6 +1721,67 @@ func NewADODBOLERecordset(oleRs *ole.IDispatch, ctx *ExecutionContext) *ADODBOLE
 	}
 }
 
+func (rs *ADODBOLERecordset) getFieldValue(fieldName interface{}) (interface{}, bool) {
+	if rs.oleRecordset == nil {
+		return nil, false
+	}
+	fieldsResult, err := oleutil.GetProperty(rs.oleRecordset, "Fields")
+	if err != nil {
+		return nil, false
+	}
+	fieldsDisp := fieldsResult.ToIDispatch()
+	if fieldsDisp == nil {
+		return nil, false
+	}
+	defer fieldsDisp.Release()
+
+	fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", fieldName)
+	if err != nil {
+		return nil, false
+	}
+	fieldDisp := fieldResult.ToIDispatch()
+	if fieldDisp == nil {
+		return nil, false
+	}
+	defer fieldDisp.Release()
+
+	valueResult, err := oleutil.GetProperty(fieldDisp, "Value")
+	if err != nil {
+		return nil, false
+	}
+	return valueResult.Value(), true
+}
+
+func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interface{}) bool {
+	if rs.oleRecordset == nil {
+		return false
+	}
+	fieldsResult, err := oleutil.GetProperty(rs.oleRecordset, "Fields")
+	if err != nil {
+		return false
+	}
+	fieldsDisp := fieldsResult.ToIDispatch()
+	if fieldsDisp == nil {
+		return false
+	}
+	defer fieldsDisp.Release()
+
+	fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", fieldName)
+	if err != nil {
+		return false
+	}
+	fieldDisp := fieldResult.ToIDispatch()
+	if fieldDisp == nil {
+		return false
+	}
+	defer fieldDisp.Release()
+
+	if _, err := oleutil.PutProperty(fieldDisp, "Value", value); err != nil {
+		return false
+	}
+	return true
+}
+
 func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
 	if rs.oleRecordset == nil {
 		return nil
@@ -1649,7 +1815,7 @@ func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
 			fieldsDisp := result.ToIDispatch()
 			if fieldsDisp != nil {
 				// Return the ASPLibrary wrapper, not the raw OLE object
-				return NewADOOLEFields(NewADODBOLEFields(fieldsDisp))
+				return NewADOOLEFields(NewADODBOLEFields(fieldsDisp, rs))
 			} else {
 				return nil
 			}
@@ -1696,6 +1862,8 @@ func (rs *ADODBOLERecordset) SetProperty(name string, value interface{}) {
 		oleutil.PutProperty(rs.oleRecordset, "AbsolutePage", value)
 	case "absoluteposition":
 		oleutil.PutProperty(rs.oleRecordset, "AbsolutePosition", value)
+	default:
+		_ = rs.setFieldValue(name, value)
 	}
 }
 
@@ -1711,6 +1879,10 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 	}()
 
 	method := strings.ToLower(name)
+	if method == "" && len(args) > 0 {
+		value, _ := rs.getFieldValue(args[0])
+		return value
+	}
 
 	switch method {
 	case "fields":
@@ -1723,6 +1895,7 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 			}
 			fieldsDisp := result.ToIDispatch()
 			if fieldsDisp != nil {
+				defer fieldsDisp.Release()
 				// Get the field by name/index
 				fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", args[0])
 				if err != nil {
@@ -1731,21 +1904,14 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 				}
 				fieldDisp := fieldResult.ToIDispatch()
 				if fieldDisp != nil {
+					defer fieldDisp.Release()
 					nameResult, nameErr := oleutil.GetProperty(fieldDisp, "Name")
-					valueResult, valueErr := oleutil.GetProperty(fieldDisp, "Value")
-					if nameErr != nil && valueErr != nil {
-						fmt.Printf("Error> ADODB.Recordset CallMethod Fields Item Name/Value error: %s / %s\n", nameErr, valueErr)
+					if nameErr != nil {
+						fmt.Printf("Error> ADODB.Recordset CallMethod Fields Item Name error: %s\n", nameErr)
 						return nil
 					}
-					fieldName := ""
-					if nameErr == nil {
-						fieldName = nameResult.ToString()
-					}
-					fieldValue := interface{}(nil)
-					if valueErr == nil {
-						fieldValue = valueResult.Value()
-					}
-					return &Field{Name: fieldName, Value: fieldValue}
+					fieldName := nameResult.ToString()
+					return &OLEFieldProxy{recordset: rs, name: fieldName}
 				}
 			}
 		}
@@ -1828,6 +1994,7 @@ func (rs *ADODBOLERecordset) getRows(args []interface{}) interface{} {
 	if fieldsDisp == nil {
 		return [][]interface{}{}
 	}
+	defer fieldsDisp.Release()
 
 	countResult, err := oleutil.GetProperty(fieldsDisp, "Count")
 	if err != nil {
@@ -1884,6 +2051,7 @@ func (rs *ADODBOLERecordset) getRows(args []interface{}) interface{} {
 				} else {
 					rowData[i] = nil
 				}
+				fieldDisp.Release()
 			}
 		}
 		allRows = append(allRows, rowData)
@@ -1920,12 +2088,14 @@ func (rs *ADODBOLERecordset) getRows(args []interface{}) interface{} {
 // ADODBOLEFields wraps an OLE/COM Fields collection
 type ADODBOLEFields struct {
 	oleFields *ole.IDispatch
+	parent    *ADODBOLERecordset
 }
 
 // NewADODBOLEFields creates a new OLE fields wrapper
-func NewADODBOLEFields(oleFields *ole.IDispatch) *ADODBOLEFields {
+func NewADODBOLEFields(oleFields *ole.IDispatch, parent *ADODBOLERecordset) *ADODBOLEFields {
 	return &ADODBOLEFields{
 		oleFields: oleFields,
+		parent:    parent,
 	}
 }
 
@@ -1960,20 +2130,13 @@ func (f *ADODBOLEFields) GetProperty(name string) interface{} {
 		}
 		fieldDisp := result.ToIDispatch()
 		if fieldDisp != nil {
+			defer fieldDisp.Release()
 			nameResult, nameErr := oleutil.GetProperty(fieldDisp, "Name")
-			valueResult, valueErr := oleutil.GetProperty(fieldDisp, "Value")
-			if nameErr != nil && valueErr != nil {
+			if nameErr != nil {
 				return nil
 			}
-			fieldName := ""
-			if nameErr == nil {
-				fieldName = nameResult.ToString()
-			}
-			fieldValue := interface{}(nil)
-			if valueErr == nil {
-				fieldValue = valueResult.Value()
-			}
-			return &Field{Name: fieldName, Value: fieldValue}
+			fieldName := nameResult.ToString()
+			return &OLEFieldProxy{recordset: f.parent, name: fieldName}
 		}
 	}
 	return nil
@@ -2002,20 +2165,13 @@ func (f *ADODBOLEFields) CallMethod(name string, args ...interface{}) interface{
 			}
 			fieldDisp := result.ToIDispatch()
 			if fieldDisp != nil {
+				defer fieldDisp.Release()
 				nameResult, nameErr := oleutil.GetProperty(fieldDisp, "Name")
-				valueResult, valueErr := oleutil.GetProperty(fieldDisp, "Value")
-				if nameErr != nil && valueErr != nil {
+				if nameErr != nil {
 					return nil
 				}
-				fieldName := ""
-				if nameErr == nil {
-					fieldName = nameResult.ToString()
-				}
-				fieldValue := interface{}(nil)
-				if valueErr == nil {
-					fieldValue = valueResult.Value()
-				}
-				return &Field{Name: fieldName, Value: fieldValue}
+				fieldName := nameResult.ToString()
+				return &OLEFieldProxy{recordset: f.parent, name: fieldName}
 			}
 		}
 		return nil
