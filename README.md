@@ -467,16 +467,6 @@ axonasp/
 
 ---
 
-## 🧪 Testing
-
-Test files are available in the `www/tests/` directory. Access them via:
-
-```
-http://localhost:4050/tests/test_basics.asp
-http://localhost:4050/tests/test_custom_functions.asp
-http://localhost:4050/tests/test_database.asp
-```
-
 ### Enable ASP Debugging
 
 In `.env`:
@@ -600,6 +590,7 @@ Special thanks to:
 - The Go community for an amazing language and ecosystem
 - Classic ASP developers who keep legacy applications running
 - Contributors and testers who help improve G3Pix AxonASP =)
+- Pieter Cooreman (@PieterCooreman) for the help with real ASP code and bug checks
 
 ---
 

@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	// "runtime" // only needed for debug stack traces
 	"strconv"
 	"strings"
 	"sync"
@@ -125,6 +126,10 @@ type ExecutionContext struct {
 
 	// Session tracking
 	isNewSession bool
+
+	// Cancellation support for timeout handling
+	cancelChan chan struct{}
+	cancelled  bool
 }
 
 // NewExecutionContext creates a new execution context
@@ -167,6 +172,8 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		isNewSession:   isNew,
 		compareMode:    ast.OptionCompareBinary,
 		optionBase:     0,
+		cancelChan:     make(chan struct{}),
+		cancelled:      false,
 	}
 
 	// Initialize Server object with context reference
@@ -461,6 +468,11 @@ func (ec *ExecutionContext) DefineVariableGlobal(name string, value interface{})
 func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	nameLower := lowerKey(name)
 
+	// Debug for rs
+	if nameLower == "rs" {
+		//fmt.Printf("[DEBUG] GetVariable(rs) called, scopeStack depth=%d\n", len(ec.scopeStack))
+	}
+
 	ec.mu.RLock()
 
 	// 1. Check local constants (top-down)
@@ -481,6 +493,9 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	if len(ec.scopeStack) > 0 {
 		currentScope := ec.scopeStack[len(ec.scopeStack)-1]
 		if val, exists := currentScope[nameLower]; exists {
+			if nameLower == "rs" {
+				//fmt.Printf("[DEBUG] GetVariable(rs): found in current scope, val=%T\n", val)
+			}
 			ec.mu.RUnlock()
 			return val, true
 		}
@@ -521,15 +536,24 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	// 5. Check parent Local Scopes (excluding the topmost which was checked above)
 	for i := len(ec.scopeStack) - 2; i >= 0; i-- {
 		if val, exists := ec.scopeStack[i][nameLower]; exists {
+			if nameLower == "rs" {
+				//fmt.Printf("[DEBUG] GetVariable(rs): found in parent scope[%d], val=%T\n", i, val)
+			}
 			return val, true
 		}
 	}
 
 	// 6. Check Global Variables
 	if val, exists := ec.variables[nameLower]; exists {
+		if nameLower == "rs" {
+			//fmt.Printf("[DEBUG] GetVariable(rs): found in globals, val=%T\n", val)
+		}
 		return val, true
 	}
 
+	if nameLower == "rs" {
+		//fmt.Printf("[DEBUG] GetVariable(rs): NOT FOUND!\n")
+	}
 	return nil, false
 }
 
@@ -646,6 +670,42 @@ func (ec *ExecutionContext) CheckTimeout() error {
 		return fmt.Errorf("execution timeout exceeded (%v)", ec.timeout)
 	}
 	return nil
+}
+
+// IsCancelled checks if execution has been cancelled (e.g., due to timeout)
+func (ec *ExecutionContext) IsCancelled() bool {
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+	return ec.cancelled
+}
+
+// Cancel signals all goroutines to stop execution
+func (ec *ExecutionContext) Cancel() {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	if !ec.cancelled {
+		ec.cancelled = true
+		close(ec.cancelChan)
+	}
+}
+
+// ShouldStop checks if execution should stop (cancelled, timed out, or response ended)
+func (ec *ExecutionContext) ShouldStop() bool {
+	// Check cancellation first (non-blocking)
+	select {
+	case <-ec.cancelChan:
+		return true
+	default:
+	}
+	// Check if Response.End() was called
+	if ec.Response != nil && ec.Response.IsEnded() {
+		return true
+	}
+	// Check timeout
+	if time.Since(ec.startTime) > ec.timeout {
+		return true
+	}
+	return false
 }
 
 // Server_MapPath converts a virtual path to an absolute file system path
@@ -887,6 +947,8 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 			return err
 		}
 	case <-time.After(timeout):
+		// Cancel the execution context to signal the goroutine to stop
+		ae.context.Cancel()
 		return fmt.Errorf("script execution timeout (>%d seconds)", ae.config.ScriptTimeout)
 	}
 
@@ -1021,15 +1083,8 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 	ae.hoistAllPrograms(result)
 
 	for i, block := range result.Blocks {
-		// Check timeout periodically
-		if i%100 == 0 {
-			if err := ae.context.CheckTimeout(); err != nil {
-				return err
-			}
-		}
-
-		// Check if Response.End() was already called (which should stop all further execution)
-		if ae.context.Response != nil && ae.context.Response.IsEnded() {
+		// Check if execution should stop (cancelled, timed out, or Response.End)
+		if ae.context.ShouldStop() {
 			return nil
 		}
 
@@ -1087,13 +1142,8 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 				continue
 			}
 
-			// Check timeout
-			if err := ae.context.CheckTimeout(); err != nil {
-				return err
-			}
-
-			// Check if Response.End() was already called (which should stop execution)
-			if ae.context.Response != nil && ae.context.Response.IsEnded() {
+			// Check if execution should stop (cancelled, timed out, or Response.End)
+			if ae.context.ShouldStop() {
 				return fmt.Errorf("RESPONSE_END")
 			}
 
@@ -1223,6 +1273,7 @@ func stripDirectivesAndComments(content string) string {
 // CreateObject creates an ASP COM object (like Server.CreateObject)
 func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	objType = strings.ToUpper(objType)
+	//fmt.Printf("[DEBUG] CreateObject called: %s\n", objType)
 
 	switch objType {
 	// G3 Custom Libraries
@@ -1337,6 +1388,11 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 
 	}
 
+	// Check if execution should stop (cancelled, timed out, or Response.End)
+	if v.context.ShouldStop() {
+		return fmt.Errorf("RESPONSE_END")
+	}
+
 	// DEBUG: Trace statement execution
 
 	// log.Printf("DEBUG: VisitStatement type=%T\n", node)
@@ -1352,8 +1408,17 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 	case *ast.AssignmentStatement:
 		return v.handleStatementError(v.visitAssignment(stmt))
 	case *ast.CallStatement:
-		_, err := v.visitExpression(stmt.Callee)
-		return v.handleStatementError(err)
+		// Handle implicit sub calls (e.g., obj.MoveNext without parentheses)
+		// When the callee already carries arguments (IndexOrCall/WithMemberAccess),
+		// evaluating the expression triggers the call; otherwise force a zero-arg call.
+		switch stmt.Callee.(type) {
+		case *ast.IndexOrCallExpression, *ast.WithMemberAccessExpression:
+			_, err := v.visitExpression(stmt.Callee)
+			return v.handleStatementError(err)
+		default:
+			_, err := v.resolveCall(stmt.Callee, []ast.Expression{})
+			return v.handleStatementError(err)
+		}
 	case *ast.CallSubStatement:
 		return v.handleStatementError(v.visitCallSubStatement(stmt))
 	case *ast.ReDimStatement:
@@ -1436,6 +1501,14 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		return err
 	}
 
+	// Debug: log specific variable assignments
+	if ident, ok := stmt.Left.(*ast.Identifier); ok {
+		nameLower := strings.ToLower(ident.Name)
+		if nameLower == "plugins" {
+			fmt.Printf("[DEBUG] visitAssignment: setting plugins = %T (%v)\n", value, value)
+		}
+	}
+
 	// Handle different left-hand side patterns
 
 	// Case 1: Simple variable assignment (Dim x = 5 or x = 5)
@@ -1444,6 +1517,7 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 		// If we're inside a function and assigning to the function name, use SetVariable (local scope)
 		// even if forceGlobal is true, because the function return variable was defined in local scope
 		if v.currentFunctionName != "" && strings.EqualFold(ident.Name, v.currentFunctionName) {
+			//fmt.Printf("[DEBUG] Function return assignment: %s = %v (type: %T)\n", ident.Name, value, value)
 			// Function return value - always set in current scope
 			if err := v.context.SetVariable(ident.Name, value); err != nil {
 				return err
@@ -1779,6 +1853,17 @@ func (v *ASPVisitor) visitIf(stmt *ast.IfStatement) error {
 		return err
 	}
 
+	// Debug: log specific if conditions involving "plugins is nothing"
+	if binaryExpr, ok := stmt.Test.(*ast.BinaryExpression); ok {
+		if binaryExpr.Operation == ast.BinaryOperationIs {
+			if ident, ok := binaryExpr.Left.(*ast.Identifier); ok {
+				if strings.EqualFold(ident.Name, "plugins") {
+					fmt.Printf("[DEBUG] visitIf: 'plugins is nothing' condition=%v, isTruthy=%v, consequent=%T\n", condition, isTruthy(condition), stmt.Consequent)
+				}
+			}
+		}
+	}
+
 	// Convert condition to boolean
 	if isTruthy(condition) {
 		// Execute consequent block
@@ -1845,6 +1930,9 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 		return nil
 	}
 
+	// DEBUG: Log visitFor entry
+	//fmt.Printf("[DEBUG] visitFor: varName=%s\n", varName)
+
 	// Evaluate From and To
 	from, err := v.visitExpression(stmt.From)
 	if err != nil {
@@ -1855,6 +1943,9 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 	if err != nil {
 		return err
 	}
+
+	// DEBUG: Log from/to values
+	//fmt.Printf("[DEBUG] visitFor: from=%v, to=%v\n", from, to)
 
 	// Evaluate Step (default 1)
 	step := 1.0
@@ -1872,8 +1963,8 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 
 	if step > 0 {
 		for current <= end {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop (cancelled, timed out, or Response.End)
+			if v.context.ShouldStop() {
 				return nil
 			}
 			_ = v.context.SetVariable(varName, current)
@@ -1894,8 +1985,8 @@ func (v *ASPVisitor) visitFor(stmt *ast.ForStatement) error {
 		}
 	} else if step < 0 {
 		for current >= end {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop (cancelled, timed out, or Response.End)
+			if v.context.ShouldStop() {
 				return nil
 			}
 			_ = v.context.SetVariable(varName, current)
@@ -1936,8 +2027,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case *VBArray:
 		// Iterate over VBArray (created by ReDim or Array function)
 		for _, item := range col.Values {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop (cancelled, timed out, or Response.End)
+			if v.context.ShouldStop() {
 				return nil
 			}
 			// Set loop variable
@@ -1957,8 +2048,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case []interface{}:
 		// Iterate over array
 		for _, item := range col {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop
+			if v.context.ShouldStop() {
 				return nil
 			}
 			// Set loop variable
@@ -1978,8 +2069,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case [][]interface{}:
 		// Iterate over 2D array (e.g., from GetRows)
 		for _, row := range col {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop
+			if v.context.ShouldStop() {
 				return nil
 			}
 			// Convert row to []interface{} for consistency
@@ -2003,8 +2094,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 	case map[string]interface{}:
 		// Iterate over map (VBScript dictionary)
 		for key := range col {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop
+			if v.context.ShouldStop() {
 				return nil
 			}
 			// Set loop variable to key
@@ -2025,8 +2116,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		// Iterate over Collection (Request.QueryString, Request.Form, etc.)
 		keys := col.GetKeys()
 		for _, key := range keys {
-			// Check if Response.End() was called
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop
+			if v.context.ShouldStop() {
 				return nil
 			}
 			// Set loop variable to key
@@ -2048,8 +2139,8 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 		if enumerable, ok := collection.(interface{ Enumeration() []interface{} }); ok {
 			items := enumerable.Enumeration()
 			for _, item := range items {
-				// Check if Response.End() was called
-				if v.context.Response != nil && v.context.Response.IsEnded() {
+				// Check if execution should stop
+				if v.context.ShouldStop() {
 					return nil
 				}
 				// Set loop variable
@@ -2078,9 +2169,11 @@ func (v *ASPVisitor) visitDo(stmt *ast.DoStatement) error {
 		return nil
 	}
 
+	loopIter := 0
 	for {
-		// Check if Response.End() was called - exit loop immediately
-		if v.context.Response != nil && v.context.Response.IsEnded() {
+		loopIter++
+		// Check if execution should stop (cancelled, timed out, or Response.End)
+		if v.context.ShouldStop() {
 			return nil
 		}
 
@@ -2091,10 +2184,19 @@ func (v *ASPVisitor) visitDo(stmt *ast.DoStatement) error {
 				return err
 			}
 
+			// DEBUG: Log condition evaluation
+			if loopIter <= 5 || loopIter%1000 == 0 {
+				//fmt.Printf("[DEBUG] visitDo PreTest iter=%d: condition=%v (%T), LoopType=%v\n", loopIter, condition, condition, stmt.LoopType)
+			}
+
 			// Handle loop type (While vs Until)
 			shouldContinue := isTruthy(condition)
 			if stmt.LoopType == ast.LoopTypeUntil {
 				shouldContinue = !shouldContinue
+			}
+
+			if loopIter <= 5 || loopIter%1000 == 0 {
+				//fmt.Printf("[DEBUG] visitDo PreTest iter=%d: isTruthy=%v, shouldContinue=%v\n", loopIter, isTruthy(condition), shouldContinue)
 			}
 
 			if !shouldContinue {
@@ -2104,8 +2206,8 @@ func (v *ASPVisitor) visitDo(stmt *ast.DoStatement) error {
 
 		// Execute loop body
 		for _, body := range stmt.Body {
-			// Check if Response.End() was called during body execution
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop
+			if v.context.ShouldStop() {
 				return nil
 			}
 			if err := v.VisitStatement(body); err != nil {
@@ -2146,8 +2248,8 @@ func (v *ASPVisitor) visitWhile(stmt *ast.WhileStatement) error {
 	}
 
 	for {
-		// Check if Response.End() was called - exit loop immediately
-		if v.context.Response != nil && v.context.Response.IsEnded() {
+		// Check if execution should stop (cancelled, timed out, or Response.End)
+		if v.context.ShouldStop() {
 			return nil
 		}
 
@@ -2162,8 +2264,8 @@ func (v *ASPVisitor) visitWhile(stmt *ast.WhileStatement) error {
 
 		// Execute loop body
 		for _, body := range stmt.Body {
-			// Check if Response.End() was called during body execution
-			if v.context.Response != nil && v.context.Response.IsEnded() {
+			// Check if execution should stop
+			if v.context.ShouldStop() {
 				return nil
 			}
 			if err := v.VisitStatement(body); err != nil {
@@ -2569,6 +2671,29 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 			return val, nil
 		}
 
+		// Check if we're inside a class and this identifier is a class method/function
+		// This allows calling class methods without "Me." prefix (e.g., calling "dict" from within cls_asplite)
+		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+			if classInst, ok := ctxObj.(*ClassInstance); ok {
+				nameLower := strings.ToLower(varName)
+				// Check if this is a class function (returns value)
+				if _, exists := classInst.ClassDef.Functions[nameLower]; exists {
+					// Call the class function with no arguments
+					return v.callClassMethodWithRefs(classInst, varName, []ast.Expression{})
+				}
+				// Check if this is a class method (sub)
+				if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
+					// Call the class method with no arguments
+					return v.callClassMethodWithRefs(classInst, varName, []ast.Expression{})
+				}
+				// Check if this is a private method/function
+				if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
+					// Call the private method with no arguments
+					return v.callClassMethodWithRefs(classInst, varName, []ast.Expression{})
+				}
+			}
+		}
+
 		// Check built-in ASP objects (case-insensitive)
 		switch strings.ToLower(varName) {
 		case "response":
@@ -2674,6 +2799,28 @@ func (v *ASPVisitor) visitUnaryExpression(expr *ast.UnaryExpression) (interface{
 
 	switch expr.Operation {
 	case ast.UnaryOperationNot:
+		// Handle nil/Nothing case
+		// In VBScript: Not Empty = True (Empty is 0, Not 0 = -1 = True)
+		// Not Null = Null
+		// Not Nothing should error with 91 (but if we got here, the error was already captured)
+		//
+		// If we reach here with nil, it means either:
+		// 1. The value is truly Empty (should be treated as 0)
+		// 2. An error occurred and was captured by On Error Resume Next
+		//
+		// The correct behavior for Empty/nil in VBScript is to treat as 0,
+		// so Not 0 = -1 (True in VBScript)
+		if operand == nil {
+			// Treat nil as Empty (0), so Not 0 = -1 = True
+			// But this can cause infinite loops in "Do While Not rs.eof" when rs is Nothing
+			// The real fix is to error on property access of Nothing (done in visitMemberExpression)
+			return int(^int32(0)), nil // This is -1 in VBScript, which is True
+		}
+		// Check for NothingValue type
+		if _, isNothing := operand.(NothingValue); isNothing {
+			// Not Nothing should error, but if we got here, return -1 (True) as per Empty behavior
+			return int(^int32(0)), nil
+		}
 		// Check for boolean type to preserve it
 		if b, ok := operand.(bool); ok {
 			return !b, nil
@@ -2711,12 +2858,17 @@ func (v *ASPVisitor) visitIndexOrCall(expr *ast.IndexOrCallExpression) (interfac
 // resolveCall evaluates a call or index expression
 func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expression) (interface{}, error) {
 
-	// Debug: log what we're resolving
-	//if member, ok := objectExpr.(*ast.MemberExpression); ok {
-	//	if ident, ok := member.Object.(*ast.Identifier); ok {
-	//		fmt.Printf("[DEBUG] resolveCall: MemberExpression base=%q property=%q argCount=%d\n", ident.Name, member.Property.Name, len(arguments))
-	//	}
-	//}
+	// Debug: log what we're resolving when escape is involved
+	// if member, ok := objectExpr.(*ast.MemberExpression); ok {
+	// 	if member.Property != nil && strings.ToLower(member.Property.Name) == "escape" {
+	// 		//fmt.Printf("[DEBUG] resolveCall FOR ESCAPE: member.Object=%T, argCount=%d\n", member.Object, len(arguments))
+	// 		for i, arg := range arguments {
+	// 			_ = i
+	// 			_ = arg
+	// 			//fmt.Printf("[DEBUG] resolveCall FOR ESCAPE: arguments[%d] type=%T\n", i, arg)
+	// 		}
+	// 	}
+	// }
 
 	// Evaluate arguments first (we'll need them for built-in function checks)
 	args := make([]interface{}, 0)
@@ -2752,11 +2904,29 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	// This prevents visitMemberExpression from calling the method with 0 args when
 	// we actually want to call it with the provided arguments.
 	if member, ok := objectExpr.(*ast.MemberExpression); ok {
+		propName := ""
+		if member.Property != nil {
+			propName = member.Property.Name
+		}
+		//fmt.Printf("[DEBUG] resolveCall MemberExpression BEFORE eval: member.Object=%T, propName=%s\n", member.Object, propName)
+		// Check if member.Object is itself a MemberExpression (nested case like aspl.json.escape)
+		// if innerMember, isInner := member.Object.(*ast.MemberExpression); isInner {
+		// 	innerProp := ""
+		// 	if innerMember.Property != nil {
+		// 		innerProp = innerMember.Property.Name
+		// 	}
+		// 	_ = innerProp
+		// 	//fmt.Printf("[DEBUG] resolveCall NESTED MemberExpression: inner propName=%s, outer propName=%s\n", innerProp, propName)
+		// }
 		// Evaluate just the parent object, not the full member expression
 		parentObj, err := v.visitExpression(member.Object)
+		if propName == "json" || propName == "toJson" || propName == "escape" {
+			//fmt.Printf("[DEBUG] resolveCall: member.Object evaluated for %s, parentObj=%T\n", propName, parentObj)
+		}
 		if err != nil {
 			return nil, err
 		}
+
 		if parentObj != nil {
 			propName := ""
 			if member.Property != nil {
@@ -2771,6 +2941,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 			// Class instance methods - PASS EXPRESSIONS for ByRef support
 			if classInst, ok := parentObj.(*ClassInstance); ok {
+				//fmt.Printf("[DEBUG] resolveCall: calling callClassMethodWithRefs for %s.%s\n", classInst.ClassDef.Name, propName)
 				return v.callClassMethodWithRefs(classInst, propName, arguments)
 			}
 
@@ -2793,7 +2964,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 							count = int64(c)
 						}
 					}
-					//fmt.Printf("[DEBUG] BinaryRead ByRef: count requested=%d\n", count)
+					////fmt.Printf("[DEBUG] BinaryRead ByRef: count requested=%d\n", count)
 
 					// Call BinaryRead
 					data, err := reqObj.BinaryRead(count)
@@ -2803,13 +2974,13 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 					// Update the ByRef parameter with actual bytes read
 					actualBytesRead := int64(len(data))
-					//fmt.Printf("[DEBUG] BinaryRead ByRef: actual bytes read=%d\n", actualBytesRead)
+					////fmt.Printf("[DEBUG] BinaryRead ByRef: actual bytes read=%d\n", actualBytesRead)
 					if ident, ok := arguments[0].(*ast.Identifier); ok {
 						// Update the variable with actual bytes read
-						//fmt.Printf("[DEBUG] BinaryRead ByRef: updating variable '%s' to %d\n", ident.Name, actualBytesRead)
+						////fmt.Printf("[DEBUG] BinaryRead ByRef: updating variable '%s' to %d\n", ident.Name, actualBytesRead)
 						v.context.SetVariable(ident.Name, actualBytesRead)
 					} else {
-						//fmt.Printf("[DEBUG] BinaryRead ByRef: argument is NOT an Identifier, type=%T\n", arguments[0])
+						////fmt.Printf("[DEBUG] BinaryRead ByRef: argument is NOT an Identifier, type=%T\n", arguments[0])
 					}
 
 					return data, nil
@@ -2856,8 +3027,8 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		// First check if we're inside a class and this is a class method call
 		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
 			if classInst, ok := ctxObj.(*ClassInstance); ok {
-				// Check if this identifier refers to a class method
 				nameLower := strings.ToLower(ident.Name)
+				// Check if this identifier refers to a class method
 				if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
 					// Call the class method with ByRef support
 					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
@@ -3232,6 +3403,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// Handle array access (including multi-dimensional arrays)
 	if arr, ok := toVBArray(base); ok && len(args) > 0 {
+		//fmt.Printf("[DEBUG] resolveCall: returning from array access\n")
 		// For single-dimensional access: arr(0)
 		if len(args) == 1 {
 			idx := toInt(args[0])
@@ -3305,6 +3477,14 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		return nil, nil
 	}
 
+	// Debug: trace final nil return
+	// if ident, ok := objectExpr.(*ast.Identifier); ok {
+	// 	_ = ident
+	// 	//fmt.Printf("[DEBUG] resolveCall: returning nil, nil for Identifier %s (base was %T)\n", ident.Name, base)
+	// } else {
+	// 	//fmt.Printf("[DEBUG] resolveCall: returning nil, nil (objectExpr type=%T, base type=%T)\n", objectExpr, base)
+	// }
+
 	return nil, nil
 }
 
@@ -3314,16 +3494,57 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		return nil, nil
 	}
 
+	// Get property name first for debugging
+	propName := ""
+	if expr.Property != nil {
+		propName = expr.Property.Name
+	}
+
+	// Debug logging for json property (commented out for performance)
+	// if propName == "json" {
+	// 	//fmt.Printf("[DEBUG] visitMemberExpression ENTER for prop=%s, expr.Object=%T\n", propName, expr.Object)
+	// 	if ident, ok := expr.Object.(*ast.Identifier); ok {
+	// 		_ = ident
+	// 		//fmt.Printf("[DEBUG] vME: expr.Object is Identifier: %s\n", ident.Name)
+	// 	} else if member, ok := expr.Object.(*ast.MemberExpression); ok {
+	// 		innerProp := ""
+	// 		if member.Property != nil {
+	// 			innerProp = member.Property.Name
+	// 		}
+	// 		_ = innerProp
+	// 		//fmt.Printf("[DEBUG] vME: expr.Object is MemberExpression with prop=%s\n", innerProp)
+	// 	}
+	// 	// Print mini stack trace
+	// 	for i := 0; i < 8; i++ {
+	// 		_, file, line, ok := runtime.Caller(i)
+	// 		if !ok {
+	// 			break
+	// 		}
+	// 		_ = line
+	// 		if strings.Contains(file, "axonasp") {
+	// 			//fmt.Printf("[DEBUG] vME entry caller[%d]: %s:%d\n", i, file, line)
+	// 		}
+	// 	}
+	// }
+
 	// Evaluate object
 	obj, err := v.visitExpression(expr.Object)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get property name
-	propName := ""
-	if expr.Property != nil {
-		propName = expr.Property.Name
+	// Check if we're accessing a method/property on Nothing
+	// In VBScript, this should raise Error 91: "Object variable or With block variable not set"
+	// With On Error Resume Next, this error is captured and the value becomes Empty
+	if obj == nil || isNothingValue(obj) {
+		// Generate error 91 - this will be captured by On Error Resume Next if active
+		errMsg := fmt.Sprintf("object variable not set when accessing '%s' (Error 91)", propName)
+		// Return the error so it can be handled properly
+		return nil, fmt.Errorf(errMsg)
+	}
+
+	if propName == "json" {
+		//fmt.Printf("[DEBUG] visitMemberExpression for prop=%s, obj type=%T\n", propName, obj)
 	}
 
 	if obj != nil {
@@ -3461,9 +3682,18 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 
 	// Handle ClassInstance
 	if classInst, ok := obj.(*ClassInstance); ok {
+		if propName == "json" {
+			ctxObj := v.context.GetContextObject()
+			_ = ctxObj // silence unused variable
+			//fmt.Printf("[DEBUG] visitMemberExpression(3518) for json on %s (ptr=%p), ctxObj=%T (ptr=%p)\n",
+			//	classInst.ClassDef.Name, classInst, ctxObj, ctxObj)
+		}
 		// Check for internal access (Me) to allow Private members/variables
 		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
 			if currentInst, ok := ctxObj.(*ClassInstance); ok && currentInst == classInst {
+				if propName == "json" {
+					//fmt.Printf("[DEBUG] visitMemberExpression(3518) for json - INTERNAL ACCESS, using GetMember\n")
+				}
 				// Internal access: use GetMember to allow private members
 				val, found, err := classInst.GetMember(propName)
 				if err != nil {
@@ -3487,7 +3717,14 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 			return val, nil
 		}
 		// Fallback to method call (parameterless)
-		return classInst.CallMethod(propName)
+		if propName == "json" {
+			//fmt.Printf("[DEBUG] visitMemberExpression(3518) falling through to CallMethod for json\n")
+		}
+		result, err := classInst.CallMethod(propName)
+		if propName == "json" {
+			//fmt.Printf("[DEBUG] visitMemberExpression(3518) CallMethod returned for json, result=%T, err=%v\n", result, err)
+		}
+		return result, err
 	}
 
 	// Handle Collection properties (Count, etc.)
@@ -4298,7 +4535,14 @@ func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression)
 		// fmt.Printf("DEBUG: GetProperty returned nil, trying CallMethod for %s\n", propName)
 		// If property not found, try method call (parameterless)
 		// This emulates VBScript behavior where obj.Method is equivalent to obj.Method()
-		return classInst.CallMethod(propName)
+		if propName == "json" {
+			//fmt.Printf("[DEBUG] Falling through to CallMethod for json - this creates recursion\n")
+		}
+		result, err := classInst.CallMethod(propName)
+		if propName == "json" || propName == "toJson" {
+			//fmt.Printf("[DEBUG] visitMemberExpression CallMethod(%s) returned type=%T, err=%v\n", propName, result, err)
+		}
+		return result, err
 	}
 
 	return nil, nil
@@ -4651,20 +4895,60 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 
 // callClassMethodWithRefs calls a class instance method with ByRef parameter support
 func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodName string, arguments []ast.Expression) (interface{}, error) {
+	// Debug logging commented out for performance
+	// if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+	// 	if ci, ok := ctxObj.(*ClassInstance); ok {
+	// 		_ = ci
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs ENTRY: currentContextObj=%s (calling %s.%s)\n", ci.ClassDef.Name, classInst.ClassDef.Name, methodName)
+	// 	} else {
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs ENTRY: currentContextObj=%T (calling %s.%s)\n", ctxObj, classInst.ClassDef.Name, methodName)
+	// 	}
+	// } else {
+	// 	//fmt.Printf("[DEBUG] callClassMethodWithRefs ENTRY: currentContextObj=nil (calling %s.%s)\n", classInst.ClassDef.Name, methodName)
+	// }
+	//fmt.Printf("[DEBUG] callClassMethodWithRefs: class=%s method=%s args=%d\n", classInst.ClassDef.Name, methodName, len(arguments))
+	// Debug: print argument types (commented out for performance)
+	// for i, arg := range arguments {
+	// 	_ = i
+	// 	//fmt.Printf("[DEBUG] callClassMethodWithRefs: arg[%d] type=%T\n", i, arg)
+	// 	if ident, ok := arg.(*ast.Identifier); ok {
+	// 		_ = ident
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: arg[%d] is Identifier: %s\n", i, ident.Name)
+	// 	} else if member, ok := arg.(*ast.MemberExpression); ok {
+	// 		prop := ""
+	// 		if member.Property != nil {
+	// 			prop = member.Property.Name
+	// 		}
+	// 		_ = prop
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: arg[%d] is MemberExpression with prop=%s\n", i, prop)
+	// 	} else if binExpr, ok := arg.(*ast.BinaryExpression); ok {
+	// 		_ = binExpr
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: arg[%d] is BinaryExpression with Op=%v\n", i, binExpr.Operation)
+	// 	} else if indexCall, ok := arg.(*ast.IndexOrCallExpression); ok {
+	// 		_ = indexCall
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: arg[%d] is IndexOrCallExpression with Object=%T\n", i, indexCall.Object)
+	// 	}
+	// }
 	nameLower := strings.ToLower(methodName)
 	var methodNode ast.Node
 	var params []*ast.Parameter
 	var funcName string
+	//fmt.Printf("[DEBUG] callClassMethodWithRefs: looking up method %s in class %s\n", nameLower, classInst.ClassDef.Name)
+	//fmt.Printf("[DEBUG] callClassMethodWithRefs: class has %d Methods, %d Functions, %d PrivateMethods\n",
+	//	len(classInst.ClassDef.Methods), len(classInst.ClassDef.Functions), len(classInst.ClassDef.PrivateMethods))
 	if sub, ok := classInst.ClassDef.Methods[nameLower]; ok {
+		//fmt.Printf("[DEBUG] callClassMethodWithRefs: found in Methods\n")
 		methodNode = sub
 		params = sub.Parameters
 	}
 	if fn, ok := classInst.ClassDef.Functions[nameLower]; ok {
+		//fmt.Printf("[DEBUG] callClassMethodWithRefs: found in Functions\n")
 		methodNode = fn
 		params = fn.Parameters
 		funcName = fn.Identifier.Name
 	}
 	if node, ok := classInst.ClassDef.PrivateMethods[nameLower]; ok {
+		//fmt.Printf("[DEBUG] callClassMethodWithRefs: found in PrivateMethods\n")
 		methodNode = node
 		switch n := node.(type) {
 		case *ast.SubDeclaration:
@@ -4675,6 +4959,7 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 		}
 	}
 	if methodNode == nil {
+		//fmt.Printf("[DEBUG] callClassMethodWithRefs: methodNode is NIL, falling back to CallMethod\n")
 		args := make([]interface{}, len(arguments))
 		for i, arg := range arguments {
 			val, err := v.visitExpression(arg)
@@ -4689,15 +4974,25 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 	classInst.Context.PushScope()
 	defer classInst.Context.PopScope()
 
+	// Debug: print context object after PushScope (commented out for performance)
+	// if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+	// 	if ci, ok := ctxObj.(*ClassInstance); ok {
+	// 		_ = ci
+	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: after PushScope, currentContextObj=%s\n", ci.ClassDef.Name)
+	// 	}
+	// }
+
 	// Evaluate all arguments in the CALLER'S context BEFORE switching context
 	evaluatedArgs := make([]interface{}, len(arguments))
 	byRefMap := make(map[string]string)
 
+	//fmt.Printf("[DEBUG] callClassMethodWithRefs: ABOUT TO EVALUATE ARGS, numArgs=%d\n", len(arguments))
 	for i, arg := range arguments {
 		if i < len(params) {
 			param := params[i]
 			if param.Modifier == ast.ParameterModifierByVal {
 				// ByVal: evaluate in caller's context
+				//fmt.Printf("[DEBUG] callClassMethodWithRefs: evaluating arg[%d] (ByVal)\n", i)
 				val, err := v.visitExpression(arg)
 				if err != nil {
 					return nil, err
@@ -4717,6 +5012,7 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 					}
 				} else {
 					// Non-identifier ByRef argument, evaluate in caller's context
+					//fmt.Printf("[DEBUG] callClassMethodWithRefs: evaluating arg[%d] (ByRef non-ident)\n", i)
 					val, err := v.visitExpression(arg)
 					if err != nil {
 						return nil, err
@@ -4744,6 +5040,8 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 	}
 
 	classVisitor := NewASPVisitor(classInst.Context, v.executor)
+	// Set currentFunctionName so the function can read/write its return value without recursion
+	classVisitor.currentFunctionName = funcName
 	switch n := methodNode.(type) {
 	case *ast.SubDeclaration:
 		if n.Body != nil {

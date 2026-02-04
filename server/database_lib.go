@@ -112,6 +112,7 @@ type ADODBConnection struct {
 	Errors           *ErrorsCollection
 	oleConnection    *ole.IDispatch // For Access databases via OLE
 	oleInitialized   bool           // Track if COM was initialized for this connection
+	threadLocked     bool           // Track if the OS thread is locked for COM usage
 }
 
 // NewADODBConnection creates a new connection object
@@ -159,7 +160,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		if len(args) > 0 {
 			c.ConnectionString = fmt.Sprintf("%v", args[0])
 		}
-		//fmt.Printf("[DEBUG] ADODB.Connection.Open: %s\n", c.ConnectionString)
+		fmt.Printf("[DEBUG] ADODB.Connection.Open called: %s\n", c.ConnectionString)
 		return c.openDatabase()
 
 	case "close":
@@ -178,10 +179,14 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			c.oleConnection.Release()
 			c.oleConnection = nil
 		}
-		// Uninitialize COM if it was initialized for this connection
+		// Uninitialize COM and unlock thread if they were initialized for this connection
 		if c.oleInitialized {
 			ole.CoUninitialize()
 			c.oleInitialized = false
+		}
+		if c.threadLocked {
+			runtime.UnlockOSThread()
+			c.threadLocked = false
 		}
 		c.State = 0
 		return nil
@@ -304,8 +309,17 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		return nil
 	}
 
+	// Ensure COM calls stay on a single OS thread for the lifetime of this connection
+	runtime.LockOSThread()
+	c.threadLocked = true
+
 	// Initialize COM for this thread - DO NOT uninitialize here, it will be done in Close()
-	ole.CoInitialize(0)
+	if err := ole.CoInitialize(0); err != nil {
+		fmt.Printf("Warning: Failed to initialize COM for Access database. Error details: %v\n", err)
+		runtime.UnlockOSThread()
+		c.threadLocked = false
+		return nil
+	}
 	c.oleInitialized = true
 
 	unknown, err := oleutil.CreateObject("ADODB.Connection")
@@ -313,6 +327,8 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		fmt.Printf("Warning: ADODB.Connection COM object cannot be created. Error: %v. Make sure you have Windows COM support and OLEDB drivers installed.\n", err)
 		ole.CoUninitialize()
 		c.oleInitialized = false
+		runtime.UnlockOSThread()
+		c.threadLocked = false
 		return nil
 	}
 
@@ -324,6 +340,8 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		fmt.Println("Warning: Cannot query ADODB.Connection interface. COM support may not be available.")
 		ole.CoUninitialize()
 		c.oleInitialized = false
+		runtime.UnlockOSThread()
+		c.threadLocked = false
 		return nil
 	}
 
@@ -335,6 +353,8 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		connection.Release()
 		ole.CoUninitialize()
 		c.oleInitialized = false
+		runtime.UnlockOSThread()
+		c.threadLocked = false
 		return nil
 	}
 
@@ -703,10 +723,12 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 
 	case "open":
 		// Open(Source, [ActiveConnection], [CursorType], [LockType], [Options])
+		fmt.Printf("[DEBUG] Recordset.Open called with %d args\n", len(args))
 		if len(args) < 1 {
 			return nil
 		}
 		sql := fmt.Sprintf("%v", args[0])
+		fmt.Printf("[DEBUG] Recordset.Open SQL: %s\n", sql[:min(len(sql), 100)])
 
 		// Try to get connection from args[1] or from stored ActiveConnection
 		var conn *ADODBConnection
@@ -730,9 +752,10 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		}
 
 		if conn == nil {
-			fmt.Println("Warning: ADODBRecordset.Open called without connection")
+			fmt.Println("[DEBUG] Warning: ADODBRecordset.Open called without connection")
 			return nil
 		}
+		fmt.Printf("[DEBUG] Recordset.Open calling openRecordset with conn state=%d\n", conn.State)
 
 		return rs.openRecordset(sql, conn)
 
@@ -918,6 +941,12 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 }
 
 func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) interface{} {
+	sqlPreview := sqlStr
+	if len(sqlPreview) > 50 {
+		sqlPreview = sqlPreview[:50]
+	}
+	fmt.Printf("[DEBUG] openRecordset: SQL=%s, conn.oleConnection=%v, conn.db=%v\n", sqlPreview, conn.oleConnection != nil, conn.db != nil)
+
 	// Try OLE connection first (for Access databases)
 	if conn.oleConnection != nil {
 		// Use the stored OLE connection to execute a query and get a recordset
@@ -930,6 +959,7 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 		if result != nil {
 			oleRs := result.ToIDispatch()
 			if populateRecordsetFromOLE(oleRs, rs) {
+				fmt.Printf("[DEBUG] openRecordset OLE: loaded %d records, EOF=%v\n", len(rs.allData), rs.EOF)
 				return nil
 			}
 		}

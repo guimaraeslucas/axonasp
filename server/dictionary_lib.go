@@ -180,6 +180,10 @@ func (d *Dictionary) Exists(args []interface{}) interface{} {
 
 	key := d.keyToString(args[0])
 	_, exists := d.store[key]
+	// Debug: log plugin existence checks
+	if strings.Contains(key, "database") || strings.Contains(key, "helloworld") {
+		fmt.Printf("[DEBUG] Dictionary.Exists('%s') = %v (store has %d items)\n", key, exists, len(d.store))
+	}
 	return exists
 }
 

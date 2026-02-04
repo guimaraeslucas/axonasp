@@ -1207,6 +1207,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		}
 
 		filename := fmt.Sprintf("%v", args[0])
+		fmt.Printf("[DEBUG] ADODBStream.LoadFromFile called with: %s\n", filename)
 
 		// Validate filename is not empty or nil
 		if filename == "" || filename == "<nil>" {

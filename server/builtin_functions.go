@@ -60,10 +60,12 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "executeglobal":
 		// ExecuteGlobal(code) - executes VBScript code in the current global scope
 		if len(args) == 0 {
+			fmt.Printf("[DEBUG] ExecuteGlobal: called with no args!\n")
 			return nil, true
 		}
 		code := toString(args[0])
 		if code == "" {
+			fmt.Printf("[DEBUG] ExecuteGlobal: called with empty code!\n")
 			return nil, true
 		}
 
@@ -74,6 +76,28 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		codePreview = strings.ReplaceAll(codePreview, "\n", " ")
 		codePreview = strings.ReplaceAll(codePreview, "\r", "")
+
+		// Debug: check if this code contains a class definition
+		codeLower := strings.ToLower(code)
+		if strings.Contains(codeLower, "class cls_asplite_database") {
+			fmt.Printf("[DEBUG] ExecuteGlobal: LOADING cls_asplite_database class definition!\n")
+			fmt.Printf("[DEBUG] ExecuteGlobal: code length=%d, first 200 chars: %s\n", len(code), code[:min(200, len(code))])
+		}
+		if strings.Contains(codeLower, "class ") {
+			// Find what class is being defined
+			idx := strings.Index(codeLower, "class ")
+			if idx >= 0 {
+				endIdx := idx + 6 + 50
+				if endIdx > len(code) {
+					endIdx = len(code)
+				}
+				snippet := code[idx:endIdx]
+				if newlineIdx := strings.Index(snippet, "\n"); newlineIdx > 0 {
+					snippet = snippet[:newlineIdx]
+				}
+				fmt.Printf("[DEBUG] ExecuteGlobal: loading class: %s\n", snippet)
+			}
+		}
 		//fmt.Printf("[DEBUG] ExecuteGlobal START: %s (len=%d)\n", codePreview, len(code))
 
 		// Parse the code
@@ -98,7 +122,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				log.Printf("ExecuteGlobal parse error: %v\n", parseErr)
 				ctx.Err.SetError(parseErr)
 			}
-			fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Parse Error)\n")
+			//fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Parse Error)\n")
 			return nil, true
 		}
 
@@ -117,6 +141,10 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 		//log.Printf("[DEBUG] ExecuteGlobal: starting execution of %d statements\n", len(program.Body))
 		for _, stmt := range program.Body {
+			// Check if execution should stop (cancelled, timed out, or Response.End)
+			if ctx.ShouldStop() {
+				return nil, true
+			}
 			// stmtType := fmt.Sprintf("%T", stmt)
 			// log.Printf("[DEBUG] ExecuteGlobal: executing statement %d/%d: %s\n", i+1, len(program.Body), stmtType)
 			if err := visitor.VisitStatement(stmt); err != nil {
@@ -124,14 +152,14 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				errMsg := err.Error()
 				if errMsg == "RESPONSE_END" || err == ErrServerTransfer {
 					// Control flow signals should propagate via panic to bypass evalBuiltInFunction signature
-					//fmt.Printf("[DEBUG] ExecuteGlobal END (Control Flow: %s)\n", errMsg)
+					////fmt.Printf("[DEBUG] ExecuteGlobal END (Control Flow: %s)\n", errMsg)
 					panic(err)
 				}
 				// Log actual execution errors for debugging
 				log.Printf("ExecuteGlobal execution error: %v\n", err)
 				ctx.Err.SetError(err)
 				// Continue execution despite errors (VBScript behavior with On Error Resume Next)
-				fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Exec Error)\n")
+				//fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Exec Error)\n")
 				return nil, true
 			}
 		}
@@ -181,12 +209,16 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 
 		for _, stmt := range program.Body {
+			// Check if execution should stop (cancelled, timed out, or Response.End)
+			if ctx.ShouldStop() {
+				return nil, true
+			}
 			if err := visitor.VisitStatement(stmt); err != nil {
 				// Check if it's a control flow signal (RESPONSE_END, Server.Transfer, etc)
 				errMsg := err.Error()
 				if errMsg == "RESPONSE_END" || err == ErrServerTransfer {
 					// Control flow signals should propagate via panic
-					fmt.Printf("[DEBUG] Execute END (Control Flow: %s)\n", errMsg)
+					//fmt.Printf("[DEBUG] Execute END (Control Flow: %s)\n", errMsg)
 					panic(err)
 				}
 				log.Printf("Execute execution error: %v\n", err)
@@ -194,7 +226,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				return nil, true
 			}
 		}
-		fmt.Printf("[DEBUG] Execute END\n")
+		//fmt.Printf("[DEBUG] Execute END\n")
 		return nil, true
 
 	// Type checking functions
@@ -428,15 +460,15 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 		// Log less frequently or only for uploader to avoid spam, but for now we need to catch the loop
 		// Only log if searching for the boundary (likely long search) or typical tokens
-		if len(bs2) > 0 {
-			tokenHex := ""
-			if len(bs2) <= 10 {
-				tokenHex = fmt.Sprintf("%x", bs2)
-			} else {
-				tokenHex = fmt.Sprintf("%x...", bs2[:10])
-			}
-			fmt.Printf("[DEBUG] InstrB: start=%d, len(s1)=%d, len(s2)=%d, token=%s\n", startIndex, len(bs1), len(bs2), tokenHex)
-		}
+		// if len(bs2) > 0 {
+		// 	tokenHex := ""
+		// 	if len(bs2) <= 10 {
+		// 		tokenHex = fmt.Sprintf("%x", bs2)
+		// 	} else {
+		// 		tokenHex = fmt.Sprintf("%x...", bs2[:10])
+		// 	}
+		// 	//fmt.Printf("[DEBUG] InstrB: start=%d, len(s1)=%d, len(s2)=%d, token=%s\n", startIndex, len(bs1), len(bs2), tokenHex)
+		// }
 
 		if len(bs2) == 0 {
 			return startIndex, true
@@ -446,16 +478,16 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			startPos = 0
 		}
 		if startPos >= len(bs1) {
-			//fmt.Printf("[DEBUG] InstrB RESULT: 0 (start position %d >= len %d)\n", startPos, len(bs1))
+			////fmt.Printf("[DEBUG] InstrB RESULT: 0 (start position %d >= len %d)\n", startPos, len(bs1))
 			return 0, true
 		}
 		idx := bytes.Index(bs1[startPos:], bs2)
 		if idx == -1 {
-			//fmt.Printf("[DEBUG] InstrB RESULT: 0 (token not found after pos %d)\n", startPos)
+			////fmt.Printf("[DEBUG] InstrB RESULT: 0 (token not found after pos %d)\n", startPos)
 			return 0, true
 		}
 		result := startPos + idx + 1
-		//fmt.Printf("[DEBUG] InstrB RESULT: %d\n", result)
+		////fmt.Printf("[DEBUG] InstrB RESULT: %d\n", result)
 		return result, true
 
 	case "env":
@@ -475,10 +507,33 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return nil, true
 		}
 		exprStr := toString(args[0])
+		// Debug: check if this is a New expression for a class
+		exprLower := strings.ToLower(strings.TrimSpace(exprStr))
+		if strings.HasPrefix(exprLower, "new ") {
+			className := strings.TrimSpace(exprStr[4:])
+			// Check if class exists in context BEFORE calling evalExpression
+			if _, exists := ctx.GetVariable(className); !exists {
+				fmt.Printf("[DEBUG] Eval 'new %s': class NOT found in context before eval\n", className)
+				// List some variables in context for debugging
+				ctx.mu.RLock()
+				count := 0
+				for k, v := range ctx.variables {
+					if strings.Contains(k, "cls_") {
+						fmt.Printf("[DEBUG]   global var: %s = %T\n", k, v)
+						count++
+						if count > 10 {
+							break
+						}
+					}
+				}
+				ctx.mu.RUnlock()
+			}
+		}
 		// Evaluate the expression string using the context's evaluation mechanism
 		// This requires access to the context's expression evaluator
 		// For now, return the parsed result
 		result := evalExpression(exprStr, ctx)
+		//fmt.Printf("[DEBUG] Eval result: %T\n", result)
 		return result, true
 
 	case "getobject":

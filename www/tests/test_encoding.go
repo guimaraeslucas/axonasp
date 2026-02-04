@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 package main
@@ -32,19 +33,19 @@ func encodeSingleByteString(s string) []byte {
 func main() {
 	// Test with multipart boundary containing various bytes
 	original := []byte("------WebKitFormBoundary\r\nContent-Disposition: form-data; name=\"testfile\"; filename=\"hello.txt\"")
-	
+
 	fmt.Printf("Original bytes: len=%d\n", len(original))
 	fmt.Printf("First 30 bytes: %q\n", string(original[:30]))
-	
+
 	// Decode to string
 	decoded := decodeSingleByteString(original)
 	fmt.Printf("Decoded string: len(bytes)=%d, len(runes)=%d\n", len(decoded), len([]rune(decoded)))
-	
+
 	// Encode back to bytes
 	encoded := encodeSingleByteString(decoded)
 	fmt.Printf("Encoded bytes: len=%d\n", len(encoded))
 	fmt.Printf("First 30 bytes: %q\n", string(encoded[:30]))
-	
+
 	// Check if they match
 	match := len(original) == len(encoded)
 	if match {
@@ -57,11 +58,11 @@ func main() {
 		}
 	}
 	fmt.Printf("Match: %v\n", match)
-	
+
 	// Now test with Position-like access
 	fmt.Println("\n--- Position test ---")
 	// Simulating: Position = 42 (0-based, expecting "Content-Disposition")
 	pos := 42
-	data := encoded[pos:pos+19]
+	data := encoded[pos : pos+19]
 	fmt.Printf("Position %d, reading 19 bytes: %q\n", pos, string(data))
 }

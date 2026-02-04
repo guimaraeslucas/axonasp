@@ -22,6 +22,7 @@ package server
 
 import (
 	"fmt"
+	//"runtime"
 	"strings"
 
 	"g3pix.com.br/axonasp/vbscript/ast"
@@ -195,6 +196,21 @@ func (ci *ClassInstance) SetProperty(name string, value interface{}) error {
 // CallMethod calls a method on the instance (External Access)
 func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface{}, error) {
 	nameLower := strings.ToLower(name)
+	// Debug logging commented out for performance
+	// if strings.ToLower(ci.ClassDef.Name) == "cls_asplite" && nameLower == "json" {
+	// 	//fmt.Printf("[DEBUG] cls_asplite.json called from CallMethod (stack trace needed) - this should NOT happen repeatedly\n")
+	// 	// Print a mini stack trace
+	// 	for i := 0; i < 10; i++ {
+	// 		_, file, line, ok := runtime.Caller(i)
+	// 		if !ok {
+	// 			break
+	// 		}
+	// 		_ = line
+	// 		if strings.Contains(file, "axonasp") {
+	// 			//fmt.Printf("[DEBUG]   at %s:%d\n", file, line)
+	// 		}
+	// 	}
+	// }
 	if nameLower == "" && ci.ClassDef != nil {
 		// Prefer the explicitly declared default member when available
 		if ci.ClassDef.DefaultMethod != "" {
@@ -229,7 +245,11 @@ func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface
 
 	// 2. Check Public Functions
 	if fn, ok := ci.ClassDef.Functions[nameLower]; ok {
-		return ci.executeMethod(fn, args)
+		result, err := ci.executeMethod(fn, args)
+		if nameLower == "json" {
+			//fmt.Printf("[DEBUG] CallMethod(json): executeMethod returned, result type=%T, err=%v\n", result, err)
+		}
+		return result, err
 	}
 
 	// 3. Check Private Methods (Sub/Function) - can be called from within class context
@@ -254,9 +274,16 @@ func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface
 func (ci *ClassInstance) GetMember(name string) (interface{}, bool, error) {
 	nameLower := strings.ToLower(name)
 
+	if nameLower == "json" || nameLower == "p_json" {
+		//fmt.Printf("[DEBUG] GetMember(%s) called on %s\n", name, ci.ClassDef.Name)
+	}
+
 	// 1. Check Variables
 	if _, ok := ci.ClassDef.Variables[nameLower]; ok {
 		val := ci.Variables[nameLower]
+		if nameLower == "json" || nameLower == "p_json" {
+			//fmt.Printf("[DEBUG] GetMember(%s): found in Variables, val=%T\n", name, val)
+		}
 		return val, true, nil
 	}
 
@@ -334,6 +361,15 @@ func (ci *ClassInstance) SetMember(name string, value interface{}) (bool, error)
 
 // executeMethod executes a method or function node within the class context
 func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (interface{}, error) {
+	// Debug: trace all executeMethod calls (commented out for performance)
+	// nodeName := "unknown"
+	// if fn, ok := node.(*ast.FunctionDeclaration); ok && fn.Identifier != nil {
+	// 	nodeName = fn.Identifier.Name
+	// } else if sub, ok := node.(*ast.SubDeclaration); ok && sub.Identifier != nil {
+	// 	nodeName = sub.Identifier.Name
+	// }
+	//fmt.Printf("[DEBUG] executeMethod ENTRY: class=%s, method=%s, args=%d\n", ci.ClassDef.Name, nodeName, len(args))
+
 	if ci.Context == nil {
 		return nil, fmt.Errorf("no context")
 	}
@@ -432,8 +468,17 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 
 	// 8. EXECUTE BODY
 	v := NewASPVisitor(ci.Context, executor)
+	// Set currentFunctionName so that return value assignment (e.g., "json = value") works correctly
+	// This prevents infinite recursion when the function name is used inside the function body
+	v.currentFunctionName = funcName
+	if strings.ToLower(funcName) == "json" {
+		//fmt.Printf("[DEBUG] executeMethod for 'json' function, currentFunctionName set to: %q, body has %d statements\n", funcName, len(body))
+	}
 
 	for _, stmt := range body {
+		if strings.ToLower(funcName) == "json" {
+			//fmt.Printf("[DEBUG] json function: executing statement %d/%d: %T\n", i+1, len(body), stmt)
+		}
 		if err := v.VisitStatement(stmt); err != nil {
 			if pe, ok := err.(*ProcedureExitError); ok {
 				if expectedExitKind == "" || pe.Kind == expectedExitKind {
@@ -443,6 +488,13 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 			}
 			return nil, err
 		}
+		if strings.ToLower(funcName) == "json" {
+			//fmt.Printf("[DEBUG] json function: statement %d completed\n", i+1)
+		}
+	}
+
+	if strings.ToLower(funcName) == "json" {
+		//fmt.Printf("[DEBUG] json function: all statements executed, retrieving return value\n")
 	}
 
 	// 9. RETRIEVE RETURN VALUE
