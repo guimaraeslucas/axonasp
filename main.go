@@ -45,7 +45,11 @@ var (
 	ScriptTimeout     = 30 // in seconds
 	DebugASP          = false
 	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
+	Error404Mode      = "default" // "default" or "IIS"
 )
+
+// Global web.config parser
+var webConfigParser *server.WebConfigParser
 
 func init() {
 	// Load .env file
@@ -78,6 +82,15 @@ func init() {
 	if val := os.Getenv("BLOCKED_EXTENSIONS"); val != "" {
 		BlockedExtensions = val
 	}
+	if val := os.Getenv("ERROR_404_MODE"); val != "" {
+		val = strings.ToLower(val)
+		if val == "default" || val == "iis" {
+			Error404Mode = val
+		} else {
+			fmt.Printf("Warning: Invalid ERROR_404_MODE value '%s'. Using 'default'. Valid values: 'default', 'IIS'\n", val)
+			Error404Mode = "default"
+		}
+	}
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
@@ -101,6 +114,19 @@ func main() {
 	fmt.Print("\033[2K")
 	fmt.Printf("\033[48;5;240m\033[37mStarting G3pix AxonASP on http://localhost:%s ► \033[0m\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)
+
+	// Initialize web.config parser if ERROR_404_MODE is "IIS"
+	if strings.ToLower(Error404Mode) == "iis" {
+		webConfigParser = server.NewWebConfigParser(RootDir)
+		if err := webConfigParser.Load(); err != nil {
+			fmt.Printf("Warning: ERROR_404_MODE is 'IIS' but failed to load web.config: %v\n", err)
+			fmt.Println("Falling back to default error page mode.")
+			Error404Mode = "default"
+		} else {
+			fmt.Printf("Loaded web.config for custom 404 handling\n")
+		}
+	}
+	fmt.Printf("404 Error Mode: %s\n", Error404Mode)
 
 	http.HandleFunc("/", handleRequest)
 
@@ -215,21 +241,21 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	cleanPath := filepath.Clean(fullPath)
 	cleanRoot := filepath.Clean(RootDir)
 	if !strings.HasPrefix(cleanPath, cleanRoot) {
-		serveErrorPage(w, 403)
+		serveErrorPage(w, r, 403)
 		return
 	}
 
 	// Security check: block direct access to restricted file extensions, we use not found for safety
 	fileExt := strings.ToLower(filepath.Ext(fullPath))
 	if isBlockedExtension(fileExt) {
-		serveErrorPage(w, 404)
+		serveErrorPage(w, r, 404)
 		return
 	}
 
 	// Check if file exists
 	info, err := os.Stat(fullPath)
 	if os.IsNotExist(err) {
-		serveErrorPage(w, 404)
+		serveErrorPage(w, r, 404)
 		return
 	}
 
@@ -237,7 +263,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	if info.IsDir() {
 		fullPath = filepath.Join(fullPath, DefaultPage)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			serveErrorPage(w, 404)
+			serveErrorPage(w, r, 404)
 			return
 		}
 	}
@@ -251,20 +277,20 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Process ASP file
 	content, err := asp.ReadFileText(fullPath)
 	if err != nil {
-		serveErrorPage(w, 500)
+		serveErrorPage(w, r, 500)
 		return
 	}
 
 	// Recover from panics to avoid crashing server
 	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("G3Pix AxonASP Runtime panic in %s: %v\n", path, r)
+		if rec := recover(); rec != nil {
+			fmt.Printf("G3Pix AxonASP Runtime panic in %s: %v\n", path, rec)
 
 			// Check if debug mode is enabled
 			isDebug := os.Getenv("DEBUG_ASP") == "TRUE"
 
 			if !isDebug {
-				serveErrorPage(w, 500)
+				serveErrorPage(w, r, 500)
 				return
 			}
 
@@ -281,12 +307,12 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 				stack = strings.ReplaceAll(stack, ">", "&gt;")
 
 				fmt.Fprintf(w, "<strong>G3pix AxonASP panic</strong><br>\n")
-				fmt.Fprintf(w, "Error: %v<br>\n", r)
+				fmt.Fprintf(w, "Error: %v<br>\n", rec)
 				fmt.Fprintf(w, "<pre>%s</pre>\n", stack)
 			} else {
 				// Simple error output
 				fmt.Fprintf(w, "<strong>G3pix AxonASP error</strong><br>\n")
-				fmt.Fprintf(w, "Description: %v<br>\n", r)
+				fmt.Fprintf(w, "Description: %v<br>\n", rec)
 			}
 
 			fmt.Fprintf(w, "</div>\n")
@@ -309,7 +335,15 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveErrorPage serves a custom HTML error page from the errorpages directory
-func serveErrorPage(w http.ResponseWriter, statusCode int) {
+// or executes custom error handlers based on ERROR_404_MODE configuration
+func serveErrorPage(w http.ResponseWriter, r *http.Request, statusCode int) {
+	// Special handling for 404 errors with IIS mode
+	if statusCode == 404 && strings.ToLower(Error404Mode) == "iis" && webConfigParser != nil && webConfigParser.IsLoaded() {
+		handleCustom404(w, r)
+		return
+	}
+
+	// Default behavior: serve static error page
 	filename := fmt.Sprintf("%d.html", statusCode)
 	filePath := filepath.Join("errorpages", filename)
 	content, err := os.ReadFile(filePath)
@@ -322,4 +356,89 @@ func serveErrorPage(w http.ResponseWriter, statusCode int) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(statusCode)
 	w.Write(content)
+}
+
+// handleCustom404 processes custom 404 error handling based on web.config
+func handleCustom404(w http.ResponseWriter, r *http.Request) {
+	fullPath, responseMode := webConfigParser.GetFullErrorHandlerPath(404)
+
+	if fullPath == "" {
+		// No custom handler configured, fall back to default
+		fmt.Println("[DEBUG] No 404 handler found in web.config, using default")
+		filename := "404.html"
+		filePath := filepath.Join("errorpages", filename)
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			http.Error(w, "G3Pix AxonASP Error: 404", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write(content)
+		return
+	}
+
+	// Check if the error handler file exists
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		fmt.Printf("[DEBUG] Custom 404 handler file not found: %s\n", fullPath)
+		// Fall back to default error page
+		filename := "404.html"
+		filePath := filepath.Join("errorpages", filename)
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			http.Error(w, "G3Pix AxonASP Error: 404", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write(content)
+		return
+	}
+
+	// Handle based on responseMode
+	if strings.ToLower(responseMode) == "executeurl" {
+		// Execute the ASP file for 404 handling
+		if strings.HasSuffix(strings.ToLower(fullPath), ".asp") {
+			executeASPErrorHandler(w, r, fullPath)
+		} else {
+			// If not an ASP file, serve it as static content
+			http.ServeFile(w, r, fullPath)
+		}
+	} else {
+		// Default: serve the file as static content
+		http.ServeFile(w, r, fullPath)
+	}
+}
+
+// executeASPErrorHandler executes an ASP file as a 404 error handler
+func executeASPErrorHandler(w http.ResponseWriter, r *http.Request, aspFilePath string) {
+	content, err := asp.ReadFileText(aspFilePath)
+	if err != nil {
+		fmt.Printf("[DEBUG] Failed to read ASP error handler: %v\n", err)
+		http.Error(w, "G3Pix AxonASP Error: 404", http.StatusNotFound)
+		return
+	}
+
+	// Set 404 status before processing ASP
+	w.WriteHeader(http.StatusNotFound)
+
+	// Recover from panics to avoid crashing server
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("G3Pix AxonASP Runtime panic in error handler %s: %v\n", aspFilePath, r)
+			// Error already written, just log it
+		}
+	}()
+
+	// Create ASP processor and execute
+	processor := server.NewASPProcessor(&server.ASPProcessorConfig{
+		RootDir:       RootDir,
+		ScriptTimeout: ScriptTimeout,
+		DebugASP:      DebugASP,
+	})
+
+	err = processor.ExecuteASPFile(content, aspFilePath, w, r)
+	if err != nil {
+		fmt.Printf("[DEBUG] ASP error handler processing error in %s: %v\n", aspFilePath, err)
+	}
 }

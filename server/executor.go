@@ -3541,7 +3541,7 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		// Generate error 91 - this will be captured by On Error Resume Next if active
 		errMsg := fmt.Sprintf("object variable not set when accessing '%s' (Error 91)", propName)
 		// Return the error so it can be handled properly
-		return nil, fmt.Errorf(errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 
 	if propName == "json" {
