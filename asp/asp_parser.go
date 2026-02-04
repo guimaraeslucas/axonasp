@@ -22,9 +22,10 @@ package asp
 
 import (
 	"fmt"
+	"strings"
+
 	vb "g3pix.com.br/axonasp/vbscript"
 	"g3pix.com.br/axonasp/vbscript/ast"
-	"strings"
 )
 
 // ASPParserResult contém o resultado da análise de código ASP

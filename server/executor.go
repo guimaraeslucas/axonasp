@@ -3242,7 +3242,9 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		}
 
 		// Finally, try CallMethod without error return
-		if obj, ok := base.(interface{ CallMethod(string, ...interface{}) interface{} }); ok {
+		if obj, ok := base.(interface {
+			CallMethod(string, ...interface{}) interface{}
+		}); ok {
 			return obj.CallMethod(methodName, args...), nil
 		}
 	}
@@ -4289,7 +4291,11 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 	// Set query string parameters (from URL only)
 	for key, values := range r.URL.Query() {
 		if len(values) > 0 {
-			req.QueryString.Add(key, values[0])
+			value := values[0]
+			if len(values) > 1 {
+				value = strings.Join(values, ",")
+			}
+			req.QueryString.Add(key, value)
 		}
 	}
 
@@ -4300,14 +4306,22 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 		for key, values := range r.Form {
 			// Only add if not in QueryString (to avoid duplicates)
 			if !req.QueryString.Exists(key) && len(values) > 0 {
-				req.Form.Add(key, values[0])
+				value := values[0]
+				if len(values) > 1 {
+					value = strings.Join(values, ",")
+				}
+				req.Form.Add(key, value)
 			}
 		}
 		// For multipart, also check r.PostForm which may have additional fields
 		if isMultipart && r.PostForm != nil {
 			for key, values := range r.PostForm {
 				if !req.QueryString.Exists(key) && !req.Form.Exists(key) && len(values) > 0 {
-					req.Form.Add(key, values[0])
+					value := values[0]
+					if len(values) > 1 {
+						value = strings.Join(values, ",")
+					}
+					req.Form.Add(key, value)
 				}
 			}
 		}

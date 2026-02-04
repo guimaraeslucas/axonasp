@@ -1900,6 +1900,7 @@ func (f *ADODBOLEFields) GetProperty(name string) interface{} {
 	defer func() {
 		if r := recover(); r != nil {
 			// Silently recover from OLE errors
+			fmt.Printf("[DEBUG]: OLE recovered from panic in GetProperty: %v\n", r)
 		}
 	}()
 
