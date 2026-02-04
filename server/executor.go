@@ -1292,6 +1292,8 @@ func stripDirectivesAndComments(content string) string {
 
 // CreateObject creates an ASP COM object (like Server.CreateObject)
 func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
+	objType = strings.TrimSpace(objType)
+	originalObjType := objType
 	objType = strings.ToUpper(objType)
 	//fmt.Printf("[DEBUG] CreateObject called: %s\n", objType)
 
@@ -1335,6 +1337,10 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewADOStream(ae.context), nil
 
 	default:
+		comObj, err := NewCOMObject(originalObjType)
+		if err == nil {
+			return comObj, nil
+		}
 		return nil, fmt.Errorf("unsupported object type: %s", objType)
 	}
 }
@@ -1522,12 +1528,12 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 	}
 
 	// Debug: log specific variable assignments
-	if ident, ok := stmt.Left.(*ast.Identifier); ok {
-		nameLower := strings.ToLower(ident.Name)
-		if nameLower == "plugins" {
-			fmt.Printf("[DEBUG] visitAssignment: setting plugins = %T (%v)\n", value, value)
-		}
-	}
+	//if ident, ok := stmt.Left.(*ast.Identifier); ok {
+	//	nameLower := strings.ToLower(ident.Name)
+	//	if nameLower == "plugins" {
+	//		fmt.Printf("[DEBUG] visitAssignment: setting plugins = %T (%v)\n", value, value)
+	//	}
+	//}
 
 	// Handle different left-hand side patterns
 
@@ -2164,6 +2170,26 @@ func (v *ASPVisitor) visitForEach(stmt *ast.ForEachStatement) error {
 						}
 						return err
 					}
+				}
+			}
+		}
+	case interface{ Enumerate() ([]interface{}, error) }:
+		items, enumErr := col.Enumerate()
+		if enumErr != nil {
+			return enumErr
+		}
+		for _, item := range items {
+			if v.context.ShouldStop() {
+				return nil
+			}
+			_ = v.context.SetVariable(stmt.Identifier.Name, item)
+
+			for _, body := range stmt.Body {
+				if err := v.VisitStatement(body); err != nil {
+					if exitErr, ok := err.(*LoopExitError); ok && exitErr.LoopType == "for" {
+						return nil
+					}
+					return err
 				}
 			}
 		}
@@ -3600,7 +3626,7 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	// Must be before generic asp.ASPObject to handle methods like BinaryRead correctly
 	if reqObj, ok := obj.(*RequestObject); ok {
 		propNameLower := strings.ToLower(propName)
-		log.Printf("[DEBUG] visitMemberAccessExpression: RequestObject property=%q\n", propName)
+		//log.Printf("[DEBUG] visitMemberAccessExpression: RequestObject property=%q\n", propName)
 		switch propNameLower {
 		case "querystring":
 			return reqObj.QueryString, nil
@@ -3617,7 +3643,7 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		case "binaryread":
 			// BinaryRead is a method, not a property - return a callable wrapper
 			// This allows Request.BinaryRead(count) to work when parsed as member+call
-			log.Println("[DEBUG] visitMemberAccessExpression: Returning RequestBinaryReadWrapper")
+			//log.Println("[DEBUG] visitMemberAccessExpression: Returning RequestBinaryReadWrapper")
 			return &RequestBinaryReadWrapper{reqObj: reqObj}, nil
 		}
 		// For other properties, use generic GetProperty

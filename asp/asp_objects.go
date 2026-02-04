@@ -189,7 +189,7 @@ func (s *ServerObject) createObject(args []interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("CreateObject requires an object type")
 	}
 
-	objType := fmt.Sprintf("%v", args[0])
+	objType := strings.TrimSpace(fmt.Sprintf("%v", args[0]))
 
 	// Get the executor from properties (set by server/executor.go)
 	if executor, exists := s.properties["_executor"]; exists {

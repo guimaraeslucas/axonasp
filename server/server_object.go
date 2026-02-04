@@ -145,6 +145,7 @@ func (s *ServerObject) SetScriptTimeout(timeout int) error {
 // CreateObject creates an ASP COM-compatible object
 // Maintains compatibility with custom G3 libraries
 func (s *ServerObject) CreateObject(progID string) (interface{}, error) {
+	progID = strings.TrimSpace(progID)
 	if progID == "" {
 		return nil, fmt.Errorf("CreateObject requires a ProgID")
 	}

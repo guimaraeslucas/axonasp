@@ -160,7 +160,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		if len(args) > 0 {
 			c.ConnectionString = fmt.Sprintf("%v", args[0])
 		}
-		fmt.Printf("[DEBUG] ADODB.Connection.Open called: %s\n", c.ConnectionString)
+		//fmt.Printf("[DEBUG] ADODB.Connection.Open called: %s\n", c.ConnectionString)
 		return c.openDatabase()
 
 	case "close":
@@ -760,12 +760,12 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 
 	case "open":
 		// Open(Source, [ActiveConnection], [CursorType], [LockType], [Options])
-		fmt.Printf("[DEBUG] Recordset.Open called with %d args\n", len(args))
+		//fmt.Printf("[DEBUG] Recordset.Open called with %d args\n", len(args))
 		if len(args) < 1 {
 			return nil
 		}
 		sql := fmt.Sprintf("%v", args[0])
-		fmt.Printf("[DEBUG] Recordset.Open SQL: %s\n", sql[:min(len(sql), 100)])
+		//fmt.Printf("[DEBUG] Recordset.Open SQL: %s\n", sql[:min(len(sql), 100)])
 
 		// Try to get connection from args[1] or from stored ActiveConnection
 		var conn *ADODBConnection
@@ -792,7 +792,7 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 			fmt.Println("[DEBUG] Warning: ADODBRecordset.Open called without connection")
 			return nil
 		}
-		fmt.Printf("[DEBUG] Recordset.Open calling openRecordset with conn state=%d\n", conn.State)
+		//fmt.Printf("[DEBUG] Recordset.Open calling openRecordset with conn state=%d\n", conn.State)
 
 		return rs.openRecordset(sql, conn)
 
@@ -982,7 +982,7 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 	if len(sqlPreview) > 50 {
 		sqlPreview = sqlPreview[:50]
 	}
-	fmt.Printf("[DEBUG] openRecordset: SQL=%s, conn.oleConnection=%v, conn.db=%v\n", sqlPreview, conn.oleConnection != nil, conn.db != nil)
+	//fmt.Printf("[DEBUG] openRecordset: SQL=%s, conn.oleConnection=%v, conn.db=%v\n", sqlPreview, conn.oleConnection != nil, conn.db != nil)
 
 	// Try OLE connection first (for Access databases)
 	if conn.oleConnection != nil {
@@ -996,7 +996,7 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 		if result != nil {
 			oleRs := result.ToIDispatch()
 			if populateRecordsetFromOLE(oleRs, rs) {
-				fmt.Printf("[DEBUG] openRecordset OLE: loaded %d records, EOF=%v\n", len(rs.allData), rs.EOF)
+				//fmt.Printf("[DEBUG] openRecordset OLE: loaded %d records, EOF=%v\n", len(rs.allData), rs.EOF)
 				return nil
 			}
 		}

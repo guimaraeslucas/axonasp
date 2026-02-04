@@ -1207,7 +1207,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		}
 
 		filename := fmt.Sprintf("%v", args[0])
-		fmt.Printf("[DEBUG] ADODBStream.LoadFromFile called with: %s\n", filename)
+		//fmt.Printf("[DEBUG] ADODBStream.LoadFromFile called with: %s\n", filename)
 
 		// Validate filename is not empty or nil
 		if filename == "" || filename == "<nil>" {
@@ -1313,7 +1313,7 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 			fmt.Printf("[DEBUG] ADODBStream.SaveToFile: Write failed: %v\n", err)
 			return nil
 		}
-		fmt.Printf("[DEBUG] ADODBStream.SaveToFile: Saved %d bytes to %s\n", len(s.buffer), filepath.Base(fullPath))
+		//fmt.Printf("[DEBUG] ADODBStream.SaveToFile: Saved %d bytes to %s\n", len(s.buffer), filepath.Base(fullPath))
 		return nil
 
 	case "copyto":

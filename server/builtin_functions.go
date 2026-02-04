@@ -60,12 +60,12 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "executeglobal":
 		// ExecuteGlobal(code) - executes VBScript code in the current global scope
 		if len(args) == 0 {
-			fmt.Printf("[DEBUG] ExecuteGlobal: called with no args!\n")
+			//fmt.Printf("[DEBUG] ExecuteGlobal: called with no args!\n")
 			return nil, true
 		}
 		code := toString(args[0])
 		if code == "" {
-			fmt.Printf("[DEBUG] ExecuteGlobal: called with empty code!\n")
+			//fmt.Printf("[DEBUG] ExecuteGlobal: called with empty code!\n")
 			return nil, true
 		}
 
@@ -80,8 +80,8 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// Debug: check if this code contains a class definition
 		codeLower := strings.ToLower(code)
 		if strings.Contains(codeLower, "class cls_asplite_database") {
-			fmt.Printf("[DEBUG] ExecuteGlobal: LOADING cls_asplite_database class definition!\n")
-			fmt.Printf("[DEBUG] ExecuteGlobal: code length=%d, first 200 chars: %s\n", len(code), code[:min(200, len(code))])
+			//fmt.Printf("[DEBUG] ExecuteGlobal: LOADING cls_asplite_database class definition!\n")
+			//fmt.Printf("[DEBUG] ExecuteGlobal: code length=%d, first 200 chars: %s\n", len(code), code[:min(200, len(code))])
 		}
 		if strings.Contains(codeLower, "class ") {
 			// Find what class is being defined
@@ -95,7 +95,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				if newlineIdx := strings.Index(snippet, "\n"); newlineIdx > 0 {
 					snippet = snippet[:newlineIdx]
 				}
-				fmt.Printf("[DEBUG] ExecuteGlobal: loading class: %s\n", snippet)
+				//fmt.Printf("[DEBUG] ExecuteGlobal: loading class: %s\n", snippet)
 			}
 		}
 		//fmt.Printf("[DEBUG] ExecuteGlobal START: %s (len=%d)\n", codePreview, len(code))
@@ -467,7 +467,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// 	} else {
 		// 		tokenHex = fmt.Sprintf("%x...", bs2[:10])
 		// 	}
-		// 	//fmt.Printf("[DEBUG] InstrB: start=%d, len(s1)=%d, len(s2)=%d, token=%s\n", startIndex, len(bs1), len(bs2), tokenHex)
+		// 	fmt.Printf("[DEBUG] InstrB: start=%d, len(s1)=%d, len(s2)=%d, token=%s\n", startIndex, len(bs1), len(bs2), tokenHex)
 		// }
 
 		if len(bs2) == 0 {
@@ -478,7 +478,7 @@ func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			startPos = 0
 		}
 		if startPos >= len(bs1) {
-			////fmt.Printf("[DEBUG] InstrB RESULT: 0 (start position %d >= len %d)\n", startPos, len(bs1))
+			//fmt.Printf("[DEBUG] InstrB RESULT: 0 (start position %d >= len %d)\n", startPos, len(bs1))
 			return 0, true
 		}
 		idx := bytes.Index(bs1[startPos:], bs2)
