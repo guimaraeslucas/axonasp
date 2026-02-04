@@ -301,6 +301,41 @@ func (c *ADODBConnection) openDatabase() interface{} {
 	return nil
 }
 
+func normalizeAccessProvider(connStr string) string {
+	if strings.TrimSpace(connStr) == "" {
+		return connStr
+	}
+	if GetCOMProviderMode() != "auto" {
+		return connStr
+	}
+
+	provider := "microsoft.ace.oledb.12.0"
+	if runtime.GOARCH == "386" {
+		provider = "microsoft.jet.oledb.4.0"
+	}
+
+	parts := strings.Split(connStr, ";")
+	found := false
+	for i, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(kv[0])
+		if strings.EqualFold(key, "provider") {
+			parts[i] = fmt.Sprintf("Provider=%s", provider)
+			found = true
+		}
+	}
+	if !found {
+		parts = append([]string{fmt.Sprintf("Provider=%s", provider)}, parts...)
+	}
+	return strings.Join(parts, ";")
+}
+
 // openAccessDatabase opens an Access database using OLE/OLEDB
 func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 	// Only supported on Windows
@@ -308,6 +343,8 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		fmt.Println("Warning: Direct Access database support is only available on Windows. Please use a different database system for cross-platform compatibility.")
 		return nil
 	}
+
+	connStr = normalizeAccessProvider(connStr)
 
 	// Ensure COM calls stay on a single OS thread for the lifetime of this connection
 	runtime.LockOSThread()

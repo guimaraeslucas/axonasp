@@ -47,6 +47,7 @@ var (
 	DebugASP          = false
 	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
 	Error404Mode      = "default" // "default" or "IIS"
+	COMProviderMode   = "auto"    // "auto" or "code"
 )
 
 // Global web.config parser
@@ -92,6 +93,16 @@ func init() {
 			Error404Mode = "default"
 		}
 	}
+	if val := os.Getenv("COM_PROVIDER"); val != "" {
+		val = strings.ToLower(val)
+		if val == "auto" || val == "code" {
+			COMProviderMode = val
+		} else {
+			fmt.Printf("Warning: Invalid COM_PROVIDER value '%s'. Using 'auto'. Valid values: 'auto', 'code'\n", val)
+			COMProviderMode = "auto"
+		}
+	}
+	server.SetCOMProviderMode(COMProviderMode)
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)

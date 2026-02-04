@@ -26,6 +26,7 @@ import (
 	"g3pix.com.br/axonasp/asp"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -35,6 +36,23 @@ type ASPProcessorConfig struct {
 	RootDir       string
 	ScriptTimeout int  // in seconds
 	DebugASP      bool // Enable debug output for ASP parsing and execution
+}
+
+// COM provider mode for Access connections: "auto" or "code"
+var comProviderMode = "auto"
+
+// SetCOMProviderMode configures how Access OLEDB providers are selected.
+func SetCOMProviderMode(mode string) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode != "code" && mode != "auto" {
+		mode = "auto"
+	}
+	comProviderMode = mode
+}
+
+// GetCOMProviderMode returns the configured COM provider mode.
+func GetCOMProviderMode() string {
+	return comProviderMode
 }
 
 // ASPProcessor handles ASP file execution
