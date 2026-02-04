@@ -22,8 +22,6 @@ package main
 
 import (
 	"fmt"
-	"g3pix.com.br/axonasp/asp"
-	"g3pix.com.br/axonasp/server"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -32,6 +30,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/server"
 
 	"github.com/joho/godotenv"
 )

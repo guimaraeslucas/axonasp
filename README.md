@@ -573,10 +573,8 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 - [ ] Better error handling
 - [ ] FastCGI support
 - [ ] WebSocket support
-- [ ] web.config support
-- [ ] Custom 404 handling
+- ✅ Custom 404 handling
 - [ ] Built-in Redis session storage
-- [ ] Performance monitoring dashboard
 - [ ] Docker official images
 - [ ] Additional database drivers
 - [ ] REST API generator

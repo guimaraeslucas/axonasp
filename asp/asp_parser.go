@@ -94,6 +94,8 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 		HTMLContent: make([]string, 0),
 	}
 
+	blockErrors := make([]error, 0)
+
 	// Tokeniza o código ASP
 	blocks := ap.lexer.Tokenize()
 	result.Blocks = blocks
@@ -110,9 +112,7 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 			// Attempt to parse individual VBScript block without failing the whole page
 			program, err := ap.parseVBBlock(block.Content)
 			if err != nil {
-				if ap.options.DebugMode {
-					fmt.Printf("[ASP Parser Error] Line %d: %v\n", block.Line, err)
-				}
+				blockErrors = append(blockErrors, fmt.Errorf("Line %d: %v", block.Line, err))
 				break
 			}
 			result.VBPrograms[i] = program
@@ -133,6 +133,9 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 			result.Errors = append(result.Errors, parseErr)
 			if ap.options.DebugMode {
 				fmt.Printf("[ASP Parser Error] Combined: %v\n", err)
+				for _, blockErr := range blockErrors {
+					fmt.Printf("[ASP Parser Error] %v\n", blockErr)
+				}
 			}
 		} else {
 			result.CombinedProgram = program
@@ -330,6 +333,8 @@ func buildCombinedVBScript(blocks []*CodeBlock) string {
 			if htmlWrite == "" {
 				continue
 			}
+			// Always ensure HTML Response.Write is on its own line with a leading newline
+			// to prevent it from being on the same line as "then", "else", etc.
 			sb.WriteString(htmlWrite)
 			sb.WriteString("\n")
 		}
@@ -340,6 +345,7 @@ func buildCombinedVBScript(blocks []*CodeBlock) string {
 
 // htmlToVBWrite converts raw HTML into a VBScript Response.Write statement
 // New lines are preserved using vbCrLf and quotes are doubled for VBScript string literals
+// Always returns statements on fresh lines
 func htmlToVBWrite(html string) string {
 	if html == "" {
 		return ""

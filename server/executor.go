@@ -1072,12 +1072,31 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 		return fmt.Errorf("ASP parse error in included file: %v", result.Errors[0])
 	}
 
-	// Execute blocks (avoid CombinedProgram to keep HTML streaming fast)
+	// Execute blocks (combined program preserves HTML/control-flow semantics)
 	return childExecutor.executeBlocks(result)
 }
 
 // executeBlocks executes all blocks in order (HTML and ASP)
 func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
+	if result == nil {
+		return nil
+	}
+
+	if result.CombinedProgram != nil {
+		visitor := NewASPVisitor(ae.context, ae)
+		ae.hoistDeclarations(visitor, result.CombinedProgram)
+		if err := ae.executeVBProgram(result.CombinedProgram); err != nil {
+			if err.Error() == "RESPONSE_END" {
+				return nil
+			}
+			if err == ErrServerTransfer {
+				return nil
+			}
+			return err
+		}
+		return nil
+	}
+
 	// Hoist declarations across all parsed programs up-front so forward references
 	// across ASP blocks (including class members calling later global functions)
 	// resolve before any execution begins.
@@ -1852,17 +1871,6 @@ func (v *ASPVisitor) visitIf(stmt *ast.IfStatement) error {
 	condition, err := v.visitExpression(stmt.Test)
 	if err != nil {
 		return err
-	}
-
-	// Debug: log specific if conditions involving "plugins is nothing"
-	if binaryExpr, ok := stmt.Test.(*ast.BinaryExpression); ok {
-		if binaryExpr.Operation == ast.BinaryOperationIs {
-			if ident, ok := binaryExpr.Left.(*ast.Identifier); ok {
-				if strings.EqualFold(ident.Name, "plugins") {
-					fmt.Printf("[DEBUG] visitIf: 'plugins is nothing' condition=%v, isTruthy=%v, consequent=%T\n", condition, isTruthy(condition), stmt.Consequent)
-				}
-			}
-		}
 	}
 
 	// Convert condition to boolean
@@ -2997,6 +3005,11 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 			}); ok {
 				return caller.CallMethod(propName, args...)
 			}
+			if caller, ok := parentObj.(interface {
+				CallMethod(string, ...interface{}) interface{}
+			}); ok {
+				return caller.CallMethod(propName, args...), nil
+			}
 		}
 	}
 
@@ -3019,6 +3032,11 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 				CallMethod(string, ...interface{}) (interface{}, error)
 			}); ok {
 				return caller.CallMethod(propName, args...)
+			}
+			if caller, ok := parentObj.(interface {
+				CallMethod(string, ...interface{}) interface{}
+			}); ok {
+				return caller.CallMethod(propName, args...), nil
 			}
 		}
 	}
@@ -3222,6 +3240,11 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		if obj, ok := base.(callMethoder); ok {
 			return obj.CallMethod(methodName, args...)
 		}
+
+		// Finally, try CallMethod without error return
+		if obj, ok := base.(interface{ CallMethod(string, ...interface{}) interface{} }); ok {
+			return obj.CallMethod(methodName, args...), nil
+		}
 	}
 
 	// Handle Member Method Calls (obj.Method(args)) where Method is not a property
@@ -3254,6 +3277,11 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 					CallMethod(string, ...interface{}) (interface{}, error)
 				}); ok {
 					return caller.CallMethod(propName, args...)
+				}
+				if caller, ok := parentObj.(interface {
+					CallMethod(string, ...interface{}) interface{}
+				}); ok {
+					return caller.CallMethod(propName, args...), nil
 				}
 
 				// Try ResponseObject methods
@@ -3739,7 +3767,22 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 
 	// Handle generic GetProperty interface
 	if getter, ok := obj.(interface{ GetProperty(string) interface{} }); ok {
-		return getter.GetProperty(propName), nil
+		val := getter.GetProperty(propName)
+		if val != nil {
+			return val, nil
+		}
+	}
+
+	// Fallback: if property not found, try zero-arg method call for objects that expose CallMethod
+	if caller, ok := obj.(interface {
+		CallMethod(string, ...interface{}) (interface{}, error)
+	}); ok {
+		return caller.CallMethod(propName)
+	}
+	if caller, ok := obj.(interface {
+		CallMethod(string, ...interface{}) interface{}
+	}); ok {
+		return caller.CallMethod(propName), nil
 	}
 
 	return nil, nil
