@@ -21,6 +21,7 @@
 package server
 
 import (
+	"hash/fnv"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ import (
 // SessionObject wraps session data and provides ASP-style access
 type SessionObject struct {
 	ID        string
+	NumericID int64
 	Data      map[string]interface{}
 	TimeOut   int // Timeout in minutes
 	CreatedAt time.Time
@@ -41,6 +43,7 @@ type SessionObject struct {
 func NewSessionObject(sessionID string, data map[string]interface{}) *SessionObject {
 	return &SessionObject{
 		ID:        sessionID,
+		NumericID: numericSessionID(sessionID),
 		Data:      data,
 		TimeOut:   20, // Default ASP session timeout in minutes
 		CreatedAt: time.Now(),
@@ -55,7 +58,7 @@ func (s *SessionObject) GetProperty(name string) interface{} {
 
 	// Handle built-in properties
 	if nameLower == "sessionid" {
-		return s.ID
+		return s.NumericID
 	}
 
 	// Get from session data
@@ -64,6 +67,19 @@ func (s *SessionObject) GetProperty(name string) interface{} {
 	}
 
 	return nil
+}
+
+func numericSessionID(sessionID string) int64 {
+	if sessionID == "" {
+		return 0
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(sessionID))
+	value := int64(h.Sum32() & 0x7fffffff)
+	if value == 0 {
+		value = 1
+	}
+	return value
 }
 
 // SetProperty sets a session property (case-insensitive)

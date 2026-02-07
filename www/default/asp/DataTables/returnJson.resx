@@ -60,6 +60,7 @@ class cls_datatables_returnJson
 		
 		'total number of results
 		rTotal=rs.recordcount
+
 		
 		'we only want a portion of the recordset 
 		'starting from the startrecord (AbsolutePosition), and the next x rows (pagesize) only

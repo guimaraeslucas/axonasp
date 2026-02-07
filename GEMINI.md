@@ -324,10 +324,10 @@ Prioritize secure, testable, and small implementations.
 - File Location: www/global.asa
 - Supported Formats: Both `<% %>` and `<script runat="server">` blocks
 - Events Supported:
-  * Application_OnStart: Executed once at server startup
-  * Application_OnEnd: Executed when server shuts down
-  * Session_OnStart: Executed when a new session is created
-  * Session_OnEnd: Executed when a session expires or is abandoned
+  - Application_OnStart: Executed once at server startup
+  - Application_OnEnd: Executed when server shuts down
+  - Session_OnStart: Executed when a new session is created
+  - Session_OnEnd: Executed when a session expires or is abandoned
 - ASP Lexer Enhancement: Added support for `<script language="vbscript" runat="server">` blocks via regex matching
 - Implementation: global_asa_manager.go handles loading, parsing, and executing global.asa events
 - Testing: Use www/tests/test_global_asa.asp to verify global.asa functionality

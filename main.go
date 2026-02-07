@@ -134,11 +134,8 @@ func main() {
 			fmt.Printf("Warning: ERROR_404_MODE is 'IIS' but failed to load web.config: %v\n", err)
 			fmt.Println("Falling back to default error page mode.")
 			Error404Mode = "default"
-		} else {
-			fmt.Printf("Loaded web.config for custom 404 handling\n")
 		}
 	}
-	fmt.Printf("404 Error Mode: %s\n", Error404Mode)
 
 	http.HandleFunc("/", handleRequest)
 

@@ -909,21 +909,15 @@ func (s *ADODBStream) GetProperty(name string) interface{} {
 func (s *ADODBStream) SetProperty(name string, value interface{}) {
 	switch strings.ToLower(name) {
 	case "type":
-		if v, ok := value.(int); ok {
-			s.Type = v
-		}
+		s.Type = toInt(value)
 	case "mode":
-		if v, ok := value.(int); ok {
-			s.Mode = v
-		}
+		s.Mode = toInt(value)
 	case "charset":
 		if v, ok := value.(string); ok {
 			s.Charset = v
 		}
 	case "lineseparator":
-		if v, ok := value.(int); ok {
-			s.LineSeparator = v
-		}
+		s.LineSeparator = toInt(value)
 	case "position":
 		var newPos int64
 		switch v := value.(type) {

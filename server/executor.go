@@ -32,11 +32,12 @@ import (
 	"os"
 	"path/filepath"
 
-	// "runtime" // only needed for debug stack traces
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-ole/go-ole/oleutil"
 
 	"g3pix.com.br/axonasp/asp"
 	"g3pix.com.br/axonasp/vbscript/ast"
@@ -131,6 +132,10 @@ type ExecutionContext struct {
 	// Cancellation support for timeout handling
 	cancelChan chan struct{}
 	cancelled  bool
+
+	// Resource cleanup tracking for COM objects and other resources
+	managedResources []interface{}
+	resourceMutex    sync.Mutex
 }
 
 // NewExecutionContext creates a new execution context
@@ -153,28 +158,29 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	}
 
 	ctx := &ExecutionContext{
-		Request:        NewRequestObject(),
-		Response:       NewResponseObject(w, r),
-		Server:         nil, // Will be initialized below
-		Session:        NewSessionObject(sessionID, sessionData.Data),
-		Application:    GetGlobalApplication(),
-		Err:            NewErrObject(),
-		variables:      make(map[string]interface{}),
-		constants:      make(map[string]interface{}),
-		libraries:      make(map[string]interface{}),
-		scopeStack:     make([]map[string]interface{}, 0),
-		httpWriter:     w,
-		httpRequest:    r,
-		startTime:      time.Now(),
-		timeout:        timeout,
-		rng:            rand.New(rand.NewSource(time.Now().UnixNano())),
-		sessionID:      sessionID,
-		sessionManager: sessionManager,
-		isNewSession:   isNew,
-		compareMode:    ast.OptionCompareBinary,
-		optionBase:     0,
-		cancelChan:     make(chan struct{}),
-		cancelled:      false,
+		Request:          NewRequestObject(),
+		Response:         NewResponseObject(w, r),
+		Server:           nil, // Will be initialized below
+		Session:          NewSessionObject(sessionID, sessionData.Data),
+		Application:      GetGlobalApplication(),
+		Err:              NewErrObject(),
+		variables:        make(map[string]interface{}),
+		constants:        make(map[string]interface{}),
+		libraries:        make(map[string]interface{}),
+		scopeStack:       make([]map[string]interface{}, 0),
+		httpWriter:       w,
+		httpRequest:      r,
+		startTime:        time.Now(),
+		timeout:          timeout,
+		rng:              rand.New(rand.NewSource(time.Now().UnixNano())),
+		sessionID:        sessionID,
+		sessionManager:   sessionManager,
+		isNewSession:     isNew,
+		compareMode:      ast.OptionCompareBinary,
+		optionBase:       0,
+		cancelChan:       make(chan struct{}),
+		cancelled:        false,
+		managedResources: make([]interface{}, 0),
 	}
 
 	// Initialize Server object with context reference
@@ -709,6 +715,61 @@ func (ec *ExecutionContext) ShouldStop() bool {
 	return false
 }
 
+// RegisterManagedResource registers a resource for automatic cleanup
+func (ec *ExecutionContext) RegisterManagedResource(resource interface{}) {
+	if resource == nil {
+		return
+	}
+	ec.resourceMutex.Lock()
+	defer ec.resourceMutex.Unlock()
+	ec.managedResources = append(ec.managedResources, resource)
+}
+
+// Cleanup releases all managed resources
+func (ec *ExecutionContext) Cleanup() {
+	ec.resourceMutex.Lock()
+	defer ec.resourceMutex.Unlock()
+
+	// Release all resources safely, catching any panics
+	for _, resource := range ec.managedResources {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Silently recover from cleanup errors
+					fmt.Printf("[DEBUG] Cleanup: recovered from panic during resource release: %v\n", r)
+				}
+			}()
+
+			switch res := resource.(type) {
+			case *ADODBConnection:
+				if res != nil {
+					// Close regular SQL database connection
+					if res.db != nil {
+						res.db.Close()
+						res.db = nil
+					}
+				}
+			case *ADODBRecordset:
+				if res != nil && res.oleRecordset != nil {
+					// Close OLE recordset safely
+					if rs := res.oleRecordset; rs != nil {
+						if rs.oleRecordset != nil {
+							oleutil.CallMethod(rs.oleRecordset, "Close")
+							rs.oleRecordset.Release()
+							rs.oleRecordset = nil
+						}
+					}
+				}
+			case *COMObject:
+				if res != nil {
+					res.release()
+				}
+			}
+		}()
+	}
+	ec.managedResources = ec.managedResources[:0]
+}
+
 // Server_MapPath converts a virtual path to an absolute file system path
 func (ec *ExecutionContext) Server_MapPath(path string) string {
 	rootDir := ec.RootDir
@@ -965,6 +1026,12 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	// Save session data to file after request completes
 	if err := ae.saveSession(); err != nil {
 		fmt.Printf("Warning: Failed to save session: %v\n", err)
+	}
+
+	// Cleanup all managed resources (COM objects, database connections, etc.)
+	// Must be called at the very end, after everything else
+	if ae.context != nil {
+		ae.context.Cleanup()
 	}
 
 	return nil

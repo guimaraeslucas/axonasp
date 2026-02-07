@@ -26,6 +26,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	_ "github.com/denisenkom/go-mssqldb"
 	"github.com/go-ole/go-ole"
@@ -113,16 +114,22 @@ type ADODBConnection struct {
 	oleConnection    *ole.IDispatch // For Access databases via OLE
 	oleInitialized   bool           // Track if COM was initialized for this connection
 	threadLocked     bool           // Track if the OS thread is locked for COM usage
+	tx               *sql.Tx        // Active transaction
 }
 
 // NewADODBConnection creates a new connection object
 func NewADODBConnection(ctx *ExecutionContext) *ADODBConnection {
-	return &ADODBConnection{
+	conn := &ADODBConnection{
 		State:  0,
 		Mode:   3,
 		ctx:    ctx,
 		Errors: NewErrorsCollection(),
 	}
+	// Register for automatic cleanup
+	if ctx != nil {
+		ctx.RegisterManagedResource(conn)
+	}
+	return conn
 }
 
 func (c *ADODBConnection) GetProperty(name string) interface{} {
@@ -145,9 +152,7 @@ func (c *ADODBConnection) SetProperty(name string, value interface{}) {
 		c.ConnectionString = fmt.Sprintf("%v", value)
 		fmt.Printf("ADODB.Connection ConnectionString set to: %s\n", c.ConnectionString)
 	case "mode":
-		if v, ok := value.(int); ok {
-			c.Mode = v
-		}
+		c.Mode = toInt(value)
 	}
 }
 
@@ -205,11 +210,19 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			return nil
 		}
 
-		sql := fmt.Sprintf("%v", args[0])
+		cmdText := fmt.Sprintf("%v", args[0])
 
 		// Handle SQL driver connections
 		if c.db != nil {
-			result, err := c.db.Exec(sql)
+			var result sql.Result
+			var err error
+
+			if c.tx != nil {
+				result, err = c.tx.Exec(cmdText)
+			} else {
+				result, err = c.db.Exec(cmdText)
+			}
+
 			if err != nil {
 				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 				return nil
@@ -220,7 +233,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 
 		// Handle OLE/Access connections - return Recordset
 		if c.oleConnection != nil {
-			result, err := oleutil.CallMethod(c.oleConnection, "Execute", sql)
+			result, err := oleutil.CallMethod(c.oleConnection, "Execute", cmdText)
 			if err != nil {
 				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 				return nil
@@ -241,21 +254,35 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		if c.db == nil {
 			return nil
 		}
-		c.db.Exec("BEGIN TRANSACTION")
-		return nil
-
-	case "committrans":
-		if c.db == nil {
+		if c.tx != nil {
+			return nil // Transaction already active
+		}
+		tx, err := c.db.Begin()
+		if err != nil {
+			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 			return nil
 		}
-		c.db.Exec("COMMIT")
+		c.tx = tx
+		return 1 // Level of transaction
+
+	case "committrans":
+		if c.tx == nil {
+			return nil
+		}
+		if err := c.tx.Commit(); err != nil {
+			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+		}
+		c.tx = nil
 		return nil
 
 	case "rollbacktrans":
-		if c.db == nil {
+		if c.tx == nil {
 			return nil
 		}
-		c.db.Exec("ROLLBACK")
+		if err := c.tx.Rollback(); err != nil {
+			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+		}
+		c.tx = nil
 		return nil
 	}
 
@@ -657,47 +684,54 @@ func (fc *FieldsCollection) Enumeration() []interface{} {
 
 // ADODBRecordset simulates ADODB.Recordset for result sets
 type ADODBRecordset struct {
-	EOF              bool
-	BOF              bool
-	RecordCount      int
-	State            int // 0 = closed, 1 = open
-	CurrentRow       int
-	Fields           *FieldsCollection
-	rows             *sql.Rows
-	db               *sql.DB
-	columns          []string
-	currentData      map[string]interface{}
-	allData          []map[string]interface{}
-	newData          map[string]interface{} // For AddNew
-	ctx              *ExecutionContext
-	PageSize         int         // Number of records per page
-	AbsolutePage     int         // Current page number (1-based)
-	PageCount        int         // Total number of pages
-	SortField        string      // Field name for sorting
-	SortOrder        string      // ASC or DESC
-	FilterCriteria   string      // Filter expression
-	filteredIndices  []int       // Indices of filtered records
-	isFiltered       bool        // Whether filter is active
-	ActiveConnection interface{} // Stored connection for later use
-	CursorType       int         // Cursor type
-	LockType         int         // Lock type
-	oleRecordset     *ADODBOLERecordset
+	EOF               bool
+	BOF               bool
+	RecordCount       int
+	State             int // 0 = closed, 1 = open
+	CurrentRow        int
+	Fields            *FieldsCollection
+	rows              *sql.Rows
+	db                *sql.DB
+	dbConn            *ADODBConnection // Reference to parent connection wrapper for Tx support
+	columns           []string
+	currentData       map[string]interface{}
+	allData           []map[string]interface{}
+	newData           map[string]interface{} // For AddNew
+	ctx               *ExecutionContext
+	PageSize          int         // Number of records per page
+	AbsolutePage      int         // Current page number (1-based)
+	PageCount         int         // Total number of pages
+	SortField         string      // Field name for sorting
+	SortOrder         string      // ASC or DESC
+	FilterCriteria    string      // Filter expression
+	filteredIndices   []int       // Indices of filtered records
+	isFiltered        bool        // Whether filter is active
+	ActiveConnection  interface{} // Stored connection for later use
+	CursorType        int         // Cursor type
+	LockType          int         // Lock type
+	CursorLocation    int         // Cursor location (2=Server, 3=Client)
+	CursorTypeSet     bool        // Track explicit CursorType assignment
+	LockTypeSet       bool        // Track explicit LockType assignment
+	CursorLocationSet bool        // Track explicit CursorLocation assignment
+	Source            string      // Source SQL or Table Name
+	oleRecordset      *ADODBOLERecordset
 }
 
 // NewADODBRecordset creates a new recordset
 func NewADODBRecordset(ctx *ExecutionContext) *ADODBRecordset {
 	return &ADODBRecordset{
-		EOF:          true,
-		BOF:          true,
-		State:        0,
-		CurrentRow:   -1,
-		Fields:       NewFieldsCollection(),
-		allData:      make([]map[string]interface{}, 0),
-		ctx:          ctx,
-		PageSize:     10,
-		AbsolutePage: 1,
-		PageCount:    0,
-		SortOrder:    "ASC",
+		EOF:            true,
+		BOF:            true,
+		State:          0,
+		CurrentRow:     -1,
+		Fields:         NewFieldsCollection(),
+		allData:        make([]map[string]interface{}, 0),
+		ctx:            ctx,
+		PageSize:       10,
+		AbsolutePage:   1,
+		PageCount:      0,
+		SortOrder:      "ASC",
+		CursorLocation: 2,
 	}
 }
 
@@ -718,6 +752,8 @@ func (rs *ADODBRecordset) GetProperty(name string) interface{} {
 		return rs.RecordCount
 	case "state":
 		return rs.State
+	case "cursorlocation":
+		return rs.CursorLocation
 	case "fields":
 		return rs.Fields
 	case "pagesize":
@@ -752,20 +788,23 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 	case "activeconnection":
 		rs.ActiveConnection = value
 	case "cursortype":
-		if v, ok := value.(int); ok {
-			rs.CursorType = v
-		}
+		rs.CursorType = toInt(value)
+		rs.CursorTypeSet = true
 	case "locktype":
-		if v, ok := value.(int); ok {
-			rs.LockType = v
-		}
+		rs.LockType = toInt(value)
+		rs.LockTypeSet = true
+	case "cursorlocation":
+		rs.CursorLocation = toInt(value)
+		rs.CursorLocationSet = true
 	case "pagesize":
-		if v, ok := value.(int); ok && v > 0 {
+		v := toInt(value)
+		if v > 0 {
 			rs.PageSize = v
 			rs.calculatePageCount()
 		}
 	case "absolutepage":
-		if v, ok := value.(int); ok && v > 0 {
+		v := toInt(value)
+		if v > 0 {
 			rs.AbsolutePage = v
 			rs.moveToAbsolutePage()
 		}
@@ -783,6 +822,36 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 		} else if value == nil || value == 0 {
 			// Clear filter
 			rs.clearFilter()
+		}
+	default:
+		// Handle field assignment: rs("field") = value
+		// If in AddNew mode
+		if rs.newData != nil {
+			rs.newData[nameLower] = value
+			return
+		}
+
+		// If editing current record
+		if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.allData) {
+			// Update currentData (in-memory)
+			if rs.currentData == nil {
+				rs.currentData = make(map[string]interface{})
+			}
+			rs.currentData[nameLower] = value
+			rs.allData[rs.CurrentRow][nameLower] = value
+
+			// Update Fields collection to reflect change immediately
+			found := false
+			for _, f := range rs.Fields.fields {
+				if strings.ToLower(f.Name) == nameLower {
+					f.Value = value
+					found = true
+					break
+				}
+			}
+			if found {
+				rs.Fields.data[nameLower] = value
+			}
 		}
 	}
 }
@@ -824,12 +893,10 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 
 	case "open":
 		// Open(Source, [ActiveConnection], [CursorType], [LockType], [Options])
-		//fmt.Printf("[DEBUG] Recordset.Open called with %d args\n", len(args))
 		if len(args) < 1 {
 			return nil
 		}
 		sql := fmt.Sprintf("%v", args[0])
-		//fmt.Printf("[DEBUG] Recordset.Open SQL: %s\n", sql[:min(len(sql), 100)])
 
 		// Try to get connection from args[1] or from stored ActiveConnection
 		var conn *ADODBConnection
@@ -853,13 +920,11 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		}
 
 		if conn == nil {
-			fmt.Println("[DEBUG] Warning: ADODBRecordset.Open called without connection")
 			return nil
 		}
 		if conn.oleConnection != nil {
 			return rs.openOLERecordset(args, conn)
 		}
-		//fmt.Printf("[DEBUG] Recordset.Open calling openRecordset with conn state=%d\n", conn.State)
 
 		return rs.openRecordset(sql, conn)
 
@@ -873,6 +938,9 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		return nil
 
 	case "movenext":
+		if rs.oleRecordset != nil {
+			return rs.oleRecordset.CallMethod("movenext")
+		}
 		if rs.EOF {
 			return nil
 		}
@@ -898,6 +966,9 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		return nil
 
 	case "movefirst":
+		if rs.oleRecordset != nil {
+			return rs.oleRecordset.CallMethod("movefirst")
+		}
 		if rs.isFiltered {
 			if len(rs.filteredIndices) > 0 {
 				rs.CurrentRow = rs.filteredIndices[0]
@@ -924,6 +995,9 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		return nil
 
 	case "movelast":
+		if rs.oleRecordset != nil {
+			return rs.oleRecordset.CallMethod("movelast")
+		}
 		if rs.isFiltered {
 			if len(rs.filteredIndices) == 0 {
 				rs.EOF = true
@@ -979,6 +1053,11 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		return nil
 
 	case "update":
+		// Handle DB persistence
+		if rs.db != nil && rs.Source != "" {
+			rs.performSQLUpdate()
+		}
+
 		// Add new row to allData
 		if rs.newData != nil {
 			rs.allData = append(rs.allData, rs.newData)
@@ -1045,6 +1124,7 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 }
 
 func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) interface{} {
+	rs.Source = sqlStr
 	sqlPreview := sqlStr
 	if len(sqlPreview) > 50 {
 		sqlPreview = sqlPreview[:50]
@@ -1055,6 +1135,9 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 	if conn.db == nil {
 		return nil
 	}
+
+	rs.db = conn.db
+	rs.dbConn = conn
 
 	rows, err := conn.db.Query(sqlStr)
 	if err != nil {
@@ -1126,14 +1209,25 @@ func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnec
 	if err != nil {
 		return nil
 	}
-	defer unknown.Release()
 
 	disp, err := unknown.QueryInterface(ole.IID_IDispatch)
 	if err != nil {
+		unknown.Release()
 		return nil
 	}
 
-	openArgs := make([]interface{}, 0, len(args)+1)
+	// DO NOT defer unknown.Release() - it's owned by the ADODBOLERecordset now
+
+	// Apply CursorLocation property before Open
+	cursorLocation := rs.CursorLocation
+	if !rs.CursorLocationSet && !rs.CursorTypeSet && !rs.LockTypeSet && cursorLocation == 2 {
+		cursorLocation = 3
+	}
+	if cursorLocation > 0 {
+		oleutil.PutProperty(disp, "CursorLocation", toInt32Variant(cursorLocation))
+	}
+
+	openArgs := make([]interface{}, 0, 5)
 	if len(args) > 0 {
 		openArgs = append(openArgs, args[0])
 	}
@@ -1147,26 +1241,73 @@ func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnec
 	} else {
 		openArgs = append(openArgs, conn.oleConnection)
 	}
+
+	// CursorType
+	var cursorType interface{}
 	if len(args) >= 3 {
-		openArgs = append(openArgs, args[2])
+		cursorType = toInt32Variant(args[2])
+	} else if rs.CursorType > 0 {
+		cursorType = toInt32Variant(rs.CursorType)
+	} else if !rs.CursorTypeSet {
+		// Default to Keyset (1) for Access to allow updates
+		cursorType = int32(1)
+	} else {
+		// Default to ForwardOnly (0) if not specified
+		cursorType = int32(0)
 	}
+	if toInt(cursorLocation) == 3 {
+		if ct, ok := cursorType.(int32); ok && (ct == 1 || ct == 2) {
+			cursorType = int32(3)
+		}
+	}
+	openArgs = append(openArgs, cursorType)
+
+	// LockType
 	if len(args) >= 4 {
-		openArgs = append(openArgs, args[3])
+		openArgs = append(openArgs, toInt32Variant(args[3]))
+	} else if rs.LockType > 0 {
+		openArgs = append(openArgs, toInt32Variant(rs.LockType))
+	} else if !rs.LockTypeSet {
+		// Default to Optimistic (3) for Access to allow updates
+		openArgs = append(openArgs, int32(3))
+	} else {
+		// Default to ReadOnly (1)
+		openArgs = append(openArgs, int32(1))
 	}
+
 	if len(args) >= 5 {
 		openArgs = append(openArgs, args[4])
 	}
 
 	if _, err = oleutil.CallMethod(disp, "Open", openArgs...); err != nil {
 		disp.Release()
+		unknown.Release()
 		return nil
 	}
 
 	rs.oleRecordset = NewADODBOLERecordset(disp, rs.ctx)
+	rs.oleRecordset.activeConnection = conn.oleConnection
 	rs.State = 1
 	rs.EOF = false
 	rs.BOF = false
 	return nil
+}
+
+func toInt32Variant(value interface{}) interface{} {
+	switch v := value.(type) {
+	case int:
+		return int32(v)
+	case int32:
+		return v
+	case int64:
+		return int32(v)
+	case float64:
+		return int32(v)
+	case float32:
+		return int32(v)
+	default:
+		return value
+	}
 }
 
 func (rs *ADODBRecordset) fetchCurrentRow() {
@@ -1705,12 +1846,146 @@ func (rs *ADODBRecordset) supportsFeature(option int) bool {
 	}
 }
 
+// performSQLUpdate attempts to persist changes to the database
+func (rs *ADODBRecordset) performSQLUpdate() {
+	tableName := extractTableName(rs.Source)
+	if tableName == "" {
+		return
+	}
+
+	if rs.newData != nil {
+		// INSERT
+		var cols []string
+		var placeholders []string
+		var values []interface{}
+
+		for col, val := range rs.newData {
+			cols = append(cols, col)
+			placeholders = append(placeholders, "?")
+			values = append(values, val)
+		}
+
+		if len(cols) == 0 {
+			return
+		}
+
+		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
+			tableName,
+			strings.Join(cols, ", "),
+			strings.Join(placeholders, ", "))
+
+		fmt.Printf("[ADODB] Executing INSERT: %s, Values: %v\n", query, values)
+
+		var result sql.Result
+		var err error
+
+		if rs.dbConn != nil && rs.dbConn.tx != nil {
+			result, err = rs.dbConn.tx.Exec(query, values...)
+		} else {
+			result, err = rs.db.Exec(query, values...)
+		}
+
+		if err != nil {
+			fmt.Printf("[ADODB] Insert failed: %v\n", err)
+			if rs.ctx != nil && rs.ctx.Err != nil {
+				rs.ctx.Err.SetError(err)
+			}
+		} else {
+			// Try to retrieve LastInsertId and update identity field
+			if lastId, err := result.LastInsertId(); err == nil && lastId > 0 {
+				// Look for standard ID field names
+				idFields := []string{"id", "iid", "identity", "autoid"}
+
+				// Also try to find first integer field if specific ID not found? No, unsafe.
+
+				for _, idField := range idFields {
+					found := false
+					for _, f := range rs.Fields.fields {
+						if strings.EqualFold(f.Name, idField) {
+							f.Value = lastId
+							rs.currentData[strings.ToLower(f.Name)] = lastId
+							if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.allData) {
+								rs.allData[rs.CurrentRow][strings.ToLower(f.Name)] = lastId
+							}
+							found = true
+							break
+						}
+					}
+					if found {
+						break
+					}
+				}
+			}
+		}
+	} else {
+		// UPDATE
+		whereClause := extractWhereClause(rs.Source)
+		if whereClause == "" {
+			return
+		}
+
+		var sets []string
+		var values []interface{}
+
+		for col, val := range rs.currentData {
+			sets = append(sets, fmt.Sprintf("%s = ?", col))
+			values = append(values, val)
+		}
+
+		if len(sets) == 0 {
+			return
+		}
+
+		query := fmt.Sprintf("UPDATE %s SET %s %s", tableName, strings.Join(sets, ", "), whereClause)
+
+		fmt.Printf("[ADODB] Executing UPDATE: %s, Values: %v\n", query, values)
+
+		var err error
+		if rs.dbConn != nil && rs.dbConn.tx != nil {
+			_, err = rs.dbConn.tx.Exec(query, values...)
+		} else {
+			_, err = rs.db.Exec(query, values...)
+		}
+
+		if err != nil {
+			fmt.Printf("[ADODB] Update failed: %v\n", err)
+			if rs.ctx != nil && rs.ctx.Err != nil {
+				rs.ctx.Err.SetError(err)
+			}
+		}
+	}
+}
+
+func extractTableName(sql string) string {
+	upperSQL := strings.ToUpper(sql)
+	idx := strings.Index(upperSQL, " FROM ")
+	if idx == -1 {
+		return ""
+	}
+	remaining := strings.TrimSpace(sql[idx+6:])
+	parts := strings.Fields(remaining)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
+}
+
+func extractWhereClause(sql string) string {
+	upperSQL := strings.ToUpper(sql)
+	idx := strings.Index(upperSQL, " WHERE ")
+	if idx == -1 {
+		return ""
+	}
+	return sql[idx:]
+}
+
 // --- ADODB.Recordset (OLE Wrapper) ---
 
 // ADODBOLERecordset wraps an OLE/COM Recordset object for Access databases
 type ADODBOLERecordset struct {
-	oleRecordset *ole.IDispatch
-	ctx          *ExecutionContext
+	oleRecordset     *ole.IDispatch
+	activeConnection *ole.IDispatch // Store the ActiveConnection
+	ctx              *ExecutionContext
 }
 
 // NewADODBOLERecordset creates a new OLE recordset wrapper
@@ -1752,34 +2027,112 @@ func (rs *ADODBOLERecordset) getFieldValue(fieldName interface{}) (interface{}, 
 	return valueResult.Value(), true
 }
 
-func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interface{}) bool {
+func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interface{}) error {
 	if rs.oleRecordset == nil {
-		return false
+		return fmt.Errorf("Recordset is closed or invalid")
 	}
+
+	// Try to convert numeric values to int32 if they are whole numbers and fit, to help Access with Integer fields (VT_I4)
+	switch v := value.(type) {
+	case float64:
+		if v == float64(int32(v)) {
+			value = int32(v)
+		}
+	case int:
+		value = int32(v)
+	case int64:
+		value = int32(v)
+	}
+
 	fieldsResult, err := oleutil.GetProperty(rs.oleRecordset, "Fields")
 	if err != nil {
-		return false
+		return err
 	}
 	fieldsDisp := fieldsResult.ToIDispatch()
 	if fieldsDisp == nil {
-		return false
+		return fmt.Errorf("Fields collection is null")
 	}
 	defer fieldsDisp.Release()
 
 	fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", fieldName)
 	if err != nil {
-		return false
+		return err
 	}
 	fieldDisp := fieldResult.ToIDispatch()
 	if fieldDisp == nil {
-		return false
+		return fmt.Errorf("Field '%v' not found", fieldName)
 	}
 	defer fieldDisp.Release()
 
+	value = coerceOLEFieldValue(fieldDisp, value)
+
 	if _, err := oleutil.PutProperty(fieldDisp, "Value", value); err != nil {
-		return false
+		fmt.Printf("[ADODB ERROR] setFieldValue failed for field '%v', value '%v' (Type: %T). Error: %v\n", fieldName, value, value, err)
+		return err
 	}
-	return true
+	return nil
+}
+
+func coerceOLEFieldValue(fieldDisp *ole.IDispatch, value interface{}) interface{} {
+	if fieldDisp == nil {
+		return value
+	}
+
+	typeResult, err := oleutil.GetProperty(fieldDisp, "Type")
+	if err != nil {
+		return value
+	}
+	fieldType := toInt(typeResult.Value())
+
+	switch fieldType {
+	case 7, 133, 134, 135:
+		return coerceOLEDateValue(value)
+	case 2, 3, 16, 17, 18, 19, 20, 21:
+		return toInt32Variant(value)
+	case 4, 5, 6, 14, 131:
+		return toFloat(value)
+	default:
+		return value
+	}
+}
+
+func coerceOLEDateValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case time.Time:
+		return v
+	case string:
+		if parsed, ok := parseOLEDateString(v); ok {
+			return parsed
+		}
+	}
+	return value
+}
+
+func parseOLEDateString(input string) (time.Time, bool) {
+	value := strings.TrimSpace(input)
+	if value == "" {
+		return time.Time{}, false
+	}
+
+	layouts := []string{
+		"02/01/2006",
+		"02/01/2006 15:04:05",
+		"02/01/2006 15:04",
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"01/02/2006",
+		"01/02/2006 15:04:05",
+		"01/02/2006 15:04",
+	}
+
+	for _, layout := range layouts {
+		if parsed, err := time.ParseInLocation(layout, value, time.Local); err == nil {
+			return parsed, true
+		}
+	}
+
+	return time.Time{}, false
 }
 
 func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
@@ -1840,6 +2193,11 @@ func (rs *ADODBOLERecordset) GetProperty(name string) interface{} {
 		if err == nil {
 			return result.Value()
 		}
+	case "cursorlocation":
+		result, err := oleutil.GetProperty(rs.oleRecordset, "CursorLocation")
+		if err == nil {
+			return result.Value()
+		}
 	}
 	return nil
 }
@@ -1849,21 +2207,35 @@ func (rs *ADODBOLERecordset) SetProperty(name string, value interface{}) {
 		return
 	}
 
-	defer func() {
-		if r := recover(); r != nil {
-			// Silently recover from OLE errors
-		}
-	}()
-
 	switch strings.ToLower(name) {
+	case "activeconnection":
+		// Store the connection - it might be an ASPLibrary wrapper or OLE IDispatch
+		if conn, ok := value.(*ADODBConnection); ok {
+			// It's our wrapper, extract the OLE connection
+			rs.activeConnection = conn.oleConnection
+		} else if conn, ok := value.(*ADOConnection); ok {
+			// It's the ASPLibrary wrapper
+			rs.activeConnection = conn.lib.oleConnection
+		} else if conn, ok := value.(*ole.IDispatch); ok {
+			// It's already an OLE IDispatch
+			rs.activeConnection = conn
+		}
 	case "pagesize":
-		oleutil.PutProperty(rs.oleRecordset, "PageSize", value)
+		oleutil.PutProperty(rs.oleRecordset, "PageSize", toInt32Variant(value))
 	case "absolutepage":
-		oleutil.PutProperty(rs.oleRecordset, "AbsolutePage", value)
+		oleutil.PutProperty(rs.oleRecordset, "AbsolutePage", toInt32Variant(value))
 	case "absoluteposition":
-		oleutil.PutProperty(rs.oleRecordset, "AbsolutePosition", value)
+		oleutil.PutProperty(rs.oleRecordset, "AbsolutePosition", toInt32Variant(value))
+	case "cursortype":
+		oleutil.PutProperty(rs.oleRecordset, "CursorType", toInt32Variant(value))
+	case "locktype":
+		oleutil.PutProperty(rs.oleRecordset, "LockType", toInt32Variant(value))
+	case "cursorlocation":
+		oleutil.PutProperty(rs.oleRecordset, "CursorLocation", toInt32Variant(value))
 	default:
-		_ = rs.setFieldValue(name, value)
+		if err := rs.setFieldValue(name, value); err != nil {
+			panic(fmt.Errorf("ADODB.Recordset: Failed to set field '%s'. Details: %v", name, err))
+		}
 	}
 }
 
@@ -1872,11 +2244,6 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 		return nil
 
 	}
-
-	defer func() {
-		if r := recover(); r != nil {
-		}
-	}()
 
 	method := strings.ToLower(name)
 	if method == "" && len(args) > 0 {
@@ -1935,7 +2302,26 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 		return nil
 	case "open":
 		if len(args) > 0 {
-			oleutil.CallMethod(rs.oleRecordset, "Open", args...)
+			// If ActiveConnection was set and only SQL is provided, add the connection as 2nd arg
+			// Force cursorType=3 (static) and lockType=3 (optimistic) for Access compatibility
+			if rs.activeConnection != nil && len(args) == 1 {
+				// args[0] = source (SQL)
+				oleutil.CallMethod(rs.oleRecordset, "Open", args[0], rs.activeConnection, int32(3), int32(3))
+			} else if rs.activeConnection != nil && len(args) == 2 {
+				// If activeConnection was already passed, use it; add cursor/lock types
+				oleutil.CallMethod(rs.oleRecordset, "Open", args[0], rs.activeConnection, int32(3), int32(3))
+			} else {
+				// Use whatever was passed, but coerce cursor/lock numeric arguments to int32
+				openArgs := make([]interface{}, len(args))
+				copy(openArgs, args)
+				if len(openArgs) >= 3 {
+					openArgs[2] = toInt32Variant(openArgs[2])
+				}
+				if len(openArgs) >= 4 {
+					openArgs[3] = toInt32Variant(openArgs[3])
+				}
+				oleutil.CallMethod(rs.oleRecordset, "Open", openArgs...)
+			}
 		}
 		return nil
 	case "close":
@@ -1946,17 +2332,26 @@ func (rs *ADODBOLERecordset) CallMethod(name string, args ...interface{}) interf
 		}
 		return nil
 	case "addnew":
-		oleutil.CallMethod(rs.oleRecordset, "AddNew")
+		if _, err := oleutil.CallMethod(rs.oleRecordset, "AddNew"); err != nil {
+			panic(fmt.Errorf("ADODB.Recordset: AddNew failed. %v", err))
+		}
 		return nil
 	case "update":
+		var err error
 		if len(args) > 0 {
-			oleutil.CallMethod(rs.oleRecordset, "Update", args...)
+			_, err = oleutil.CallMethod(rs.oleRecordset, "Update", args...)
 		} else {
-			oleutil.CallMethod(rs.oleRecordset, "Update")
+			_, err = oleutil.CallMethod(rs.oleRecordset, "Update")
+		}
+		if err != nil {
+			fmt.Printf("[ADODB ERROR] Update failed. Error: %v\n", err)
+			panic(fmt.Errorf("ADODB.Recordset: Update failed. %v", err))
 		}
 		return nil
 	case "delete":
-		oleutil.CallMethod(rs.oleRecordset, "Delete")
+		if _, err := oleutil.CallMethod(rs.oleRecordset, "Delete"); err != nil {
+			panic(fmt.Errorf("ADODB.Recordset: Delete failed. %v", err))
+		}
 		return nil
 	case "cancelupdate":
 		oleutil.CallMethod(rs.oleRecordset, "CancelUpdate")
