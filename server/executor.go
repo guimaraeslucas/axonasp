@@ -1395,6 +1395,10 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	case "MSXML2.DOMDOCUMENT", "DOMDOCUMENT", "MSXML2.DOMDOCUMENT.6.0", "MSXML2.DOMDOCUMENT.3.0":
 		return NewDOMDocument(ae.context), nil
 
+	// ADOX Objects
+	case "ADOX.CATALOG", "ADOX.CATALOG.6.0":
+		return NewADOXCatalog(ae.context), nil
+
 	// ADODB Objects
 	case "ADODB.CONNECTION", "ADODB", "CONNECTION":
 		return NewADOConnection(ae.context), nil

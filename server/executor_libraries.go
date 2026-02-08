@@ -415,6 +415,14 @@ func (af *ADOOLEFields) SetProperty(name string, value interface{}) error {
 	return nil
 }
 
+// Enumeration returns all Field proxies for For Each support.
+func (af *ADOOLEFields) Enumeration() []interface{} {
+	if af.lib == nil {
+		return []interface{}{}
+	}
+	return af.lib.Enumeration()
+}
+
 // GetName returns the name of the object
 func (af *ADOOLEFields) GetName() string {
 	return "ADODB.Fields"

@@ -2581,3 +2581,40 @@ func (f *ADODBOLEFields) CallMethod(name string, args ...interface{}) interface{
 	}
 	return nil
 }
+
+// Enumeration returns all Field proxies for For Each support.
+func (f *ADODBOLEFields) Enumeration() []interface{} {
+	if f.oleFields == nil {
+		return []interface{}{}
+	}
+
+	countResult, err := oleutil.GetProperty(f.oleFields, "Count")
+	if err != nil {
+		return []interface{}{}
+	}
+	count := toInt(countResult.Value())
+	if count < 0 {
+		count = 0
+	}
+
+	items := make([]interface{}, 0, count)
+	for i := 0; i < count; i++ {
+		itemResult, err := oleutil.GetProperty(f.oleFields, "Item", i)
+		if err != nil {
+			continue
+		}
+		fieldDisp := itemResult.ToIDispatch()
+		if fieldDisp == nil {
+			continue
+		}
+		nameResult, nameErr := oleutil.GetProperty(fieldDisp, "Name")
+		fieldDisp.Release()
+		if nameErr != nil {
+			continue
+		}
+		fieldName := nameResult.ToString()
+		items = append(items, &OLEFieldProxy{recordset: f.parent, name: fieldName})
+	}
+
+	return items
+}

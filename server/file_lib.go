@@ -626,6 +626,13 @@ type FSOFile struct {
 	path string
 }
 
+func (f *FSOFile) String() string {
+	if f == nil {
+		return ""
+	}
+	return f.path
+}
+
 func (f *FSOFile) GetProperty(name string) interface{} {
 	info, err := os.Stat(f.path)
 	if err != nil {
@@ -746,6 +753,13 @@ func (fs *FSOFiles) Enumeration() []interface{} {
 type FSOFolder struct {
 	ctx  *ExecutionContext
 	path string
+}
+
+func (f *FSOFolder) String() string {
+	if f == nil {
+		return ""
+	}
+	return f.path
 }
 
 func (f *FSOFolder) GetProperty(name string) interface{} {
@@ -1037,13 +1051,14 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		cs := strings.ToLower(s.Charset)
 
 		retStr := ""
-		if cs == "iso-8859-1" || cs == "windows-1252" || cs == "ascii" || cs == "us-ascii" {
+		switch cs {
+		case "iso-8859-1", "windows-1252", "ascii", "us-ascii":
 			retStr = decodeSingleByteString(data)
-		} else if cs == "unicode" || cs == "utf-16" {
+		case "unicode", "utf-16":
 			retStr = decodeUTF16(data, binary.LittleEndian)
-		} else if cs == "utf-8" || cs == "utf8" {
+		case "utf-8", "utf8":
 			retStr = string(bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF}))
-		} else {
+		default:
 			// Default UTF-8
 			retStr = string(data)
 		}
@@ -1129,15 +1144,16 @@ func (s *ADODBStream) CallMethod(name string, args ...interface{}) interface{} {
 		case string:
 			// For string input, encode based on charset
 			cs := strings.ToLower(s.Charset)
-			if cs == "iso-8859-1" || cs == "windows-1252" || cs == "ascii" || cs == "us-ascii" {
+			switch cs {
+			case "iso-8859-1", "windows-1252", "ascii", "us-ascii":
 				data = encodeSingleByteString(v)
-			} else if cs == "unicode" || cs == "utf-16" {
+			case "unicode", "utf-16":
 				runes := []rune(v)
 				data = make([]byte, len(runes)*2)
 				for i, r := range runes {
 					binary.LittleEndian.PutUint16(data[i*2:], uint16(r))
 				}
-			} else {
+			default:
 				data = []byte(v)
 			}
 			//if len(v) > 50 {
