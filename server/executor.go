@@ -4390,7 +4390,7 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 		if len(values) > 0 {
 			value := values[0]
 			if len(values) > 1 {
-				value = strings.Join(values, ",")
+				value = strings.Join(values, ", ")
 			}
 			req.QueryString.Add(key, value)
 		}
@@ -4405,7 +4405,7 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 			if !req.QueryString.Exists(key) && len(values) > 0 {
 				value := values[0]
 				if len(values) > 1 {
-					value = strings.Join(values, ",")
+					value = strings.Join(values, ", ")
 				}
 				req.Form.Add(key, value)
 			}
@@ -4416,7 +4416,7 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 				if !req.QueryString.Exists(key) && !req.Form.Exists(key) && len(values) > 0 {
 					value := values[0]
 					if len(values) > 1 {
-						value = strings.Join(values, ",")
+						value = strings.Join(values, ", ")
 					}
 					req.Form.Add(key, value)
 				}

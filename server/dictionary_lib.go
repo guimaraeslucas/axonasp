@@ -124,6 +124,12 @@ func (d *Dictionary) SetProperty(name string, value interface{}) {
 		case float64:
 			d.compareMode = int(v)
 		}
+	default:
+		key := d.keyToString(name)
+		if _, exists := d.store[key]; !exists {
+			d.order = append(d.order, key)
+		}
+		d.store[key] = value
 	}
 }
 
