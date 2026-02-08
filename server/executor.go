@@ -42,6 +42,7 @@ import (
 	"github.com/go-ole/go-ole/oleutil"
 
 	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/experimental"
 	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
@@ -986,6 +987,9 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	// Execute blocks in order with timeout protection
 	done := make(chan error, 1)
 	execFunc := func() error {
+		if ae.config != nil && ae.config.UseVM {
+			return ae.executeVM(resolvedContent, result)
+		}
 		// Always execute per-block to avoid re-emitting large HTML through VB conversion
 		return ae.executeBlocks(result)
 	}
@@ -1205,6 +1209,38 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 	return nil
 }
 
+func (ae *ASPExecutor) executeVM(resolvedContent string, result *asp.ASPParserResult) error {
+	if result == nil || result.CombinedProgram == nil {
+		return nil
+	}
+
+	// Apply options and hoist declarations so script-defined classes are available for CreateObject.
+	ae.context.SetOptionCompare(result.CombinedProgram.OptionCompare)
+	ae.context.SetOptionBase(result.CombinedProgram.OptionBase)
+	visitor := NewASPVisitor(ae.context, ae)
+	ae.hoistDeclarations(visitor, result.CombinedProgram)
+
+	compileFn := func() (*experimental.Function, error) {
+		compiler := experimental.NewCompiler()
+		if err := compiler.Compile(result.CombinedProgram); err != nil {
+			return nil, err
+		}
+		return compiler.MainFunction(), nil
+	}
+
+	fn, err := experimental.CompileWithCache(resolvedContent, "default", compileFn)
+	if err != nil {
+		return fmt.Errorf("VM compile error: %w", err)
+	}
+
+	vm := experimental.NewVM(fn, NewVMHostAdapter(ae.context, ae))
+	if err := vm.Run(); err != nil {
+		return fmt.Errorf("VM runtime error: %w", err)
+	}
+
+	return nil
+}
+
 // executeVBProgram executes a VBScript AST program
 func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 	if program == nil {
@@ -1363,6 +1399,14 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	originalObjType := objType
 	objType = strings.ToUpper(objType)
 	//fmt.Printf("[DEBUG] CreateObject called: %s\n", objType)
+
+	if ae.context != nil {
+		if classVal, ok := ae.context.GetVariable(originalObjType); ok {
+			if classDef, ok := classVal.(*ClassDef); ok {
+				return NewClassInstance(classDef, ae.context)
+			}
+		}
+	}
 
 	switch objType {
 	// G3 Custom Libraries
@@ -2815,7 +2859,7 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 		}
 
 		// Check for built-in functions (parameterless call)
-		if val, handled := evalBuiltInFunction(varName, []interface{}{}, v.context); handled {
+		if val, handled := EvalBuiltInFunction(varName, []interface{}{}, v.context); handled {
 			return val, nil
 		}
 
@@ -2996,7 +3040,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		// 1. The name matches a built-in function
 		// 2. The identifier is NOT bracketed (i.e., user did NOT explicitly escape it)
 		if isBuiltInFunctionName(ident.Name) && !ident.IsBracketed {
-			if result, handled := evalBuiltInFunction(ident.Name, args, v.context); handled {
+			if result, handled := EvalBuiltInFunction(ident.Name, args, v.context); handled {
 				// Check if Response.End() was called during execution (e.g., inside ExecuteGlobal)
 				if v.context.Response != nil && v.context.Response.IsEnded() {
 					return result, fmt.Errorf("RESPONSE_END")
@@ -3270,7 +3314,7 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 			// Then try built-in functions (but skip if identifier was bracketed - they wanted local)
 			if !ident.IsBracketed {
-				if result, handled := evalBuiltInFunction(funcName, args, v.context); handled {
+				if result, handled := EvalBuiltInFunction(funcName, args, v.context); handled {
 					return result, nil
 				}
 			}

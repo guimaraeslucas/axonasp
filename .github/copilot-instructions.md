@@ -1,31 +1,24 @@
 Quick Instructions for Code Agents (G3Pix AxonASP)
+
 Role: Expert GoLang Developer. Focus: Quality, precision, performance, security. Primary Constraint: ALL content (code, comments, documentation, output) must be in ENGLISH (US), regardless of the user's input language. Don't summarize, or explain the changes unless explicitly asked, just provide the code. Also, think and explain in english, even if asked in portuguese. Create, update and keep everything in English. Keep the license reader.
 
 1. Architecture Overview
 Main Server: main.go runs HTTP server on :4050, serving ./www.
-
 Core Logic: asp/ contains asp_parser.go and asp_lexer.go (VBScript-Go integration).
-
 Libraries: server/libs/ contains ASP implementations (FileSystem, JSON, HTTP, etc.).
-
 Invoked via Server.CreateObject("LIB_NAME").
-
 Must use the standard ASP execution context.
 
 2. Development & Debugging
 Environment: Windows Powershell.
-
 Run: go run main.go
-
 Build: go build -o axonasp.exe -> ./axonasp.exe
-
 Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/tests/.
-
 ASP Debugging: Set <% debug_asp_code = "TRUE" %> in the ASP file for HTML stack traces.
-
 Compilation Rule: ALWAYS compile Go code after editing to verify success. Do not compile for pure ASP edits.
-
-Always start the server process in background
+*Always start the server process in background, don't try to run it in foreground, as it will shutdown if you send new commands*
+Try to use Powershell commands with the Yes option set by default
+Don't use CURL
 
 3. Coding Standards & Conventions
 Language: *STRICT ENGLISH ONLY.* Translate any non-English comments/UI/Code and any output or answer immediately to English (US).
@@ -49,7 +42,7 @@ File: .env in root (defaults in code).
 
 Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAULT_PAGE (default.asp), SCRIPT_TIMEOUT (30), DEBUG_ASP (FALSE), SMTP settings.
 
-5. API & Library Reference
+2. API & Library Reference
 
 ### Custom G3 Libraries (Server.CreateObject)
 
@@ -241,7 +234,7 @@ Detailed implementation guides for each library are in docs/ folder:
 - docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md
 - docs/G3FILEUPLOADER_IMPLEMENTATION.md
 
-6. Library Implementation Patterns
+3. Library Implementation Patterns
 
 ### Adding a New Library
 1. Create `server/newlib_lib.go` following existing patterns
@@ -288,46 +281,45 @@ func (lib *G3NEWLIB) CallMethod(name string, args ...interface{}) interface{} {
 - If tests are necessary, try to implement them first in GoLang, then in asp if necessary, as usually the problem is within our GoLang code and not in the asp code.
 - RESX and INC files can't be loaded directly, they need to be loaded throught an asp page always.
 
-7. Pull Request Guidelines
+4. Pull Request Guidelines
 Update/Create test_*.asp in www/tests/ for every fix/feature.
-
 Update Default.asp with changes.
-
 Maintain G3Pix AxonASP branding.
-
 Prioritize secure, testable, and small implementations.
 
-8. Agent Quick-Start Checklist
-- Keep responses and code comments strictly in ENGLISH (US).
-- Prefer small, safe diffs; avoid touching server/deprecated/ except for reference.
+5. Agent Quick-Start Checklist
+- Keep responses and code comments strictly in *ENGLISH (US)*.
+- Prefer small, safe diffs. Work in small steps.
 - Respect VBScript semantics: case-insensitive identifiers, Option Compare rules, ByRef/ByVal behavior.
 - Preserve ASP execution context when adding libraries or functions.
 - When adding a library, name it *_lib.go and register via Server.CreateObject mapping.
-- Sync updates between this file and GEMINI.md whenever instructions change.
+- Sync updates between copilot-instructions and GEMINI.md whenever instructions change.
+- Prioritize secure, testable, and small implementations.
 
-9. Coding & Tooling Expectations
+
+6. Coding & Tooling Expectations
 - Run gofmt on touched Go files; keep ASCII unless a file already needs non-ASCII.
-- Compile after Go changes: go build -o go-asp.exe ./...
+- Compile after Go changes: go build -o axonasp.exe ./...
 - Run tests when applicable: go test ./asp ./server ./VBScript-Go
 - For ASP-only changes, do not rebuild; validate by hitting http://localhost:4050/tests/<test>.asp
 - Favor explicit errors; avoid panics in request path; log via existing error handling helpers.
 - Concurrency: session/app state is shared; guard mutable shared data when introducing goroutines.
 
-10. ASP/VBScript Execution Notes
+7.  ASP/VBScript Execution Notes
 - Option Compare Binary/Text at file top sets comparison mode for that program; executor applies the chosen mode to all string comparisons.
 - Includes: file path relative to current file; virtual path relative to www/ root.
 - Session storage: temp/session with cookie ASPSESSIONID; Application lives in-memory.
 - Variable lookup and storage are case-insensitive; store lowercase internally.
 - Custom objects must match classic ASP expectations (e.g., ADODB-like APIs, MSXML2 object models).
+- There is a experimental VM mode in the /experimental, please do not change files in it, unless asked to work with it. Keep the calls to the VM mode in the current implementation.
 
-11. Global.asa Support
+8.  Global.asa Support
 - File Location: www/global.asa
 - Supported Formats: Both `<% %>` and `<script runat="server">` blocks
 - Events Supported:
-  * Application_OnStart: Executed once at server startup
-  * Application_OnEnd: Executed when server shuts down
-  * Session_OnStart: Executed when a new session is created
-  * Session_OnEnd: Executed when a session expires or is abandoned
+  - Application_OnStart: Executed once at server startup
+  - Application_OnEnd: Executed when server shuts down
+  - Session_OnStart: Executed when a new session is created
+  - Session_OnEnd: Executed when a session expires or is abandoned
 - ASP Lexer Enhancement: Added support for `<script language="vbscript" runat="server">` blocks via regex matching
 - Implementation: global_asa_manager.go handles loading, parsing, and executing global.asa events
-- Testing: Use www/tests/test_global_asa.asp to verify global.asa functionality

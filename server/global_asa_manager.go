@@ -22,12 +22,13 @@ package server
 
 import (
 	"fmt"
-	"g3pix.com.br/axonasp/asp"
-	"g3pix.com.br/axonasp/vbscript/ast"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
 // GlobalASAManager handles Global.asa loading and event callbacks

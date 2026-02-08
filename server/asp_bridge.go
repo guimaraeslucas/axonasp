@@ -34,6 +34,7 @@ type ASPProcessorConfig struct {
 	RootDir       string
 	ScriptTimeout int  // in seconds
 	DebugASP      bool // Enable debug output for ASP parsing and execution
+	UseVM         bool // Enable experimental bytecode VM
 }
 
 // COM provider mode for Access connections: "auto" or "code"

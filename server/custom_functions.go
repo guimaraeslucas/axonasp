@@ -119,20 +119,20 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		switch arr := args[1].(type) {
 		case []interface{}:
 			for _, item := range arr {
-				if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+				if res, handled := EvalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
 					result = append(result, res)
 				}
 			}
 		case map[string]interface{}:
 			for _, item := range arr {
-				if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+				if res, handled := EvalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
 					result = append(result, res)
 				}
 			}
 		default:
 			if arrVals, ok := arrayValues(args[1]); ok {
 				for _, item := range arrVals {
-					if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+					if res, handled := EvalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
 						result = append(result, res)
 					}
 				}
@@ -151,7 +151,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		switch arr := args[1].(type) {
 		case []interface{}:
 			for _, item := range arr {
-				if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+				if res, handled := EvalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
 					if isTruthyCustom(res) {
 						result = append(result, item)
 					}
@@ -159,7 +159,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 			}
 		case map[string]interface{}:
 			for _, item := range arr {
-				if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+				if res, handled := EvalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
 					if isTruthyCustom(res) {
 						result = append(result, item)
 					}
@@ -168,7 +168,7 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		default:
 			if arrVals, ok := arrayValues(args[1]); ok {
 				for _, item := range arrVals {
-					if res, handled := evalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
+					if res, handled := EvalBuiltInFunction(callbackName, []interface{}{item}, ctx); handled {
 						if isTruthyCustom(res) {
 							result = append(result, item)
 						}

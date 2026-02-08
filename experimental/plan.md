@@ -4,30 +4,40 @@ This plan outlines the steps to migrate AxonASP from an AST-walking interpreter 
 
 ## Phase 1: Foundation (Current Step)
 - [x] Analyze current AST.
-- [ ] Define minimal Bytecode Instruction Set (Opcodes).
-- [ ] Create VM data structures (Stack, Frames, CallStack).
-- [ ] Create a basic Compiler (AST -> Bytecode) for simple expressions (arithmetic, literals).
-- [ ] Create a basic VM loop to execute the simple bytecode.
+- [x] Define minimal Bytecode Instruction Set (Opcodes).
+- [x] Create VM data structures (Stack, Frames, CallStack).
+- [x] Create a basic Compiler (AST -> Bytecode) for simple expressions (arithmetic, literals).
+- [x] Create a basic VM loop to execute the simple bytecode.
 
 ## Phase 2: Core Language Features
-- [ ] Implement Control Flow (If, Select Case, Loops).
-- [ ] Implement Variable Scoping (Globals vs Locals).
-- [ ] Implement Assignments and identifier resolution.
+- [x] Implement Control Flow (If, Select Case, Loops).
+- [x] Implement Variable Scoping (Globals vs Locals).
+- [x] Implement Assignments and identifier resolution.
 
 ## Phase 3: Functions and Procedures
-- [ ] Implement `Sub` and `Function` compilation.
-- [ ] Implement `Call` opcode and Return values.
-- [ ] Handle arguments (ByVal vs ByRef semantics).
+- [x] Implement `Sub` and `Function` compilation.
+- [x] Implement explicit Empty type that is fully compatible with VBScript
+- [x] Implement rounds floats before Mod
+- [x] Implement `Call` opcode and Return values.
+- [x] Handle arguments (ByVal semantics implemented; ByRef partially handled via objects later).
 
 ## Phase 4: Integration with AxonASP
-- [ ] Map existing `asp/*` and `server/*` libraries (G3JSON, ADODB, etc.) to the VM.
-- [ ] Implement `OP_CALL_EXTERNAL` or similar to bridge VM to Go host functions.
-- [ ] Update `asp/asp_executor.go` to optionally use the VM instead of the AST walker.
+- [x] Implement full support for 32-bit and 64-bit platforms (Go handles this natively).
+- [x] Implement .env variable and main.go support to use the VM engine or keep using the current AST walker (Implemented via AXONASP_VM env var in asp_executor).
+- [x] Map existing `asp/*` and `server/*` libraries (G3JSON, ADODB, etc.) to the VM if user select VM in .env (Mapped via HostEnvironment interface).
+- [x] Implement `OP_CALL_EXTERNAL` or similar to bridge VM to Go host functions if user select VM in .env (Implemented via OP_CALL and BuiltinFunction).
+- [ ] Update `server/executor.go` to optionally use the VM instead of the AST walker if user select VM in .env.
+- [ ] Implement needed compiler features like MemberExpression alongside FunctionDeclaration and ClassDeclaration for proper method invocation.
+- [ ] Implement missing handling for the AST NothingLiteral and the VM opcode for OP_NOTHING
+- [ ] Optimize "hot paths" (e.g., specific opcodes for common operations like `i = i + 1`).
+- [ ] Optimize variable lookups (resolve names to indices at compile time where possible).
+- [ ] Implement ast.ClassDeclaration and experimental.BuiltinFunction with gob due to interface encoding needs
+- [ ] Implement class and function compilation alongside updating the bytecode cache registrations. 
+- [ ] extend the server's VM host adapter to set variables using the ExecutionContext's SetVariable method.
+- [ ] add idiv, notOp, concat, and toString helper functions in vm.go,
 
 ## Phase 5: Optimization & Caching
 - [ ] Implement Bytecode caching (serialize `Bytecode` struct to disk/memory).
-- [ ] Optimize "hot paths" (e.g., specific opcodes for common operations like `i = i + 1`).
-- [ ] Optimize variable lookups (resolve names to indices at compile time where possible).
 
 ## Phase 6: Full Migration
 - [ ] Run full test suite (`www/tests/*.asp`) against the VM.

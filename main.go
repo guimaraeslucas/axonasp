@@ -34,6 +34,7 @@ import (
 	"time"
 
 	"g3pix.com.br/axonasp/asp"
+	"g3pix.com.br/axonasp/experimental"
 	"g3pix.com.br/axonasp/server"
 
 	"github.com/joho/godotenv"
@@ -47,9 +48,13 @@ var (
 	DefaultPage       = "default.asp"
 	ScriptTimeout     = 30 // in seconds
 	DebugASP          = false
+	CleanupSessions   = false
 	ASTCacheType      = "memory" // "memory" or "disk"
 	MemoryLimitMB     = 0        // 0 means no limit
 	ASTCacheTTLMin    = 0        // 0 means keep forever
+	UseVM             = false
+	VMCacheType       = "memory" // "memory" or "disk"
+	VMCacheTTLMin     = 0
 	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
 	Error404Mode      = "default" // "default" or "IIS"
 	COMProviderMode   = "auto"    // "auto" or "code"
@@ -86,6 +91,12 @@ func init() {
 	if val := os.Getenv("DEBUG_ASP"); val == "TRUE" {
 		DebugASP = true
 	}
+	if val := os.Getenv("CLEAN_SESSIONS"); val == "TRUE" {
+		CleanupSessions = true
+	}
+	if val := os.Getenv("AXONASP_VM"); val == "TRUE" {
+		UseVM = true
+	}
 	if val := os.Getenv("ASP_CACHE_TYPE"); val != "" {
 		val = strings.ToLower(strings.TrimSpace(val))
 		if val == "memory" || val == "disk" {
@@ -109,6 +120,23 @@ func init() {
 		} else {
 			fmt.Printf("Warning: Invalid ASP_CACHE_TTL_MINUTES value '%s'. Using 0 (keep forever).\n", val)
 			ASTCacheTTLMin = 0
+		}
+	}
+	if val := os.Getenv("VM_CACHE_TYPE"); val != "" {
+		val = strings.ToLower(strings.TrimSpace(val))
+		if val == "memory" || val == "disk" {
+			VMCacheType = val
+		} else {
+			fmt.Printf("Warning: Invalid VM_CACHE_TYPE value '%s'. Using 'memory'. Valid values: 'memory', 'disk'\n", val)
+			VMCacheType = "memory"
+		}
+	}
+	if val := os.Getenv("VM_CACHE_TTL_MINUTES"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil && i >= 0 {
+			VMCacheTTLMin = i
+		} else {
+			fmt.Printf("Warning: Invalid VM_CACHE_TTL_MINUTES value '%s'. Using 0 (keep forever).\n", val)
+			VMCacheTTLMin = 0
 		}
 	}
 	if val := os.Getenv("BLOCKED_EXTENSIONS"); val != "" {
@@ -135,12 +163,45 @@ func init() {
 	server.SetCOMProviderMode(COMProviderMode)
 	asp.ConfigureParseCache(ASTCacheType, RootDir)
 	asp.SetParseCacheTTLMinutes(ASTCacheTTLMin)
+	experimental.ConfigureBytecodeCache(VMCacheType, RootDir)
+	experimental.SetBytecodeCacheTTLMinutes(VMCacheTTLMin)
 	if MemoryLimitMB > 0 {
 		debug.SetMemoryLimit(int64(MemoryLimitMB) * 1024 * 1024)
 	}
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
+}
+
+func cleanupSessionFiles() {
+	sessionDir := filepath.Join("temp", "session")
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
+		fmt.Printf("Warning: Failed to read session directory '%s': %v\n", sessionDir, err)
+		return
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		targetPath := filepath.Join(sessionDir, entry.Name())
+		if entry.IsDir() {
+			if err := os.RemoveAll(targetPath); err != nil {
+				fmt.Printf("Warning: Failed to remove session folder '%s': %v\n", targetPath, err)
+				continue
+			}
+			removed++
+			continue
+		}
+		if err := os.Remove(targetPath); err != nil {
+			fmt.Printf("Warning: Failed to remove session file '%s': %v\n", targetPath, err)
+			continue
+		}
+		removed++
+	}
+
+	if removed > 0 {
+		fmt.Printf("Info: Removed %d session item(s) from %s\n", removed, sessionDir)
+	}
 }
 
 // isBlockedExtension checks if a file extension is in the blocked list
@@ -176,6 +237,9 @@ func main() {
 	setupShutdownHandlers()
 
 	// Initialize session manager and start cleanup routine
+	if CleanupSessions {
+		cleanupSessionFiles()
+	}
 	sessionManager := server.GetSessionManager()
 	sessionManager.StartCleanupRoutine(20 * time.Minute) // Cleanup every 20 minutes
 
@@ -205,6 +269,7 @@ func main() {
 				RootDir:       RootDir,
 				ScriptTimeout: ScriptTimeout,
 				DebugASP:      DebugASP,
+				UseVM:         UseVM,
 			})
 			executor := server.NewASPExecutor(processor.GetConfig())
 
@@ -234,9 +299,17 @@ func main() {
 
 	if DebugASP {
 		fmt.Println("[DEBUG] DEBUG_ASP mode is enabled")
-		fmt.Printf("[DEBUG] Cache type: %s\n", ASTCacheType)
-		fmt.Printf("[DEBUG] Memory limit: %d MB\n", MemoryLimitMB)
-		fmt.Printf("[DEBUG] Cache TTL minutes: %d\n", ASTCacheTTLMin)
+		if UseVM {
+			fmt.Print("[DEBUG] VM mode is enabled\n")
+			fmt.Printf("[DEBUG] VM enabled: %v\n", UseVM)
+			fmt.Printf("[DEBUG] VM cache type: %s\n", VMCacheType)
+			fmt.Printf("[DEBUG] VM cache TTL minutes: %d\n", VMCacheTTLMin)
+		} else {
+			fmt.Print("[DEBUG] AST walker mode is enabled\n")
+			fmt.Printf("[DEBUG] Cache type: %s\n", ASTCacheType)
+			fmt.Printf("[DEBUG] Memory limit: %d MB\n", MemoryLimitMB)
+			fmt.Printf("[DEBUG] Cache TTL minutes: %d\n", ASTCacheTTLMin)
+		}
 		//Display build info for debugging purposes
 		if info, ok := debug.ReadBuildInfo(); ok {
 			fmt.Printf("[DEBUG] Go Version: %s\n", info.GoVersion)
@@ -260,7 +333,7 @@ func main() {
 }
 
 func setupShutdownHandlers() {
-	if ASTCacheType != "disk" || ASTCacheTTLMin <= 0 {
+	if (ASTCacheType != "disk" || ASTCacheTTLMin <= 0) && (VMCacheType != "disk" || VMCacheTTLMin <= 0) {
 		return
 	}
 
@@ -270,6 +343,10 @@ func setupShutdownHandlers() {
 	go func() {
 		<-shutdownSignals
 		asp.CleanupParseCacheOnShutdown()
+		experimental.CleanupBytecodeCacheOnShutdown()
+		if CleanupSessions {
+			cleanupSessionFiles()
+		}
 		os.Exit(0)
 	}()
 }
@@ -395,6 +472,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		RootDir:       RootDir,
 		ScriptTimeout: ScriptTimeout,
 		DebugASP:      DebugASP,
+		UseVM:         UseVM,
 	})
 
 	err = processor.ExecuteASPFile(content, fullPath, w, r)
@@ -506,6 +584,7 @@ func executeASPErrorHandler(w http.ResponseWriter, r *http.Request, aspFilePath 
 		RootDir:       RootDir,
 		ScriptTimeout: ScriptTimeout,
 		DebugASP:      DebugASP,
+		UseVM:         UseVM,
 	})
 
 	err = processor.ExecuteASPFile(content, aspFilePath, w, r)

@@ -45,9 +45,9 @@ type NothingValue struct{}
 // NullValue represents VBScript Null type (no valid data)
 type NullValue struct{}
 
-// evalBuiltInFunction evaluates VBScript built-in functions
+// EvalBuiltInFunction evaluates VBScript built-in functions
 // Returns (result, wasHandled) where wasHandled indicates if the function was recognized
-func evalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionContext) (interface{}, bool) {
+func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionContext) (interface{}, bool) {
 	funcLower := strings.ToLower(funcName)
 
 	// Try date/time functions first

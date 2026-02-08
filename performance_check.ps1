@@ -83,9 +83,9 @@ try {
 }
 finally {
     # Limpeza ao fechar
-    Write-Host "`nParando threads..." -ForegroundColor Yellow
+    Write-Host "`Stoping threads..." -ForegroundColor Yellow
     $syncHash.Running = $false
     $RunspacePool.Close()
     $RunspacePool.Dispose()
-    Write-Host "Teste finalizado."
+    Write-Host "Test finished."
 }

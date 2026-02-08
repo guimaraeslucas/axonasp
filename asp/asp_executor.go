@@ -22,7 +22,10 @@ package asp
 
 import (
 	"fmt"
+	"os"
 	"strings"
+
+	"g3pix.com.br/axonasp/experimental"
 )
 
 // ASPExecutor executa código ASP parseado em um contexto
@@ -40,6 +43,11 @@ func NewASPExecutor() *ASPExecutor {
 
 // Execute executa código ASP e retorna o resultado
 func (ae *ASPExecutor) Execute(aspCode string) (string, error) {
+	// Check for VM enablement via environment variable
+	if os.Getenv("AXONASP_VM") == "1" {
+		return ae.ExecuteVM(aspCode)
+	}
+
 	parser := NewASPParser(aspCode)
 	result, err := parser.Parse()
 
@@ -65,6 +73,86 @@ func (ae *ASPExecutor) Execute(aspCode string) (string, error) {
 	}
 
 	return ae.context.Response.GetBuffer(), nil
+}
+
+// ExecuteVM executes ASP code using the experimental Bytecode VM
+func (ae *ASPExecutor) ExecuteVM(aspCode string) (string, error) {
+	parser := NewASPParser(aspCode)
+	result, err := parser.Parse()
+	if err != nil {
+		return "", err
+	}
+
+	compiler := experimental.NewCompiler()
+
+	// Compile all ASP blocks
+	for i, block := range result.Blocks {
+		if block.Type == "asp" {
+			if program, exists := result.VBPrograms[i]; exists && program != nil {
+				if err := compiler.Compile(program); err != nil {
+					return "", fmt.Errorf("VM compilation error: %v", err)
+				}
+			}
+		} else if block.Type == "html" {
+			// Handle HTML blocks? VM doesn't handle HTML directly usually.
+			// Standard ASP emits HTML via Response.Write.
+			// For now, we ignore HTML blocks in VM execution or manual write?
+			// Let's manually append to buffer for simplicity in this experimental phase.
+			ae.context.Response.buffer += block.Content
+		}
+	}
+
+	vm := experimental.NewVM(compiler.MainFunction(), &ASPHostAdapter{Ctx: ae.context})
+	if err := vm.Run(); err != nil {
+		return "", fmt.Errorf("VM runtime error: %v", err)
+	}
+
+	return ae.context.Response.GetBuffer(), nil
+}
+
+// ASPHostAdapter adapts ASPContext to experimental.HostEnvironment
+type ASPHostAdapter struct {
+	Ctx *ASPContext
+}
+
+func (a *ASPHostAdapter) GetVariable(name string) (interface{}, bool) {
+	// Check variables
+	name = strings.ToLower(name)
+	if val, ok := a.Ctx.Variables[name]; ok {
+		return val, true
+	}
+	// Check objects?
+	return nil, false
+}
+
+func (a *ASPHostAdapter) SetVariable(name string, value interface{}) error {
+	name = strings.ToLower(name)
+	a.Ctx.Variables[name] = value
+	return nil
+}
+
+func (a *ASPHostAdapter) CallFunction(name string, args []interface{}) (interface{}, error) {
+	// Basic implementation for testing
+	name = strings.ToLower(name)
+	switch name {
+	case "response.write", "responsewrite":
+		if len(args) > 0 {
+			a.Ctx.Response.buffer += fmt.Sprintf("%v", args[0])
+		}
+		return nil, nil
+	case "document.write", "documentwrite":
+		if len(args) > 0 {
+			a.Ctx.Response.buffer += fmt.Sprintf("%v", args[0])
+		}
+		return nil, nil
+	case "server.createobject", "servercreateobject":
+		return a.Ctx.Server.CallMethod("CreateObject", args...)
+	}
+	return nil, fmt.Errorf("function not implemented in ASPHostAdapter: %s", name)
+}
+
+func (a *ASPHostAdapter) CreateObject(progID string) (interface{}, error) {
+	return nil, fmt.Errorf("CreateObject not implemented in ASPHostAdapter")
 }
 
 // GetContext retorna o contexto de execução atual
