@@ -100,7 +100,7 @@ func (r *ResponseObject) Write(content interface{}) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	str := fmt.Sprintf("%v", content)
+	str := toString(content)
 
 	// Debug log for troubleshooting script output
 	preview := str
