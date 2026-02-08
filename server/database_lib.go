@@ -46,6 +46,38 @@ type ADOError struct {
 	SQLState    string
 }
 
+func (e *ADOError) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "number":
+		return e.Number
+	case "description":
+		return e.Description
+	case "source":
+		return e.Source
+	case "sqlstate":
+		return e.SQLState
+	}
+	return nil
+}
+
+func (e *ADOError) SetProperty(name string, value interface{}) error {
+	switch strings.ToLower(name) {
+	case "number":
+		e.Number = toInt(value)
+	case "description":
+		e.Description = fmt.Sprintf("%v", value)
+	case "source":
+		e.Source = fmt.Sprintf("%v", value)
+	case "sqlstate":
+		e.SQLState = fmt.Sprintf("%v", value)
+	}
+	return nil
+}
+
+func (e *ADOError) CallMethod(name string, args ...interface{}) interface{} {
+	return nil
+}
+
 // ErrorsCollection holds a collection of ADOError objects
 type ErrorsCollection struct {
 	errors []*ADOError
@@ -86,8 +118,8 @@ func (ec *ErrorsCollection) CallMethod(name string, args ...interface{}) interfa
 		if len(args) < 1 {
 			return nil
 		}
-		idx, ok := args[0].(int)
-		if !ok || idx < 0 || idx >= len(ec.errors) {
+		idx := toInt(args[0])
+		if idx < 0 || idx >= len(ec.errors) {
 			return nil
 		}
 		return ec.errors[idx]
@@ -165,8 +197,10 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		if len(args) > 0 {
 			c.ConnectionString = fmt.Sprintf("%v", args[0])
 		}
-		//fmt.Printf("[DEBUG] ADODB.Connection.Open called: %s\n", c.ConnectionString)
-		return c.openDatabase()
+		if err := c.openDatabase(); err != nil {
+			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+		}
+		return nil
 
 	case "close":
 		if c.db != nil {
@@ -211,18 +245,27 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		}
 
 		cmdText := fmt.Sprintf("%v", args[0])
+		params := []interface{}{}
+		if len(args) >= 2 {
+			if vbArr, ok := toVBArray(args[1]); ok {
+				params = vbArr.Values
+			} else if slice, ok := args[1].([]interface{}); ok {
+				params = slice
+			}
+		}
 
 		// Handle SQL driver connections
 		if c.db != nil {
-			var result sql.Result
-			var err error
-
-			if c.tx != nil {
-				result, err = c.tx.Exec(cmdText)
-			} else {
-				result, err = c.db.Exec(cmdText)
+			if isQueryStatement(cmdText) {
+				rs := NewADORecordset(c.ctx)
+				if err := rs.lib.openRecordsetWithParams(cmdText, c, params); err != nil {
+					c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+					return nil
+				}
+				return rs
 			}
 
+			result, err := c.execStatement(cmdText, params)
 			if err != nil {
 				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 				return nil
@@ -290,10 +333,10 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 }
 
 // openDatabase parses connection string and opens database
-func (c *ADODBConnection) openDatabase() interface{} {
+func (c *ADODBConnection) openDatabase() error {
 	connStr := strings.TrimSpace(c.ConnectionString)
 	if connStr == "" {
-		return nil
+		return fmt.Errorf("connection string is empty")
 	}
 
 	// Check for Microsoft Access formats - use OLE method
@@ -306,24 +349,48 @@ func (c *ADODBConnection) openDatabase() interface{} {
 	driver, dsn := parseConnectionString(connStr)
 
 	if driver == "" || dsn == "" {
-		return nil
+		return fmt.Errorf("unsupported or invalid connection string")
 	}
 
 	db, err := sql.Open(driver, dsn)
 	if err != nil {
-		return nil
+		return err
 	}
 
 	// Test connection
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil
+		return err
 	}
 
 	c.db = db
 	c.dbDriver = driver
 	c.State = 1
 	return nil
+}
+
+func (c *ADODBConnection) execStatement(sqlText string, params []interface{}) (sql.Result, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("connection not open")
+	}
+
+	prepared := rewritePlaceholders(sqlText, c.dbDriver)
+	if c.tx != nil {
+		return c.tx.Exec(prepared, params...)
+	}
+	return c.db.Exec(prepared, params...)
+}
+
+func (c *ADODBConnection) queryRows(sqlText string, params []interface{}) (*sql.Rows, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("connection not open")
+	}
+
+	prepared := rewritePlaceholders(sqlText, c.dbDriver)
+	if c.tx != nil {
+		return c.tx.Query(prepared, params...)
+	}
+	return c.db.Query(prepared, params...)
 }
 
 func normalizeAccessProvider(connStr string) string {
@@ -362,11 +429,11 @@ func normalizeAccessProvider(connStr string) string {
 }
 
 // openAccessDatabase opens an Access database using OLE/OLEDB
-func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
+func (c *ADODBConnection) openAccessDatabase(connStr string) error {
 	// Only supported on Windows
 	if runtime.GOOS != "windows" {
 		fmt.Println("Warning: Direct Access database support is only available on Windows. Please use a different database system for cross-platform compatibility.")
-		return nil
+		return fmt.Errorf("access database support is only available on windows")
 	}
 
 	connStr = normalizeAccessProvider(connStr)
@@ -380,7 +447,7 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		fmt.Printf("Warning: Failed to initialize COM for Access database. Error details: %v\n", err)
 		runtime.UnlockOSThread()
 		c.threadLocked = false
-		return nil
+		return err
 	}
 	c.oleInitialized = true
 
@@ -391,7 +458,7 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		c.oleInitialized = false
 		runtime.UnlockOSThread()
 		c.threadLocked = false
-		return nil
+		return err
 	}
 
 	connection, err := unknown.QueryInterface(ole.IID_IDispatch)
@@ -404,7 +471,7 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		c.oleInitialized = false
 		runtime.UnlockOSThread()
 		c.threadLocked = false
-		return nil
+		return err
 	}
 
 	// Open the connection
@@ -417,7 +484,7 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 		c.oleInitialized = false
 		runtime.UnlockOSThread()
 		c.threadLocked = false
-		return nil
+		return err
 	}
 
 	// Access database opened successfully
@@ -429,13 +496,14 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) interface{} {
 
 // parseConnectionString converts ODBC connection string to Go SQL driver and DSN
 func parseConnectionString(connStr string) (driver string, dsn string) {
-	connStrLower := strings.ToLower(connStr)
+	trimmed := strings.TrimSpace(connStr)
+	connStrLower := strings.ToLower(trimmed)
 
 	// Handle SQLite formats
 	if strings.HasPrefix(connStrLower, "sqlite:") {
 		driver = "sqlite"
-		dbPath := strings.TrimPrefix(connStrLower, "sqlite:")
-		dsn = dbPath
+		dbPath := strings.TrimPrefix(trimmed, trimmed[:len("sqlite:")])
+		dsn = strings.TrimSpace(dbPath)
 		if dsn == "" {
 			dsn = ":memory:"
 		}
@@ -446,36 +514,44 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 	// If we reach here, Access is not supported on this platform
 	if strings.Contains(connStrLower, "microsoft.jet.oledb") || strings.Contains(connStrLower, "microsoft.ace.oledb") {
 		fmt.Println("Warning: Direct Access database support is only available on Windows. Please use a different database system for cross-platform compatibility.")
-		driver = "sqlite"
-		dsn = ":memory:"
 		return
 	}
 
 	// Parse ODBC-style: Driver={...};Server=...;Database=...;UID=...;PWD=...
 	params := make(map[string]string)
-	parts := strings.Split(connStrLower, ";")
+	parts := strings.Split(trimmed, ";")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if idx := strings.Index(part, "="); idx > 0 {
-			key := strings.TrimSpace(part[:idx])
+			key := strings.ToLower(strings.TrimSpace(part[:idx]))
 			val := strings.TrimSpace(part[idx+1:])
 			// Remove curly braces if present
 			val = strings.Trim(val, "{}")
-			params[strings.ToLower(key)] = val
+			params[key] = val
 		}
 	}
 
-	// Detect driver type
-	driverStr := params["driver"]
-	server := params["server"]
-	database := params["database"]
-	uid := params["uid"]
-	pwd := params["pwd"]
+	driverStr := strings.ToLower(params["driver"])
+	providerStr := strings.ToLower(params["provider"])
+
+	server := firstNonEmpty(params["server"], params["data source"], params["datasource"], params["host"], params["address"], params["addr"])
+	database := firstNonEmpty(params["database"], params["initial catalog"], params["dbname"], params["data source name"])
+	uid := firstNonEmpty(params["uid"], params["user id"], params["user"], params["username"])
+	pwd := firstNonEmpty(params["pwd"], params["password"], params["pass"])
+
+	// SQLite (ODBC-style)
+	if strings.Contains(driverStr, "sqlite") {
+		driver = "sqlite"
+		dsn = firstNonEmpty(params["data source"], params["datasource"], params["database"])
+		if dsn == "" {
+			dsn = ":memory:"
+		}
+		return
+	}
 
 	// MySQL
 	if strings.Contains(driverStr, "mysql") {
 		driver = "mysql"
-		// DSN format: user:password@tcp(server:port)/database
 		port := params["port"]
 		if port == "" {
 			port = "3306"
@@ -487,7 +563,6 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 	// PostgreSQL
 	if strings.Contains(driverStr, "postgresql") || strings.Contains(driverStr, "postgres") {
 		driver = "postgres"
-		// DSN format: user=user password=pass host=server port=5432 dbname=database sslmode=disable
 		port := params["port"]
 		if port == "" {
 			port = "5432"
@@ -497,9 +572,8 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 	}
 
 	// MS SQL Server
-	if strings.Contains(driverStr, "sql server") || strings.Contains(driverStr, "mssql") {
+	if strings.Contains(driverStr, "sql server") || strings.Contains(driverStr, "mssql") || strings.Contains(providerStr, "sqloledb") || strings.Contains(providerStr, "sqlncli") {
 		driver = "mssql"
-		// DSN format: server=localhost;user id=sa;password=;database=testdb
 		port := params["port"]
 		if port == "" {
 			port = "1433"
@@ -508,10 +582,99 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 		return
 	}
 
-	// Default fallback
-	driver = "sqlite"
-	dsn = ":memory:"
 	return
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeExecuteParams(args []interface{}) []interface{} {
+	if len(args) == 0 {
+		return nil
+	}
+	if len(args) == 1 {
+		if vbArr, ok := toVBArray(args[0]); ok {
+			return vbArr.Values
+		}
+		if slice, ok := args[0].([]interface{}); ok {
+			return slice
+		}
+	}
+	return args
+}
+
+func isQueryStatement(sqlText string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(sqlText))
+	if trimmed == "" {
+		return false
+	}
+	for _, prefix := range []string{"select", "with", "show", "pragma", "describe", "exec", "execute", "call"} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func rewritePlaceholders(sqlText string, driver string) string {
+	if driver != "postgres" && driver != "mssql" {
+		return sqlText
+	}
+
+	var out strings.Builder
+	out.Grow(len(sqlText) + 16)
+
+	inSingle := false
+	inDouble := false
+	paramIndex := 0
+
+	for i := 0; i < len(sqlText); i++ {
+		ch := sqlText[i]
+
+		if ch == '\'' && !inDouble {
+			if inSingle && i+1 < len(sqlText) && sqlText[i+1] == '\'' {
+				out.WriteByte(ch)
+				i++
+				out.WriteByte(sqlText[i])
+				continue
+			}
+			inSingle = !inSingle
+			out.WriteByte(ch)
+			continue
+		}
+		if ch == '"' && !inSingle {
+			if inDouble && i+1 < len(sqlText) && sqlText[i+1] == '"' {
+				out.WriteByte(ch)
+				i++
+				out.WriteByte(sqlText[i])
+				continue
+			}
+			inDouble = !inDouble
+			out.WriteByte(ch)
+			continue
+		}
+
+		if ch == '?' && !inSingle && !inDouble {
+			paramIndex++
+			if driver == "postgres" {
+				out.WriteString(fmt.Sprintf("$%d", paramIndex))
+			} else {
+				out.WriteString(fmt.Sprintf("@p%d", paramIndex))
+			}
+			continue
+		}
+
+		out.WriteByte(ch)
+	}
+
+	return out.String()
 }
 
 // --- ADODB.Recordset ---
@@ -551,6 +714,13 @@ func (f *Field) CallMethod(name string, args ...interface{}) (interface{}, error
 		return f.Value, nil
 	}
 	return nil, nil
+}
+
+func (f *Field) String() string {
+	if f == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", f.Value)
 }
 
 // OLEFieldProxy provides field access for OLE recordsets without holding COM references.
@@ -593,6 +763,13 @@ func (f *OLEFieldProxy) CallMethod(name string, args ...interface{}) (interface{
 		return f.GetProperty("value"), nil
 	}
 	return nil, nil
+}
+
+func (f *OLEFieldProxy) String() string {
+	if f == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", f.GetProperty("value"))
 }
 
 // FieldsCollection holds a collection of Field objects
@@ -696,6 +873,7 @@ type ADODBRecordset struct {
 	columns           []string
 	currentData       map[string]interface{}
 	allData           []map[string]interface{}
+	originalData      []map[string]interface{}
 	newData           map[string]interface{} // For AddNew
 	ctx               *ExecutionContext
 	PageSize          int         // Number of records per page
@@ -726,6 +904,7 @@ func NewADODBRecordset(ctx *ExecutionContext) *ADODBRecordset {
 		CurrentRow:     -1,
 		Fields:         NewFieldsCollection(),
 		allData:        make([]map[string]interface{}, 0),
+		originalData:   make([]map[string]interface{}, 0),
 		ctx:            ctx,
 		PageSize:       10,
 		AbsolutePage:   1,
@@ -752,10 +931,19 @@ func (rs *ADODBRecordset) GetProperty(name string) interface{} {
 		return rs.RecordCount
 	case "state":
 		return rs.State
+	case "activeconnection":
+		return rs.ActiveConnection
+	case "source":
+		return rs.Source
 	case "cursorlocation":
 		return rs.CursorLocation
 	case "fields":
 		return rs.Fields
+	case "absoluteposition":
+		if rs.CurrentRow >= 0 {
+			return rs.CurrentRow + 1
+		}
+		return 0
 	case "pagesize":
 		return rs.PageSize
 	case "absolutepage":
@@ -796,6 +984,13 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 	case "cursorlocation":
 		rs.CursorLocation = toInt(value)
 		rs.CursorLocationSet = true
+	case "source":
+		rs.Source = fmt.Sprintf("%v", value)
+	case "absoluteposition":
+		pos := toInt(value)
+		if pos > 0 {
+			rs.setCurrentRowByIndex(pos - 1)
+		}
 	case "pagesize":
 		v := toInt(value)
 		if v > 0 {
@@ -932,6 +1127,11 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		if rs.rows != nil {
 			rs.rows.Close()
 		}
+		rs.rows = nil
+		rs.currentData = nil
+		rs.allData = nil
+		rs.originalData = nil
+		rs.columns = nil
 		rs.State = 0
 		rs.EOF = true
 		rs.BOF = true
@@ -1048,11 +1248,51 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		}
 		return nil
 
+	case "move":
+		if len(args) < 1 {
+			return nil
+		}
+		offset := toInt(args[0])
+		startProvided := len(args) >= 2
+		startIndex := -1
+		if startProvided {
+			startIndex = toInt(args[1]) - 1
+		}
+
+		if rs.isFiltered {
+			currentFilteredIdx := rs.findCurrentFilteredIndex()
+			base := currentFilteredIdx
+			if startProvided {
+				base = startIndex
+			}
+			rs.setCurrentRowByIndex(base + offset)
+			return nil
+		}
+
+		base := rs.CurrentRow
+		if startProvided {
+			base = startIndex
+		}
+		rs.setCurrentRowByIndex(base + offset)
+		return nil
+
 	case "addnew":
 		rs.newData = make(map[string]interface{})
+		if len(args) >= 2 {
+			fields := toStringSlice(args[0])
+			values := toInterfaceSlice(args[1])
+			for i, field := range fields {
+				if i < len(values) {
+					rs.newData[strings.ToLower(field)] = values[i]
+				}
+			}
+		}
 		return nil
 
 	case "update":
+		if len(args) >= 2 {
+			rs.SetProperty(fmt.Sprintf("%v", args[0]), args[1])
+		}
 		// Handle DB persistence
 		if rs.db != nil && rs.Source != "" {
 			rs.performSQLUpdate()
@@ -1061,15 +1301,44 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		// Add new row to allData
 		if rs.newData != nil {
 			rs.allData = append(rs.allData, rs.newData)
+			rs.originalData = append(rs.originalData, cloneRow(rs.newData))
 			rs.RecordCount = len(rs.allData)
+			rs.CurrentRow = len(rs.allData) - 1
+			rs.currentData = rs.allData[rs.CurrentRow]
+			rs.updateFieldsCollection()
 			rs.newData = nil
 		}
 		return nil
 
 	case "delete":
+		if rs.db != nil && rs.Source != "" {
+			rs.performSQLDelete()
+		}
 		if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.allData) {
 			rs.allData = append(rs.allData[:rs.CurrentRow], rs.allData[rs.CurrentRow+1:]...)
+			if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.originalData) {
+				rs.originalData = append(rs.originalData[:rs.CurrentRow], rs.originalData[rs.CurrentRow+1:]...)
+			}
 			rs.RecordCount = len(rs.allData)
+			if rs.RecordCount == 0 {
+				rs.CurrentRow = -1
+				rs.EOF = true
+				rs.BOF = true
+			} else if rs.CurrentRow >= rs.RecordCount {
+				rs.CurrentRow = rs.RecordCount - 1
+				rs.fetchCurrentRow()
+			} else {
+				rs.fetchCurrentRow()
+			}
+		}
+		return nil
+
+	case "cancelupdate":
+		rs.newData = nil
+		if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.originalData) {
+			rs.allData[rs.CurrentRow] = cloneRow(rs.originalData[rs.CurrentRow])
+			rs.currentData = rs.allData[rs.CurrentRow]
+			rs.updateFieldsCollection()
 		}
 		return nil
 
@@ -1124,43 +1393,45 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 }
 
 func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) interface{} {
+	_ = rs.openRecordsetWithParams(sqlStr, conn, nil)
+	return nil
+}
+
+func (rs *ADODBRecordset) openRecordsetWithParams(sqlStr string, conn *ADODBConnection, params []interface{}) error {
 	rs.Source = sqlStr
-	sqlPreview := sqlStr
-	if len(sqlPreview) > 50 {
-		sqlPreview = sqlPreview[:50]
-	}
-	//fmt.Printf("[DEBUG] openRecordset: SQL=%s, conn.oleConnection=%v, conn.db=%v\n", sqlPreview, conn.oleConnection != nil, conn.db != nil)
 
 	// Use SQL driver connection
 	if conn.db == nil {
-		return nil
+		return fmt.Errorf("connection not open")
 	}
 
 	rs.db = conn.db
 	rs.dbConn = conn
 
-	rows, err := conn.db.Query(sqlStr)
+	rows, err := conn.queryRows(sqlStr, params)
 	if err != nil {
-		return nil
+		return err
 	}
+	defer rows.Close()
 
 	rs.rows = rows
 	rs.State = 1
 	rs.EOF = false
 	rs.BOF = true
 	rs.CurrentRow = -1
+	rs.columns = nil
+	rs.allData = make([]map[string]interface{}, 0)
+	rs.originalData = make([]map[string]interface{}, 0)
 
 	// Get column names
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil
+		return err
 	}
 	rs.columns = cols
 
 	// Fetch all rows into memory for random access
-	rs.allData = make([]map[string]interface{}, 0)
 	for rows.Next() {
-		// Create slice for values
 		values := make([]interface{}, len(cols))
 		valuePtrs := make([]interface{}, len(cols))
 		for i := range cols {
@@ -1171,17 +1442,16 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 			continue
 		}
 
-		// Convert to map
 		row := make(map[string]interface{})
 		for i, col := range cols {
 			row[strings.ToLower(col)] = values[i]
 		}
 		rs.allData = append(rs.allData, row)
+		rs.originalData = append(rs.originalData, cloneRow(row))
 	}
 
 	rs.RecordCount = len(rs.allData)
 
-	// Move to first record
 	if len(rs.allData) > 0 {
 		rs.CurrentRow = 0
 		rs.currentData = rs.allData[0]
@@ -1192,6 +1462,7 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 		rs.EOF = true
 		rs.BOF = true
 	}
+
 	return nil
 }
 
@@ -1338,6 +1609,42 @@ func (rs *ADODBRecordset) updateFieldsCollection() {
 			}
 		}
 	}
+}
+
+func cloneRow(row map[string]interface{}) map[string]interface{} {
+	if row == nil {
+		return nil
+	}
+	clone := make(map[string]interface{}, len(row))
+	for key, value := range row {
+		clone[key] = value
+	}
+	return clone
+}
+
+func toInterfaceSlice(value interface{}) []interface{} {
+	if value == nil {
+		return nil
+	}
+	if vbArr, ok := toVBArray(value); ok {
+		return vbArr.Values
+	}
+	if slice, ok := value.([]interface{}); ok {
+		return slice
+	}
+	return []interface{}{value}
+}
+
+func toStringSlice(value interface{}) []string {
+	values := toInterfaceSlice(value)
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for _, item := range values {
+		result = append(result, fmt.Sprintf("%v", item))
+	}
+	return result
 }
 
 // populateRecordsetFromOLE reads all rows from an OLE recordset into an ADODBRecordset
@@ -1533,10 +1840,19 @@ func (rs *ADODBRecordset) applySorting(sortStr string) {
 		rs.SortOrder = strings.ToUpper(parts[1])
 	}
 
-	// Sort the data
-	sort.Slice(rs.allData, func(i, j int) bool {
-		valI := rs.allData[i][rs.SortField]
-		valJ := rs.allData[j][rs.SortField]
+	// Sort the data while keeping original snapshots aligned
+	type rowPair struct {
+		current  map[string]interface{}
+		original map[string]interface{}
+	}
+	pairs := make([]rowPair, len(rs.allData))
+	for i := range rs.allData {
+		pairs[i] = rowPair{current: rs.allData[i], original: rs.originalData[i]}
+	}
+
+	sort.Slice(pairs, func(i, j int) bool {
+		valI := pairs[i].current[rs.SortField]
+		valJ := pairs[j].current[rs.SortField]
 
 		// Compare based on type
 		var less bool
@@ -1567,6 +1883,11 @@ func (rs *ADODBRecordset) applySorting(sortStr string) {
 		}
 		return less
 	})
+
+	for i := range pairs {
+		rs.allData[i] = pairs[i].current
+		rs.originalData[i] = pairs[i].original
+	}
 
 	// Update current position if valid
 	if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.allData) {
@@ -1805,6 +2126,53 @@ func (rs *ADODBRecordset) findCurrentFilteredIndex() int {
 	return -1
 }
 
+func (rs *ADODBRecordset) setCurrentRowByIndex(index int) {
+	if rs.isFiltered {
+		if len(rs.filteredIndices) == 0 {
+			rs.EOF = true
+			rs.BOF = true
+			return
+		}
+		if index < 0 {
+			rs.BOF = true
+			rs.EOF = false
+			return
+		}
+		if index >= len(rs.filteredIndices) {
+			rs.EOF = true
+			rs.BOF = false
+			return
+		}
+		rs.CurrentRow = rs.filteredIndices[index]
+		rs.fetchCurrentRow()
+		rs.BOF = false
+		rs.EOF = false
+		return
+	}
+
+	if len(rs.allData) == 0 {
+		rs.EOF = true
+		rs.BOF = true
+		return
+	}
+	if index < 0 {
+		rs.BOF = true
+		rs.EOF = false
+		return
+	}
+	if index >= len(rs.allData) {
+		rs.EOF = true
+		rs.BOF = false
+		return
+	}
+	if rs.CurrentRow != index {
+		rs.CurrentRow = index
+	}
+	rs.fetchCurrentRow()
+	rs.BOF = false
+	rs.EOF = false
+}
+
 // supportsFeature checks if the recordset supports a specific cursor feature
 // Common constants from ADO:
 // adAddNew = 0x1000400
@@ -1853,6 +2221,11 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 		return
 	}
 
+	driver := ""
+	if rs.dbConn != nil {
+		driver = rs.dbConn.dbDriver
+	}
+
 	if rs.newData != nil {
 		// INSERT
 		var cols []string
@@ -1873,20 +2246,17 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 			tableName,
 			strings.Join(cols, ", "),
 			strings.Join(placeholders, ", "))
-
-		fmt.Printf("[ADODB] Executing INSERT: %s, Values: %v\n", query, values)
+		query = rewritePlaceholders(query, driver)
 
 		var result sql.Result
 		var err error
-
-		if rs.dbConn != nil && rs.dbConn.tx != nil {
-			result, err = rs.dbConn.tx.Exec(query, values...)
+		if rs.dbConn != nil {
+			result, err = rs.dbConn.execStatement(query, values)
 		} else {
 			result, err = rs.db.Exec(query, values...)
 		}
 
 		if err != nil {
-			fmt.Printf("[ADODB] Insert failed: %v\n", err)
 			if rs.ctx != nil && rs.ctx.Err != nil {
 				rs.ctx.Err.SetError(err)
 			}
@@ -1900,10 +2270,18 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 
 				for _, idField := range idFields {
 					found := false
+					if rs.newData != nil {
+						if _, ok := rs.newData[idField]; ok || strings.EqualFold(idField, "id") {
+							rs.newData[idField] = lastId
+							found = true
+						}
+					}
 					for _, f := range rs.Fields.fields {
 						if strings.EqualFold(f.Name, idField) {
 							f.Value = lastId
-							rs.currentData[strings.ToLower(f.Name)] = lastId
+							if rs.currentData != nil {
+								rs.currentData[strings.ToLower(f.Name)] = lastId
+							}
 							if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.allData) {
 								rs.allData[rs.CurrentRow][strings.ToLower(f.Name)] = lastId
 							}
@@ -1919,9 +2297,19 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 		}
 	} else {
 		// UPDATE
-		whereClause := extractWhereClause(rs.Source)
-		if whereClause == "" {
+		if rs.currentData == nil {
 			return
+		}
+		whereClause := cleanWhereClause(extractWhereClause(rs.Source))
+		whereParams := []interface{}{}
+		if whereClause == "" {
+			if rs.CurrentRow < 0 || rs.CurrentRow >= len(rs.originalData) {
+				return
+			}
+			whereClause, whereParams = buildRowWhereClause(rs.originalData[rs.CurrentRow])
+			if whereClause == "" {
+				return
+			}
 		}
 
 		var sets []string
@@ -1936,22 +2324,66 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 			return
 		}
 
-		query := fmt.Sprintf("UPDATE %s SET %s %s", tableName, strings.Join(sets, ", "), whereClause)
+		values = append(values, whereParams...)
 
-		fmt.Printf("[ADODB] Executing UPDATE: %s, Values: %v\n", query, values)
+		query := fmt.Sprintf("UPDATE %s SET %s %s", tableName, strings.Join(sets, ", "), whereClause)
+		query = rewritePlaceholders(query, driver)
 
 		var err error
-		if rs.dbConn != nil && rs.dbConn.tx != nil {
-			_, err = rs.dbConn.tx.Exec(query, values...)
+		if rs.dbConn != nil {
+			_, err = rs.dbConn.execStatement(query, values)
 		} else {
 			_, err = rs.db.Exec(query, values...)
 		}
 
 		if err != nil {
-			fmt.Printf("[ADODB] Update failed: %v\n", err)
 			if rs.ctx != nil && rs.ctx.Err != nil {
 				rs.ctx.Err.SetError(err)
 			}
+			return
+		}
+
+		if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.originalData) {
+			rs.originalData[rs.CurrentRow] = cloneRow(rs.currentData)
+		}
+	}
+}
+
+func (rs *ADODBRecordset) performSQLDelete() {
+	tableName := extractTableName(rs.Source)
+	if tableName == "" {
+		return
+	}
+
+	driver := ""
+	if rs.dbConn != nil {
+		driver = rs.dbConn.dbDriver
+	}
+
+	whereClause := cleanWhereClause(extractWhereClause(rs.Source))
+	whereParams := []interface{}{}
+	if whereClause == "" {
+		if rs.CurrentRow < 0 || rs.CurrentRow >= len(rs.originalData) {
+			return
+		}
+		whereClause, whereParams = buildRowWhereClause(rs.originalData[rs.CurrentRow])
+		if whereClause == "" {
+			return
+		}
+	}
+
+	query := fmt.Sprintf("DELETE FROM %s %s", tableName, whereClause)
+	query = rewritePlaceholders(query, driver)
+
+	var err error
+	if rs.dbConn != nil {
+		_, err = rs.dbConn.execStatement(query, whereParams)
+	} else {
+		_, err = rs.db.Exec(query, whereParams...)
+	}
+	if err != nil {
+		if rs.ctx != nil && rs.ctx.Err != nil {
+			rs.ctx.Err.SetError(err)
 		}
 	}
 }
@@ -1977,6 +2409,43 @@ func extractWhereClause(sql string) string {
 		return ""
 	}
 	return sql[idx:]
+}
+
+func cleanWhereClause(whereClause string) string {
+	upper := strings.ToUpper(whereClause)
+	for _, token := range []string{" ORDER BY ", " LIMIT ", " OFFSET ", " FETCH ", " FOR "} {
+		if idx := strings.Index(upper, token); idx != -1 {
+			return strings.TrimSpace(whereClause[:idx])
+		}
+	}
+	return strings.TrimSpace(whereClause)
+}
+
+func buildRowWhereClause(row map[string]interface{}) (string, []interface{}) {
+	if row == nil {
+		return "", nil
+	}
+	if idValue, ok := row["id"]; ok {
+		if idValue == nil {
+			return "WHERE id IS NULL", nil
+		}
+		return "WHERE id = ?", []interface{}{idValue}
+	}
+
+	clauses := make([]string, 0, len(row))
+	params := make([]interface{}, 0, len(row))
+	for col, val := range row {
+		if val == nil {
+			clauses = append(clauses, fmt.Sprintf("%s IS NULL", col))
+			continue
+		}
+		clauses = append(clauses, fmt.Sprintf("%s = ?", col))
+		params = append(params, val)
+	}
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return "WHERE " + strings.Join(clauses, " AND "), params
 }
 
 // --- ADODB.Recordset (OLE Wrapper) ---

@@ -1,44 +1,44 @@
-# ================= CONFIGURAÇÕES =================
+# ================= CONFIGURATION =================
 $url = 'http://localhost:4050/ebook.asp'
-$SimultaneousUsers = 50  # Quantos "usuários" acessando ao mesmo tempo
-$RestTimeMs = 1          # Tempo de descanso entre requisições de um mesmo usuário (ms)
+$SimultaneousUsers = 50  # How many "users" accessing at the same time
+$RestTimeMs = 1          # Rest time between requests from the same user (ms)
 # =================================================
 
-# Cria um hash sincronizado (Thread-safe) para compartilhar dados entre as threads
+# Creates a synchronized hash (Thread-safe) to share data between threads
 $syncHash = [hashtable]::Synchronized(@{})
 $syncHash.SuccessCount = 0
 $syncHash.ErrorCount = 0
 $syncHash.Running = $true
 $syncHash.StartTime = Get-Date
 
-# O bloco de código que cada "usuário" (thread) vai executar
+# The code block that each "user" (thread) will execute
 $ScriptBlock = {
     param($url, $syncHash, $restTime)
     
     while ($syncHash.Running) {
         try {
-            # Faz a requisição sem analisar o HTML (mais rápido)
+            # Make the request without parsing HTML (faster)
             $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -Method Get -ErrorAction Stop
             
-            # Incrementa contador de sucesso (Thread-safe)
+            # Increment success counter (Thread-safe)
             $syncHash.SuccessCount++
         }
         catch {
-            # Incrementa contador de erro
+            # Increment error counter
             $syncHash.ErrorCount++
         }
-        # Pequena pausa para respeitar a configuração (pode ser 0)
+        # Small pause to respect the configuration (can be 0)
         Start-Sleep -Milliseconds $restTime
     }
 }
 
-# Configura o Pool de Runspaces (As Threads)
-Write-Host "Iniciando $SimultaneousUsers threads para atacar $url..." -ForegroundColor Cyan
+# Configure the Runspace Pool (The Threads)
+Write-Host "Starting $SimultaneousUsers threads to stress test $url..." -ForegroundColor Cyan
 $RunspacePool = [runspacefactory]::CreateRunspacePool(1, $SimultaneousUsers)
 $RunspacePool.Open()
 $Jobs = @()
 
-# Lança os "usuários"
+# Launch the "users"
 for ($i = 0; $i -lt $SimultaneousUsers; $i++) {
     $PSInstance = [powershell]::Create()
     $PSInstance.RunspacePool = $RunspacePool
@@ -47,43 +47,43 @@ for ($i = 0; $i -lt $SimultaneousUsers; $i++) {
     $PSInstance.AddArgument($syncHash)
     $PSInstance.AddArgument($RestTimeMs)
     
-    # Inicia a thread de forma assíncrona
+    # Start the thread asynchronously
     $Jobs += $PSInstance.BeginInvoke()
 }
 
-# ================= LOOP DE MONITORAMENTO =================
+# ================= MONITORING LOOP =================
 try {
     Clear-Host
     while ($true) {
         $elapsed = (Get-Date) - $syncHash.StartTime
         $totalReq = $syncHash.SuccessCount + $syncHash.ErrorCount
         
-        # Evita divisão por zero nos primeiros milissegundos
+        # Avoid division by zero in the first milliseconds
         if ($elapsed.TotalSeconds -gt 0) {
             $rps = [math]::Round($totalReq / $elapsed.TotalSeconds, 2)
         } else { $rps = 0 }
 
-        # Atualiza o painel
+        # Update the dashboard
         [Console]::SetCursorPosition(0,0)
-        Write-Host "=== TESTE DE ESTRESSE EM ANDAMENTO ===" -ForegroundColor Cyan
-        Write-Host "Alvo: $url"
-        Write-Host "Threads (Usuários): $SimultaneousUsers"
-        Write-Host "Tempo Decorrido:    $($elapsed.ToString('hh\:mm\:ss'))"
+        Write-Host "=== STRESS TEST IN PROGRESS ===" -ForegroundColor Cyan
+        Write-Host "Target: $url"
+        Write-Host "Threads (Users): $SimultaneousUsers"
+        Write-Host "Elapsed Time:    $($elapsed.ToString('hh\:mm\:ss'))"
         Write-Host "--------------------------------------"
-        Write-Host "Sucessos (200 OK):  $($syncHash.SuccessCount)" -ForegroundColor Green
-        Write-Host "Falhas / Erros:     $($syncHash.ErrorCount)" -ForegroundColor Red
-        Write-Host "Total Requisições:  $totalReq"
+        Write-Host "Successes (200 OK):  $($syncHash.SuccessCount)" -ForegroundColor Green
+        Write-Host "Failures / Errors:   $($syncHash.ErrorCount)" -ForegroundColor Red
+        Write-Host "Total Requests:      $totalReq"
         Write-Host "--------------------------------------"
-        Write-Host "Velocidade:         $rps Req/segundo" -ForegroundColor Yellow
+        Write-Host "Speed:            $rps Req/second" -ForegroundColor Yellow
         Write-Host "--------------------------------------"
-        Write-Host "Pressione CTRL+C para parar..."
+        Write-Host "Press CTRL+C to stop..."
         
         Start-Sleep -Milliseconds 500
     }
 }
 finally {
-    # Limpeza ao fechar
-    Write-Host "`Stoping threads..." -ForegroundColor Yellow
+    # Cleanup on close
+    Write-Host "`nStopping threads..." -ForegroundColor Yellow
     $syncHash.Running = $false
     $RunspacePool.Close()
     $RunspacePool.Dispose()
