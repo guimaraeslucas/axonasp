@@ -270,6 +270,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// If it's a directory, try to serve the default page
 	if info.IsDir() {
+		if !strings.HasSuffix(path, "/") {
+			redirectPath := path + "/"
+			if r.URL.RawQuery != "" {
+				redirectPath += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, redirectPath, http.StatusMovedPermanently)
+			return
+		}
 		fullPath = filepath.Join(fullPath, DefaultPage)
 		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 			serveErrorPage(w, r, 404)

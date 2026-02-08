@@ -67,7 +67,7 @@ func (c *Collection) Get(key string) interface{} {
 	if val, exists := c.data[keyLower]; exists {
 		return val
 	}
-	return ""
+	return EmptyValue{}
 }
 
 // Exists checks if a key exists in the collection (case-insensitive)
@@ -349,7 +349,7 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			}
 
 			// Not found returns nil (which prints as empty string or Empty)
-			return nil, nil
+			return EmptyValue{}, nil
 		}
 		return nil, nil
 	}
