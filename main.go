@@ -223,10 +223,11 @@ func main() {
 	fmt.Printf("\033[48;5;240m\033[37mStarting G3pix AxonASP on http://localhost:%s ► \033[0m\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)
 
-	// Initialize web.config parser if ERROR_404_MODE is "IIS"
-	if strings.ToLower(Error404Mode) == "iis" {
-		webConfigParser = server.NewWebConfigParser(RootDir)
-		if err := webConfigParser.Load(); err != nil {
+	// Initialize web.config parser
+	webConfigParser = server.NewWebConfigParser(RootDir)
+	if err := webConfigParser.Load(); err != nil {
+		webConfigParser = nil
+		if strings.ToLower(Error404Mode) == "iis" {
 			fmt.Printf("Warning: ERROR_404_MODE is 'IIS' but failed to load web.config: %v\n", err)
 			fmt.Println("Falling back to default error page mode.")
 			Error404Mode = "default"
@@ -250,8 +251,8 @@ func main() {
 		fmt.Printf("Warning: Failed to load Global.asa: %v\n", err)
 	}
 
-	fmt.Printf("Application_OnStart defined: %v\n", globalASAManager.HasApplicationOnStart())
-	fmt.Printf("Session_OnStart defined: %v\n", globalASAManager.HasSessionOnStart())
+	//fmt.Printf("Application_OnStart defined: %v\n", globalASAManager.HasApplicationOnStart())
+	//fmt.Printf("Session_OnStart defined: %v\n", globalASAManager.HasSessionOnStart())
 
 	// Execute Application_OnStart if defined
 	if globalASAManager.HasApplicationOnStart() {
@@ -288,11 +289,12 @@ func main() {
 
 			// Set the context in executor
 			executor.SetContext(ctx)
-
-			if err := globalASAManager.ExecuteApplicationOnStart(executor, ctx); err != nil {
-				fmt.Printf("[DEBUG] Error in Application_OnStart: %v\n", err)
-			} else {
-				fmt.Println("[DEBUG] Application_OnStart executed successfully")
+			if DebugASP {
+				if err := globalASAManager.ExecuteApplicationOnStart(executor, ctx); err != nil {
+					fmt.Printf("[DEBUG] Error in Application_OnStart: %v\n", err)
+				} else {
+					fmt.Println("[DEBUG] Application_OnStart executed successfully")
+				}
 			}
 		}()
 	}
@@ -329,6 +331,7 @@ func main() {
 	err = http.ListenAndServe(":"+Port, nil)
 	if err != nil {
 		fmt.Printf("Fatal error starting G3Pix AxonASP server:\n  %v\n", err)
+		fmt.Print("Shutting down.\n")
 	}
 }
 
@@ -371,6 +374,13 @@ func NewDummyResponseWriter() *DummyResponseWriter {
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
+	if applyHTTPRedirect(w, r) {
+		return
+	}
+	if applyRewriteRules(w, r) {
+		return
+	}
+	path = r.URL.Path
 	if path == "/" {
 		path = "/" + DefaultPage
 	}
@@ -481,6 +491,65 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[DEBUG] ASP processing error in %s: %v\n", path, err)
 		//fmt.Printf("[DEBUG] STACK %s\n", stack)
 	}
+}
+
+func applyHTTPRedirect(w http.ResponseWriter, r *http.Request) bool {
+	if webConfigParser == nil || !webConfigParser.IsLoaded() {
+		return false
+	}
+	redirectConfig := webConfigParser.GetHTTPRedirectConfig()
+	if redirectConfig == nil || !redirectConfig.Enabled || redirectConfig.Destination == "" {
+		return false
+	}
+	if redirectConfig.ChildOnly && r.URL.Path == "/" {
+		return false
+	}
+	location := buildHTTPRedirectLocation(redirectConfig, r)
+	statusCode := redirectConfig.StatusCode
+	if statusCode == 0 {
+		statusCode = http.StatusFound
+	}
+	http.Redirect(w, r, location, statusCode)
+	return true
+}
+
+func buildHTTPRedirectLocation(config *server.HTTPRedirectConfig, r *http.Request) string {
+	location := config.Destination
+	if config.ExactDestination {
+		return location
+	}
+	path := r.URL.Path
+	if !strings.HasSuffix(location, "/") && !strings.HasPrefix(path, "/") {
+		location += "/"
+	}
+	location += strings.TrimPrefix(path, "/")
+	if r.URL.RawQuery != "" {
+		location += "?" + r.URL.RawQuery
+	}
+	return location
+}
+
+func applyRewriteRules(w http.ResponseWriter, r *http.Request) bool {
+	if webConfigParser == nil || !webConfigParser.IsLoaded() {
+		return false
+	}
+	result, ok := webConfigParser.ApplyRewriteRules(r.URL.Path, r.URL.RawQuery)
+	if !ok || !result.Applied {
+		return false
+	}
+	if result.ActionType == "redirect" {
+		statusCode := result.RedirectStatus
+		if statusCode == 0 {
+			statusCode = http.StatusFound
+		}
+		http.Redirect(w, r, result.RedirectLocation, statusCode)
+		return true
+	}
+	if result.Path != "" {
+		r.URL.Path = result.Path
+	}
+	r.URL.RawQuery = result.RawQuery
+	return false
 }
 
 // serveErrorPage serves a custom HTML error page from the errorpages directory
