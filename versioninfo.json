@@ -1,14 +1,14 @@
 {
     "FixedFileInfo": {
         "FileVersion": {
-            "Major": 0,
-            "Minor": 5,
+            "Major": 1,
+            "Minor": 0,
             "Patch": 0,
             "Build": 0
         },
         "ProductVersion": {
-            "Major": 0,
-            "Minor": 5,
+            "Major": 1,
+            "Minor": 0,
             "Patch": 0,
             "Build": 0
         },
@@ -22,14 +22,14 @@
         "Comments": "G3Pix AxonASP Server - https://g3pix.com.br/axonasp",
         "CompanyName": "G3Pix Ltda",
         "FileDescription": "G3Pix AxonASP Server",
-        "FileVersion": "0.5",
+        "FileVersion": "1.0",
         "InternalName": "AxonASP",
         "LegalCopyright": "G3Pix",
-        "LegalTrademarks": "G3Pix® is a registered trademark of G3Pix Ltda",
+        "LegalTrademarks": "G3Pix is a registered trademark of G3Pix Ltda",
         "OriginalFilename": "axonasp.exe",
         "PrivateBuild": "",
         "ProductName": "AxonASP Server",
-        "ProductVersion": "v0.0.5.0",
+        "ProductVersion": "v1.0.0.0",
         "SpecialBuild": ""
     },
     "VarFileInfo": {
@@ -38,6 +38,5 @@
             "CharsetID": "04B0"
         }
     },
-    "IconPath": "resources/icon.ico",
-    "ManifestPath": "resources/axonasp.exe.manifest"
+    "IconPath": "resources/icon.ico"
 }

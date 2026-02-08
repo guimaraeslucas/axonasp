@@ -61,10 +61,11 @@ try {
         # Avoid division by zero in the first milliseconds
         if ($elapsed.TotalSeconds -gt 0) {
             $rps = [math]::Round($totalReq / $elapsed.TotalSeconds, 2)
-        } else { $rps = 0 }
+        }
+        else { $rps = 0 }
 
         # Update the dashboard
-        [Console]::SetCursorPosition(0,0)
+        [Console]::SetCursorPosition(0, 0)
         Write-Host "=== STRESS TEST IN PROGRESS ===" -ForegroundColor Cyan
         Write-Host "Target: $url"
         Write-Host "Threads (Users): $SimultaneousUsers"
