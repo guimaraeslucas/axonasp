@@ -31,6 +31,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 
 	"strconv"
 	"strings"
@@ -889,13 +891,14 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	ae.context.CurrentFile = filePath
 	ae.context.CurrentDir = filepath.Dir(filePath)
 
+	resolvedContent := fileContent
 	// Pre-process Includes if not already resolved
 	if !alreadyResolved {
-		resolvedContent, err := asp.ResolveIncludes(fileContent, filePath, ae.config.RootDir, nil)
+		var err error
+		resolvedContent, err = asp.ResolveIncludes(fileContent, filePath, ae.config.RootDir, nil)
 		if err != nil {
 			return fmt.Errorf("include error: %w", err)
 		}
-		fileContent = resolvedContent
 	}
 
 	// Fast path: if there's no executable ASP (only directives/comments), stream HTML directly
@@ -962,8 +965,7 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 			AllowImplicitVars: true,
 			DebugMode:         ae.config.DebugASP,
 		}
-		parser := asp.NewASPParserWithOptions(fileContent, parsingOptions)
-		parsed, err := parser.Parse()
+		parsed, err := asp.ParseResolvedWithCache(resolvedContent, parsingOptions)
 		if err != nil {
 			return fmt.Errorf("failed to parse ASP code: %w", err)
 		}
@@ -1034,6 +1036,11 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 		ae.context.Cleanup()
 	}
 
+	if asp.ShouldForceFreeMemory(len(resolvedContent)) {
+		runtime.GC()
+		debug.FreeOSMemory()
+	}
+
 	return nil
 }
 
@@ -1076,11 +1083,6 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 		return err
 	}
 
-	// Pre-process Includes
-	resolvedContent, err := asp.ResolveIncludes(content, physicalPath, ae.config.RootDir, nil)
-	if err != nil {
-		return fmt.Errorf("include error: %w", err)
-	}
 	// It shares Request, Response, Session, Application
 	// But has its own scope for variables and constants
 	childCtx := &ExecutionContext{
@@ -1127,9 +1129,7 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 		AllowImplicitVars: true,
 		DebugMode:         ae.config.DebugASP,
 	}
-
-	parser := asp.NewASPParserWithOptions(resolvedContent, parsingOptions)
-	result, err := parser.Parse()
+	_, result, err := asp.ParseWithCache(content, physicalPath, ae.config.RootDir, parsingOptions)
 	if err != nil {
 		return fmt.Errorf("failed to parse included ASP file: %w", err)
 	}

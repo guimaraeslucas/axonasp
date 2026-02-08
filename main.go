@@ -25,10 +25,12 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"g3pix.com.br/axonasp/asp"
@@ -45,6 +47,9 @@ var (
 	DefaultPage       = "default.asp"
 	ScriptTimeout     = 30 // in seconds
 	DebugASP          = false
+	ASTCacheType      = "memory" // "memory" or "disk"
+	MemoryLimitMB     = 0        // 0 means no limit
+	ASTCacheTTLMin    = 0        // 0 means keep forever
 	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
 	Error404Mode      = "default" // "default" or "IIS"
 	COMProviderMode   = "auto"    // "auto" or "code"
@@ -81,6 +86,31 @@ func init() {
 	if val := os.Getenv("DEBUG_ASP"); val == "TRUE" {
 		DebugASP = true
 	}
+	if val := os.Getenv("ASP_CACHE_TYPE"); val != "" {
+		val = strings.ToLower(strings.TrimSpace(val))
+		if val == "memory" || val == "disk" {
+			ASTCacheType = val
+		} else {
+			fmt.Printf("Warning: Invalid ASP_CACHE_TYPE value '%s'. Using 'disk'. Valid values: 'memory', 'disk'\n", val)
+			ASTCacheType = "disk"
+		}
+	}
+	if val := os.Getenv("MEMORY_LIMIT_MB"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil && i >= 0 {
+			MemoryLimitMB = i
+		} else {
+			fmt.Printf("Warning: Invalid MEMORY_LIMIT_MB value '%s'. Using 0 (no limit).\n", val)
+			MemoryLimitMB = 0
+		}
+	}
+	if val := os.Getenv("ASP_CACHE_TTL_MINUTES"); val != "" {
+		if i, err := strconv.Atoi(val); err == nil && i >= 0 {
+			ASTCacheTTLMin = i
+		} else {
+			fmt.Printf("Warning: Invalid ASP_CACHE_TTL_MINUTES value '%s'. Using 0 (keep forever).\n", val)
+			ASTCacheTTLMin = 0
+		}
+	}
 	if val := os.Getenv("BLOCKED_EXTENSIONS"); val != "" {
 		BlockedExtensions = val
 	}
@@ -103,6 +133,11 @@ func init() {
 		}
 	}
 	server.SetCOMProviderMode(COMProviderMode)
+	asp.ConfigureParseCache(ASTCacheType, RootDir)
+	asp.SetParseCacheTTLMinutes(ASTCacheTTLMin)
+	if MemoryLimitMB > 0 {
+		debug.SetMemoryLimit(int64(MemoryLimitMB) * 1024 * 1024)
+	}
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
@@ -138,6 +173,7 @@ func main() {
 	}
 
 	http.HandleFunc("/", handleRequest)
+	setupShutdownHandlers()
 
 	// Initialize session manager and start cleanup routine
 	sessionManager := server.GetSessionManager()
@@ -198,6 +234,9 @@ func main() {
 
 	if DebugASP {
 		fmt.Println("[DEBUG] DEBUG_ASP mode is enabled")
+		fmt.Printf("[DEBUG] Cache type: %s\n", ASTCacheType)
+		fmt.Printf("[DEBUG] Memory limit: %d MB\n", MemoryLimitMB)
+		fmt.Printf("[DEBUG] Cache TTL minutes: %d\n", ASTCacheTTLMin)
 		//Display build info for debugging purposes
 		if info, ok := debug.ReadBuildInfo(); ok {
 			fmt.Printf("[DEBUG] Go Version: %s\n", info.GoVersion)
@@ -208,7 +247,7 @@ func main() {
 				case "vcs.time":
 					fmt.Printf("[DEBUG] Build Date: %s\n", setting.Value)
 				case "GOARCH":
-					fmt.Printf("[DEBUG] GOARCH: %s\n", setting.Value)
+					fmt.Printf("[DEBUG] Architecture: %s\n", setting.Value)
 				}
 			}
 		}
@@ -218,6 +257,21 @@ func main() {
 	if err != nil {
 		fmt.Printf("Fatal error starting G3Pix AxonASP server:\n  %v\n", err)
 	}
+}
+
+func setupShutdownHandlers() {
+	if ASTCacheType != "disk" || ASTCacheTTLMin <= 0 {
+		return
+	}
+
+	shutdownSignals := make(chan os.Signal, 1)
+	signal.Notify(shutdownSignals, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-shutdownSignals
+		asp.CleanupParseCacheOnShutdown()
+		os.Exit(0)
+	}()
 }
 
 // DummyResponseWriter is a no-op response writer for Application_OnStart

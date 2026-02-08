@@ -24,10 +24,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
-	"sync"
-	"time"
 
 	"g3pix.com.br/axonasp/asp"
 )
@@ -59,15 +56,7 @@ func GetCOMProviderMode() string {
 // ASPProcessor handles ASP file execution
 // Delegates to ASPExecutor for actual code execution
 type ASPProcessor struct {
-	config     *ASPProcessorConfig
-	cacheMu    sync.RWMutex
-	parseCache map[string]parseCacheEntry
-}
-
-type parseCacheEntry struct {
-	modTime time.Time
-	content string
-	result  *asp.ASPParserResult
+	config *ASPProcessorConfig
 }
 
 // NewASPProcessor creates a new ASP processor
@@ -79,8 +68,7 @@ func NewASPProcessor(config *ASPProcessorConfig) *ASPProcessor {
 		}
 	}
 	return &ASPProcessor{
-		config:     config,
-		parseCache: make(map[string]parseCacheEntry),
+		config: config,
 	}
 }
 
@@ -134,50 +122,19 @@ func generateUniqueID() string {
 }
 
 func (ap *ASPProcessor) getParsed(filePath, rawContent string) (string, *asp.ASPParserResult, error) {
-	var modTime time.Time
-	if info, err := os.Stat(filePath); err == nil {
-		modTime = info.ModTime()
-	}
-
-	ap.cacheMu.RLock()
-	if entry, ok := ap.parseCache[filePath]; ok && entry.modTime.Equal(modTime) {
-		content := entry.content
-		result := entry.result
-		ap.cacheMu.RUnlock()
-		return content, result, nil
-	}
-	ap.cacheMu.RUnlock()
-
-	resolvedContent, err := asp.ResolveIncludes(rawContent, filePath, ap.config.RootDir, nil)
-	if err != nil {
-		return "", nil, fmt.Errorf("include error: %w", err)
-	}
-
 	parsingOptions := &asp.ASPParsingOptions{
 		SaveComments:      false,
 		StrictMode:        false,
 		AllowImplicitVars: true,
 		DebugMode:         ap.config.DebugASP,
 	}
-	parser := asp.NewASPParserWithOptions(resolvedContent, parsingOptions)
-	result, parseErr := parser.Parse()
-	if parseErr != nil {
-		return "", nil, fmt.Errorf("failed to parse ASP code: %w", parseErr)
+	resolvedContent, result, err := asp.ParseWithCache(rawContent, filePath, ap.config.RootDir, parsingOptions)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to parse ASP code: %w", err)
 	}
 
 	if len(result.Errors) > 0 {
 		return "", nil, fmt.Errorf("ASP parse error: %v", result.Errors[0])
 	}
-
-	entry := parseCacheEntry{
-		modTime: modTime,
-		content: resolvedContent,
-		result:  result,
-	}
-
-	ap.cacheMu.Lock()
-	ap.parseCache[filePath] = entry
-	ap.cacheMu.Unlock()
-
 	return resolvedContent, result, nil
 }

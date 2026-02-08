@@ -99,8 +99,7 @@ func (gam *GlobalASAManager) LoadGlobalASA(webRoot string) error {
 		DebugMode:    false,
 	}
 
-	parser := asp.NewASPParserWithOptions(gam.globalASAContent, parsingOptions)
-	result, err := parser.Parse()
+	_, result, err := asp.ParseWithCache(gam.globalASAContent, globalASAPath, webRoot, parsingOptions)
 	if err != nil {
 		return fmt.Errorf("failed to parse Global.asa: %w", err)
 	}
