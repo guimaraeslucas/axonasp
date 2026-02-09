@@ -32,9 +32,36 @@ Say goodbye to Windows-only hosting and IIS dependencies. G3Pix AxonASP empowers
 - **🔄 Drop-In Replacement**: Run most Classic ASP applications without code modifications
 - **🔒 Secure by Design**: Files served only from `www/` root directory, preventing unauthorized access
 - **🛠️ Extended Functionality**: 60+ custom functions inspired by PHP for enhanced productivity
-- **📦 COM Object Support**: Full support for ADODB, MSXML2, and custom G3 libraries
-- **⚙️ Simple Configuration**: Environment-based configuration via `.env` file
-- **🔌 Reverse Proxy Ready**: Seamlessly integrates with Nginx, Apache, or IIS as reverse proxy
+- **📦 Full COM Support**: ADODB (with Access database support), MSXML2, Scripting objects, WScript.Shell, ADOX
+- **🗄️ Database Support**: SQLite, MySQL, PostgreSQL, MS SQL Server, Microsoft Access (Windows)
+- **⚙️ Dual Deployment**: Standalone server or FastCGI mode for nginx/Apache/IIS integration
+- **🔌 IIS Compatibility**: web.config support for URL rewriting, redirects, and custom error pages
+- **🚀 Production Ready**: Session management, Application state, Global.asa events, graceful shutdown
+
+---
+
+## 📋 Deployment Modes
+
+AxonASP offers two deployment modes for different use cases:
+
+| Mode | Binary | Best For | Details |
+|------|--------|----------|---------|
+| **Standalone** | `axonasp.exe` | Development, simple deployments, direct hosting | Built-in HTTP server on port 4050. Quick setup, no dependencies. |
+| **FastCGI** | `axonaspcgi.exe` | Production, high-traffic sites, existing infrastructure | Integrates with nginx, Apache, IIS. Better performance, load balancing, SSL. See [FastCGI Guide](docs/FASTCGI_MODE.md) |
+
+**Quick Start Standalone:**
+```bash
+go run main.go
+# or build: go build -o axonasp.exe
+./axonasp.exe
+```
+
+**Quick Start FastCGI:**
+```bash
+go build -o axonaspcgi.exe ./axonaspcgi
+./axonaspcgi -listen :9000 -root ./www
+# Then configure your web server to proxy .asp files to port 9000
+```
 
 ---
 
@@ -119,6 +146,54 @@ After building, simply run the executable:
 axonasp.exe        # Windows
 ```
 
+### FastCGI Mode
+
+AxonASP can run as a FastCGI application server (similar to PHP-FPM), allowing integration with production web servers:
+
+```bash
+# Build FastCGI executable
+go build -o axonaspcgi.exe ./axonaspcgi
+
+# Run on TCP socket (default: 127.0.0.1:9000)
+./axonaspcgi -listen :9000 -root ./www
+
+# Run on Unix socket (Linux/macOS)
+./axonaspcgi -listen unix:/var/run/axonasp.sock -root /var/www/asp
+```
+
+**FastCGI Mode Benefits:**
+- ✅ Native web server integration (nginx, Apache, IIS)
+- ✅ Better static file performance (served by web server)
+- ✅ Built-in load balancing and upstream support
+- ✅ Graceful restarts without downtime
+- ✅ Process pool management
+- ✅ Production-grade SSL/TLS handling
+- ✅ Advanced caching strategies
+
+**When to use FastCGI:**
+- Production deployments with high traffic
+- Multiple applications behind one web server
+- Need for advanced web server features (SSL, caching, compression)
+- Integration with existing infrastructure
+
+**Quick nginx Configuration:**
+```nginx
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/asp;
+    
+    location ~ \.(asp|aspx)$ {
+        fastcgi_pass   127.0.0.1:9000;
+        include        fastcgi_params;
+        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+    }
+}
+```
+
+📖 **Complete FastCGI Guide**: [docs/FASTCGI_MODE.md](docs/FASTCGI_MODE.md)  
+🚀 **Quick Start**: [docs/FASTCGI_QUICKSTART.md](docs/FASTCGI_QUICKSTART.md)
+
 ---
 
 ## ⚙️ Configuration
@@ -135,10 +210,16 @@ G3Pix AxonASP uses a `.env` file for configuration. All settings are optional wi
 | `DEFAULT_PAGE` | `default.asp` | Default document name |
 | `SCRIPT_TIMEOUT` | `30` | Script execution timeout (seconds) |
 | `DEBUG_ASP` | `FALSE` | Enable HTML stack traces in ASP files |
+| `ERROR_404_MODE` | `default` | 404 handling mode: `default`, `asp`, or `iis` |
+| `CUSTOM_404_PAGE` | - | Path to custom 404 ASP page (when mode is `asp`) |
+| `USE_VM` | `FALSE` | Enable experimental bytecode VM |
+| `CLEANUP_SESSIONS` | `TRUE` | Auto-cleanup expired sessions on startup |
+| `BLOCKED_EXTENSIONS` | `.asa,.config,.mdb,.accdb` | Comma-separated list of blocked file extensions |
 | `SMTP_HOST` | - | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP server port |
 | `SMTP_USER` | - | SMTP authentication username |
 | `SMTP_PASS` | - | SMTP authentication password |
+| `SMTP_FROM` | - | Default sender email address |
 
 ### Example `.env` File
 
@@ -150,11 +231,23 @@ DEFAULT_PAGE=index.asp
 SCRIPT_TIMEOUT=60
 DEBUG_ASP=TRUE
 
+# Error Handling (IIS Mode)
+ERROR_404_MODE=iis
+CUSTOM_404_PAGE=/errors/404.asp
+
+# Performance
+USE_VM=FALSE
+CLEANUP_SESSIONS=TRUE
+
+# Security
+BLOCKED_EXTENSIONS=.asa,.config,.mdb,.accdb,.env
+
 # SMTP Configuration
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
+SMTP_FROM=noreply@example.com
 ```
 
 ---
@@ -246,6 +339,105 @@ Install **Application Request Routing (ARR)** and **URL Rewrite** modules, then 
 </configuration>
 ```
 
+---
+
+## 🔀 IIS Compatibility Mode
+
+AxonASP supports IIS-style URL rewriting and error handling through `web.config` files.
+
+### Custom 404 Error Handling
+
+**Three modes available** (configure via `ERROR_404_MODE` environment variable):
+
+1. **`default`** - Static HTML error page
+2. **`asp`** - Custom ASP error handler page
+3. **`iis`** - IIS-style web.config httpErrors section
+
+#### Mode 1: Default (Static HTML)
+```env
+ERROR_404_MODE=default
+```
+Serves `errorpages/404.html` for missing files.
+
+#### Mode 2: Custom ASP Handler
+```env
+ERROR_404_MODE=asp
+CUSTOM_404_PAGE=/errors/404.asp
+```
+
+Create `/www/errors/404.asp`:
+```vbscript
+<%
+Response.Status = "404 Not Found"
+originalUrl = Request.ServerVariables("URL")
+%>
+<h1>Page Not Found</h1>
+<p>The requested URL <%= Server.HTMLEncode(originalUrl) %> was not found.</p>
+```
+
+#### Mode 3: IIS web.config
+```env
+ERROR_404_MODE=iis
+```
+
+Create `/www/web.config`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <system.webServer>
+        <httpErrors errorMode="Custom">
+            <remove statusCode="404" />
+            <error statusCode="404" path="/errors/404.asp" responseMode="ExecuteURL" />
+        </httpErrors>
+    </system.webServer>
+</configuration>
+```
+
+### URL Rewriting with web.config
+
+AxonASP reads `web.config` for URL rewrite rules:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <system.webServer>
+        <rewrite>
+            <rules>
+                <!-- Redirect non-www to www -->
+                <rule name="Add WWW" stopProcessing="true">
+                    <match url="(.*)" />
+                    <conditions>
+                        <add input="{HTTP_HOST}" pattern="^example\.com$" />
+                    </conditions>
+                    <action type="Redirect" url="http://www.example.com/{R:1}" redirectType="Permanent" />
+                </rule>
+                
+                <!-- Rewrite clean URLs -->
+                <rule name="Product Page" stopProcessing="true">
+                    <match url="^product/([0-9]+)$" />
+                    <action type="Rewrite" url="/product.asp?id={R:1}" />
+                </rule>
+                
+                <!-- Redirect old paths -->
+                <rule name="Old Blog" stopProcessing="true">
+                    <match url="^old-blog/(.*)" />
+                    <action type="Redirect" url="/blog/{R:1}" redirectType="Permanent" />
+                </rule>
+            </rules>
+        </rewrite>
+    </system.webServer>
+</configuration>
+```
+
+**Supported Features:**
+- ✅ URL rewriting (transparent to user)
+- ✅ URL redirects (301/302)
+- ✅ Pattern matching with regular expressions
+- ✅ Capture groups `{R:1}`, `{R:2}`, etc.
+- ✅ Server variable conditions `{HTTP_HOST}`, `{HTTPS}`, etc.
+- ✅ Multiple rules with priority ordering
+- ✅ `stopProcessing` attribute
+
 ### Running Multiple Instances
 
 Start multiple AxonASP instances with different configurations:
@@ -276,13 +468,161 @@ SERVER_PORT=4052 WEB_ROOT=./app3/www ./axonasp
 ### COM Object Support
 
 #### ADODB (Database Access)
-- `ADODB.Connection` - Database connections (SQL Server, MySQL, PostgreSQL, SQLite)
-- `ADODB.Recordset` - Data retrieval and manipulation
-- `ADODB.Stream` - Binary and text stream handling
+
+Full support for Active Data Objects (ADO) database operations:
+
+- **`ADODB.Connection`** - Database connections and transactions
+  - Supports: SQLite, MySQL, PostgreSQL, MS SQL Server
+  - **Microsoft Access** (Windows only): `.mdb` and `.accdb` files
+  - Connection pooling and transaction management
+  - `Open()`, `Close()`, `Execute()`, `BeginTrans()`, `CommitTrans()`, `RollbackTrans()`
+
+- **`ADODB.Recordset`** - Data retrieval and manipulation
+  - Navigation: `MoveNext()`, `MovePrevious()`, `MoveFirst()`, `MoveLast()`
+  - Editing: `AddNew()`, `Update()`, `Delete()`
+  - Properties: `EOF`, `BOF`, `RecordCount`, `Fields` collection
+  - Cursor types and lock strategies support
+
+- **`ADODB.Stream`** - Binary and text stream handling
+  - Read/write text and binary data
+  - Charset encoding support (UTF-8, ASCII, etc.)
+  - `ReadText()`, `WriteText()`, `Position`, `Size` properties
+
+**📖 Complete ADODB documentation**: [docs/ADODB_IMPLEMENTATION.md](docs/ADODB_IMPLEMENTATION.md)
+
+**🪟 Access Database Support (Windows only)**: [docs/ACCESS_DATABASE_SUPPORT.md](docs/ACCESS_DATABASE_SUPPORT.md)
+
+##### Database Connection Strings
+
+**SQLite** (Cross-platform):
+```vbscript
+conn.Open "Driver={SQLite3};Data Source=" & Server.MapPath("database.db")
+```
+
+**MySQL**:
+```vbscript
+conn.Open "Driver={MySQL};Server=localhost;Database=mydb;uid=user;pwd=pass"
+```
+
+**PostgreSQL**:
+```vbscript
+conn.Open "Driver={PostgreSQL};Server=localhost;Database=mydb;uid=postgres;pwd=pass"
+```
+
+**MS SQL Server**:
+```vbscript
+conn.Open "Provider=SQLOLEDB;Server=localhost;Database=mydb;uid=sa;pwd=pass"
+```
+
+**Microsoft Access (Windows only)**:
+```vbscript
+' Older .mdb format (Jet)
+conn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\database.mdb"
+
+' Newer .accdb format (ACE)
+conn.Open "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=C:\db\database.accdb"
+```
+
+**Connection Example**:
+```vbscript
+<%
+Set conn = Server.CreateObject("ADODB.Connection")
+conn.Open "Driver={SQLite3};Data Source=" & Server.MapPath("app.db")
+
+Set rs = conn.Execute("SELECT * FROM users WHERE active = 1")
+Do While Not rs.EOF
+    Response.Write rs.Fields("username") & "<br>"
+    rs.MoveNext
+Loop
+
+rs.Close
+conn.Close
+%>
+```
+
+#### ADOX (Database Schema)
+
+Database schema creation and management:
+
+- **`ADOX.Catalog`** - Database structure operations
+  - Create databases, tables, indexes
+  - Manage users and groups
+  - Schema modification
+
+**Example: Creating Access Database**
+```vbscript
+Set catalog = Server.CreateObject("ADOX.Catalog")
+catalog.Create "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\mydb.mdb"
+
+Set table = Server.CreateObject("ADOX.Table")
+table.Name = "Customers"
+table.Columns.Append "ID", 3  ' adInteger
+table.Columns.Append "Name", 202, 255  ' adVarWChar
+catalog.Tables.Append table
+```
 
 #### MSXML2 (XML & HTTP)
-- `MSXML2.ServerXMLHTTP` - HTTP requests
-- `MSXML2.DOMDocument` - XML parsing and manipulation
+
+- **`MSXML2.ServerXMLHTTP`** - HTTP/HTTPS requests
+  - Full HTTP method support (GET, POST, PUT, DELETE, PATCH)
+  - Custom headers and authentication
+  - `Open()`, `Send()`, `SetRequestHeader()`, `GetResponseHeader()`
+  - `ResponseText`, `ResponseXML`, `Status`, `StatusText`
+
+- **`MSXML2.DOMDocument`** - XML parsing and manipulation
+  - `Load()`, `LoadXML()`, `Save()` - File and string operations
+  - XPath queries: `SelectNodes()`, `SelectSingleNode()`
+  - DOM manipulation: `CreateElement()`, `AppendChild()`, etc.
+  - `DocumentElement`, `ChildNodes`, navigation properties
+
+**📖 Full MSXML2 documentation**: [docs/MSXML2_IMPLEMENTATION.md](docs/MSXML2_IMPLEMENTATION.md)
+
+#### Scripting Objects
+
+- **`Scripting.Dictionary`** - Key-value associative arrays
+  - `Add()`, `Remove()`, `Exists()`, `Keys()`, `Items()`
+  - `CompareMode` - Binary or text comparison
+  - Perfect for caching and data structures
+
+- **`Scripting.FileSystemObject`** - File system operations
+  - File operations: `FileExists()`, `CopyFile()`, `DeleteFile()`, `CreateTextFile()`
+  - Folder operations: `FolderExists()`, `CreateFolder()`, `DeleteFolder()`
+  - Path utilities: `GetBaseName()`, `GetExtensionName()`, `BuildPath()`
+  - Text file I/O: `OpenTextFile()` with read/write/append modes
+  - Special folders: `GetSpecialFolder(0)` - Windows, System, Temp
+
+**📖 Complete Scripting Objects guide**: [docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md](docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md)
+
+#### WScript.Shell
+
+Windows Script Host Shell operations:
+
+- **`WScript.Shell`** - System integration and automation
+  - `Run()` - Execute external programs and commands
+  - `Exec()` - Execute with output capture
+  - `CreateShortcut()` - Create Windows shortcuts
+  - `RegRead()`, `RegWrite()`, `RegDelete()` - Registry operations (Windows only)
+  - `ExpandEnvironmentStrings()` - Expand environment variables
+  - `SpecialFolders()` - Access special Windows folders
+
+**Example: Running System Commands**
+```vbscript
+Set shell = Server.CreateObject("WScript.Shell")
+
+' Run command and wait
+shell.Run "notepad.exe", 1, true
+
+' Execute and capture output
+Set exec = shell.Exec("cmd /c dir")
+Do While Not exec.StdOut.AtEndOfStream
+    Response.Write exec.StdOut.ReadLine() & "<br>"
+Loop
+
+' Read environment variable
+winDir = shell.ExpandEnvironmentStrings("%WINDIR%")
+```
+
+**📖 WScript.Shell documentation**: [docs/WSCRIPT_SHELL_IMPLEMENTATION.md](docs/WSCRIPT_SHELL_IMPLEMENTATION.md)
 
 ### Custom G3 Libraries
 
@@ -324,13 +664,15 @@ hash = crypto.HashPassword("mypassword")
 isValid = crypto.VerifyPassword("mypassword", hash)
 ```
 
-#### G3TEMPLATE
+#### G3FILEUPLOADER
 ```vbscript
-Set tpl = Server.CreateObject("G3TEMPLATE")
-Set data = Server.CreateObject("Scripting.Dictionary")
-data.Add "name", "John"
-html = tpl.Render("template.html", data)
+Set uploader = Server.CreateObject("G3FileUploader")
+uploader.MaxFileSize = 10485760  ' 10MB
+Set fileInfo = uploader.Process("fileField", Server.MapPath("/uploads/"), "newname.jpg")
+Response.Write "Uploaded: " & fileInfo.SavedPath
 ```
+
+**📖 Complete library documentation**: See [docs/](docs/) folder for detailed guides on each library.
 
 ---
 
@@ -420,6 +762,8 @@ axonasp/
 │   ├── asp_parser.go       # VBScript parser
 │   ├── asp_lexer.go        # Tokenizer
 │   └── asp_executor.go     # Code executor
+├── axonaspcgi/             # FastCGI mode
+│   └── main.go             # FastCGI application server
 ├── server/                 # Core libraries
 │   ├── request_object.go   # Request object
 │   ├── response_object.go  # Response object
@@ -433,12 +777,26 @@ axonasp/
 │   ├── mail_lib.go         # G3MAIL library
 │   ├── crypto_lib.go       # G3CRYPTO library
 │   ├── database_lib.go     # ADODB implementation
+│   ├── adox_lib.go         # ADOX implementation
 │   ├── msxml_lib.go        # MSXML2 implementation
+│   ├── dictionary_lib.go   # Scripting.Dictionary
+│   ├── wscript_shell_lib.go # WScript.Shell
+│   ├── webconfig_parser.go # web.config reader
 │   └── global_asa_manager.go # Global.asa handler
 ├── vbscript/               # VBScript compatibility layer
+├── docs/                   # Documentation
+│   ├── ADODB_IMPLEMENTATION.md
+│   ├── ACCESS_DATABASE_SUPPORT.md
+│   ├── FASTCGI_MODE.md
+│   ├── FASTCGI_QUICKSTART.md
+│   ├── SCRIPTING_OBJECTS_IMPLEMENTATION.md
+│   ├── WSCRIPT_SHELL_IMPLEMENTATION.md
+│   ├── MSXML2_IMPLEMENTATION.md
+│   └── CUSTOM_FUNCTIONS.md
 ├── www/                    # Web root (your ASP files here)
 │   ├── default.asp         # Default document
 │   ├── global.asa          # Application events
+│   ├── web.config          # IIS-style configuration
 │   └── tests/              # Test files
 ├── temp/session/           # Session storage
 └── errorpages/             # Error templates (403, 404, 500)
@@ -497,10 +855,13 @@ G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
 | **Platform** | Windows only | Windows, Linux, macOS |
 | **Performance** | Standard | Accelerated (Go) |
 | **Dependencies** | IIS, Windows Server | Single binary |
-| **Deployment** | Complex | Simple binary |
+| **Deployment** | Complex | Simple binary or FastCGI |
+| **Database Support** | Windows databases | SQLite, MySQL, PostgreSQL, SQL Server, Access |
 | **Cost** | Windows licensing | Free & open source |
-| **Modernization** | Limited | Extended functions |
+| **Modernization** | Limited | 60+ extended functions |
 | **Container Ready** | Challenging | Docker-friendly |
+| **Web Server Integration** | IIS only | nginx, Apache, IIS, FastCGI |
+| **URL Rewriting** | IIS modules | Built-in web.config support |
 
 ---
 
@@ -570,15 +931,21 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
-- [ ] Better error handling
-- [ ] FastCGI support
+- [x] ADODB database support (SQLite, MySQL, PostgreSQL, SQL Server)
+- [x] Microsoft Access database support (Windows)
+- [x] FastCGI mode for production deployments
+- [x] IIS-style web.config URL rewriting
+- [x] Custom 404 error handling (3 modes)
+- [x] Scripting.FileSystemObject and Dictionary
+- [x] WScript.Shell for system integration
+- [x] ADOX for database schema management
+- [x] 60+ custom functions (Ax* functions)
 - [ ] WebSocket support
-- ✅ Custom 404 handling
 - [ ] Built-in Redis session storage
 - [ ] Docker official images
-- [ ] Additional database drivers
-- [ ] REST API generator
 - [ ] OAuth2 authentication library
+- [ ] REST API generator
+- [ ] GraphQL support
 
 ---
 

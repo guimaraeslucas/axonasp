@@ -10,8 +10,6 @@
 
 #TODO
 TODO
-
-# OS generated files #
-temp/session/
+/temp/
 .DS_Store
 Thumbs.db
