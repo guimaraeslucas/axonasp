@@ -1,4 +1,4 @@
-﻿/*
+/*
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
@@ -38,17 +38,17 @@ type WScriptShell struct {
 
 // WScriptExecObject represents the object returned by Shell.Exec()
 type WScriptExecObject struct {
-	cmd           *exec.Cmd
-	stdoutPipe    io.ReadCloser
-	stderrPipe    io.ReadCloser
-	stdinPipe     io.WriteCloser
-	stdoutStream  *ProcessTextStream
-	stderrStream  *ProcessTextStream
-	status        int // 0 = Running, 1 = Done
-	exitCode      int
-	processID     int
-	mu            sync.Mutex
-	finished      bool
+	cmd          *exec.Cmd
+	stdoutPipe   io.ReadCloser
+	stderrPipe   io.ReadCloser
+	stdinPipe    io.WriteCloser
+	stdoutStream *ProcessTextStream
+	stderrStream *ProcessTextStream
+	status       int // 0 = Running, 1 = Done
+	exitCode     int
+	processID    int
+	mu           sync.Mutex
+	finished     bool
 }
 
 // ProcessTextStream represents a text stream for reading/writing from process I/O
@@ -257,7 +257,7 @@ func (ws *WScriptShell) Exec(args ...interface{}) interface{} {
 		// Update status and exit code
 		execObj.mu.Lock()
 		defer execObj.mu.Unlock()
-		
+
 		execObj.status = 1 // Done
 
 		if err != nil {
@@ -271,7 +271,7 @@ func (ws *WScriptShell) Exec(args ...interface{}) interface{} {
 		}
 
 		execObj.finished = true
-		
+
 		// Mark stream as at end since we've finished reading
 		execObj.stdoutStream.mu.Lock()
 		execObj.stdoutStream.atEndOfStream = true
@@ -360,19 +360,19 @@ func (we *WScriptExecObject) SetProperty(name string, value interface{}) {}
 // CallMethod implements the Component interface
 func (we *WScriptExecObject) CallMethod(name string, args ...interface{}) interface{} {
 	name = strings.ToLower(name)
-	
+
 	switch name {
 	case "waituntildone":
-		timeout := 0  // Default: no timeout (wait indefinitely)
+		timeout := 0 // Default: no timeout (wait indefinitely)
 		if len(args) > 0 {
 			timeout = toInt(args[0])
 		}
 		return we.WaitUntilDone(timeout)
-	
+
 	case "terminate":
 		we.Terminate()
 		return nil
-	
+
 	default:
 		return nil
 	}
@@ -600,6 +600,3 @@ func (we *WScriptExecObject) Terminate() {
 		we.cmd.Process.Kill()
 	}
 }
-
-
-

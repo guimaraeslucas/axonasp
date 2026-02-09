@@ -48,7 +48,7 @@ func (c *COMObject) CallMethod(name string, args ...interface{}) (interface{}, e
 // Enumerate returns an empty list on non-Windows platforms.
 func (c *COMObject) Enumerate() ([]interface{}, error) { return []interface{}{}, nil }
 
-    // No-op on non-Windows platforms
+// No-op on non-Windows platforms
 func (c *COMObject) release() {
-    // No-op on non-Windows platforms
+	// No-op on non-Windows platforms
 }

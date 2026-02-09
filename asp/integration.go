@@ -126,7 +126,7 @@ func (aca *ASPCodeAnalyzer) Analyze(aspCode string) map[string]interface{} {
 
 	for _, block := range result.Blocks {
 		switch block.Type {
-case "asp":
+		case "asp":
 			aspBlockCount++
 			totalContent += len(block.Content)
 		case "html":
@@ -262,7 +262,7 @@ func (as *ASPStatistics) AnalyzeFile(aspCode string) {
 
 	for _, block := range result.Blocks {
 		switch block.Type {
-case "asp":
+		case "asp":
 			as.TotalASPBlocks++
 		case "html":
 			as.TotalHTMLBlocks++

@@ -88,7 +88,7 @@ func (ae *ASPExecutor) ExecuteVM(aspCode string) (string, error) {
 	// Compile all ASP blocks
 	for i, block := range result.Blocks {
 		switch block.Type {
-case "asp":
+		case "asp":
 			if program, exists := result.VBPrograms[i]; exists && program != nil {
 				if err := compiler.Compile(program); err != nil {
 					return "", fmt.Errorf("VM compilation error: %v", err)
@@ -247,7 +247,7 @@ func (af *ASPFormatter) Format(aspCode string) string {
 
 	for _, block := range blocks {
 		switch block.Type {
-case "html":
+		case "html":
 			result.WriteString(block.Content)
 		case "asp":
 			result.WriteString("<%\n")

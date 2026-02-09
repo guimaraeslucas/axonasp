@@ -19,8 +19,8 @@
  * made available under this same license terms.
  */
 //Use go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
-//Then run "go generate" in the project root to embed version info into the executable  
- //go:generate goversioninfo
+//Then run "go generate" in the project root to embed version info into the executable
+//go:generate goversioninfo
 package main
 
 import (
@@ -53,8 +53,8 @@ var (
 	DebugASP          = false
 	CleanupSessions   = false
 	ASTCacheType      = "disk" // "memory" or "disk"
-	MemoryLimitMB     = 0        // 0 means no limit
-	ASTCacheTTLMin    = 0        // 0 means keep forever
+	MemoryLimitMB     = 0      // 0 means no limit
+	ASTCacheTTLMin    = 0      // 0 means keep forever
 	UseVM             = false
 	VMCacheType       = "disk" // "memory" or "disk"
 	VMCacheTTLMin     = 0
