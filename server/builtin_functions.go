@@ -26,7 +26,6 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -490,17 +489,6 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		////fmt.Printf("[DEBUG] InstrB RESULT: %d\n", result)
 		return result, true
 
-	case "env":
-		// Env(name) - Returns environment variable value
-		if len(args) == 0 {
-			return "", true
-		}
-		envName := toString(args[0])
-		// Try to get from OS environment first
-		value := os.Getenv(envName)
-		// Return the value (empty string if not found, which matches VBScript behavior)
-		return value, true
-
 	case "eval":
 		// Eval(expression) - Evaluate expression string and return result
 		if len(args) == 0 {
@@ -535,6 +523,28 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		result := evalExpression(exprStr, ctx)
 		//fmt.Printf("[DEBUG] Eval result: %T\n", result)
 		return result, true
+
+	case "createobject":
+		// CreateObject(progID) - creates a COM object
+		if ctx == nil || ctx.Server == nil {
+			return nil, true
+		}
+		if len(args) == 0 {
+			return nil, true
+		}
+
+		progID := toString(args[0])
+		if progID == "" {
+			return nil, true
+		}
+
+		obj, err := ctx.Server.CreateObject(progID)
+		if err != nil {
+			// Return nil on error (not an error state, just nil object)
+			return nil, true
+		}
+
+		return obj, true
 
 	case "getobject":
 		if ctx == nil || ctx.Server == nil {

@@ -21,6 +21,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -33,7 +34,10 @@ import (
 	"net"
 	"net/mail"
 	"net/url"
+	"os"
+	"os/exec"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -62,6 +66,52 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		encoded := html.EscapeString(val)
 		ctx.Response.Write(encoded)
 		return nil, true
+
+	// System functions
+	case "axgetenv":
+		// AxGetEnv(name) - Returns environment variable value
+		if len(args) == 0 {
+			return "", true
+		}
+		envName := toString(args[0])
+		value := os.Getenv(envName)
+		return value, true
+
+	case "axexecute":
+		// AxExecute(command, [output_array], [result_code]) - Execute system command and return output
+		// Similar to PHP's exec() function
+		if len(args) == 0 {
+			return false, true
+		}
+		
+		command := toString(args[0])
+		if command == "" {
+			return false, true
+		}
+		
+		var cmd *exec.Cmd
+		
+		// Build command based on OS
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd.exe", "/c", command)
+		} else {
+			cmd = exec.Command("sh", "-c", command)
+		}
+		
+		// Capture output
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stdout  // Redirect stderr to stdout
+		
+		// Execute command
+		_ = cmd.Run()  // Ignore exit error for now
+		
+		// Get output
+		output := stdout.String()
+		// Trim trailing newline if present
+		output = strings.TrimRight(output, "\r\n")
+		
+		return output, true
 
 	// Array functions
 	case "axarraymerge":

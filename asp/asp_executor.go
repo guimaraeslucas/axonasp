@@ -87,13 +87,14 @@ func (ae *ASPExecutor) ExecuteVM(aspCode string) (string, error) {
 
 	// Compile all ASP blocks
 	for i, block := range result.Blocks {
-		if block.Type == "asp" {
+		switch block.Type {
+case "asp":
 			if program, exists := result.VBPrograms[i]; exists && program != nil {
 				if err := compiler.Compile(program); err != nil {
 					return "", fmt.Errorf("VM compilation error: %v", err)
 				}
 			}
-		} else if block.Type == "html" {
+		case "html":
 			// Handle HTML blocks? VM doesn't handle HTML directly usually.
 			// Standard ASP emits HTML via Response.Write.
 			// For now, we ignore HTML blocks in VM execution or manual write?
@@ -245,9 +246,10 @@ func (af *ASPFormatter) Format(aspCode string) string {
 	result := strings.Builder{}
 
 	for _, block := range blocks {
-		if block.Type == "html" {
+		switch block.Type {
+case "html":
 			result.WriteString(block.Content)
-		} else if block.Type == "asp" {
+		case "asp":
 			result.WriteString("<%\n")
 			// Formata o conteúdo VBScript
 			formattedVB := af.formatVBContent(block.Content)

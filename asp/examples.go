@@ -279,9 +279,10 @@ func AnalyzeExample(codeType string) string {
 	aspCount := 0
 
 	for _, block := range result.Blocks {
-		if block.Type == "html" {
+		switch block.Type {
+		case "html":
 			htmlCount++
-		} else if block.Type == "asp" {
+		case "asp":
 			aspCount++
 		}
 	}

@@ -598,9 +598,10 @@ func (p *Parser) parseClassDeclaration() ast.Statement {
 
 func (p *Parser) parseSubDeclaration(modifier ast.MethodAccessModifier, isMethod, inlineOnly bool) ast.Statement {
 	return p.parseProcedure(KeywordSub, modifier, isMethod, inlineOnly, func(id *ast.Identifier, body ast.Statement) ast.Statement {
-		if id.Name == "Class_Initialize" {
+		switch id.Name {
+		case "Class_Initialize":
 			return ast.NewInitializeSubDeclaration(modifier, body)
-		} else if id.Name == "Class_Terminate" {
+		case "Class_Terminate":
 			return ast.NewTerminateSubDeclaration(modifier, body)
 		}
 		return ast.NewSubDeclaration(modifier, id, body)
@@ -1290,10 +1291,28 @@ func (p *Parser) parseBinaryExpressionWithPrecedence(minPrec int) ast.Expression
 
 		p.move()
 
+		// Special handling for "Is Not" - check if Is is followed by Not
+		isNot := false
+		if kw, ok := op.(*KeywordToken); ok && kw.Keyword == KeywordIs {
+			// Peek ahead to see if next token is Not
+			if nextKw, ok := p.next.(*KeywordToken); ok && nextKw.Keyword == KeywordNot {
+				//fmt.Printf("[DEBUG] Parser: Found 'Is Not' combination!\n")
+				isNot = true
+				p.move() // consume the Not keyword
+			}
+		}
+
 		// Parse right side with higher precedence (left-associative)
 		right := p.parseBinaryExpressionWithPrecedence(prec)
 
-		expr = ast.NewBinaryExpression(p.getBinaryOperation(op), expr, right)
+		if isNot {
+			// Create "Is Not" as a special unary negation of "Is"
+			// expr Is Not right is equivalent to Not (expr Is right)
+			isComparison := ast.NewBinaryExpression(ast.BinaryOperationIs, expr, right)
+			expr = ast.NewUnaryExpression(ast.UnaryOperationNot, isComparison)
+		} else {
+			expr = ast.NewBinaryExpression(p.getBinaryOperation(op), expr, right)
+		}
 	}
 
 	return expr

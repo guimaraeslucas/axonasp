@@ -125,10 +125,11 @@ func (aca *ASPCodeAnalyzer) Analyze(aspCode string) map[string]interface{} {
 	totalContent := 0
 
 	for _, block := range result.Blocks {
-		if block.Type == "asp" {
+		switch block.Type {
+case "asp":
 			aspBlockCount++
 			totalContent += len(block.Content)
-		} else if block.Type == "html" {
+		case "html":
 			htmlBlockCount++
 			totalContent += len(block.Content)
 		}
@@ -260,9 +261,10 @@ func (as *ASPStatistics) AnalyzeFile(aspCode string) {
 	as.TotalErrors += len(result.Errors)
 
 	for _, block := range result.Blocks {
-		if block.Type == "asp" {
+		switch block.Type {
+case "asp":
 			as.TotalASPBlocks++
-		} else if block.Type == "html" {
+		case "html":
 			as.TotalHTMLBlocks++
 		}
 	}

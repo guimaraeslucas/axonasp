@@ -17,7 +17,17 @@ Custom functions have been implemented in a dedicated file following VBScript co
   ' Outputs: &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;
   ```
 
-### 2. Array Functions
+### 2. System Functions
+
+#### AxGetEnv
+Return the value of an OS environment variable
+```vb
+Dim pathValue
+pathValue = AxGetEnv("PATH")
+Response.Write pathValue
+```
+
+### 3. Array Functions
 
 #### AxArrayMerge
 Merge multiple arrays into a single contiguous array
@@ -68,16 +78,8 @@ parts = AxExplode(",", "one,two,three,four")
 Response.Write AxImplode("|", parts)  ' one|two|three|four
 ```
 
-#### AxArrayReverse
-Reverse array order
 ```vb
 Dim nums, reversed
-nums = Array(1, 2, 3, 4, 5)
-reversed = AxArrayReverse(nums)  ' [5,4,3,2,1]
-```
-
-#### AxRange
-Create array of values from start to end
 ```vb
 Dim numbers
 numbers = AxRange(1, 10)  ' [1,2,3,...,10]
@@ -92,7 +94,7 @@ words = Array("Hello", "World", "ASP")
 Response.Write AxImplode(" ", words)  ' Hello World ASP
 ```
 
-### 3. String Functions
+### 4. String Functions
 
 #### AxStringReplace
 Replace search string with replacement (supports arrays)
@@ -160,7 +162,7 @@ Dim values
 values = AxStringGetCsv("col1,col2,col3")
 ```
 
-### 4. Math Functions
+### 5. Math Functions
 
 #### AxCeil, AxFloor
 Round up/down
@@ -190,7 +192,7 @@ Response.Write AxNumberFormat(1234567.89, 2, ".", ",")
 ' 1,234,567.89
 ```
 
-### 5. Type Checking Functions
+### 6. Type Checking Functions
 
 #### AxIsInt, AxIsFloat
 Check if value is integer or float
@@ -219,7 +221,7 @@ Check if variable is set (not null/empty)
 Response.Write AxIsset(someVariable)
 ```
 
-### 6. Date/Time Functions
+### 7. Date/Time Functions
 
 #### AxTime
 Return current Unix timestamp
@@ -235,7 +237,7 @@ Response.Write AxDate("Y-m-d")  ' 2024-01-16
 Response.Write AxDate("Y-m-d H:i:s")  ' 2024-01-16 14:30:45
 ```
 
-### 7. Hashing & Encoding Functions
+### 8. Hashing & Encoding Functions
 
 #### AxMd5, AxSha1, AxHash
 Hash string
@@ -281,7 +283,7 @@ Response.Write AxStripTags("<p>Hello <b>World</b></p>")
 ' Hello World
 ```
 
-### 8. Validation Functions
+### 9. Validation Functions
 
 #### AxFilterValidateIp
 Validate IP address
@@ -299,7 +301,7 @@ If AxFilterValidateEmail("user@example.com") Then
 End If
 ```
 
-### 9. Request Array Functions
+### 10. Request Array Functions
 
 #### AxGetRequest, AxGetGet, AxGetPost
 Get request parameters as Dictionary-like objects
@@ -310,7 +312,7 @@ params = AxGetGet()  ' Only GET
 params = AxGetPost()  ' Only POST
 ```
 
-### 10. Utility Functions
+### 11. Utility Functions
 
 #### AxGenerateGuid
 Generate a new GUID

@@ -74,10 +74,11 @@ func Example2_BlockExtraction() {
 	aspBlocks := 0
 
 	for i, block := range result.Blocks {
-		if block.Type == "html" {
+		switch block.Type {
+		case "html":
 			htmlBlocks++
 			fmt.Printf("Block %d (HTML): %s\n", i, strings.TrimSpace(block.Content)[:20]+"...")
-		} else if block.Type == "asp" {
+		case "asp":
 			aspBlocks++
 			fmt.Printf("Block %d (ASP): %s\n", i, strings.TrimSpace(block.Content))
 		}

@@ -1451,6 +1451,10 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	case "ADODB.STREAM", "STREAM":
 		return NewADOStream(ae.context), nil
 
+	// WScript Objects
+	case "WSCRIPT.SHELL", "SHELL", "WSCRIPT":
+		return NewWScriptShell(ae.context), nil
+
 	default:
 		comObj, err := NewCOMObject(originalObjType)
 		if err == nil {
@@ -4383,12 +4387,6 @@ func toNumeric(val interface{}) (float64, bool) {
 	default:
 		return 0, false
 	}
-}
-
-// isBoolType checks if a value is boolean type
-func isBoolType(val interface{}) bool {
-	_, ok := val.(bool)
-	return ok
 }
 
 // populateRequestData fills a RequestObject with data from HTTP request

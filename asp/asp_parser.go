@@ -297,7 +297,7 @@ func buildCombinedVBScript(blocks []*CodeBlock) string {
 					continue
 				}
 
-				if strings.HasPrefix(lower, "option explicit") || strings.HasPrefix(lower, "option base") {
+if strings.HasPrefix(lower, "option explicit") || strings.HasPrefix(lower, "option base") || strings.HasPrefix(lower, "option compare") {
 					optionDirectives = append(optionDirectives, trimmed)
 					continue
 				}

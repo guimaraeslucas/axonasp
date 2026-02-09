@@ -1,8 +1,8 @@
-/*
+﻿/*
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas GuimarÃ£es - G3pix Ltda
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -486,4 +486,31 @@ func (rl *RegExpLibrary) GetProperty(name string) interface{} {
 // SetProperty sets a property on the RegExp library
 func (rl *RegExpLibrary) SetProperty(name string, value interface{}) error {
 	return rl.lib.SetProperty(name, value)
+}
+
+type WScriptShellLibrary struct {
+	lib *WScriptShell
+}
+
+// NewWScriptShellLibrary creates a new WScriptShell library instance
+func NewWScriptShellLibrary(ctx *ExecutionContext) *WScriptShellLibrary {
+	return &WScriptShellLibrary{
+		lib: NewWScriptShell(ctx),
+	}
+}
+
+// CallMethod calls a method on the WScriptShell library
+func (wsl *WScriptShellLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return wsl.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from the WScriptShell library
+func (wsl *WScriptShellLibrary) GetProperty(name string) interface{} {
+	return wsl.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on the WScriptShell library
+func (wsl *WScriptShellLibrary) SetProperty(name string, value interface{}) error {
+	wsl.lib.SetProperty(name, value)
+	return nil
 }

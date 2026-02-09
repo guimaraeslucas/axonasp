@@ -18,8 +18,9 @@
  * Modifications to the core source code of AxonASP Server must be
  * made available under this same license terms.
  */
-//go:generate goversioninfo
-
+//Use go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+//Then run "go generate" in the project root to embed version info into the executable  
+ //go:generate goversioninfo
 package main
 
 import (
@@ -51,11 +52,11 @@ var (
 	ScriptTimeout     = 30 // in seconds
 	DebugASP          = false
 	CleanupSessions   = false
-	ASTCacheType      = "memory" // "memory" or "disk"
+	ASTCacheType      = "disk" // "memory" or "disk"
 	MemoryLimitMB     = 0        // 0 means no limit
 	ASTCacheTTLMin    = 0        // 0 means keep forever
 	UseVM             = false
-	VMCacheType       = "memory" // "memory" or "disk"
+	VMCacheType       = "disk" // "memory" or "disk"
 	VMCacheTTLMin     = 0
 	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
 	Error404Mode      = "default" // "default" or "IIS"
@@ -129,8 +130,8 @@ func init() {
 		if val == "memory" || val == "disk" {
 			VMCacheType = val
 		} else {
-			fmt.Printf("Warning: Invalid VM_CACHE_TYPE value '%s'. Using 'memory'. Valid values: 'memory', 'disk'\n", val)
-			VMCacheType = "memory"
+			fmt.Printf("Warning: Invalid VM_CACHE_TYPE value '%s'. Using 'disk'. Valid values: 'memory', 'disk'\n", val)
+			VMCacheType = "disk"
 		}
 	}
 	if val := os.Getenv("VM_CACHE_TTL_MINUTES"); val != "" {

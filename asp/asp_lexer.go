@@ -153,11 +153,36 @@ func (al *ASPLexer) findNextScriptBlock() int {
 }
 
 // isDirective checks if the block starting at position is a directive (<%@ ... %>)
+// It also allows optional whitespace between <% and @ (e.g., <% @Language=VBScript %>).
 func (al *ASPLexer) isDirective(startPos int) bool {
-	if startPos+3 >= al.Length {
-		return false
+	_, ok := al.directiveBlockStart(startPos)
+	return ok
+}
+
+// directiveBlockStart returns the start index after the @ symbol for a directive.
+func (al *ASPLexer) directiveBlockStart(startPos int) (int, bool) {
+	if startPos+3 > al.Length {
+		return -1, false
 	}
-	return al.Code[startPos:startPos+3] == "<%@"
+	if strings.HasPrefix(al.Code[startPos:], "<%@") {
+		return startPos + 3, true
+	}
+	if !strings.HasPrefix(al.Code[startPos:], "<%") {
+		return -1, false
+	}
+	idx := startPos + 2
+	for idx < al.Length {
+		switch al.Code[idx] {
+		case ' ', '\t', '\r', '\n':
+			idx++
+			continue
+		case '@':
+			return idx + 1, true
+		default:
+			return -1, false
+		}
+	}
+	return -1, false
 }
 
 // findASPBlockEnd encontra a próxima ocorrência de %>
@@ -253,7 +278,11 @@ func (al *ASPLexer) GetAllBlocks() []*CodeBlock {
 
 // processDirective processes an ASP directive like <%@ Language=VBScript %>
 func (al *ASPLexer) processDirective(startPos int) {
-	blockStart := startPos + 3 // Skip <%@
+	blockStart, ok := al.directiveBlockStart(startPos)
+	if !ok {
+		al.processASPBlock(startPos)
+		return
+	}
 	blockEnd := al.findASPBlockEnd(blockStart)
 
 	if blockEnd == -1 {
