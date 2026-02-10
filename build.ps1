@@ -3,18 +3,18 @@
 # Licensed under the MIT License
 
 param(
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("windows", "linux", "darwin", "all")]
     [string]$Platform = "windows",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [ValidateSet("amd64", "arm64", "386")]
     [string]$Architecture = "amd64",
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Clean,
     
-    [Parameter(Mandatory=$false)]
+    [Parameter(Mandatory = $false)]
     [switch]$Test
 )
 

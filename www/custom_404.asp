@@ -8,6 +8,8 @@ Response.ContentType = "text/html"
 <head>
     <meta charset="utf-8">
     <title>404 - Page Not Found</title>
+	<link rel="icon" href="favicon.ico">
+	<link rel="shortcut icon" href="favicon.ico">
     <style>
         body {
             font-family: Arial, sans-serif;

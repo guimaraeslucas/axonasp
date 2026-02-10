@@ -15,14 +15,14 @@ The WScript.Shell object provides access to the Windows Shell (cmd.exe on Window
 ### Creating a WScript.Shell Object
 
 ```vbscript
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 ```
 
 Or use the shorthand:
 
 ```vbscript
-Set objShell = CreateObject("Wscript.Shell")
-Set objShell = CreateObject("Shell")
+Set objShell =  Server.CreateObject("Wscript.Shell")
+Set objShell =  Server.CreateObject("Shell")
 ```
 
 ## Methods and Properties
@@ -58,7 +58,7 @@ intReturnCode = objShell.Run(strCommand, [intWindowStyle], [bWaitOnReturn])
 **Example:**
 
 ```vbscript
-Set objShell = CreateObject("WScript.Shell")
+Set objShell = Server.CreateObject("WScript.Shell")
 
 ' Run command synchronously, wait for completion
 intReturn = objShell.Run("ipconfig", 1, True)
@@ -89,7 +89,7 @@ Set objExec = objShell.Exec(strCommand)
 **Example:**
 
 ```vbscript
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("dir C:\")
 
 ' Read all output at once
@@ -198,7 +198,7 @@ objExec.WaitUntilDone([intTimeout])
 **Example:**
 
 ```vbscript
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("ping localhost")
 
 ' Wait up to 5 seconds for completion
@@ -382,7 +382,7 @@ Response.Write "TEMP: " & strTemp
 
 ```vbscript
 <%
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 intCode = objShell.Run("notepad.exe", 1, False)  ' Open Notepad asynchronously
 %>
 ```
@@ -391,7 +391,7 @@ intCode = objShell.Run("notepad.exe", 1, False)  ' Open Notepad asynchronously
 
 ```vbscript
 <%
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("dir C:\")
 
 Response.Write "<h2>Directory Listing:</h2>"
@@ -403,7 +403,7 @@ Response.Write "<pre>" & objExec.StdOut.ReadAll() & "</pre>"
 
 ```vbscript
 <%
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("ipconfig")
 
 Response.Write "<h2>Network Configuration:</h2>"
@@ -419,7 +419,7 @@ Response.Write "</pre>"
 
 ```vbscript
 <%
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("sort")
 
 ' Send unsorted data
@@ -438,7 +438,7 @@ Response.Write "<pre>" & objExec.StdOut.ReadAll() & "</pre>"
 
 ```vbscript
 <%
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("dir /nonexistent")
 
 ' Check for errors
@@ -454,7 +454,7 @@ End If
 
 ```vbscript
 <%
-Set objShell = CreateObject("WScript.Shell")
+Set objShell =  Server.CreateObject("WScript.Shell")
 Set objExec = objShell.Exec("ping localhost -n 10")
 
 ' Wait up to 10 seconds
