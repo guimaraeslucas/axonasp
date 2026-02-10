@@ -139,6 +139,10 @@ type ExecutionContext struct {
 	// Resource cleanup tracking for COM objects and other resources
 	managedResources []interface{}
 	resourceMutex    sync.Mutex
+
+	// Include tracking for AxIncludeOnce
+	includedOnce map[string]bool
+	includeMutex sync.Mutex
 }
 
 // NewExecutionContext creates a new execution context
@@ -184,6 +188,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		cancelChan:       make(chan struct{}),
 		cancelled:        false,
 		managedResources: make([]interface{}, 0),
+		includedOnce:     make(map[string]bool),
 	}
 
 	// Initialize Server object with context reference
@@ -1426,6 +1431,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewRegExpLibrary(ae.context), nil
 	case "G3FILEUPLOADER", "FILEUPLOADER":
 		return NewFileUploaderLibrary(ae.context), nil
+	case "G3DB", "DB":
+		return NewG3DBLibrary(ae.context), nil
 
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":

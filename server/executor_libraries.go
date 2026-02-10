@@ -514,3 +514,31 @@ func (wsl *WScriptShellLibrary) SetProperty(name string, value interface{}) erro
 	wsl.lib.SetProperty(name, value)
 	return nil
 }
+
+// G3DBLibrary wraps G3DB for ASPLibrary interface compatibility
+type G3DBLibrary struct {
+	lib *G3DB
+}
+
+// NewG3DBLibrary creates a new G3DB library instance
+func NewG3DBLibrary(ctx *ExecutionContext) *G3DBLibrary {
+	return &G3DBLibrary{
+		lib: NewG3DB(ctx),
+	}
+}
+
+// CallMethod calls a method on the G3DB library
+func (dbl *G3DBLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return dbl.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from the G3DB library
+func (dbl *G3DBLibrary) GetProperty(name string) interface{} {
+	return dbl.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on the G3DB library
+func (dbl *G3DBLibrary) SetProperty(name string, value interface{}) error {
+	dbl.lib.SetProperty(name, value)
+	return nil
+}

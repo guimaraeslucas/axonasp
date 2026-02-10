@@ -1,0 +1,131 @@
+#QS_menulist, #QS_menulist ul {
+padding: 0;
+list-style: none;
+float : right;
+width : 170px;
+margin-bottom:12px;
+margin-top: 0px;
+margin-right: 0px;
+margin-left: 0px;
+background: #EDEEDE;
+border: 1px solid #B2C5B2;
+}
+#QS_menulist li a {
+display: block;
+width: 158px;
+padding-top: 0px;
+padding-left: 5px;
+padding-right: 5px;
+padding-bottom: 0px;
+border: 1px solid #EDEEDE;
+COLOR: #880000;
+}
+* html #QS_menulist li a {width: 168px;}
+#QS_menulist li a:hover
+{
+background: #880000;
+COLOR: #FFFFFF;
+width: 158px;
+border: 1px solid #AB9696;
+}
+* html #QS_menulist li a:hover {width: 168px;}
+#QS_menulist a.subcontainer {
+background-image: url(/fixedImages/pijltjeRTL.gif);
+background-repeat: no-repeat;
+background-position: left center;
+}
+#QS_menulist a.subcontainer:hover {
+background-image: url(/fixedImages/pijltjeoverRTL.gif);
+background-repeat: no-repeat;
+background-position: left center;
+}
+#QS_menulist li { /* all list items */
+position : relative;
+float: left;
+line-height : 1.75em;
+text-align:right;z-index: 1;
+}
+#QS_menulist li ul { /* second-level lists */
+position: absolute;	
+margin-right : 170px;
+display:none;
+margin-top : -1.95em;}
+* html #QS_menulist li ul { margin-right : 0px; }   /*  change - lc */
+@media all and (min-width: 0px){#QS_menulist li ul {margin-left : -170px;   /*  Opera-only hack - lc */}}* html #QS_menulist li ul { margin-left : 168px; }
+#QS_menulist li ul ul { /* third-and-above-level lists */
+display:none;
+margin-top : -1.95em;
+}
+#QS_menulist li:hover ul ul, #QS_menulist li:hover ul ul ul,#QS_menulist li:hover ul ul ul ul, #QS_menulist li.sfhover ul ul, #QS_menulist li.sfhover ul ul ul, #QS_menulist li.sfhover ul ul ul ul {
+display:none;
+}
+#QS_menulist li:hover ul, #QS_menulist li li:hover ul, #QS_menulist li li li:hover ul, #QS_menulist li li li li:hover ul, #QS_menulist li.sfhover ul, #QS_menulist li li.sfhover ul, #QS_menulist li li li.sfhover ul, #QS_menulist li li li li.sfhover ul { /* lists nested under hovered list items */
+display:block;
+}
+
+
+/* Son of Suckerfish Dropdowns By Patrick Griffiths and Dan Webb.*/
+#QS_intranetmenulist, #QS_intranetmenulist ul {
+padding: 0;
+list-style: none;
+float : right;
+width : 170px;
+margin-bottom:12px;
+margin-top: 0px;
+margin-right: 0px;
+margin-left: 0px;
+background: #EDEEDE;
+border: 1px solid #B2C5B2;
+}
+#QS_intranetmenulist li a {
+display: block;
+width: 158px;
+padding-top: 0px;
+padding-left: 5px;
+padding-right: 5px;
+padding-bottom: 0px;
+border: 1px solid #EDEEDE;
+COLOR: #880000;
+}
+* html #QS_intranetmenulist li a {width: 168px;}
+#QS_intranetmenulist li a:hover
+{
+background: #880000;
+COLOR: #FFFFFF;
+width: 158px;
+border: 1px solid #AB9696;
+}
+* html #QS_intranetmenulist li a:hover {width: 168px;}
+#QS_intranetmenulist a.subcontainer {
+background-image: url(/fixedImages/pijltjeRTL.gif);
+background-repeat: no-repeat;
+background-position: left center;
+}
+#QS_intranetmenulist a.subcontainer:hover {
+background-image: url(/fixedImages/pijltjeoverRTL.gif);
+background-repeat: no-repeat;
+background-position: left center;
+}
+#QS_intranetmenulist li { /* all list items */
+position : relative;
+float: left;
+line-height : 1.75em;
+text-align:right;z-index: 1;
+}
+#QS_intranetmenulist li ul { /* second-level lists */
+position: absolute;	
+margin-right : 170px;
+display:none;
+margin-top : -1.95em;}
+* html #QS_intranetmenulist li ul { margin-right : 0px; }   /*  change - lc */
+@media all and (min-width: 0px){#QS_intranetmenulist li ul {margin-left : -170px;   /*  Opera-only hack - lc */}}* html #QS_intranetmenulist li ul { margin-left : 168px; }
+#QS_intranetmenulist li ul ul { /* third-and-above-level lists */
+display:none;
+margin-top : -1.95em;
+}
+#QS_intranetmenulist li:hover ul ul, #QS_intranetmenulist li:hover ul ul ul,#QS_intranetmenulist li:hover ul ul ul ul, #QS_intranetmenulist li.sfhover ul ul, #QS_intranetmenulist li.sfhover ul ul ul, #QS_intranetmenulist li.sfhover ul ul ul ul {
+display:none;
+}
+#QS_intranetmenulist li:hover ul, #QS_intranetmenulist li li:hover ul, #QS_intranetmenulist li li li:hover ul, #QS_intranetmenulist li li li li:hover ul, #QS_intranetmenulist li.sfhover ul, #QS_intranetmenulist li li.sfhover ul, #QS_intranetmenulist li li li.sfhover ul, #QS_intranetmenulist li li li li.sfhover ul { /* lists nested under hovered list items */
+display:block;
+}

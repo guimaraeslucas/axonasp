@@ -1,0 +1,121 @@
+<%
+
+'delete image?
+if aspl.convertStr(aspl.getRequest("delFile"))<>"" then
+	if aspl.fso.fileexists(server.mappath(Application("QS_CMS_C_VIRT_DIR") & Application("QS_CMS_userfiles") & "pagemedia/" & page.iId & "/" & aspl.getRequest("delFile"))) then
+		aspl.fso.deletefile(server.mappath(Application("QS_CMS_C_VIRT_DIR") & Application("QS_CMS_userfiles") & "pagemedia/" & page.iId & "/" & aspl.getRequest("delFile")))
+	else
+		aspl.die
+	end if
+end if
+
+if aspl.convertNmbr(aspl.getRequest("delAll"))=1 then
+	page.removeallmedia
+end if
+
+dim file,str,files : set files=page.mediafiles
+
+if files.count>0 then
+
+	if convertGetal(page.iPMlocation)=0 then
+		page.iPMlocation=1  : page.save
+	end if
+	
+else
+	page.iPMlocation=0  : page.save
+end if
+
+
+'this aspLite form binds to data-asplTarget="basicDiv1"
+dim form : set form=aspl.form
+
+dim saveOK : saveOK=false
+if form.postback then
+
+	'session securitycheck
+	if form.sameSession then
+	
+		page.iPMlocation	= aspl.convertNmbr(aspl.getRequest("iPMlocation"))		
+		
+		page.save
+		
+		saveOK=true		
+	
+	end if
+	
+end if
+
+dim iId : set iId=form.field("hidden")
+iId.add "value",encrypt(page.iId)
+iId.add "name","iId"
+
+dim locationlist : set locationlist=aspl.dict
+locationlist.add 1,"Above text"
+locationlist.add 2,"Right from text"
+locationlist.add 3,"Below text"
+locationlist.add 4,"Left from text"
+
+dim iPMlocation : set iPMlocation = form.field("select")
+iPMlocation.add "value",page.iPMlocation
+iPMlocation.add "name","iPMlocation"
+iPMlocation.add "id","iPMlocation"
+iPMlocation.add "options",locationlist
+iPMlocation.add "label","Media location"
+iPMlocation.add "required",true
+
+dim save : set save = form.field("submit")
+save.add "html","Save"
+save.add "class","btn btn-sm btn-primary"
+save.add "style","margin-top:10px"
+
+if saveOK then
+
+	dim fbM : set fbM=form.field("plain")
+	fbM.add "html","<a id=""saveOK"" style=""margin-left:10px;margin-top:10px"" class=""btn btn-sm btn-success"">Saved!</a>"
+	
+	dim saveOKDP : set saveOKDP=form.field("script")
+	saveOKDP.add "text","setTimeout(() => {document.getElementById('saveOK').style.display='none';}, 1500);"
+	
+end if
+
+if files.count>0 then	
+	
+	dim preview1 : set preview1 = form.field("plain")
+	preview1.add "html","<a href=""default.asp?iId=" & encrypt(page.iId) & """ target=""_blank"" style=""margin-left:10px;margin-top:10px"" class=""btn btn-sm btn-success"">Preview</a>"
+		
+	if files.count>3 then
+		
+		dim deleteAll : set deleteAll = form.field("plain")
+		deleteAll.add "html","<a style=""margin-left:10px;margin-top:10px"" onclick=""if(confirm('Are you sure? This will delete ALL images!')){aspAjax('GET','bs_itemmedia_handler.asp?delAll=1&iId=" & encrypt(page.iId) & "','asplEvent=media',getAspForm);};return false;"" href=""#"" class=""btn btn-sm btn-danger"">Remove all " & files.count & " images</a>"
+	
+	end if
+
+end if
+
+dim close : set close = form.field("button")
+	close.add "html","Close"
+	close.add "class","btn btn-sm btn-secondary"
+	close.add "style","margin-left:10px;margin-top:10px"
+	close.add "onclick","window.parent.$.fn.colorbox.close();"
+
+form.newline 
+form.newline
+
+'list images
+
+for each file in files
+	str=str & "<div class=""col"">"
+	str=str & "<div class=""card"">"
+	str=str & "<img src=""" & Application("QS_CMS_C_DIRECTORY_QUICKERSITE") & "/showthumb.aspx?maxsize=300&FSR=1&img=" & Application("QS_CMS_C_VIRT_DIR") & Application("QS_CMS_userfiles") & "pagemedia/" & page.iId & "/" & file & """></div>"
+	str=str & "<div class=""card-body"" style=""margin-top:3px;text-align:center"">"
+	str=str & "<a onclick=""aspAjax('GET','bs_itemmedia_handler.asp?delFile=" & server.urlencode(file) & "&iId=" & encrypt(page.iId) & "','asplEvent=media',getAspForm);return false;"" href=""#"" class=""btn btn-sm btn-danger"">Delete</a>"
+	str=str & "</div></div>" 
+next
+
+str="<div class=""row row-cols-12 row-cols-md-6 g-2"">" & str & "</div>"
+
+dim filestr : set filestr = form.field("plain")
+filestr.add "html",str
+
+form.build()
+%>

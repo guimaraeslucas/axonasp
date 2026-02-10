@@ -1,0 +1,284 @@
+﻿#QS_list
+{
+}
+#QS_list .QS_listitem .QS_listminusplus
+{
+    FLOAT: left;
+    WIDTH: 10px;
+    POSITION: relative;
+    TOP: 3px
+}
+#QS_list .QS_listitem .QS_listitemtitle
+{
+    FONT-WEIGHT: bolder;
+    LEFT: 4px;
+    POSITION: relative
+}
+#QS_list .QS_listitem
+{
+    padding-bottom: 3px;
+    width: 95%;   
+    clear: both
+}
+#QS_list .QS_listitem .QS_listitemvalue
+{
+    LEFT: 14px;
+    PADDING-BOTTOM: 10px;
+    POSITION: relative
+}
+#QS_catalog
+{
+    PADDING-RIGHT: 2px;
+    PADDING-LEFT: 2px;
+    MARGIN-BOTTOM: 10px;
+    PADDING-BOTTOM: 2px;
+    PADDING-TOP: 2px
+}
+#QS_catalog .QS_catalogitem
+{
+    BORDER-RIGHT: #dcdcdc 1px solid;
+    PADDING-RIGHT: 2px;
+    BORDER-TOP: #dcdcdc 1px solid;
+    PADDING-LEFT: 2px;
+    FLOAT: left;
+    MARGIN-BOTTOM: 10px;
+    PADDING-BOTTOM: 2px;
+    BORDER-LEFT: #dcdcdc 1px solid;
+    WIDTH: 100%;
+    PADDING-TOP: 2px;
+    BORDER-BOTTOM: #dcdcdc 1px solid;
+    POSITION: relative
+}
+#QS_catalogbrowsetable
+{
+    FONT-WEIGHT: bolder;
+    MARGIN-BOTTOM: 5px;
+    WIDTH: 100%;
+    TEXT-ALIGN: center
+}
+#QS_feed
+{
+    WIDTH: 100%
+}
+#QS_feed .QS_feeditem
+{
+    FLOAT: left;
+    PADDING-BOTTOM: 10px;
+    WIDTH: 100%;
+    POSITION: relative
+}
+#QS_form
+{
+}
+#QS_breadcrumbs
+{
+    FONT-WEIGHT: bolder;
+    FONT-SIZE: xx-small;
+    PADDING-BOTTOM: 3px;
+    PADDING-TOP: 3px;
+    POSITION: relative;
+    TEXT-ALIGN: left
+}
+#QS_searchResults
+{
+}
+#QS_searchResults .QS_searchResultsTitle
+{
+    FONT-WEIGHT: bolder
+}
+#QS_searchResults .QS_searchResultsText
+{
+    PADDING-BOTTOM: 7px;
+    FONT-STYLE: italic
+}
+#shadow-container
+{
+    LEFT: 3px;
+    MARGIN-BOTTOM: 3px;
+    MARGIN-RIGHT: 3px;
+    POSITION: relative;
+    TOP: 3px
+}
+#shadow-container .shadow2
+{
+    LEFT: -1px;
+    POSITION: relative;
+    TOP: -1px
+}
+#shadow-container .shadow3
+{
+    LEFT: -1px;
+    POSITION: relative;
+    TOP: -1px
+}
+#shadow-container .container
+{
+    LEFT: -1px;
+    POSITION: relative;
+    TOP: -1px
+}
+#shadow-container .shadow1
+{
+    BACKGROUND: #f1f0f1
+}
+#shadow-container .shadow2
+{
+    BACKGROUND: #dbdadb
+}
+#shadow-container .shadow3
+{
+    BACKGROUND: #b8b6b8
+}
+#shadow-container .container
+{
+    BORDER-RIGHT: #848284 1px solid;
+    PADDING-RIGHT: 0px;
+    BORDER-TOP: #848284 1px solid;
+    PADDING-LEFT: 0px;
+    BACKGROUND: #ffffff;
+    PADDING-BOTTOM: 0px;
+    BORDER-LEFT: #848284 1px solid;
+    PADDING-TOP: 0px;
+    BORDER-BOTTOM: #848284 1px solid
+}
+#QS_form .QS_fieldline
+{
+    CLEAR: both;
+    FLOAT: left;
+    PADDING-BOTTOM: 3px;
+    WIDTH: 98%;
+    POSITION: relative
+}
+#QS_form .QS_fieldline .QS_fieldlabel
+{
+    LEFT: 0px;
+    FLOAT: left;
+    WIDTH: 190px;
+    FONT-STYLE: italic;
+    POSITION: relative;
+    TEXT-ALIGN: right
+}
+#QS_form .QS_fieldline .QS_fieldvalue
+{
+    LEFT: 7px;
+    FLOAT: left;
+    POSITION: relative
+}
+#QS_form .QS_fieldline .QS_oneline
+{
+    FLOAT: none;
+    PADDING-BOTTOM: 3px;
+    POSITION: relative
+}
+#QS_catalog .QS_catalogitem .QS_fieldline
+{
+    CLEAR: both;
+    FLOAT: left;
+    PADDING-BOTTOM: 7px;
+    WIDTH: 100%;
+    POSITION: relative
+}
+#QS_catalog .QS_catalogitem .QS_fieldline .QS_fieldlabel
+{
+    LEFT: 0px;
+    FLOAT: left;
+    WIDTH: 25%;
+    FONT-STYLE: italic;
+    POSITION: relative;
+    TEXT-ALIGN: right
+}
+#QS_catalog .QS_catalogitem .QS_fieldline .QS_fieldvalue
+{
+    LEFT: 7px;
+    FLOAT: left;
+    WIDTH: 70%;
+    POSITION: relative
+}
+#QS_catalog .QS_catalogitem .QS_fieldline .QS_formlink
+{
+    LEFT: 7px;
+    FLOAT: left;
+    WIDTH: 70%;
+    POSITION: relative
+}
+#QS_catalog .QS_catalogitem .QS_fieldline .QS_itempicture
+{
+    LEFT: 7px;
+    FLOAT: left;
+    WIDTH: 70%;
+    POSITION: relative
+}
+#QS_catalog .QS_catalogitem .QS_fieldline .QS_itemtitle
+{
+    FONT-WEIGHT: bolder;
+    LEFT: 0px;
+    FLOAT: left;
+    WIDTH: 90%;
+    POSITION: relative
+}
+#QS_feed .QS_feeditem .QS_feeditemcategory
+{
+    FONT-WEIGHT: bolder
+}
+#QS_feed .QS_feeditem .QS_feeditemdescription
+{
+    PADDING-BOTTOM: 3px;
+    PADDING-TOP: 3px
+}
+#QS_feed .QS_feeditem .QS_feeditemdetails
+{
+    FONT-SIZE: smaller
+}
+#QS_feed .QS_feeditem .QS_feeditemtitle
+{
+    FONT-WEIGHT: bolder
+}
+#QS_feed .QS_feeditem .QS_feeditemdescription P
+{
+    MARGIN-TOP: 1px;
+    MARGIN-BOTTOM: 3px
+}
+#QS_theme
+{
+	margin-bottom: 10px;
+	padding:15px;
+	border-right: gray 1px dashed;
+	border-top: gray 1px dashed;
+	border-left: gray 1px dashed;
+	border-bottom: gray 1px dashed;
+	overflow: hidden;	
+}
+
+#QS_theme .QS_theme_subject
+{
+    FONT-WEIGHT: bold;
+    MARGIN-BOTTOM: 3px; 
+
+}
+
+#QS_theme .QS_theme_body
+{
+}
+#QS_theme .QS_theme_footer
+{
+    CLEAR: both;
+    BORDER-TOP: silver 1px solid;
+    MARGIN-TOP: 5px;
+    FONT-SIZE: 0.85em;
+    FLOAT: left;    
+    WIDTH: 100%;
+    TEXT-ALIGN: right;    
+}
+#QS_theme .QS_theme_footer UL
+{
+	list-style-position: outside;
+	list-style-type: none;
+	padding-left: 10px;
+	margin-left: 10px;	
+	font-size:1.25em;
+}
+
+@media (max-width: 1199px) {
+div#pageflip {
+display: none !important;
+}

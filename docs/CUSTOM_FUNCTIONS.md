@@ -312,7 +312,150 @@ params = AxGetGet()  ' Only GET
 params = AxGetPost()  ' Only POST
 ```
 
-### 11. Utility Functions
+### 11. Include Functions
+
+#### AxInclude
+Execute an ASP file and output its result (same behavior as `<!--# include -->` directive)
+
+```vb
+AxInclude "header.asp"        ' Relative to current directory
+AxInclude "./header.asp"      ' Explicit relative path
+AxInclude "../shared/nav.asp" ' Parent directory
+AxInclude "/includes/menu.asp" ' Virtual path from web root
+```
+
+**Path Resolution Rules:**
+- **Absolute paths** (starting with `/`, `./`, `../`, or drive letter): Resolved according to their prefix
+  - `/path` - Virtual path from web root
+  - `./path` - Relative to current directory
+  - `../path` - Relative to parent of current directory
+  - `C:\path` - Windows absolute path
+- **Relative paths** (no prefix): Resolved relative to current file's directory
+
+**Security:**
+- ⚠️ **Security Warning**: If you include files outside the web root directory, user may gain access to system files
+- ⚠️ Local file paths only - remote URLs are NOT supported (use `AxGetRemoteFile` instead)
+- Paths are validated to prevent access outside web root; errors are printed to console
+
+**Return Value:**
+- `true` - File executed successfully
+- `false` - File not found or execution error (error message printed to console)
+
+```vb
+' Example usage in ASP file
+<%
+If AxInclude("/includes/header.asp") Then
+    Response.Write "Header included successfully"
+Else
+    Response.Write "Failed to include header"
+End If
+%>
+
+' Always execute a file and output result
+<%
+AxInclude "content.asp"
+%>
+```
+
+**Return Value From Execution:**
+When AxInclude executes the file, any output from that file is written to the Response.
+
+#### AxIncludeOnce
+Execute an ASP file only once per page execution (prevents duplicate inclusion)
+
+```vb
+AxIncludeOnce "config.asp"    ' First call executes it
+AxIncludeOnce "config.asp"    ' Subsequent calls are ignored
+```
+
+**Path Resolution:**
+- Same rules as AxInclude
+
+**Security:**
+- Same security restrictions as AxInclude
+- Paths outside web root are rejected
+
+**Return Value:**
+- `true` - File executed successfully or already included (not an error)
+- `false` - File not found or execution error (error message printed to console)
+
+**Behavior:**
+- Identical to AxInclude but tracks included files by normalized path
+- Each unique file path can only be executed once per page execution
+- Subsequent calls with same path are ignored but return `true` (not an error)
+- Useful for including configuration or initialization files that should load only once
+
+```vb
+' Example: Include dependencies only once
+<%
+Function IncludeIfNeeded()
+    AxIncludeOnce "/config/settings.asp"
+    AxIncludeOnce "/lib/helpers.asp"
+End Function
+
+IncludeIfNeeded() ' Loads both files
+IncludeIfNeeded() ' Files already loaded, calls are silently ignored
+%>
+```
+
+#### AxGetRemoteFile
+Fetch content from a remote URL (plain text, NOT executed as ASP)
+
+```vb
+Dim content
+content = AxGetRemoteFile("https://example.com/data.txt")
+
+If IsArray(content) Or content = False Then
+    Response.Write "Failed to fetch remote file"
+Else
+    Response.Write "Retrieved: " & content
+End If
+```
+
+**Supported Protocols:**
+- `http://` - HTTP protocol
+- `https://` - HTTPS protocol (secure)
+
+**Security:**
+- ⚠️ Remote URLs only - local file paths are NOT supported for security
+- ⚠️ Content is returned as plain text, NOT executed as ASP code
+- Cannot access `localhost` or `127.0.0.1` for security
+- 10-second timeout to prevent hanging on slow connections
+
+**Return Value:**
+- `string` - File content successfully retrieved
+- `false` - Failed to fetch (error message printed to console)
+
+**Error Cases:**
+- Invalid protocol (only `http://` and `https://` supported)
+- Local file paths (security restriction)
+- HTTP error responses (non-200 status codes)
+- Network timeout or connection failure
+- Invalid URL format
+
+```vb
+' Example: Fetch remote JSON (as text)
+<%
+Dim jsonData
+jsonData = AxGetRemoteFile("https://api.example.com/data.json")
+
+If jsonData <> False Then
+    ' jsonData contains the raw JSON text
+    Response.ContentType = "application/json"
+    Response.Write jsonData
+Else
+    Response.Write "Failed to fetch API data"
+End If
+%>
+```
+
+**Important Notes:**
+- Content is returned as plain text string
+- No execution or parsing of ASP code from remote source
+- Use G3JSON to parse JSON content if needed
+- Consider rate limiting and timeout handling for production use
+
+### 12. Utility Functions
 
 #### AxGenerateGuid
 Generate a new GUID
@@ -393,6 +536,9 @@ Response.Write "</pre>"
 | $_POST | AxGetPost |
 | uniqid/guid | AxGenerateGuid |
 | http_build_query | AxBuildQueryString |
+| include | AxInclude |
+| include_once | AxIncludeOnce |
+| file_get_contents (remote) | AxGetRemoteFile |
 
 ## Testing
 

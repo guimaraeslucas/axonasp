@@ -1,0 +1,7 @@
+<!-- #include file="begin.asp"-->
+
+
+<!-- #include file="bs_security.asp"--><%logon.hasaccess secondAdmin.bCatalog%><!-- #include file="includes/header.asp"--><!-- #include file="bs_initBack.asp"--><!-- #include file="bs_header.asp"--><%=getBOHeader(btn_Catalog)%><%dim catalogItem
+set catalogItem=new cls_catalogItem
+dim fileTypes
+set fileTypes=catalogItem.catalog.fileTypes%><br /><form method="post" action="bs_catalogItemFileUpload.asp" ENCTYPE="multipart/form-data" name=mainform><%=QS_secCodeHidden%><input type=hidden name="iItemID" value="<%=encrypt(catalogItem.iID)%>" /><table align=center cellpadding="2"><tr><td colspan=2 class=header><%=l("attachment")%>:</td></tr><tr><td class=QSlabel valign=top><%=catalogItem.catalog.sitemName%>:</td><td><%=catalogItem.sTitle%></td></tr><tr><td class=QSlabel valign=top><%=l("file")%>:*<br />(< 5 MB)</td><td><input type=file name="uploadFile"></td></tr><tr><td class=QSlabel valign=top><%=l("type")%>:*</td><td><select name="iFileTypeId"><%=catalogItem.catalog.showSelectedFileType("option",Request.QueryString ("iFileTypeId"))%></select></td></tr><tr><td class=QSlabel>&nbsp;</td><td>(*) <%=l("mandatory")%></td></tr><tr><td class=QSlabel>&nbsp;</td><td><input class="art-button" type=submit name=btnaction value="<% =l("upload")%>"></td></tr></table></form><table align=center><tr><td align=center>-> <b><a href="bs_catalogItemEdit.asp?iItemID=<%=encrypt(catalogItem.iId)%>"><%=l("back")%></a></b> <-</td></tr></table><!-- #include file="bs_endBack.asp"--><!-- #include file="includes/footer.asp"-->

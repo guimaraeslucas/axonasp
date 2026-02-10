@@ -1,0 +1,44 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN""http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<title>[TITLETAG]</title>
+<meta content="[METATAG_AUTHOR]" name="author" />
+<meta content="[METATAG_COPYRIGHT]" name="copyright" />
+<meta content="[METATAG_KEYWORDS]" name="keywords" />
+<meta content="[METATAG_DESCRIPTION]" name="description" />
+<meta http-equiv="Content-Type" content="text/html; charset=[METATAG_CHARSET]" />
+<meta content="[METATAG_GENERATOR]" name="generator" />
+<meta content="5" name="revisit-after" />
+<link rel="STYLESHEET" TYPE="text/css" href="[C_DIRECTORY_QUICKERSITE]/css/qs_ltr.css" title="QSStyle" />
+[METATAG_REFRESH]
+[RSSLINK]
+[FAVICON_LINK]
+[JAVASCRIPT]
+[PAGEHEADER]
+{CSSLINKS}
+</head>
+<body>
+<p>Below the search form:</p>
+<form name='mainform' method='post' action='[SF_ACTIONURL]'>
+[SF_HIDDENFIELD]
+<input onclick='javascript:this.select();' maxlength='100' type='text' name='svalue' value="[SF_TEXTVALUE]" />
+</form>
+
+<p>Common used elements:</p>
+[PAGEMENU] - menu<br />
+[PAGEBREADCRUMBS] - breadcrumbs<br />
+[PAGETITLE] - title of page<br />
+[PAGEBODY]
+[PAGELIST]
+[PAGEFORM]
+[PAGECATALOG]
+[PAGEFEED]
+[PAGEAPPLICATION]
+[PAGETHEME]
+[PAGEHREF_EMAIL]
+[PAGEhREF_PRINT]
+
+<p>Check the our website at <a target="_blank" href="[MYQS_urlTemplates]">[MYQS_urlTemplates]</a> to build/modify templates!</p>
+
+</body>
+</html>

@@ -29,17 +29,22 @@ import (
 	"encoding/csv"
 	"fmt"
 	"html"
+	"io"
 	"math"
 	"math/rand"
 	"net"
+	"net/http"
 	"net/mail"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
 	"time"
+
+	"g3pix.com.br/axonasp/asp"
 )
 
 // arrayValues extracts the raw slice from VBArray or []interface{} values.
@@ -971,6 +976,277 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 			return values.Encode(), true
 		}
 		return "", true
+
+	case "axinclude":
+		// AxInclude: Execute an ASP file in the SAME context (same as <!--# include -->)
+		// Returns: -1 on success (VBScript True), 0 on error (VBScript False)
+		if len(args) == 0 {
+			return 0, true
+		}
+
+		incPath := toString(args[0])
+		if incPath == "" {
+			return 0, true
+		}
+
+		if ctx == nil || ctx.Server == nil {
+			return 0, true
+		}
+
+		// Resolve the path (virtual or relative)
+		physicalPath := ctx.Server_MapPath(incPath)
+
+		// Read file
+		fileContent, err := os.ReadFile(physicalPath)
+		if err != nil {
+			fmt.Printf("ERROR: AxInclude - file not found: %s\n", incPath)
+			return 0, true
+		}
+
+		// Decode to UTF-8 (handling BOM)
+		content := string(decodeTextWithCharset(fileContent, "utf-8"))
+
+		// Resolve includes recursively (in case the included file also has includes)
+		resolvedContent, err := asp.ResolveIncludes(content, physicalPath, ctx.RootDir, nil)
+		if err != nil {
+			fmt.Printf("ERROR: AxInclude - failed to resolve includes: %v\n", err)
+			return 0, true
+		}
+
+		// Parse the file
+		parsingOptions := &asp.ASPParsingOptions{
+			SaveComments:      false,
+			StrictMode:        false,
+			AllowImplicitVars: true,
+			DebugMode:         ctx.currentExecutor.config.DebugASP,
+		}
+
+		_, parseResult, err := asp.ParseWithCache(resolvedContent, physicalPath, ctx.RootDir, parsingOptions)
+		if err != nil {
+			fmt.Printf("ERROR: AxInclude - parse error: %v\n", err)
+			return 0, true
+		}
+
+		if len(parseResult.Errors) > 0 {
+			fmt.Printf("ERROR: AxInclude - parse error: %v\n", parseResult.Errors[0])
+			return 0, true
+		}
+
+		// Save current file/dir state
+		oldFile := ctx.CurrentFile
+		oldDir := ctx.CurrentDir
+		ctx.CurrentFile = physicalPath
+		ctx.CurrentDir = filepath.Dir(physicalPath)
+
+		// Execute blocks in the CURRENT context
+		if parseResult.CombinedProgram != nil {
+			visitor := NewASPVisitor(ctx, ctx.currentExecutor)
+			ctx.currentExecutor.hoistDeclarations(visitor, parseResult.CombinedProgram)
+			if err := ctx.currentExecutor.executeVBProgram(parseResult.CombinedProgram); err != nil {
+				if err.Error() != "RESPONSE_END" && err != ErrServerTransfer {
+					ctx.CurrentFile = oldFile
+					ctx.CurrentDir = oldDir
+					fmt.Printf("ERROR: AxInclude - execution error: %v\n", err)
+					return 0, true
+				}
+			}
+		} else {
+			// Execute blocks normally
+			ctx.currentExecutor.hoistAllPrograms(parseResult)
+			for i, block := range parseResult.Blocks {
+				if block.Type == "html" {
+					ctx.Response.Write(block.Content)
+				} else if block.Type == "asp" {
+					if program, exists := parseResult.VBPrograms[i]; exists && program != nil {
+						if err := ctx.currentExecutor.executeVBProgram(program); err != nil {
+							if err.Error() == "RESPONSE_END" || err == ErrServerTransfer {
+								break
+							}
+							if err != nil {
+								ctx.CurrentFile = oldFile
+								ctx.CurrentDir = oldDir
+								fmt.Printf("ERROR: AxInclude - execution error: %v\n", err)
+								return 0, true
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Restore file/dir state
+		ctx.CurrentFile = oldFile
+		ctx.CurrentDir = oldDir
+
+		return -1, true
+
+	case "axincludeonce":
+		// AxIncludeOnce: Execute an ASP file in the SAME context only once per page
+		// Same as AxInclude but prevents re-execution of the same file
+		// Returns: -1 on success (VBScript True), 0 on error (VBScript False)
+		if len(args) == 0 {
+			return 0, true
+		}
+
+		incPath := toString(args[0])
+		if incPath == "" {
+			return 0, true
+		}
+
+		if ctx == nil || ctx.Server == nil {
+			return 0, true
+		}
+
+		// Resolve the path
+		physicalPath := ctx.Server_MapPath(incPath)
+		normalizedPath := filepath.Clean(physicalPath)
+
+		// Check if already included
+		ctx.includeMutex.Lock()
+		if ctx.includedOnce[normalizedPath] {
+			ctx.includeMutex.Unlock()
+			return -1, true // Already included, skip silently but return true
+		}
+		// Mark as included
+		ctx.includedOnce[normalizedPath] = true
+		ctx.includeMutex.Unlock()
+
+		// Read file
+		fileContent, err := os.ReadFile(physicalPath)
+		if err != nil {
+			fmt.Printf("ERROR: AxIncludeOnce - file not found: %s\n", incPath)
+			return 0, true
+		}
+
+		// Decode to UTF-8
+		content := string(decodeTextWithCharset(fileContent, "utf-8"))
+
+		// Resolve includes recursively
+		resolvedContent, err := asp.ResolveIncludes(content, physicalPath, ctx.RootDir, nil)
+		if err != nil {
+			fmt.Printf("ERROR: AxIncludeOnce - failed to resolve includes: %v\n", err)
+			return 0, true
+		}
+
+		// Parse the file
+		parsingOptions := &asp.ASPParsingOptions{
+			SaveComments:      false,
+			StrictMode:        false,
+			AllowImplicitVars: true,
+			DebugMode:         ctx.currentExecutor.config.DebugASP,
+		}
+
+		_, parseResult, err := asp.ParseWithCache(resolvedContent, physicalPath, ctx.RootDir, parsingOptions)
+		if err != nil {
+			fmt.Printf("ERROR: AxIncludeOnce - parse error: %v\n", err)
+			return 0, true
+		}
+
+		if len(parseResult.Errors) > 0 {
+			fmt.Printf("ERROR: AxIncludeOnce - parse error: %v\n", parseResult.Errors[0])
+			return 0, true
+		}
+
+		// Save current file/dir state
+		oldFile := ctx.CurrentFile
+		oldDir := ctx.CurrentDir
+		ctx.CurrentFile = physicalPath
+		ctx.CurrentDir = filepath.Dir(physicalPath)
+
+		// Execute blocks in the CURRENT context
+		if parseResult.CombinedProgram != nil {
+			visitor := NewASPVisitor(ctx, ctx.currentExecutor)
+			ctx.currentExecutor.hoistDeclarations(visitor, parseResult.CombinedProgram)
+			if err := ctx.currentExecutor.executeVBProgram(parseResult.CombinedProgram); err != nil {
+				if err.Error() != "RESPONSE_END" && err != ErrServerTransfer {
+					ctx.CurrentFile = oldFile
+					ctx.CurrentDir = oldDir
+					fmt.Printf("ERROR: AxIncludeOnce - execution error: %v\n", err)
+					return 0, true
+				}
+			}
+		} else {
+			// Execute blocks normally
+			ctx.currentExecutor.hoistAllPrograms(parseResult)
+			for i, block := range parseResult.Blocks {
+				if block.Type == "html" {
+					ctx.Response.Write(block.Content)
+				} else if block.Type == "asp" {
+					if program, exists := parseResult.VBPrograms[i]; exists && program != nil {
+						if err := ctx.currentExecutor.executeVBProgram(program); err != nil {
+							if err.Error() == "RESPONSE_END" || err == ErrServerTransfer {
+								break
+							}
+							if err != nil {
+								ctx.CurrentFile = oldFile
+								ctx.CurrentDir = oldDir
+								fmt.Printf("ERROR: AxIncludeOnce - execution error: %v\n", err)
+								return 0, true
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Restore file/dir state
+		ctx.CurrentFile = oldFile
+		ctx.CurrentDir = oldDir
+
+		return -1, true
+
+	case "axgetremotefile":
+		// AxGetRemoteFile: Fetch content from a remote URL (plain text, not executed)
+		// Returns: file content as string on success, false on error
+		if len(args) == 0 {
+			return false, true
+		}
+
+		url := toString(args[0])
+		if url == "" {
+			return false, true
+		}
+
+		// Validate it's not a local file path
+		if strings.HasPrefix(url, "/") || strings.HasPrefix(url, "./") || 
+		   strings.HasPrefix(url, "../") || (len(url) > 2 && url[1] == ':') || strings.HasPrefix(url, "\\") ||
+		   strings.HasPrefix(url, "file://") {
+			fmt.Printf("ERROR: AxGetRemoteFile - local paths are not supported for security reasons\n")
+			return false, true
+		}
+
+		// Validate URL format
+		if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+			fmt.Printf("ERROR: AxGetRemoteFile - only http:// and https:// protocols are supported\n")
+			return false, true
+		}
+
+		// Fetch remote content with timeout
+		client := &http.Client{
+			Timeout: 10 * time.Second,
+		}
+
+		resp, err := client.Get(url)
+		if err != nil {
+			fmt.Printf("ERROR: AxGetRemoteFile - failed to fetch: %v\n", err)
+			return false, true
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != 200 {
+			fmt.Printf("ERROR: AxGetRemoteFile - HTTP %d: %s\n", resp.StatusCode, url)
+			return false, true
+		}
+
+		// Read response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("ERROR: AxGetRemoteFile - failed to read response: %v\n", err)
+			return false, true
+		}
+
+		return string(body), true
 	}
 
 	return nil, false

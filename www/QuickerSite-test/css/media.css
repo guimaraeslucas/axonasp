@@ -1,0 +1,32 @@
+.qsrow {
+	display: flex;
+	flex-wrap: wrap;
+}
+
+/* Create four equal columns that sits next to each other */
+.qscolumn {
+  flex: 25%;
+  max-width: 25%;  
+}
+
+.qscolumn img {  
+  vertical-align: middle;
+  width: 100%;
+  border-style:none;
+  margin:0px;
+}
+
+.imgPadding {
+	padding:4px;	
+}
+
+/* Responsive layout - makes the two columns stack on top of each other instead of next to each other */
+@media screen and (max-width: 800px) {
+  .qscolumn {
+    flex: 100% !important;
+    max-width: 100% !important;		
+  }
+  .imgPadding {
+	padding:8px 0px 0px 0px;	
+	}
+}

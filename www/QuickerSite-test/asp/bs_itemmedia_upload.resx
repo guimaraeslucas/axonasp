@@ -1,0 +1,15 @@
+<%
+dim form : set form=aspl.form
+form.id="contact_doc_new_aspForm"
+form.onSubmit=""
+
+dim field : set field = form.field("plain")
+field.add "html","<h3>Upload files for page  " & page.sTitle &  "</h3>"
+
+dim loadS : loadS=aspL.loadText("bs_itemmediaupload.txt")
+loadS=replace(loadS,"[REDIRECT]","location.assign('bs_itemmedia.asp?iId=" & encrypt(page.iId) & "')",1,-1,1)
+loadS=replace(loadS,"[iId]",page.iId,1,-1,1)
+
+form.write loadS
+form.build()
+%>

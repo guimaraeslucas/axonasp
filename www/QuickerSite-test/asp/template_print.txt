@@ -1,0 +1,10 @@
+<html>
+<head>
+<title>[TITLETAG]</title>
+<META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
+</head>
+<body onload="javascript:window.print()">
+<h2>[PAGETITLE]</h2>
+[PAGEBODY][PAGELIST][PAGEFORM][PAGECATALOG][PAGEFEED][PAGEAPPLICATION][PAGETHEME]
+</body>
+</html>

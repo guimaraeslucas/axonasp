@@ -1,0 +1,254 @@
+/* begin Page */
+
+/* Created by Artisteer v3.1.0.48375 */
+
+.cleared {
+   width:1px;
+}
+/* Start Box */
+.art-box, .art-box-body {
+   zoom:1;
+}
+/* End Box */
+/* Start Bar */
+.art-bar{
+   zoom:1;
+}
+/* End Bar */
+/* end Page */
+
+/* begin Header */
+.art-header {
+   zoom:expression(runtimeStyle.zoom=1,insertBefore(document.createElement('div'),firstChild).className='art-header-png',insertBefore(document.createElement('div'),firstChild).className='art-header-jpeg');
+   z-index: 1;
+}
+
+.art-header-png
+{
+   position: absolute;
+   z-index:-2;
+   top: 0;
+   width:100%;
+   height: 100px;
+   background-image: url('images/header.png');
+   background-repeat: no-repeat;
+   background-position:top center;
+}
+
+.art-header-jpeg
+{
+   position: absolute;
+   z-index:-1;
+   top: 0;
+   width:expression(parentNode.clientWidth - 2 * 5 + 'px');
+   left:5px;
+   height: 100px;
+   background-image: url('images/header.jpg');
+   background-repeat: no-repeat;
+   background-position: center center;
+}
+/* end Header */
+
+/* begin HeaderObject */
+div.art-headerobject{
+   font-size: 1px;
+}
+/* end HeaderObject */
+
+/* begin Menu */
+ul.art-hmenu, ul.art-hmenu ul, ul.art-hmenu li, ul.art-hmenu a {
+   zoom:1;
+}
+.art-hmenu li.art-hmenuhover{
+   z-index: 10000;
+}
+.art-hmenu .art-hmenuhoverUL{
+   visibility: visible;
+   top: 100%;
+   left: 0;
+}
+.art-hmenu .art-hmenuhoverUL .art-hmenuhoverUL{
+   top: 0;
+   left: 100%;
+}
+.art-hmenu ul li {
+   float: left !important;
+   clear: both;
+   width: 100%;
+}
+.art-nav
+{
+   zoom: 1;
+   height: 38px;
+   background:#90090B;
+}
+
+/* end Menu */
+
+/* begin MenuItem */
+.art-hmenu a 
+{
+   display:inline-block;
+   color: #DBDADD;
+   padding: 0 24px;
+   line-height: 38px;
+   text-align: center;
+}
+
+.art-hmenu a.active 
+{
+   color: {ActiveTextColor};
+}
+
+.art-hmenu a:hover, .art-hmenuhoverA,  .art-hmenuhover a 
+{
+   color: #DBDCDB;
+   background-color:#76727E;
+}
+
+/* end MenuItem */
+
+/* begin MenuSeparator */
+ul.art-hmenu li {
+   margin-left:expression(this.previousSibling==null?'0':'1px');
+}
+ul.art-hmenu li li{
+   margin-left:0;
+}
+
+span.art-hmenu-separator
+{
+   position:absolute;
+   display: block;
+   top:0;
+   left:  -1px;
+   width: 1px;
+   height: 38px;
+   background: url('images/menuseparator.png') center center no-repeat;
+}
+/* end MenuSeparator */
+
+/* begin MenuSubItem */
+.art-hmenu ul a 
+{
+   color: #302E33 !important;
+   float: left;
+}
+
+.art-hmenu ul a:hover, .art-hmenu ul .art-hmenuhover .art-hmenuhoverA 
+{
+   color: #DEDEDE !important;
+   background-position: left bottom;
+   border-top-width: 0 !important;
+}
+
+/* end MenuSubItem */
+
+/* begin Box, Sheet */
+.art-sheet {
+   background:#FCFCFC;
+}
+/* end Box, Sheet */
+
+/* begin Layout */
+.art-content-layout, .art-content-layout-row, .art-layout-cell 
+{
+   display: block;
+   zoom: 1;
+}
+.art-layout-cell
+{
+   position:relative;
+   float: left;
+   clear: right;
+}
+/* end Layout */
+
+/* begin Box, Block */
+.art-block {
+   background:#EAEBEA;
+}
+/* end Box, Block */
+
+/* begin BlockHeader */
+.art-blockheader {
+   background:#76727E;
+}
+/* end BlockHeader */
+
+/* begin Box, BlockContent */
+.art-blockcontent {
+   background:#EAEBEA;
+}
+.art-blockcontent-body ul li{
+   height: 1%;
+}
+
+/* end Box, BlockContent */
+
+/* begin Button */
+.art-button-wrapper{
+   zoom: 1;
+}
+.art-button-wrapper .art-button-l, .art-button-wrapper .art-button-r {
+   display: none;
+}
+.art-button-wrapper .art-button {
+   float: left;
+}
+/* end Button */
+
+/* begin Box, Post */
+.art-post {
+   background:#FCFCFC;
+}
+/* end Box, Post */
+
+/* begin PostBullets */
+.art-post ul li, .art-post ol ul li
+{
+   height: 1%;
+   padding-left: 9px;
+   /* makes "ul li" not to align behind the image if they are in the same line */
+  overflow-x: visible;
+   overflow-y: hidden;
+}
+
+.art-post ul ol li
+{
+   background: none;
+   padding-left: 0;
+   /* overrides overflow for "ul li" and sets the default value */
+  overflow: visible;
+}
+/* end PostBullets */
+
+/* begin Footer */
+.art-footer-body{
+   padding-right: 0;
+   zoom:1;
+}
+.art-footer{
+   zoom:1;
+   background:#28272B;
+}
+
+.art-footer-text
+{
+   height: 33px;
+}
+
+.art-rss-tag-icon
+{
+   zoom: 1;
+   font-size: 1px;
+}
+
+/* end Footer */
+
+/* begin LayoutCell, content */
+.art-content {
+   width: auto;
+}
+/* end LayoutCell, content */
+

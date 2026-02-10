@@ -1,0 +1,155 @@
+/* Son of Suckerfish Dropdowns By Patrick Griffiths and Dan Webb.*/
+#QS_menulist, #QS_menulist ul { /* all lists */
+padding: 0;
+margin: 0;
+list-style: none;
+}
+#QS_menulist li a {
+display: block;
+padding-left: 5px;
+padding-right: 5px;
+border: 1px solid #B2C5B2;
+background-color: #EDEEDE;
+COLOR: #880000;
+font-size: 0.9em;
+line-height: 25px;
+}
+#QS_menulist li a:hover
+{
+background: #880000;
+COLOR: #FFFFFF;
+border: 1px solid #AB9696;
+}
+#QS_menulist a.subcontainer {
+background-image: url(/fixedImages/pijltjedown.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}
+#QS_menulist a.subcontainer:hover {
+background-image: url(/fixedImages/pijltjeoverdown.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}
+#QS_menulist li { /* all list items */
+float: left;
+text-align: left;
+z-index: 1;
+}
+#QS_menulist li ul { /* second-level lists */
+position: absolute;	
+width: 1em;
+left: -999em; /* using left instead of display to hide menus because display: none isn't read by screen readers */
+z-index: 2;
+}
+#QS_menulist li ul  a.subcontainer {
+background-image: url(/fixedImages/pijltje.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}#QS_menulist li ul  a.subcontainer:hover {
+background-image: url(/fixedImages/pijltjeover.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}
+#QS_menulist li ul li{ /* second-level lists */
+width: 170px;
+}
+#QS_menulist li ul li a{ /* set width IE 6 - lc */
+width: 170px;
+}
+#QS_menulist li ul ul { /* third-and-above-level lists */
+left: -999em;
+margin-top: -27px;
+margin-right: 0;
+margin-bottom: 0;
+margin-left: 170px;
+}
+#QS_menulist li:hover ul ul, #QS_menulist li:hover ul ul ul,#QS_menulist li:hover ul ul ul ul, #QS_menulist li.sfhover ul ul, #QS_menulist li.sfhover ul ul ul, #QS_menulist li.sfhover ul ul ul ul {
+left: -999em;
+}
+#QS_menulist li:hover ul, #QS_menulist li li:hover ul, #QS_menulist li li li:hover ul, #QS_menulist li li li li:hover ul, #QS_menulist li.sfhover ul, #QS_menulist li li.sfhover ul, #QS_menulist li li li.sfhover ul, #QS_menulist li li li li.sfhover ul { /* lists nested under hovered list items */
+left: auto;
+}
+
+
+/* Son of Suckerfish Dropdowns By Patrick Griffiths and Dan Webb.*/
+#QS_intranetmenulist, #QS_intranetmenulist ul { /* all lists */
+padding: 0;
+margin: 0;
+list-style: none;
+}
+#QS_intranetmenulist li a {
+display: block;
+padding-left: 5px;
+padding-right: 5px;
+border: 1px solid #B2C5B2;
+background-color: #EDEEDE;
+COLOR: #880000;
+font-size: 0.9em;
+line-height: 25px;
+}
+#QS_intranetmenulist li a:hover
+{
+background: #880000;
+COLOR: #FFFFFF;
+border: 1px solid #AB9696;
+}
+#QS_intranetmenulist a.subcontainer {
+background-image: url(/fixedImages/pijltjedown.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}
+#QS_intranetmenulist a.subcontainer:hover {
+background-image: url(/fixedImages/pijltjeoverdown.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}
+#QS_intranetmenulist li { /* all list items */
+float: left;
+text-align: left;
+z-index: 1;
+}
+#QS_intranetmenulist li ul { /* second-level lists */
+position: absolute;	
+width: 1em;
+left: -999em; /* using left instead of display to hide menus because display: none isn't read by screen readers */
+z-index: 2;
+}
+#QS_intranetmenulist li ul  a.subcontainer {
+background-image: url(/fixedImages/pijltje.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}#QS_intranetmenulist li ul  a.subcontainer:hover {
+background-image: url(/fixedImages/pijltjeover.gif);
+background-repeat: no-repeat;
+background-position: right center;
+padding-right: 18px;
+}
+#QS_intranetmenulist li ul li{ /* second-level lists */
+width: 170px;
+}
+#QS_intranetmenulist li ul li a{ /* set width IE 6 - lc */
+width: 170px;
+}
+#QS_intranetmenulist li ul ul { /* third-and-above-level lists */
+left: -999em;
+margin-top: -27px;
+margin-right: 0;
+margin-bottom: 0;
+margin-left: 170px;
+}
+#QS_intranetmenulist li:hover ul ul, #QS_intranetmenulist li:hover ul ul ul,#QS_intranetmenulist li:hover ul ul ul ul, #QS_intranetmenulist li.sfhover ul ul, #QS_intranetmenulist li.sfhover ul ul ul, #QS_intranetmenulist li.sfhover ul ul ul ul {
+left: -999em;
+}
+#QS_intranetmenulist li:hover ul, #QS_intranetmenulist li li:hover ul, #QS_intranetmenulist li li li:hover ul, #QS_intranetmenulist li li li li:hover ul, #QS_intranetmenulist li.sfhover ul, #QS_intranetmenulist li li.sfhover ul, #QS_intranetmenulist li li li.sfhover ul, #QS_intranetmenulist li li li li.sfhover ul { /* lists nested under hovered list items */
+left: auto;
+}
+
+
+/* END FIXED CSS */

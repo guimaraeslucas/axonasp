@@ -10,6 +10,9 @@
 
 #TODO
 TODO
-/temp/
+/temp/cache
+/temp/session/
 .DS_Store
 Thumbs.db
+axonasp.exe~
+.vscode/

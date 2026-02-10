@@ -1,0 +1,435 @@
+<%@ Page Language="VBScript" %>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>G3pix AxonASP REST API - Home</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      color: white;
+      margin-bottom: 60px;
+    }
+    header h1 {
+      font-size: 42px;
+      margin-bottom: 10px;
+      text-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    header p {
+      font-size: 18px;
+      opacity: 0.9;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+    }
+    .card-header {
+      padding: 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .card-header h2 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    .card-header p {
+      opacity: 0.9;
+      font-size: 14px;
+    }
+    .card-body {
+      padding: 24px;
+    }
+    .card-body p {
+      color: #666;
+      margin-bottom: 15px;
+      line-height: 1.6;
+    }
+    .card-footer {
+      padding: 20px 24px;
+      background: #f5f5f5;
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 20px;
+      background: #667eea;
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.3s;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .btn:hover {
+      background: #5568d3;
+      transform: translateX(4px);
+    }
+    .features {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .features h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+    .feature-item {
+      padding: 15px;
+      background: #f9f9f9;
+      border-left: 4px solid #667eea;
+      border-radius: 4px;
+    }
+    .feature-item h3 {
+      color: #667eea;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    .feature-item p {
+      color: #666;
+      font-size: 13px;
+    }
+    .endpoints {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 40px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .endpoints h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    .endpoint-group {
+      margin-bottom: 25px;
+    }
+    .endpoint-group h3 {
+      color: #667eea;
+      margin-bottom: 12px;
+      font-size: 16px;
+    }
+    .endpoint {
+      display: flex;
+      align-items: center;
+      padding: 10px 15px;
+      background: #f9f9f9;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    .method-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      color: white;
+      font-weight: bold;
+      margin-right: 10px;
+      min-width: 50px;
+      text-align: center;
+      font-size: 11px;
+    }
+    .method-badge.get {
+      background: #0066cc;
+    }
+    .method-badge.post {
+      background: #28a745;
+    }
+    .method-badge.put {
+      background: #ffc107;
+      color: #333;
+    }
+    .method-badge.delete {
+      background: #dc3545;
+    }
+    .endpoint-url {
+      color: #666;
+      flex: 1;
+      word-break: break-all;
+    }
+    .quick-links {
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    .quick-links h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 24px;
+    }
+    .quick-links-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 15px;
+    }
+    .quick-link {
+      padding: 15px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      text-decoration: none;
+      border-radius: 8px;
+      text-align: center;
+      transition: all 0.3s;
+      font-weight: bold;
+    }
+    .quick-link:hover {
+      transform: scale(1.05);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🚀 REST API</h1>
+    <p>G3pix AxonASP - Complete RESTful Web Service Implementation</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">
+        <h2>📚 Documentation</h2>
+        <p>Learn how to use the API</p>
+      </div>
+      <div class="card-body">
+        <p>Interactive documentation with visual endpoint listing, status codes, and usage examples.</p>
+      </div>
+      <div class="card-footer">
+        <a href="/rest/README.asp" class="btn">View Docs</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>🧪 Testing Console</h2>
+        <p>Interactive API testing tool</p>
+      </div>
+      <div class="card-body">
+        <p>Full-featured console to test all endpoints with different HTTP methods and response formats.</p>
+      </div>
+      <div class="card-footer">
+        <a href="/rest/test-console.html" class="btn">Open Console</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>💻 Code Examples</h2>
+        <p>Learn by example</p>
+      </div>
+      <div class="card-body">
+        <p>Complete code examples showing how to build new endpoints and extend the API with new resources.</p>
+      </div>
+      <div class="card-footer">
+        <a href="/rest/code-examples.html" class="btn">View Examples</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>📖 Test Guide</h2>
+        <p>cURL and API testing</p>
+      </div>
+      <div class="card-body">
+        <p>Complete guide with cURL commands, JavaScript examples, and step-by-step testing instructions.</p>
+      </div>
+      <div class="card-footer">
+        <a href="/rest/TEST_GUIDE.md" class="btn">Read Guide</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>⚙️ Implementation</h2>
+        <p>Full API details</p>
+      </div>
+      <div class="card-body">
+        <p>Comprehensive documentation of the REST API architecture, routing, handlers, and advanced features.</p>
+      </div>
+      <div class="card-footer">
+        <a href="../docs/REST_API_IMPLEMENTATION.md" class="btn">Read Full Docs</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h2>🔍 API Source</h2>
+        <p>View the code</p>
+      </div>
+      <div class="card-body">
+        <p>Main front controller with all resource handlers, utilities, and response formatting logic.</p>
+      </div>
+      <div class="card-footer">
+        <a href="/rest/index.asp" class="btn">View Source</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="features">
+    <h2>✨ Features</h2>
+    <div class="features-grid">
+      <div class="feature-item">
+        <h3>📡 RESTful Design</h3>
+        <p>Proper HTTP methods (GET, POST, PUT, DELETE) with resource-oriented URLs</p>
+      </div>
+      <div class="feature-item">
+        <h3>📊 Multiple Formats</h3>
+        <p>JSON (default) and HTML response formats for flexibility</p>
+      </div>
+      <div class="feature-item">
+        <h3>🛡️ Error Handling</h3>
+        <p>Comprehensive error responses with appropriate HTTP status codes</p>
+      </div>
+      <div class="feature-item">
+        <h3>✅ Validation</h3>
+        <p>Input validation using modern Ax custom functions</p>
+      </div>
+      <div class="feature-item">
+        <h3>⚡ Modern Functions</h3>
+        <p>Extensive use of Ax custom functions for data processing</p>
+      </div>
+      <div class="feature-item">
+        <h3>🎯 Easy Extension</h3>
+        <p>Simple handler pattern for adding new resources quickly</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="endpoints">
+    <h2>🔗 Available Endpoints</h2>
+
+    <div class="endpoint-group">
+      <h3>👥 Users Resource</h3>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/users?route=users</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/users/123?route=users/123</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge post">POST</span>
+        <span class="endpoint-url">/rest/users?route=users</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge put">PUT</span>
+        <span class="endpoint-url">/rest/users/123?route=users/123</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge delete">DELETE</span>
+        <span class="endpoint-url">/rest/users/123?route=users/123</span>
+      </div>
+    </div>
+
+    <div class="endpoint-group">
+      <h3>📦 Products Resource</h3>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/products?route=products</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/products/456?route=products/456</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge post">POST</span>
+        <span class="endpoint-url">/rest/products?route=products</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge put">PUT</span>
+        <span class="endpoint-url">/rest/products/456?route=products/456</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge delete">DELETE</span>
+        <span class="endpoint-url">/rest/products/456?route=products/456</span>
+      </div>
+    </div>
+
+    <div class="endpoint-group">
+      <h3>📋 Items Resource (Advanced)</h3>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/items?route=items</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/items/789?route=items/789</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge post">POST</span>
+        <span class="endpoint-url">/rest/items?route=items</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge put">PUT</span>
+        <span class="endpoint-url">/rest/items/789?route=items/789</span>
+      </div>
+      <div class="endpoint">
+        <span class="method-badge delete">DELETE</span>
+        <span class="endpoint-url">/rest/items/789?route=items/789</span>
+      </div>
+    </div>
+
+    <div class="endpoint-group">
+      <h3>💚 Status / Health Check</h3>
+      <div class="endpoint">
+        <span class="method-badge get">GET</span>
+        <span class="endpoint-url">/rest/status?route=status</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="quick-links">
+    <h2>⚡ Quick Links</h2>
+    <div class="quick-links-grid">
+      <a href="http://localhost:4050/rest/users?route=users" class="quick-link" target="_blank">Users List</a>
+      <a href="http://localhost:4050/rest/products?route=products" class="quick-link" target="_blank">Products List</a>
+      <a href="http://localhost:4050/rest/items?route=items" class="quick-link" target="_blank">Items List</a>
+      <a href="http://localhost:4050/rest/status?route=status" class="quick-link" target="_blank">API Status</a>
+      <a href="/rest/test-console.html" class="quick-link" target="_blank">Test Console</a>
+      <a href="/rest/README.asp" class="quick-link" target="_blank">Full Docs</a>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

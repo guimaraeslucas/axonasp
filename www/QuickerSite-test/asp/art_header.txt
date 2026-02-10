@@ -1,0 +1,12 @@
+<title>[TITLETAG]</title>
+<meta content="[METATAG_AUTHOR]" name="author" />
+<meta content="[METATAG_KEYWORDS]" name="keywords" />
+<meta content="[METATAG_DESCRIPTION]" name="description" />
+<meta content="[METATAG_GENERATOR]" name="generator" />
+<meta content="5" name="revisit-after" />
+<link rel="stylesheet" type="text/css" href="[C_DIRECTORY_QUICKERSITE]/css/qs_ltr.css" title="QSStyle" />
+[FAVICON_LINK]
+[METATAG_REFRESH]
+[RSSLINK]
+[JAVASCRIPT]
+[PAGEHEADER]

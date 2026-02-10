@@ -46,8 +46,8 @@ AxonASP offers two deployment modes for different use cases:
 
 | Mode | Binary | Best For | Details |
 |------|--------|----------|---------|
-| **Standalone** | `axonasp.exe` | Development, simple deployments, direct hosting | Built-in HTTP server on port 4050. Quick setup, no dependencies. |
-| **FastCGI** | `axonaspcgi.exe` | Production, high-traffic sites, existing infrastructure | Integrates with nginx, Apache, IIS. Better performance, load balancing, SSL. See [FastCGI Guide](docs/FASTCGI_MODE.md) |
+| **Standalone** | `axonasp.exe` | Development, simple deployments, application specific proxy hosting | Built-in HTTP server on port 4050. Quick setup, no dependencies. |
+| **FastCGI** | `axonaspcgi.exe` | Production, high-traffic sites, existing infrastructure | Integrates with nginx, Apache, IIS. See [FastCGI Guide](docs/FASTCGI_MODE.md) |
 
 **Quick Start Standalone:**
 ```bash
@@ -115,29 +115,29 @@ go build -o axonaspcgi.exe ./axonaspcgi
 
 ### Build for Current Platform
 ```bash
-go build -o axonasp
+go build 
 ```
 
 ### Cross-Platform Compilation
 
 **Windows (64-bit)**
 ```bash
-GOOS=windows GOARCH=amd64 go build -o axonasp.exe
+GOOS=windows GOARCH=amd64 go build 
 ```
 
 **Linux (64-bit)**
 ```bash
-GOOS=linux GOARCH=amd64 go build -o axonasp
+GOOS=linux GOARCH=amd64 go build 
 ```
 
 **macOS (Intel)**
 ```bash
-GOOS=darwin GOARCH=amd64 go build -o axonasp
+GOOS=darwin GOARCH=amd64 go build 
 ```
 
 **macOS (Apple Silicon)**
 ```bash
-GOOS=darwin GOARCH=arm64 go build -o axonasp
+GOOS=darwin GOARCH=arm64 go build
 ```
 
 After building, simply run the executable:
@@ -672,6 +672,36 @@ Set fileInfo = uploader.Process("fileField", Server.MapPath("/uploads/"), "newna
 Response.Write "Uploaded: " & fileInfo.SavedPath
 ```
 
+#### G3DB
+Modern database library with full `database/sql` functionality:
+```vbscript
+' Open database connection
+Set db = Server.CreateObject("G3DB")
+db.Open("sqlite", ":memory:")
+
+' Execute queries with prepared statements
+Set rs = db.Query("SELECT * FROM users WHERE age > ?", 25)
+Do While Not rs.EOF
+    Response.Write rs("name") & " - " & rs("email") & "<br>"
+    rs.MoveNext()
+Loop
+rs.Close()
+
+' Transaction support
+Set tx = db.Begin()
+tx.Exec("INSERT INTO users (name, email) VALUES (?, ?)", "John", "john@example.com")
+tx.Commit()
+
+' Connection pool configuration
+db.SetMaxOpenConns(25)
+db.SetMaxIdleConns(10)
+
+db.Close()
+```
+
+**Supported Databases**: MySQL, PostgreSQL, MS SQL Server, SQLite  
+**Key Features**: Connection pooling, transactions, prepared statements, environment configuration
+
 **📖 Complete library documentation**: See [docs/](docs/) folder for detailed guides on each library.
 
 ---
@@ -776,6 +806,7 @@ axonasp/
 │   ├── http_lib.go         # G3HTTP library
 │   ├── mail_lib.go         # G3MAIL library
 │   ├── crypto_lib.go       # G3CRYPTO library
+│   ├── g3db_lib.go         # G3DB library (modern database access)
 │   ├── database_lib.go     # ADODB implementation
 │   ├── adox_lib.go         # ADOX implementation
 │   ├── msxml_lib.go        # MSXML2 implementation
@@ -785,6 +816,7 @@ axonasp/
 │   └── global_asa_manager.go # Global.asa handler
 ├── vbscript/               # VBScript compatibility layer
 ├── docs/                   # Documentation
+│   ├── G3DB_IMPLEMENTATION.md
 │   ├── ADODB_IMPLEMENTATION.md
 │   ├── ACCESS_DATABASE_SUPPORT.md
 │   ├── FASTCGI_MODE.md

@@ -1,0 +1,13 @@
+
+<!-- START QS SEARCHFORM -->
+<form name="newsletterform" method="post" id="newsletterform" action="[SF_ACTIONURL]">
+[SF_HIDDENFIELD]
+<input onclick='javascript:this.select();' maxlength='100' type='text' name='svalue' id='s' value="[SF_TEXTVALUE]" style="width: 95%;" />
+
+<span class="art-button-wrapper">
+ 	<span class="l"> </span>
+ 	<span class="r"> </span>
+ 	<input class="art-button" type="submit" name="search" value="Search" />
+ </span>
+ </form>
+<!--END QS SEARCH FORM -->

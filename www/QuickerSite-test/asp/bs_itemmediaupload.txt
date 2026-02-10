@@ -1,0 +1,99 @@
+<div class="mb-3">
+	<input accept="image/png, image/jpeg" class="form-control" type="file" name="files" id="files" multiple onchange="$('#contact_doc_new_aspForm').submit();return false;">
+</div>
+
+<div style="display:none;margin-top:20px" id="alert" class="alert alert-warning" role="alert">
+	
+	<div id="loading" class="spinner-border" style="float:right;width: 1.5rem; height: 1.5rem;" role="status">
+	  	  
+	</div>			
+	<div id="uploadFBS"></div>
+	<div id="uploadFB" style="font-size:0.8em"></div>		
+
+</div>
+
+
+<script>
+
+var i=0
+var j=0
+var files
+
+$("#contact_doc_new_aspForm").submit(function(e){
+
+	e.preventDefault()
+	
+	$("#uploadFBS").html('<strong>Upload started. Do not close this popup.</strong><br /><br />')
+	$("#uploadFB").html('')	
+	$("#loading").css("display","block");
+	$("#alert").css("display","block");
+	
+	$("#contact_doc_new_aspForm").find("input[type=file]").each(function(index, field){
+		files=field.files
+		
+		if (files.length>0) {jQueryUpload()}
+		
+	})
+	
+});
+
+function jQueryUpload() {	
+	
+	var file = files[i]
+	
+	//alert(file)
+	
+	if (typeof(file) != "undefined") {
+		
+		var fd = new FormData()			
+		fd.append('file', file, file.name)	
+		ajax(fd,file)		
+		
+	}
+}
+
+function ajax(fd,file) {
+
+	$.ajax({		
+		type: "post",
+		method: "post",
+		url: "bs_itemuploadfile.asp?iId=[iId]",
+		dataType: "text",
+		contentType: false,
+		data: fd,
+		processData: false, 
+		success: function (data) {			
+					$("#uploadFB").append('<strong>' + file.name + '</strong><hr />')	
+					i++;
+									
+					if(i<files.length) {jQueryUpload()}
+					else {
+					//done	
+					finish()
+					}
+				},
+		error: function (data) {
+			$("#uploadFB").append('<span style="color:Red"><strong>' + file.name + '</strong> (' + Math.round(file.size/1024/1024) + ' MB) was NOT uploaded</span><hr />')	
+			i++
+			j++
+			console.log(data)
+			if(i<files.length) {jQueryUpload()}
+			else {
+				//done
+				finish()
+				}			
+			}
+		})		
+
+}
+
+function finish() {	
+	$("#loading").css("display","none")	
+	//$("#uploadFBS").html('<strong>Upload voltooid</strong><br /><br>')	
+	if(!j==0) {$("#uploadFB").prepend('<strong>' + j + ' files</strong> have NOT been uploaded (probably too big)<hr />')}	
+	//if(!(i-j)==0) {$("#uploadFB").prepend('<strong>' + (i-j) + ' files</strong> zijn opgeladen<hr />')}	
+	i=0;j=0;
+	[REDIRECT]
+}
+
+</script>

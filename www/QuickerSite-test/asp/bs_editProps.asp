@@ -1,0 +1,15 @@
+<!-- #include file="begin.asp"-->
+
+
+<!-- #include file="bs_security.asp"--><%logon.hasaccess secondAdmin.bSetupPageElements%><!-- #include file="includes/header.asp"--><!-- #include file="bs_initBack.asp"--><!-- #include file="bs_header.asp"--><%=getBOHeader(btn_Setup)%><%=getBOSetupMenu(btn_pageelements)%><%if request("btnaction")=l("save") then
+checkCSRF()
+customer.sProp01=removeEmptyP(convertStr(Request.Form ("sProp01")))
+customer.sProp02=removeEmptyP(convertStr(Request.Form ("sProp02")))
+customer.sProp03=removeEmptyP(convertStr(Request.Form ("sProp03")))
+customer.sProp04=removeEmptyP(convertStr(Request.Form ("sProp04")))
+customer.sProp05=removeEmptyP(convertStr(Request.Form ("sProp05")))
+customer.sProp06=removeEmptyP(convertStr(Request.Form ("sProp06")))
+customer.sProp07=removeEmptyP(convertStr(Request.Form ("sProp07")))
+customer.sProp08=removeEmptyP(convertStr(Request.Form ("sProp08")))
+if customer.save then message.Add ("fb_saveOK")
+end if%><p align="center">Below you can provide content for <strong>8 default blocks</strong> in your template. Each page can either <strong>inherit</strong> (default), either <strong>overrule</strong> these blocks.<br />You can use <strong>[PAGE_BLOCK01]</strong> to <strong>[PAGE_BLOCK08]</strong> anywhere in your template(s) in order to have more variations for the pages on your site.</p><form action="bs_editProps.asp" method="post" name=mainform><%=QS_secCodeHidden%><input type="hidden" value="<% =l("save")%>" name=btnaction /><table align=center cellpadding="2"><tr><td>[PAGE_BLOCK01]</td><td><textarea style="width:480px" cols="30" rows="3" name=sProp01><%=quotrep(customer.sProp01)%></textarea></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK02]</td><td><%createFCKInstance customer.sProp02,"siteBuilderMailSource","sProp02"%></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK03]</td><td><textarea style="width:480px" cols="30" rows="3" name=sProp03><%=quotrep(customer.sProp03)%></textarea></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK04]</td><td><%createFCKInstance customer.sProp04,"siteBuilderMailSource","sProp04"%></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK05]</td><td><textarea style="width:480px" cols="30" rows="3" name=sProp05><%=quotrep(customer.sProp05)%></textarea></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK06]</td><td><%createFCKInstance customer.sProp06,"siteBuilderMailSource","sProp06"%></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK07]</td><td><textarea style="width:480px" cols="30" rows="3" name=sProp07><%=quotrep(customer.sProp07)%></textarea></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>[PAGE_BLOCK08]</td><td><%createFCKInstance customer.sProp08,"siteBuilderMailSource","sProp08"%></td></tr><tr><td colspan=2><hr/></td></tr><tr><td>&nbsp;</td><td><input class="art-button" type="submit" value="<%=l("save")%>" name="dummy" /></td></tr></table></form><!-- #include file="bs_endBack.asp"--><!-- #include file="includes/footer.asp"-->

@@ -1,0 +1,23 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"> 
+<html xmlns="http://www.w3.org/1999/xhtml" dir="ltr" lang="en-US" xml:lang="en"> 
+<head>
+<title>[TITLETAG]</title>
+<meta id="viewport" name="viewport" content="width=device-width; initial-scale=1.0; maximum-scale=1.0; user-scalable=0;" />
+<meta http-equiv="Content-Type" content="text/html; charset=[METATAG_CHARSET]" />
+<link rel="STYLESHEET" TYPE="text/css" href="[C_VIRT_DIR]/css/qs_ltr.css" title="QSStyle" />
+[JAVASCRIPT]
+</head>
+<body style="font-size:18px">
+<p>[SITENAME] for mobile phones!</p>
+<form name='mainform' method='post' action='[SF_ACTIONURL]'>
+[SF_HIDDENFIELD]
+<input onclick='javascript:this.select();' maxlength='100' type='text' name='svalue' value="[SF_TEXTVALUE]" />
+<input class="art-button" type="submit" value="Go" /> <a href="default.asp?pageAction=sitemap">Sitemap</a> | <a href="default.asp?pageAction=nomobile">Classic View</a>
+</form>
+<p><b>[PAGETITLE]</b></p>
+[PAGEBODY][PAGELIST][PAGEFORM][PAGECATALOG][PAGEFEED][PAGEAPPLICATION][PAGETHEME]
+<hr /><a name="sitemap"></a>
+<p><b>Sitemap</b></p>
+[SITEMAP]
+</body>
+</html>

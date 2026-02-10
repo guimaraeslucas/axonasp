@@ -1,0 +1,9 @@
+<!-- #include file="begin.asp"-->
+
+
+<!-- #include file="bs_security.asp"--><%logon.hasaccess secondAdmin.bForms%><!-- #include file="includes/header.asp"--><!-- #include file="bs_initBack.asp"--><!-- #include file="bs_header.asp"--><%=getBOHeader(btn_Forms)%><%dim copyform
+set copyform=new cls_form
+copyform.copy()
+dim forms
+set forms=customer.forms%><p align=center><%=getArtLink("bs_formEdit.asp",l("newform"),"","","")%></p><%if forms.count>0 then%><table align=center cellpadding="3" cellspacing="0"><%dim formKey, form
+for each formKey in forms%><tr><td style="border-top:1px solid #DDD"><a href="bs_formEdit.asp?iFormID=<%=encrypt(formKey)%>"><%=forms(formkey).sName%></a></td><td style="border-top:1px solid #DDD"><%=getIcon(l("specifyfields"),"container","bs_formFields.asp?iFormID="& encrypt(formKey),"","containeritem"&formkey)%></td><td style="border-top:1px solid #DDD"><%=getIconPP(l("preview"),"search","bs_formPreview.asp?iFormID="& encrypt(formKey),"","preview"&formkey,"class=""QSPP""")%></td><%if secondAdmin.bFormExport then%><td style="border-top:1px solid #DDD"><%=getIconPP("Data","table","bs_formExport.asp?iFormID="& encrypt(formKey),"","data"&formkey,"class=""bPopupFullWidthNoReload""")%></td><td style="border-top:1px solid #DDD"><%=getIcon("Excel","excel","#","javascript:window.open('bs_formExcel.asp?iFormID="& encrypt(formKey) &"');","excel"&formkey)%></td><%end if%><td style="border-top:1px solid #DDD"><%=getIcon(l("copyItem"),"copyItem","bs_formList.asp?"&QS_secCodeURL&"&amp;iFormID="&encrypt(formKey),"javascript:return confirm('"& l("areyousuretocopy") &"');","copy"&formkey)%></td><td style="border-top:1px solid #DDD"><i>iID: <%=formKey%></i></td></tr><%next%></table><%else%><p align=center><%=l("noforms")%></p><%end if%><!-- #include file="bs_endBack.asp"--><!-- #include file="includes/footer.asp"-->
