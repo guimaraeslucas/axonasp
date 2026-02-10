@@ -23,6 +23,8 @@ package server
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -342,6 +344,7 @@ func (c *ADODBConnection) openDatabase() error {
 	// Check for Microsoft Access formats - use OLE method
 	connStrLower := strings.ToLower(connStr)
 	if (strings.Contains(connStrLower, "microsoft.jet.oledb") || strings.Contains(connStrLower, "microsoft.ace.oledb")) && runtime.GOOS == "windows" {
+		connStr = fillMissingAccessDataSource(connStr, c.ctx)
 		return c.openAccessDatabase(connStr)
 	}
 
@@ -406,26 +409,156 @@ func normalizeAccessProvider(connStr string) string {
 		provider = "microsoft.jet.oledb.4.0"
 	}
 
-	parts := strings.Split(connStr, ";")
-	found := false
-	for i, part := range parts {
-		if strings.TrimSpace(part) == "" {
+	updated, found := replaceConnStrValue(connStr, "provider", provider)
+	if found {
+		return updated
+	}
+	return prependConnStrValue(connStr, fmt.Sprintf("Provider=%s", provider))
+}
+
+func replaceConnStrValue(connStr string, key string, newValue string) (string, bool) {
+	segments := splitConnStrSegments(connStr)
+	for _, seg := range segments {
+		segment := connStr[seg.start:seg.end]
+		eqIdx := strings.Index(segment, "=")
+		if eqIdx <= 0 {
 			continue
 		}
-		kv := strings.SplitN(part, "=", 2)
-		if len(kv) != 2 {
+		segKey := strings.TrimSpace(segment[:eqIdx])
+		if !strings.EqualFold(segKey, key) {
 			continue
 		}
-		key := strings.TrimSpace(kv[0])
-		if strings.EqualFold(key, "provider") {
-			parts[i] = fmt.Sprintf("Provider=%s", provider)
-			found = true
+		valueStart := seg.start + eqIdx + 1
+		for valueStart < seg.end && connStr[valueStart] == ' ' {
+			valueStart++
+		}
+		valueEnd := seg.end
+		for valueEnd > valueStart && connStr[valueEnd-1] == ' ' {
+			valueEnd--
+		}
+		return connStr[:valueStart] + newValue + connStr[valueEnd:], true
+	}
+	return connStr, false
+}
+
+func prependConnStrValue(connStr string, value string) string {
+	trimmed := strings.TrimSpace(connStr)
+	if trimmed == "" {
+		return connStr
+	}
+	if strings.HasPrefix(trimmed, ";") {
+		return value + connStr
+	}
+	return value + ";" + connStr
+}
+
+type connStrSegment struct {
+	start int
+	end   int
+}
+
+func splitConnStrSegments(connStr string) []connStrSegment {
+	segments := make([]connStrSegment, 0, 8)
+	segmentStart := 0
+	inQuote := false
+	for i := 0; i < len(connStr); i++ {
+		ch := connStr[i]
+		if ch == '"' {
+			inQuote = !inQuote
+			continue
+		}
+		if ch == ';' && !inQuote {
+			segments = append(segments, connStrSegment{start: segmentStart, end: i})
+			segmentStart = i + 1
 		}
 	}
-	if !found {
-		parts = append([]string{fmt.Sprintf("Provider=%s", provider)}, parts...)
+	if segmentStart <= len(connStr) {
+		segments = append(segments, connStrSegment{start: segmentStart, end: len(connStr)})
 	}
-	return strings.Join(parts, ";")
+	return segments
+}
+
+func fillMissingAccessDataSource(connStr string, ctx *ExecutionContext) string {
+	lower := strings.ToLower(connStr)
+	key := "data source="
+	idx := strings.Index(lower, key)
+	if idx == -1 {
+		return connStr
+	}
+	start := idx + len(key)
+	end := start
+	for end < len(connStr) && connStr[end] != ';' {
+		end++
+	}
+	value := strings.TrimSpace(connStr[start:end])
+	if value != "" {
+		return connStr
+	}
+
+	candidate := resolveAccessDataSource(ctx)
+	if candidate == "" {
+		return connStr
+	}
+	return connStr[:start] + candidate + connStr[end:]
+}
+
+func resolveAccessDataSource(ctx *ExecutionContext) string {
+	if ctx == nil {
+		return ""
+	}
+	root := ctx.RootDir
+	if root == "" {
+		root = "./www"
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		rootAbs = root
+	}
+
+	siteRoot := rootAbs
+	if ctx.CurrentDir != "" {
+		currAbs, err := filepath.Abs(ctx.CurrentDir)
+		if err == nil {
+			if rel, relErr := filepath.Rel(rootAbs, currAbs); relErr == nil {
+				parts := strings.Split(rel, string(os.PathSeparator))
+				if len(parts) > 0 && parts[0] != "." && parts[0] != "" {
+					siteRoot = filepath.Join(rootAbs, parts[0])
+				}
+			}
+		}
+	}
+
+	primary := filepath.Join(siteRoot, "db", "database.mdb")
+	if fileExists(primary) {
+		return primary
+	}
+
+	fallbackDir := filepath.Join(siteRoot, "db")
+	entries, err := os.ReadDir(fallbackDir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if strings.HasSuffix(strings.ToLower(name), ".mdb") {
+			return filepath.Join(fallbackDir, name)
+		}
+	}
+
+	return ""
+}
+
+func fileExists(path string) bool {
+	if path == "" {
+		return false
+	}
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		return true
+	}
+	return false
 }
 
 // openAccessDatabase opens an Access database using OLE/OLEDB
@@ -443,19 +576,22 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) error {
 	c.threadLocked = true
 
 	// Initialize COM for this thread - DO NOT uninitialize here, it will be done in Close()
-	if err := ole.CoInitialize(0); err != nil {
+	initialized, err := comInitialize()
+	if err != nil {
 		fmt.Printf("Warning: Failed to initialize COM for Access database. Error details: %v\n", err)
 		runtime.UnlockOSThread()
 		c.threadLocked = false
 		return err
 	}
-	c.oleInitialized = true
+	c.oleInitialized = initialized
 
 	unknown, err := oleutil.CreateObject("ADODB.Connection")
 	if err != nil {
 		fmt.Printf("Warning: ADODB.Connection COM object cannot be created. Error: %v. Make sure you have Windows COM support and OLEDB drivers installed.\n", err)
-		ole.CoUninitialize()
-		c.oleInitialized = false
+		if c.oleInitialized {
+			ole.CoUninitialize()
+			c.oleInitialized = false
+		}
 		runtime.UnlockOSThread()
 		c.threadLocked = false
 		return err
@@ -467,8 +603,10 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) error {
 
 	if err != nil {
 		fmt.Println("Warning: Cannot query ADODB.Connection interface. COM support may not be available.")
-		ole.CoUninitialize()
-		c.oleInitialized = false
+		if c.oleInitialized {
+			ole.CoUninitialize()
+			c.oleInitialized = false
+		}
 		runtime.UnlockOSThread()
 		c.threadLocked = false
 		return err
@@ -480,8 +618,10 @@ func (c *ADODBConnection) openAccessDatabase(connStr string) error {
 		fmt.Printf("Warning: Cannot open Access database. Error details: %v\n", err)
 		fmt.Printf("Connection string: %s\n", connStr)
 		connection.Release()
-		ole.CoUninitialize()
-		c.oleInitialized = false
+		if c.oleInitialized {
+			ole.CoUninitialize()
+			c.oleInitialized = false
+		}
 		runtime.UnlockOSThread()
 		c.threadLocked = false
 		return err

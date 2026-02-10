@@ -138,7 +138,19 @@ func (l *Lexer) NextToken() Token {
 	}
 
 	if c == '&' {
-		if CharEquals(next, 'h') || CharEquals(next, 'o') || IsDecDigit(next) {
+		if CharEquals(next, 'h') {
+			if IsHexDigit(l.getChar(l.Index + 2)) {
+				return l.nextNumericLiteral()
+			}
+			return l.nextPunctuation()
+		}
+		if CharEquals(next, 'o') {
+			if IsOctDigit(l.getChar(l.Index + 2)) {
+				return l.nextNumericLiteral()
+			}
+			return l.nextPunctuation()
+		}
+		if IsDecDigit(next) {
 			return l.nextNumericLiteral()
 		}
 		return l.nextPunctuation()

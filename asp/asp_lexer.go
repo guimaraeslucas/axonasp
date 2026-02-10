@@ -224,11 +224,12 @@ func (al *ASPLexer) processASPBlock(startPos int) {
 		blockStart++ // Skip =
 	}
 
-	// Extrai o conteúdo do bloco ASP (sem %> no final)
-	// Remove espaçamento em branco do início e fim, compatível com ASP clássico
-	content := strings.TrimSpace(al.Code[blockStart : blockEnd-2])
+	// Extract ASP block content (without trailing %>)
+	// Preserve whitespace to keep VBScript line/statement boundaries intact.
+	content := al.Code[blockStart : blockEnd-2]
 
 	if isOutput {
+		content = strings.TrimSpace(content)
 		content = "Response.Write(" + content + ")"
 	}
 

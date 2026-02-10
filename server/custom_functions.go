@@ -1208,9 +1208,9 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		}
 
 		// Validate it's not a local file path
-		if strings.HasPrefix(url, "/") || strings.HasPrefix(url, "./") || 
-		   strings.HasPrefix(url, "../") || (len(url) > 2 && url[1] == ':') || strings.HasPrefix(url, "\\") ||
-		   strings.HasPrefix(url, "file://") {
+		if strings.HasPrefix(url, "/") || strings.HasPrefix(url, "./") ||
+			strings.HasPrefix(url, "../") || (len(url) > 2 && url[1] == ':') || strings.HasPrefix(url, "\\") ||
+			strings.HasPrefix(url, "file://") {
 			fmt.Printf("ERROR: AxGetRemoteFile - local paths are not supported for security reasons\n")
 			return false, true
 		}

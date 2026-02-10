@@ -1345,6 +1345,48 @@ func (ae *ASPExecutor) hoistStatement(v *ASPVisitor, stmt ast.Statement) {
 		for _, inner := range s.Statements {
 			ae.hoistStatement(v, inner)
 		}
+	case *ast.IfStatement:
+		if s.Consequent != nil {
+			ae.hoistStatement(v, s.Consequent)
+		}
+		if s.Alternate != nil {
+			ae.hoistStatement(v, s.Alternate)
+		}
+	case *ast.ElseIfStatement:
+		if s.Consequent != nil {
+			ae.hoistStatement(v, s.Consequent)
+		}
+		if s.Alternate != nil {
+			ae.hoistStatement(v, s.Alternate)
+		}
+	case *ast.ForStatement:
+		for _, inner := range s.Body {
+			ae.hoistStatement(v, inner)
+		}
+	case *ast.ForEachStatement:
+		for _, inner := range s.Body {
+			ae.hoistStatement(v, inner)
+		}
+	case *ast.DoStatement:
+		for _, inner := range s.Body {
+			ae.hoistStatement(v, inner)
+		}
+	case *ast.WhileStatement:
+		for _, inner := range s.Body {
+			ae.hoistStatement(v, inner)
+		}
+	case *ast.SelectStatement:
+		for _, c := range s.Cases {
+			ae.hoistStatement(v, c)
+		}
+	case *ast.CaseStatement:
+		for _, inner := range s.Body {
+			ae.hoistStatement(v, inner)
+		}
+	case *ast.WithStatement:
+		for _, inner := range s.Body {
+			ae.hoistStatement(v, inner)
+		}
 	}
 }
 
@@ -4885,15 +4927,29 @@ func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interfa
 		if list, ok := fn.Body.(*ast.StatementList); ok {
 			for _, stmt := range list.Statements {
 				if err := v.VisitStatement(stmt); err != nil {
+					if pe, ok := err.(*ProcedureExitError); ok {
+						if pe.Kind == "function" {
+							break
+						}
+						return nil, err
+					}
 					return nil, err
 				}
 			}
 		} else {
 			if err := v.VisitStatement(fn.Body); err != nil {
+				if pe, ok := err.(*ProcedureExitError); ok {
+					if pe.Kind == "function" {
+						goto functionDone
+					}
+					return nil, err
+				}
 				return nil, err
 			}
 		}
 	}
+
+functionDone:
 
 	// Get return value
 	val, _ := v.context.GetVariable(funcName)
@@ -4961,15 +5017,29 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 		if list, ok := fn.Body.(*ast.StatementList); ok {
 			for _, stmt := range list.Statements {
 				if err := v.VisitStatement(stmt); err != nil {
+					if pe, ok := err.(*ProcedureExitError); ok {
+						if pe.Kind == "function" {
+							break
+						}
+						return nil, err
+					}
 					return nil, err
 				}
 			}
 		} else {
 			if err := v.VisitStatement(fn.Body); err != nil {
+				if pe, ok := err.(*ProcedureExitError); ok {
+					if pe.Kind == "function" {
+						goto functionWithRefsDone
+					}
+					return nil, err
+				}
 				return nil, err
 			}
 		}
 	}
+
+functionWithRefsDone:
 
 	// Apply ByRef updates back to caller's scope
 	for paramName, origVarName := range byRefMap {
@@ -5007,15 +5077,29 @@ func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (in
 		if list, ok := sub.Body.(*ast.StatementList); ok {
 			for _, stmt := range list.Statements {
 				if err := v.VisitStatement(stmt); err != nil {
+					if pe, ok := err.(*ProcedureExitError); ok {
+						if pe.Kind == "sub" {
+							break
+						}
+						return nil, err
+					}
 					return nil, err
 				}
 			}
 		} else {
 			if err := v.VisitStatement(sub.Body); err != nil {
+				if pe, ok := err.(*ProcedureExitError); ok {
+					if pe.Kind == "sub" {
+						goto subDone
+					}
+					return nil, err
+				}
 				return nil, err
 			}
 		}
 	}
+
+subDone:
 
 	return nil, nil
 }
@@ -5072,15 +5156,29 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 		if list, ok := sub.Body.(*ast.StatementList); ok {
 			for _, stmt := range list.Statements {
 				if err := v.VisitStatement(stmt); err != nil {
+					if pe, ok := err.(*ProcedureExitError); ok {
+						if pe.Kind == "sub" {
+							break
+						}
+						return nil, err
+					}
 					return nil, err
 				}
 			}
 		} else {
 			if err := v.VisitStatement(sub.Body); err != nil {
+				if pe, ok := err.(*ProcedureExitError); ok {
+					if pe.Kind == "sub" {
+						goto subWithRefsDone
+					}
+					return nil, err
+				}
 				return nil, err
 			}
 		}
 	}
+
+subWithRefsDone:
 
 	// Apply ByRef updates back to caller's scope
 	for paramName, origVarName := range byRefMap {

@@ -85,11 +85,14 @@ func newCOMHost(progID string) (*comHost, *ole.IDispatch, error) {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 
-		if err := ole.CoInitialize(0); err != nil {
+		initialized, err := comInitialize()
+		if err != nil {
 			initCh <- comResult{err: err}
 			return
 		}
-		defer ole.CoUninitialize()
+		if initialized {
+			defer ole.CoUninitialize()
+		}
 
 		unknown, err := oleutil.CreateObject(progID)
 		if err != nil {

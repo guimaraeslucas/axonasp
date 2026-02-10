@@ -24,7 +24,7 @@ const C_INNOVAEDITOR		= "InnovaStudio35"
 editPage					= false
 defaultasp					= "default.asp"
 
-QS_ASPX						= true 'use aspx features?
+QS_ASPX						= false 'use aspx features?
 
 dim QS_EDITOR
 Response.CharSet			= QS_CHARSET
@@ -166,7 +166,7 @@ bNOPopup=false
 saveHiddenValues=false
 iForceReload=0
 QS_EDITOR=4 '4: ckEditor
-QS_ASPX=true 'use ASP.NET features - basically the picture thumbnailer
+QS_ASPX=false 'use ASP.NET features - basically the picture thumbnailer
 QS_enableCookieMode=true 'set to true in case your host recycles your application every x minutes
 
 'constants

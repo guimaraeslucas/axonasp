@@ -21,6 +21,8 @@
 package asp
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -201,6 +203,52 @@ func TestASPValidator(t *testing.T) {
 
 	if !valid {
 		t.Errorf("Simple VB code should be valid. Messages: %v", msgs)
+	}
+}
+
+func TestASPParser_CKEditorInclude(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	ckeditorPath := filepath.Join(wd, "..", "www", "QuickerSite-test", "asp", "includes", "ckeditor.asp")
+	content, err := ReadFileText(ckeditorPath)
+	if err != nil {
+		t.Fatalf("failed to read ckeditor.asp: %v", err)
+	}
+
+	parser := NewASPParser(content)
+	result, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if len(result.Errors) > 0 {
+		t.Fatalf("asp parse errors: %v", result.Errors[0])
+	}
+}
+
+func TestASPParser_QuickerSiteDefault(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	rootDir := filepath.Join(wd, "..", "www")
+	defaultPath := filepath.Join(rootDir, "QuickerSite-test", "default.asp")
+	content, err := ReadFileText(defaultPath)
+	if err != nil {
+		t.Fatalf("failed to read default.asp: %v", err)
+	}
+
+	options := NewASPParsingOptions()
+	resolved, result, err := ParseWithCache(content, defaultPath, rootDir, options)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	if resolved == "" {
+		t.Fatalf("resolved content is empty")
+	}
+	if len(result.Errors) > 0 {
+		t.Fatalf("asp parse errors: %v", result.Errors[0])
 	}
 }
 

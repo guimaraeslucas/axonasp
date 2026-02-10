@@ -789,8 +789,10 @@ func (p *Parser) parseInlineStatement() ast.Statement {
 			stmt = nil
 		case KeywordPublic, KeywordPrivate:
 			stmt = p.parsePublicOrPrivate(false, true)
-		case KeywordSub, KeywordFunction:
-			panic(p.vbSyntaxError(SyntaxError))
+		case KeywordSub:
+			stmt = p.parseSubDeclaration(ast.MethodAccessModifierNone, false, false)
+		case KeywordFunction:
+			stmt = p.parseFunctionDeclaration(ast.MethodAccessModifierNone, false, false)
 		default:
 			// Unhandled keyword in inline statement context
 			panic(p.vbSyntaxError(SyntaxError))
@@ -1354,8 +1356,10 @@ func (p *Parser) parseValueExpression() ast.Expression {
 		if p.optPunctuation(PunctLParen) {
 			expr = p.parseExpression()
 			p.expectPunctuation(PunctRParen)
+			expr = p.parsePostfixExpression(expr)
 		} else if p.optKeyword(KeywordNew) {
 			expr = ast.NewNewExpression(p.parseLeftExpression())
+			expr = p.parsePostfixExpression(expr)
 		} else {
 			expr = p.parseLeftExpression()
 		}
@@ -1372,6 +1376,11 @@ func (p *Parser) parseLeftExpression() ast.Expression {
 	} else {
 		expr = p.parseIdentifier()
 	}
+
+	return p.parsePostfixExpression(expr)
+}
+
+func (p *Parser) parsePostfixExpression(expr ast.Expression) ast.Expression {
 
 	for {
 		if p.optPunctuation(PunctDot) {

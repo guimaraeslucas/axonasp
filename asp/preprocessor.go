@@ -116,7 +116,19 @@ func ResolveIncludes(content, currentFile, rootDir string, visited map[string]bo
 			return "", err
 		}
 
+		// Preserve statement boundaries when includes sit between ASP blocks (e.g. %>...<%).
+		before := content[:match[0]]
+		after := content[match[1]:]
+		needsLeadBreak := strings.HasSuffix(before, "%>")
+		needsTrailBreak := strings.HasPrefix(after, "<%")
+
+		if needsLeadBreak && resolvedIncluded != "" && !strings.HasPrefix(resolvedIncluded, "\n") && !strings.HasPrefix(resolvedIncluded, "\r") {
+			sb.WriteString("\n")
+		}
 		sb.WriteString(resolvedIncluded)
+		if needsTrailBreak && resolvedIncluded != "" && !strings.HasSuffix(resolvedIncluded, "\n") && !strings.HasSuffix(resolvedIncluded, "\r") {
+			sb.WriteString("\n")
+		}
 
 		lastIndex = match[1]
 	}

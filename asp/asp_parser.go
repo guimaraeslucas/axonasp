@@ -22,6 +22,8 @@ package asp
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	vb "g3pix.com.br/axonasp/vbscript"
@@ -130,6 +132,7 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 	if strings.TrimSpace(combinedVB) != "" {
 		program, err := ap.parseVBBlock(combinedVB)
 		if err != nil {
+			ap.writeCombinedDebug(combinedVB, err)
 			parseErr := fmt.Errorf("Parse error in combined ASP script: %v", err)
 			result.Errors = append(result.Errors, parseErr)
 			if ap.options.DebugMode {
@@ -150,12 +153,33 @@ func (ap *ASPParser) Parse() (*ASPParserResult, error) {
 	return result, nil
 }
 
+func (ap *ASPParser) writeCombinedDebug(combined string, parseErr error) {
+	if combined == "" {
+		return
+	}
+	baseDir := filepath.Join("temp", "cache")
+	rawPath := filepath.Join(baseDir, "combined_last_raw.vbs")
+	path := filepath.Join(baseDir, "combined_last.vbs")
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(rawPath, []byte(combined), 0o644)
+	lines := strings.Split(combined, "\n")
+	var sb strings.Builder
+	if parseErr != nil {
+		sb.WriteString("' Combined VBScript dump generated after parse error: ")
+		sb.WriteString(parseErr.Error())
+		sb.WriteString("\n")
+	}
+	for i, line := range lines {
+		sb.WriteString(fmt.Sprintf("%6d: %s\n", i+1, line))
+	}
+	_ = os.WriteFile(path, []byte(sb.String()), 0o644)
+}
+
 // parseVBBlock realiza parse de um bloco de código VBScript
 func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error) {
-	// Remove comentários vazios e espaços em branco
-	trimmedCode := strings.TrimSpace(code)
-
-	if trimmedCode == "" {
+	if strings.TrimSpace(code) == "" {
 		// Bloco vazio é válido
 		return &ast.Program{
 				OptionExplicit: false,
@@ -168,7 +192,7 @@ func (ap *ASPParser) parseVBBlock(code string) (program *ast.Program, err error)
 	// Pre-process colons to handle multi-statement lines
 	// The VBScript parser might panic on colons, so we convert them to newlines
 	// processedCode := preProcessColons(trimmedCode)
-	processedCode := trimmedCode
+	processedCode := code
 
 	// Usa o parser do VBScript-Go
 	parser := vb.NewParserWithOptions(processedCode, ap.vbOptions)
@@ -323,12 +347,13 @@ func buildCombinedVBScript(blocks []*CodeBlock) string {
 			if adjusted, ok := adjustedContents[idx]; ok {
 				content = adjusted
 			}
-			content = strings.TrimSpace(content)
-			if content == "" {
+			if strings.TrimSpace(content) == "" {
 				continue
 			}
 			sb.WriteString(content)
-			sb.WriteString("\n")
+			if !strings.HasSuffix(content, "\n") {
+				sb.WriteString("\n")
+			}
 		case "html":
 			htmlWrite := htmlToVBWrite(block.Content)
 			if htmlWrite == "" {

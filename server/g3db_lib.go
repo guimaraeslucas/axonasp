@@ -39,13 +39,13 @@ import (
 
 // G3DB provides direct access to Go's database/sql functionality with VBScript compatibility
 type G3DB struct {
-	db          *sql.DB
-	ctx         *ExecutionContext
-	driver      string
-	dsn         string
-	isOpen      bool
-	mu          sync.RWMutex
-	lastError   error
+	db        *sql.DB
+	ctx       *ExecutionContext
+	driver    string
+	dsn       string
+	isOpen    bool
+	mu        sync.RWMutex
+	lastError error
 }
 
 // NewG3DB creates a new G3DB instance
@@ -297,7 +297,7 @@ func (g *G3DB) openFromEnv(driver string) bool {
 		pass := getEnv(envPrefix+"_PASS", "")
 		database := getEnv(envPrefix+"_DATABASE", "test")
 		sslmode := getEnv(envPrefix+"_SSLMODE", "disable")
-		dsn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", 
+		dsn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 			host, port, user, pass, database, sslmode)
 
 	case "mssql", "sqlserver":
@@ -306,7 +306,7 @@ func (g *G3DB) openFromEnv(driver string) bool {
 		user := getEnv(envPrefix+"_USER", "sa")
 		pass := getEnv(envPrefix+"_PASS", "")
 		database := getEnv(envPrefix+"_DATABASE", "test")
-		dsn = fmt.Sprintf("server=%s;port=%s;user id=%s;password=%s;database=%s", 
+		dsn = fmt.Sprintf("server=%s;port=%s;user id=%s;password=%s;database=%s",
 			host, port, user, pass, database)
 
 	case "sqlite":
@@ -378,7 +378,7 @@ func (g *G3DB) queryRow(sqlText string, params ...interface{}) interface{} {
 
 	prepared := rewritePlaceholders(sqlText, driver)
 	row := db.QueryRow(prepared, params...)
-	
+
 	g.lastError = nil
 	return NewG3DBRow(row, g.ctx)
 }
@@ -555,7 +555,7 @@ func (g *G3DB) stats() interface{} {
 	}
 
 	stats := g.db.Stats()
-	
+
 	// Return as VBScript-compatible dictionary
 	dl := NewDictionary(g.ctx)
 	dict := dl.dict
@@ -596,7 +596,7 @@ type G3DBResultSet struct {
 // NewG3DBResultSet creates a new result set
 func NewG3DBResultSet(rows *sql.Rows, ctx *ExecutionContext) *G3DBResultSet {
 	columns, _ := rows.Columns()
-	
+
 	rs := &G3DBResultSet{
 		rows:        rows,
 		ctx:         ctx,
