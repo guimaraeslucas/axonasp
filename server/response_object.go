@@ -60,6 +60,60 @@ type ResponseObject struct {
 	status          string    // HTTP status (e.g., "200 OK")
 }
 
+// CallMethod enables VBScript-style method dispatch on the Response object.
+func (r *ResponseObject) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	nameLower := strings.ToLower(name)
+	switch nameLower {
+	case "write":
+		for _, arg := range args {
+			if err := r.Write(arg); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	case "binarywrite":
+		if len(args) > 0 {
+			if err := r.BinaryWrite(args[0]); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	case "addheader":
+		if len(args) >= 2 {
+			r.AddHeader(fmt.Sprintf("%v", args[0]), fmt.Sprintf("%v", args[1]))
+		}
+		return nil, nil
+	case "appendtolog":
+		if len(args) > 0 {
+			r.AppendToLog(fmt.Sprintf("%v", args[0]))
+		}
+		return nil, nil
+	case "clear":
+		r.Clear()
+		return nil, nil
+	case "flush":
+		if err := r.Flush(); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	case "end":
+		if err := r.End(); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("RESPONSE_END")
+	case "redirect":
+		if len(args) > 0 {
+			if err := r.Redirect(fmt.Sprintf("%v", args[0])); err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("RESPONSE_END")
+		}
+		return nil, nil
+	default:
+		return nil, nil
+	}
+}
+
 // ResponseCookie represents a cookie in the Response.Cookies collection
 type ResponseCookie struct {
 	Name     string

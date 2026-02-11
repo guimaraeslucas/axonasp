@@ -791,17 +791,33 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 		absRootDir = rootDir
 	}
 
+	// Resolve the application root based on the current script location.
+	appRoot := absRootDir
+	if ec.CurrentDir != "" {
+		if absCurrentDir, err := filepath.Abs(ec.CurrentDir); err == nil {
+			if rel, err := filepath.Rel(absRootDir, absCurrentDir); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+				parts := strings.Split(rel, string(filepath.Separator))
+				if len(parts) > 0 && parts[0] != "" && parts[0] != "." {
+					candidate := filepath.Join(absRootDir, parts[0])
+					if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+						appRoot = candidate
+					}
+				}
+			}
+		}
+	}
+
 	// Handle different path formats
 	if path == "/" || path == "" {
-		return absRootDir
+		return appRoot
 	}
 
 	cleanPath := strings.ReplaceAll(path, "\\", "/")
 
-	// Absolute virtual path (starts with /) -> root-based
+	// Absolute virtual path (starts with /) -> app root-based
 	if strings.HasPrefix(cleanPath, "/") {
 		cleanPath = strings.TrimPrefix(cleanPath, "/")
-		fullPath := filepath.Join(absRootDir, cleanPath)
+		fullPath := filepath.Join(appRoot, cleanPath)
 		return fullPath
 	}
 
@@ -818,10 +834,10 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 	fullPath := filepath.Join(baseDir, cleanPath)
 
 	// Compatibility: if a relative path does not exist from current script dir,
-	// fall back to web root for root-relative style paths used by frameworks.
+	// fall back to app root for root-relative style paths used by frameworks.
 	if baseDir != absRootDir && !strings.HasPrefix(cleanPath, "./") && !strings.HasPrefix(cleanPath, "../") {
 		if _, err := os.Stat(fullPath); err != nil {
-			rootPath := filepath.Join(absRootDir, cleanPath)
+			rootPath := filepath.Join(appRoot, cleanPath)
 			if _, rootErr := os.Stat(rootPath); rootErr == nil {
 				return rootPath
 			}
@@ -1095,23 +1111,39 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 	// It shares Request, Response, Session, Application
 	// But has its own scope for variables and constants
 	childCtx := &ExecutionContext{
-		Request:        ae.context.Request,
-		Response:       ae.context.Response,
-		Server:         nil, // Set below
-		Session:        ae.context.Session,
-		Application:    ae.context.Application,
-		variables:      make(map[string]interface{}),
-		constants:      make(map[string]interface{}),
-		libraries:      make(map[string]interface{}),
-		scopeStack:     make([]map[string]interface{}, 0),
-		httpWriter:     ae.context.httpWriter,
-		httpRequest:    ae.context.httpRequest,
-		startTime:      ae.context.startTime,
-		timeout:        ae.context.timeout,
-		sessionID:      ae.context.sessionID,
-		sessionManager: ae.context.sessionManager,
-		isNewSession:   false, // Session already exists
-		RootDir:        ae.context.RootDir,
+		Request:          ae.context.Request,
+		Response:         ae.context.Response,
+		Server:           nil, // Set below
+		Session:          ae.context.Session,
+		Application:      ae.context.Application,
+		Err:              ae.context.Err,
+		variables:        make(map[string]interface{}),
+		constants:        make(map[string]interface{}),
+		libraries:        make(map[string]interface{}),
+		scopeStack:       make([]map[string]interface{}, 0),
+		scopeConstStack:  make([]map[string]interface{}, 0),
+		httpWriter:       ae.context.httpWriter,
+		httpRequest:      ae.context.httpRequest,
+		startTime:        ae.context.startTime,
+		timeout:          ae.context.timeout,
+		rng:              ae.context.rng,
+		lastRnd:          ae.context.lastRnd,
+		hasLastRnd:       ae.context.hasLastRnd,
+		sessionID:        ae.context.sessionID,
+		sessionManager:   ae.context.sessionManager,
+		isNewSession:     false, // Session already exists
+		RootDir:          ae.context.RootDir,
+		CurrentFile:      physicalPath,
+		CurrentDir:       filepath.Dir(physicalPath),
+		compareMode:      ae.context.compareMode,
+		optionBase:       ae.context.optionBase,
+		cancelChan:       ae.context.cancelChan,
+		cancelled:        ae.context.cancelled,
+		managedResources: make([]interface{}, 0),
+		includedOnce:     ae.context.includedOnce,
+	}
+	for name, value := range ae.context.constants {
+		childCtx.constants[name] = value
 	}
 
 	// Initialize Server object for child context
@@ -1119,6 +1151,7 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 	childCtx.Server.SetHttpRequest(ae.context.httpRequest)
 	childCtx.Server.SetRootDir(ae.context.RootDir)
 	childCtx.Server.SetScriptTimeout(ae.context.Server.GetScriptTimeout())
+	_ = childCtx.Server.SetProperty("_scriptDir", childCtx.CurrentDir)
 
 	// Create a new executor for the child context
 	childExecutor := &ASPExecutor{
@@ -1130,6 +1163,7 @@ func (ae *ASPExecutor) ExecuteASPPath(path string) error {
 
 	// Add Document object
 	childCtx.variables["document"] = NewDocumentObject(childCtx)
+	childCtx.variables["err"] = childCtx.Err
 
 	// Parse ASP code
 	parsingOptions := &asp.ASPParsingOptions{

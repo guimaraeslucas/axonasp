@@ -87,7 +87,7 @@ function Build-Binary {
 
     Write-Info "Building $DisplayName..."
     
-    $BuildCommand = "go build -o `"$OutputFile`" $SourcePath"
+    $BuildCommand = "go build -trimpath -o `"$OutputFile`" $SourcePath"
     
     $Output = Invoke-Expression $BuildCommand 2>&1
     

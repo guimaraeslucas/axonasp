@@ -8,7 +8,7 @@
 
 'IMPORTANT: if you change the path, ALSO change the path asplite/asplite.js in your HTML source!
 
-const aspL_path="/asplite-test/asplite"
+const aspL_path="asplite"
 
 '#########################################################
 '### enable debuging (send error messages to the browser
