@@ -791,21 +791,11 @@ func (ec *ExecutionContext) Server_MapPath(path string) string {
 		absRootDir = rootDir
 	}
 
-	// Resolve the application root based on the current script location.
+	// The application root is the configured WEB_ROOT (absRootDir).
+	// Virtual paths (starting with /) always resolve relative to this root,
+	// matching classic ASP/IIS behavior where Server.MapPath("/path")
+	// resolves from the web application root.
 	appRoot := absRootDir
-	if ec.CurrentDir != "" {
-		if absCurrentDir, err := filepath.Abs(ec.CurrentDir); err == nil {
-			if rel, err := filepath.Rel(absRootDir, absCurrentDir); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-				parts := strings.Split(rel, string(filepath.Separator))
-				if len(parts) > 0 && parts[0] != "" && parts[0] != "." {
-					candidate := filepath.Join(absRootDir, parts[0])
-					if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-						appRoot = candidate
-					}
-				}
-			}
-		}
-	}
 
 	// Handle different path formats
 	if path == "/" || path == "" {
@@ -1375,6 +1365,37 @@ func (ae *ASPExecutor) hoistStatement(v *ASPVisitor, stmt ast.Statement) {
 			//log.Printf("[DEBUG] Hoisting Class: %s\n", s.Identifier.Name)
 		}
 		_ = v.visitClassDeclaration(s)
+	// Hoist Dim declarations: In VBScript, module-level Dim is processed before
+	// any code runs (like var hoisting in JavaScript). We pre-declare variables
+	// so that assignments before the textual Dim statement work correctly.
+	case *ast.VariableDeclaration:
+		if s != nil && s.Identifier != nil {
+			name := s.Identifier.Name
+			if _, exists := v.context.GetVariable(name); !exists {
+				if len(s.ArrayDims) > 0 {
+					// Fixed-size array: pre-create the array
+					dims := make([]int, len(s.ArrayDims))
+					for i, dimExpr := range s.ArrayDims {
+						dimVal, err := v.visitExpression(dimExpr)
+						if err == nil {
+							dims[i] = toInt(dimVal)
+						}
+					}
+					arr := v.makeNestedArray(dims)
+					_ = v.context.DefineVariable(name, arr)
+				} else if s.IsDynamicArray {
+					_ = v.context.DefineVariable(name, NewVBArray(v.context.OptionBase(), 0))
+				} else {
+					_ = v.context.DefineVariable(name, nil)
+				}
+			}
+		}
+	case *ast.VariablesDeclaration:
+		if s != nil {
+			for _, decl := range s.Variables {
+				ae.hoistStatement(v, decl)
+			}
+		}
 	case *ast.StatementList:
 		for _, inner := range s.Statements {
 			ae.hoistStatement(v, inner)
@@ -2763,6 +2784,10 @@ func (v *ASPVisitor) addPropertyDef(classDef *ClassDef, name string, pType Prope
 }
 
 // visitVariableDeclaration handles variable declarations (Dim statement)
+// In VBScript, module-level Dim statements are hoisted (processed before code execution).
+// At global scope, if a variable already exists (from hoisting or prior assignment), Dim
+// should NOT reset it. Inside a function/sub (local scope), Dim always creates a new local
+// variable, just like standard VBScript behaviour.
 func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) error {
 	if stmt == nil || stmt.Identifier == nil {
 		return nil
@@ -2778,9 +2803,22 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 		return v.context.DefineVariable(name, value)
 	}
 
+	// At global scope, Dim should not overwrite existing variables.
+	// VBScript hoists all module-level Dim declarations before execution, so by the
+	// time execution reaches the textual Dim statement, the variable is already
+	// allocated. Re-running DefineVariable would reset it to nil and clobber any
+	// value that was assigned earlier in the script.
+	isGlobalScope := len(v.context.scopeStack) == 0
+
 	// Check if it's an array declaration
 	if len(stmt.ArrayDims) > 0 {
 		// Fixed-size array: Dim arr(5) or Dim arr(2,3)
+		// At global scope, only create if not already defined (hoisting handled it).
+		if isGlobalScope {
+			if _, exists := v.context.GetVariable(varName); exists {
+				return nil
+			}
+		}
 		dims := make([]int, len(stmt.ArrayDims))
 		for i, dimExpr := range stmt.ArrayDims {
 			dimVal, err := v.visitExpression(dimExpr)
@@ -2797,11 +2835,23 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 		}
 	} else if stmt.IsDynamicArray {
 		// Dynamic array: Dim arr() - initialize as empty array
+		if isGlobalScope {
+			if _, exists := v.context.GetVariable(varName); exists {
+				return nil
+			}
+		}
 		if err := defineVar(varName, NewVBArray(v.context.OptionBase(), 0)); err != nil {
 			return err
 		}
 	} else {
-		// Regular variable - initialize to nil (VBScript Empty)
+		// Regular variable
+		// At global scope, skip if the variable already exists (was hoisted or set earlier)
+		if isGlobalScope {
+			if _, exists := v.context.GetVariable(varName); exists {
+				return nil
+			}
+		}
+		// Initialize to nil (VBScript Empty)
 		if err := defineVar(varName, nil); err != nil {
 			return err
 		}
@@ -5021,8 +5071,12 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 				// ByRef (explicit or default): we need the original variable name
 				if ident, ok := arguments[i].(*ast.Identifier); ok {
 					byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
-					// Get value from caller's scope (could be parent scope or global)
-					if parentVal, exists := v.context.GetVariableFromParentScope(ident.Name); exists {
+					// Handle "Me" keyword - not stored as regular variable
+					if strings.EqualFold(ident.Name, "me") {
+						if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+							val = ctxObj
+						}
+					} else if parentVal, exists := v.context.GetVariableFromParentScope(ident.Name); exists {
 						val = parentVal
 					} else if globalVal, exists := v.context.GetVariable(ident.Name); exists {
 						// Try global scope if not found in parent
@@ -5164,8 +5218,12 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 				// ByRef (explicit or default): we need the original variable name
 				if ident, ok := arguments[i].(*ast.Identifier); ok {
 					byRefMap[strings.ToLower(param.Identifier.Name)] = strings.ToLower(ident.Name)
-					// Get value from caller's scope (could be parent scope or global)
-					if parentVal, exists := v.context.GetVariableFromParentScope(ident.Name); exists {
+					// Handle "Me" keyword - not stored as regular variable
+					if strings.EqualFold(ident.Name, "me") {
+						if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+							val = ctxObj
+						}
+					} else if parentVal, exists := v.context.GetVariableFromParentScope(ident.Name); exists {
 						val = parentVal
 					} else if globalVal, exists := v.context.GetVariable(ident.Name); exists {
 						// Try global scope if not found in parent
@@ -5340,8 +5398,14 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 					paramNameLower := strings.ToLower(param.Identifier.Name)
 					identNameLower := strings.ToLower(ident.Name)
 					byRefMap[paramNameLower] = identNameLower
-					// Get value from caller's context
-					if existingVal, exists := v.context.GetVariable(ident.Name); exists {
+					// Handle "Me" keyword - it's not a regular variable
+					if strings.EqualFold(ident.Name, "me") {
+						if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+							evaluatedArgs[i] = ctxObj
+						} else {
+							evaluatedArgs[i] = nil
+						}
+					} else if existingVal, exists := v.context.GetVariable(ident.Name); exists {
 						evaluatedArgs[i] = existingVal
 					} else {
 						evaluatedArgs[i] = nil

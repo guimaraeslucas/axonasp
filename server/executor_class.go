@@ -266,6 +266,15 @@ func (ci *ClassInstance) CallMethod(name string, args ...interface{}) (interface
 		}
 	}
 
+	// 5. Fallback: check class Variables (Public fields).
+	// In VBScript, obj.Field and obj.Method() are syntactically ambiguous,
+	// so the parser may generate a CallExpression for simple field access.
+	// When no arguments are provided, return the field value directly.
+	if _, ok := ci.ClassDef.Variables[nameLower]; ok {
+		val := ci.Variables[nameLower]
+		return val, nil
+	}
+
 	return nil, fmt.Errorf("method '%s' not found", name)
 }
 

@@ -26,7 +26,8 @@ This plan outlines the steps to migrate AxonASP from an AST-walking interpreter 
 - [x] Implement .env variable and main.go support to use the VM engine or keep using the current AST walker (Implemented via AXONASP_VM env var in asp_executor).
 - [x] Map existing `asp/*` and `server/*` libraries (G3JSON, ADODB, etc.) to the VM if user select VM in .env (Mapped via HostEnvironment interface).
 - [x] Implement `OP_CALL_EXTERNAL` or similar to bridge VM to Go host functions if user select VM in .env (Implemented via OP_CALL and BuiltinFunction).
-- [ ] Update `server/executor.go` to optionally use the VM instead of the AST walker if user select VM in .env.
+- [x] Update `server/executor.go` to optionally use the VM instead of the AST walker if user select VM in .env.
+- [ ] Implement add idiv, notOp, concat, and toString helper functions in vm.go,
 - [ ] Implement needed compiler features like MemberExpression alongside FunctionDeclaration and ClassDeclaration for proper method invocation.
 - [ ] Implement missing handling for the AST NothingLiteral and the VM opcode for OP_NOTHING
 - [ ] Optimize "hot paths" (e.g., specific opcodes for common operations like `i = i + 1`).
@@ -34,7 +35,8 @@ This plan outlines the steps to migrate AxonASP from an AST-walking interpreter 
 - [ ] Implement ast.ClassDeclaration and experimental.BuiltinFunction with gob due to interface encoding needs
 - [ ] Implement class and function compilation alongside updating the bytecode cache registrations. 
 - [ ] extend the server's VM host adapter to set variables using the ExecutionContext's SetVariable method.
-- [ ] add idiv, notOp, concat, and toString helper functions in vm.go,
+- [ ] extend the VM to when something is not implemented, try to run from the AST walker
+
 
 ## Phase 5: Optimization & Caching
 - [ ] Implement Bytecode caching (serialize `Bytecode` struct to disk/memory).
