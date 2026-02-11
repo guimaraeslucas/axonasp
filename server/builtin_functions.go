@@ -808,16 +808,25 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		return string(runes[start:end]), true
 
 	case "instr":
-		// INSTR([start], string1, string2) - find substring position
+		// INSTR([start], string1, string2, [compare]) - find substring position
 		var s1, s2 string
-		start := 1 // VBScript default start is 1
+		start := 1     // VBScript default start is 1
+		compare := -1  // -1 means use default (binary)
 		if len(args) == 2 {
+			// InStr(string1, string2)
 			s1 = toString(args[0])
 			s2 = toString(args[1])
-		} else if len(args) >= 3 {
+		} else if len(args) == 3 {
+			// InStr(start, string1, string2)
 			start = toInt(args[0])
 			s1 = toString(args[1])
 			s2 = toString(args[2])
+		} else if len(args) >= 4 {
+			// InStr(start, string1, string2, compare)
+			start = toInt(args[0])
+			s1 = toString(args[1])
+			s2 = toString(args[2])
+			compare = toInt(args[3])
 		} else {
 			return 0, true
 		}
@@ -831,20 +840,22 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			return 0, true
 		}
 
-		// Convert to rune slice for indexing
-		// Note: strings.Index works on bytes, so we need to be careful.
-		// If we use runes, we can implement manual search or convert indices.
-		// Simple implementation with strings.Index requires substring slicing
-
 		s1Runes := runes1[start-1:]
 		s1Part := string(s1Runes)
-		s2Lower := strings.ToLower(s2)
-		s1Lower := strings.ToLower(s1Part)
 
-		idx := strings.Index(s1Lower, s2Lower)
+		// Determine comparison mode:
+		// compare == 1 (vbTextCompare) -> case-insensitive
+		// compare == 0 (vbBinaryCompare) or default (-1) -> case-sensitive
+		var idx int
+		if compare == 1 {
+			// Case-insensitive search
+			idx = strings.Index(strings.ToLower(s1Part), strings.ToLower(s2))
+		} else {
+			// Case-sensitive search (binary compare, default)
+			idx = strings.Index(s1Part, s2)
+		}
+
 		if idx == -1 {
-			// Fallback: full string search (maybe case issue with slicing?)
-			// Should verify if we need to search whole string
 			return 0, true
 		}
 
@@ -865,6 +876,7 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 
 		// Default: start from end of string
 		start := len(runes1)
+		compare := 0 // Default to binary (case-sensitive)
 		if len(args) >= 3 {
 			startArg := toInt(args[2])
 			if startArg == -1 {
@@ -876,6 +888,9 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 				// Invalid start position
 				return 0, true
 			}
+		}
+		if len(args) >= 4 {
+			compare = toInt(args[3])
 		}
 
 		if start > len(runes1) {
@@ -889,7 +904,14 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		searchInRunes := runes1[:start]
 		searchIn := string(searchInRunes)
 
-		idx := strings.LastIndex(strings.ToLower(searchIn), strings.ToLower(s2))
+		var idx int
+		if compare == 1 {
+			// Case-insensitive search
+			idx = strings.LastIndex(strings.ToLower(searchIn), strings.ToLower(s2))
+		} else {
+			// Case-sensitive search (binary compare, default)
+			idx = strings.LastIndex(searchIn, s2)
+		}
 		if idx == -1 {
 			return 0, true
 		}
@@ -920,17 +942,22 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			count = toInt(args[4])
 		}
 
-		compare := 1 // Default to text (case-insensitive) compare
+		compare := 0 // Default to binary (case-sensitive) compare per VBScript spec
 		if len(args) >= 6 {
 			compare = toInt(args[5])
 		}
 
 		if find == "" || start > len(s) || count == 0 {
+			// VBScript: when start > 1, return substring from start even if no replacement
+			if start > 1 && start <= len(s) {
+				return s[start-1:], true
+			}
 			return s, true
 		}
 
 		idxStart := start - 1 // convert to 0-based
-		last := 0
+		// VBScript Replace: output starts from the start position, not from beginning
+		last := idxStart
 		var b strings.Builder
 		replaced := 0
 

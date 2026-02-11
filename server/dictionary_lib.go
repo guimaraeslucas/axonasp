@@ -167,7 +167,6 @@ func (d *Dictionary) Add(args []interface{}) interface{} {
 	defer d.mutex.Unlock()
 
 	key := d.keyToString(args[0])
-	//fmt.Printf("[DEBUG] Dictionary.Add: Key=%s\n", key)
 	if _, exists := d.store[key]; !exists {
 		d.order = append(d.order, key)
 	}

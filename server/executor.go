@@ -210,6 +210,11 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.constants["vbverticaltab"] = string(rune(11))
 	ctx.constants["vbnullstring"] = ""
 
+	// Comparison mode constants
+	ctx.constants["vbbinarycompare"] = 0
+	ctx.constants["vbtextcompare"] = 1
+	ctx.constants["vbdatabasecompare"] = 2
+
 	// We'll set the executor reference after creating it (circular dependency)
 	// This is done in ASPExecutor.Execute()
 
@@ -606,38 +611,54 @@ func (ec *ExecutionContext) GetVariableFromParentScope(name string) (interface{}
 }
 
 // SetVariableInParentScope sets a variable in the parent scope (for ByRef parameters)
+// This mirrors SetVariable logic but skips the current (topmost) scope, ensuring
+// that ByRef writebacks go to the correct location: existing parent scope entries,
+// context object (class members), or global variables — never creating new entries
+// in a scope where the variable didn't already exist.
 func (ec *ExecutionContext) SetVariableInParentScope(name string, value interface{}) error {
 	nameLower := lowerKey(name)
 
 	ec.mu.Lock()
-	defer ec.mu.Unlock()
 
-	// Set in parent scope (one level up from current)
-	if len(ec.scopeStack) >= 2 {
-		parentIndex := len(ec.scopeStack) - 2
-
-		if _, exists := ec.scopeConstStack[parentIndex][nameLower]; exists {
+	// Check constants in all parent scopes
+	for i := len(ec.scopeConstStack) - 2; i >= 0; i-- {
+		if _, exists := ec.scopeConstStack[i][nameLower]; exists {
+			ec.mu.Unlock()
 			return fmt.Errorf("cannot reassign constant '%s'", name)
 		}
-
-		ec.scopeStack[parentIndex][nameLower] = value
-		return nil
 	}
-
-	// If no parent scope (at global level), set globally
-	if len(ec.scopeStack) == 0 {
-		if _, exists := ec.constants[nameLower]; exists {
-			return fmt.Errorf("cannot reassign constant '%s'", name)
-		}
-		ec.variables[nameLower] = value
-		return nil
-	}
-
-	// If we have only one scope, treat parent as global
 	if _, exists := ec.constants[nameLower]; exists {
+		ec.mu.Unlock()
 		return fmt.Errorf("cannot reassign constant '%s'", name)
 	}
+
+	// 1. Check parent local scopes (excluding topmost which is the current function)
+	for i := len(ec.scopeStack) - 2; i >= 0; i-- {
+		if _, exists := ec.scopeStack[i][nameLower]; exists {
+			ec.scopeStack[i][nameLower] = value
+			ec.mu.Unlock()
+			return nil
+		}
+	}
+
+	// 2. Check Context Object (Class Member) before falling through to globals
+	ctxObj := ec.contextObject
+	ec.mu.Unlock()
+
+	if ctxObj != nil {
+		if internal, ok := ctxObj.(interface {
+			SetMember(string, interface{}) (bool, error)
+		}); ok {
+			if handled, err := internal.SetMember(nameLower, value); handled {
+				return err
+			}
+		}
+	}
+
+	// 3. Global Variables (Default)
+	ec.mu.Lock()
 	ec.variables[nameLower] = value
+	ec.mu.Unlock()
 	return nil
 }
 
@@ -1814,19 +1835,53 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 				}
 			}
 
-			// Handle array index assignment (arr(0) = value)
+			// Handle array index assignment (arr(0) = value or arr(0, 1) = value)
 			if arrObj, ok := toVBArray(obj); ok {
 				if len(indexCall.Indexes) > 0 {
-					idx, err := v.visitExpression(indexCall.Indexes[0])
-					if err != nil {
-						return err
+					if len(indexCall.Indexes) == 1 {
+						// Single-dimensional: arr(0) = value
+						idx, err := v.visitExpression(indexCall.Indexes[0])
+						if err != nil {
+							return err
+						}
+						index := toInt(idx)
+						if arrObj.Set(index, value) {
+							_ = v.context.SetVariable(varName, arrObj)
+							return nil
+						}
+						return fmt.Errorf("subscript out of range")
+					} else {
+						// Multi-dimensional: arr(0, 1) = value
+						// Navigate through nested VBArrays using all but the last index,
+						// then Set on the innermost VBArray with the last index.
+						current := arrObj
+						for i := 0; i < len(indexCall.Indexes)-1; i++ {
+							idxVal, err := v.visitExpression(indexCall.Indexes[i])
+							if err != nil {
+								return err
+							}
+							index := toInt(idxVal)
+							inner, exists := current.Get(index)
+							if !exists {
+								return fmt.Errorf("subscript out of range")
+							}
+							innerArr, ok := toVBArray(inner)
+							if !ok {
+								return fmt.Errorf("subscript out of range")
+							}
+							current = innerArr
+						}
+						// Set the value on the innermost array using the last index
+						lastIdxVal, err := v.visitExpression(indexCall.Indexes[len(indexCall.Indexes)-1])
+						if err != nil {
+							return err
+						}
+						lastIndex := toInt(lastIdxVal)
+						if current.Set(lastIndex, value) {
+							return nil
+						}
+						return fmt.Errorf("subscript out of range")
 					}
-					index := toInt(idx)
-					if arrObj.Set(index, value) {
-						_ = v.context.SetVariable(varName, arrObj)
-						return nil
-					}
-					return fmt.Errorf("subscript out of range")
 				}
 			}
 

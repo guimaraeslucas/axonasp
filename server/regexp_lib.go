@@ -432,6 +432,15 @@ func (m *RegExpMatchesCollection) GetName() string {
 	return "IMatchCollection2"
 }
 
+// Enumeration returns all matches as []interface{} for For Each iteration support
+func (m *RegExpMatchesCollection) Enumeration() []interface{} {
+	items := make([]interface{}, len(m.matches))
+	for i, match := range m.matches {
+		items[i] = match
+	}
+	return items
+}
+
 // GetProperty gets a property from matches collection
 func (m *RegExpMatchesCollection) GetProperty(name string) interface{} {
 	switch strings.ToLower(name) {

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2-blue.svg" alt="Version 0.2"/>
+  <img src="https://img.shields.io/badge/version-1.0-blue.svg" alt="Version 1.0"/>
   <img src="https://img.shields.io/badge/Go-1.25+-00ADD8.svg" alt="Go Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MPL-green.svg" alt="License"/>
@@ -116,6 +116,8 @@ go build -o axonaspcgi.exe ./axonaspcgi
 ### Build for Current Platform
 ```bash
 go build 
+or
+./build.ps1 (windows - build all executables server/fastcgi)
 ```
 
 ### Cross-Platform Compilation
@@ -972,12 +974,17 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 - [x] WScript.Shell for system integration
 - [x] ADOX for database schema management
 - [x] 60+ custom functions (Ax* functions)
+- [ ] Image creation
+- [ ] ZIP/G3FC support
+- [ ] XML support
+- [ ] PDF support
 - [ ] WebSocket support
 - [ ] Built-in Redis session storage
 - [ ] Docker official images
 - [ ] OAuth2 authentication library
 - [ ] REST API generator
 - [ ] GraphQL support
+- [ ] Implement VM/Compiler
 
 ---
 

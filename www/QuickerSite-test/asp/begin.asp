@@ -34,7 +34,7 @@ Response.AddHeader "pragma", "no-cache"
 Response.Expires			= -1
 Response.ExpiresAbsolute	= Now()-1
 
-blockDefaultPW		= true
+blockDefaultPW		= false
 printReplies		= false
 pagetoemail			= false
 manyContacts		= 500

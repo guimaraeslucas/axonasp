@@ -1,0 +1,389 @@
+﻿
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html> <html > <head> <meta charset="UTF-8"> <meta http-equiv="X-UA-Compatible" content="IE=edge"> <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/web/assets/mobirise-icons/mobirise-icons.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/facebook-plugin/style.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/bootstrap/css/bootstrap.min.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/bootstrap/css/bootstrap-grid.min.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/bootstrap/css/bootstrap-reboot.min.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/dropdown/css/style.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/tether/tether.min.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/socicon/css/styles.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/theme/css/style.css"> <link rel="preload" as="style" href="/userfiles/templates/qsdemo/assets/mobirise/css/mbr-additional.css"> <link rel="stylesheet" href="/userfiles/templates/qsdemo/assets/mobirise/css/mbr-additional.css" type="text/css"> <title>Welcome | Sitename</title> <meta content="MyName" name="author" /> <meta content="SiteName" name="copyright" /> <meta content="" name="keywords" /> <meta content="" name="description" /> <meta content="QuickerSite CMS - visit www.quickersite.com" name="generator" /> <link rel="STYLESHEET" TYPE="text/css" href="/css/qs_ltr.css" title="QSStyle" />   <link rel="shortcut icon" type="image/x-icon" href="/userfiles/favicon.ico" /> <style>
+.qscolumn img { 
+padding:5px !important;
+box-shadow: rgba(0, 0, 0, 0.35) 0px 5px 15px;
+border-radius:10px;
+}
+</style>
+ </head> <body> <section class="menu cid-rPPurc6wyH" once="menu" id="menu1-0"> <nav class="navbar navbar-expand beta-menu navbar-dropdown align-items-center navbar-fixed-top navbar-toggleable-sm"> <button class="navbar-toggler navbar-toggler-right" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation"> <div class="hamburger"> <span></span> <span></span> <span></span> <span></span> </div> </button> <div class="menu-logo"> <div class="navbar-brand"> <span class="navbar-logo"> <a href="#"> <img src="[LOGO]" alt="" title="" style="height: 3.8rem;"> </a> </span> <span class="navbar-caption-wrap"> <a class="navbar-caption text-white display-4" href="#"> QuickerSite v4.4 </a> </span> </div> </div> <div class="collapse navbar-collapse" id="navbarSupportedContent"> <ul class="navbar-nav nav-dropdown" data-app-modern-menu="true"> [MENU] </ul> <div class="navbar-buttons mbr-section-btn"> </div> </div> </nav> </section> <section class="header1 cid-rPPuElUtSn mbr-fullscreen mbr-parallax-background" id="header1-1" style="background-image:url('[BACKGOUNDIMAGE]');">
+
+    
+
+    <div class="mbr-overlay" style="opacity: 0.6; background-color: rgb(35, 35, 35);">
+    </div>
+
+    <div class="container">
+        <div class="row justify-content-md-center">
+            <div class="mbr-white col-md-10">
+                <h1 class="mbr-section-title align-center mbr-bold pb-3 mbr-fonts-style display-1">
+                  [SITEINFO("name")]
+                </h1>
+                <h3 class="mbr-section-subtitle align-center mbr-light pb-3 mbr-fonts-style display-2">
+                   [SITEINFO("slogan")]
+                </h3>
+                
+                <div class="mbr-section-btn align-center"><a class="btn btn-md btn-secondary display-4" href="#content1-2">
+                        <span class="mbr-iconfont mbri-file"></span>LEARN MORE</a></div>
+            </div>
+        </div>
+    </div>
+
+</section> <section class="mbr-section article content1 cid-rPPuQJXKxa" id="content1-2"> <div class="container"> <div class="media-container-row"> <div class="mbr-text col-12 mbr-fonts-style display-7 col-md-10"> <h3>Welcome to QuickerSite, a CMS for Windows Servers.</h3> <div class="qsrow"><div class="qscolumn" style="padding:0px 0px 0px 0px;flex:47%;max-width:47%;padding-left:1.4rem"><p><strong>Congratulations</strong>! Your QuickerSite was setup properly!</p>
+
+<p>This <strong>sample site</strong> demonstrates some of QuickerSite's built-in functions:</p>
+
+<ul>
+<li>a multi-level dynamic menu</li>
+<li>a <a href="default.asp?iID=IHJEF">list page</a> pushing <a href="rss.asp?iId=IHJEF" target="_blank">RSS 2.0 feeds</a></li>
+<li>a page with a <a href="default.asp?iId=HKIDL">contact-form</a></li>
+<li>the <a href="default.asp?pageAction=siteMap">sitemap</a> and search-features</li>
+<li>a page with some <a href="default.asp?iID=IKHML">custom ASP/VBScripts</a></li>
+<li>some highly configurable <a href="default.asp?iID=JMIMK">Picture Galleries</a> (ASP.NET required)</li>
+<li>a <a href="default.asp?pageAction=BinnenI&amp;iId=HIKGF">'Members Only'</a>-section behind password (login: <a href="mailto:your@email.com">your@email.com</a> password: "<strong>me</strong>")</li>
+<li>a "<a href="default.asp?iId=JEJDI">theme</a>" that acts like a basic blog and/or forum</li>
+</ul>
+</div><div class="qscolumn" style="padding:0px 0px 0px 0px;flex: 50%; max-width: 50%;padding-left:0px">
+<div class="qspagemedia qsrow" style="margin-bottom:20px;margin-top:5px">
+<div class="qscolumn" style="padding:0px 0px 0px 0px;flex:100%;max-width:100%">
+<!--1--><div class=""><a rel="AD3RA8WB" href="/showthumb.aspx?maxsize=1920&FSR=0&img=/userfiles/pagemedia/413/man-1454744_1280.jpg" class="QSPPIMG"><img src="/showthumb.aspx?maxsize=1920&FSR=0&img=/userfiles/pagemedia/413/man-1454744_1280.jpg"></a></div>
+</div></div>
+</div></div><div class="cleared"></div><div style="margin-top:25px;font-size:0.9em;clear:both"></div> </div> </div> </div> </section> <section class="cid-rPPv45r5Ye" id="footer1-3"> <div class="container"> <div class="media-container-row content text-white"> <div class="col-12 col-md-3"> <div class="media-wrap"> <img src="[LOGO]" alt="" title=""> </div> </div> <div class="col-12 col-md-3 mbr-fonts-style display-7"> [ADDRESS] </div> <div class="col-12 col-md-3 mbr-fonts-style display-7"> [CONTACTS] </div> <div class="col-12 col-md-3 mbr-fonts-style display-7"> [LINKS] </div> </div> <div class="footer-lower"> <div class="media-container-row"> <div class="col-sm-12"> <hr> </div> </div> <div class="media-container-row mbr-white"> <div class="col-sm-6 copyright"> <p class="mbr-text mbr-fonts-style display-7"> <p>Footer - Change this text via Backsite/Setup/Page Elements/Footer</p>
+ </p> </div> <div class="col-md-6"> <!-- START SEARCHFORM --> <form method="post" class="art-search" name="Search" action="default.asp"> <input type='hidden' name='pageAction' value='search' /> <input maxlength='100' type='text' name='svalue' id='s' value="Search..." style="margin-left:5px;width:60%" onclick="javascript:this.select();"> <input style="margin-left:5px" type="submit" value="GO" name="search"> </form> <!-- END SEARCHFORM --> </div> </div> </div> </div> </section> <script src="/userfiles/templates/qsdemo/assets/web/assets/jquery/jquery.min.js"></script> <script src="/userfiles/templates/qsdemo/assets/popper/popper.min.js"></script> <script src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v2.5"></script> <script src="https://apis.google.com/js/plusone.js"></script> <script src="/userfiles/templates/qsdemo/assets/facebook-plugin/facebook-script.js"></script> <script src="/userfiles/templates/qsdemo/assets/bootstrap/js/bootstrap.min.js"></script> <script src="/userfiles/templates/qsdemo/assets/smoothscroll/smooth-scroll.js"></script> <script src="/userfiles/templates/qsdemo/assets/dropdown/js/nav-dropdown.js"></script> <script src="/userfiles/templates/qsdemo/assets/dropdown/js/navbar-dropdown.js"></script> <script src="/userfiles/templates/qsdemo/assets/touchswipe/jquery.touch-swipe.min.js"></script> <script src="/userfiles/templates/qsdemo/assets/parallax/jarallax.min.js"></script> <script src="/userfiles/templates/qsdemo/assets/tether/tether.min.js"></script> <script src="/userfiles/templates/qsdemo/assets/theme/js/script.js"></script> <script type="text/javascript"><!--
+function openPopUpWindow(windowName,fileName,width,height) {var popUp = window.open(fileName,windowName,'top=10,left=10,toolbar=0,location=0,directories=0,status=0,menubar=0,scrollbars=1,resizable=1,top=50,left=50,target=_new,width='+width+',height='+height)} function getIcon2(sCol1,sCol2,sCol3,iMode){try{var sColor;if (iMode==0){sColor='#3A383E';}else{sColor='#70919A';}document.getElementById(sCol1).style.backgroundColor = sColor;document.getElementById(sCol2).style.backgroundColor = sColor;document.getElementById(sCol3).style.backgroundColor = sColor;}catch(err){}}function getIcon(sLabel,sType,sUrl,sJs,sUniqueKey,sClassname){try{document.write ('<TABLE cellSpacing=0 cellPadding=0 width=16 style="border-style:none;margin:0px;padding:0px;height:16px" border=0><TR><TD width=1><\/TD>');document.write ('<TD width=14 class=pI style="height:1px" id="'+sUniqueKey+'1"><\/TD><TD width=1><\/TD><\/TR>');document.write ('<TR><TD colspan=3 width=14 class=pI style="height:14px" id="'+sUniqueKey+'2">');document.write ('<a '+sClassname+' href="'+sUrl+'" title="'+sLabel+'" onclick="'+sJs+'"><img hspace=1 ');document.write ('onmouseover="javascript:getIcon2(\''+sUniqueKey+'1\',\''+sUniqueKey+'2\',\''+sUniqueKey+'3\',1);" ');document.write ('onmouseout="javascript:getIcon2(\''+sUniqueKey+'1\',\''+sUniqueKey+'2\',\''+sUniqueKey+'3\',0);" ');document.write ('alt="'+sLabel+'" src="\/fixedImages\/public\/'+sType+'.gif" border=0><\/a><\/TD><\/TR>');document.write ('<TR><TD width=1><\/TD><TD width=14 class=pI id="'+sUniqueKey+'3"><\/TD><TD width=1><\/TD><\/TR><\/TABLE>');}catch(err){}}//--></script>
+<style>input,textarea,select,radio,checkbox {padding:5px;border-radius:4px;border:1px solid #AAA} 
+</style>
+<style>.material-symbols-outlined {font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 48}</style><script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+<script type="text/javascript">if (typeof jQuery == 'undefined'){document.write(unescape("%3Cscript src='/js/JQuery183.js' type='text/javascript'%3E%3C/script%3E"));}</script><link media="screen" type="text/css" rel="stylesheet" href="/js/JQueryUI.css" />
+<script type="text/javascript" src="/js/JQueryUI.js"></script>
+<link media="all" type="text/css" rel="stylesheet" href="/css/media.css" />
+<style type="text/css">
+.ui-datepicker {font-family:Arial;font-size:12px}
+.ui-dialog {font-family:Arial;font-size:12px;z-index:999}
+.ui-dialog td {font-family:Arial;font-size:12px;}
+.ui-accordion-header {background-image:none}
+.ui-accordion-content {background-image:none}
+.QSAccordion {font-family: inherit; 
+font-size: 1em;}
+.QSAccordion .QSAccordionHeader {background-color: #DDDDDD;
+color: #000000;
+font-weight: 700;}
+.QSAccordion .QSAccordionContent {background-color: #FFFFFF;
+color: #000000;}
+</style>
+<script type="text/javascript" src="/js/spectrum/spectrum.js"></script>
+<link rel="stylesheet" type="text/css" href="/js/spectrum/spectrum.css" />
+<script type="text/javascript" src="/js/colorbox/jquery.colorbox-min.js"></script>
+<script type="text/javascript">jQuery.colorbox.settings.maxWidth  = '95%';jQuery.colorbox.settings.maxHeight = '95%';var resizeTimer;function resizeColorBoxQS() {if (resizeTimer) clearTimeout(resizeTimer);resizeTimer = setTimeout(function() {if (jQuery('#cboxOverlay').is(':visible')) {jQuery.colorbox.load(true);}}, 300);}
+jQuery(window).resize(resizeColorBoxQS);window.addEventListener("orientationchange", resizeColorBoxQS, false);</script>
+<link media="screen" type="text/css" rel="stylesheet" href="/js/colorbox/example1/colorbox.asp?qsd=" />
+<script type="text/javascript">
+function textCounter(field, countfield, maxlimit){if (field.value.length > maxlimit){alert('Warning! Your text has exceeded the maximum number of characters !');field.value = field.value.substring(0, maxlimit);} else {document.getElementById(countfield).innerHTML = maxlimit - field.value.length;}}
+</script>
+
+<script type='text/javascript'><!--
+var iFrameWidth=465;var iFrameHeight=270;var iFrameAddW=80;var iFrameAddH=120;function resizeiframe(iframe_id){if(iFrameWidth==465){var the_iframe = document.getElementById(iframe_id);the_iframe.style.width=iFrameWidth+iFrameAddW+'px';the_iframe.style.height=iFrameHeight+iFrameAddH+'px';iFrameWidth=iFrameWidth+iFrameAddW;iFrameHeight=iFrameHeight+iFrameAddH;}}//--></script>
+
+<script type="text/javascript">var slideShowTimerQS=4;</script>
+<script type="text/javascript" src="/js/slide.js"></script>
+<script type="text/javascript" src="/js/cycleJS.js"></script>
+<script type="text/javascript" src="/js/pollv2.js"></script>
+<script type="text/javascript" src="/js/qsAjax.js"></script>
+
+<script type="text/javascript">
+$(document).ready(function(){
+$(".bPopupFullWidthNoReload").colorbox({close: "Close", width:"90%", height:"90%", iframe:true}); 
+$(".bPopupFullWidthNoReloadNoOverlayClose").colorbox({close: "Close", width:"90%", height:"90%", iframe:true, overlayClose: false}); 
+$(".bPopupFullWidthReload").colorbox({close: "Close", width:"90%", height:"90%", iframe:true, onClosed:function(){location.reload(true);}}); 
+$(".QSPP").colorbox({close: "Close", width:"750", height:"600", iframe:true}); 
+$(".QSPPR").colorbox({close: "Close", width:"750", height:"600", iframe:true, onClosed:function(){location.reload(true);}}); 
+$(".QSPPIMG").colorbox({photo:true});
+$(".QSPPAVATAR").colorbox({close: "Close", width:"720", height:"280", iframe:true});
+$(".QSFullScreen").colorbox({close: "Close", width:"100%", height:"100%", iframe:true}); 
+});
+</script>
+<style type="text/css">div#page {max-width: 900px;margin-left: auto;margin-right: auto;padding: 20px;} .back-to-top {position: fixed;bottom: 2em;right: 0px;text-decoration: none;color: #000000;font-size: 12px;padding: 1em;display: none;} .back-to-top:hover {}</style>
+  <a href="#" class="back-to-top"><img alt="backtotop" style="box-shadow:none !important;border-style:none !important" src="/fixedImages/arrows/1.png" /></a><script type="text/javascript">jQuery(document).ready(function() {var offset = 220;var duration = 500;jQuery(window).scroll(function() {if (jQuery(this).scrollTop() > offset) {jQuery('.back-to-top').fadeIn(duration);} else {jQuery('.back-to-top').fadeOut(duration);}});jQuery('.back-to-top').click(function(event) {event.preventDefault();jQuery('html, body').animate({scrollTop: 0}, duration);return false;})});</script></body> </html>
