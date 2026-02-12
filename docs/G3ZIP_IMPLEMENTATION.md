@@ -48,7 +48,7 @@ Extracts a single file from the open ZIP to the specified directory.
 
 ### List()
 Returns an array of strings containing the paths of all files inside the ZIP.
-- **Returns:** Array of strings
+- **Returns:** Array of strings (compatible with `For Each`)
 
 ### GetFileInfo(fileName)
 Returns a `Scripting.Dictionary` containing metadata about a file inside the ZIP.
@@ -74,10 +74,17 @@ Closes the ZIP file and finalizes writing (if in `Create` mode).
 ```vbscript
 <%
 Set zip = Server.CreateObject("G3ZIP")
+
 If zip.Create("temp/my_archive.zip") Then
+    ' Add a file from disk
     zip.AddFile "data.txt", "docs/data.txt"
-    zip.AddText "hello.txt", "Hello from AxonASP!"
+    
+    ' Add a file from a string
+    zip.AddText "greeting.txt", "Hello from AxonASP!"
+    
+    ' Add an entire folder
     zip.AddFolder "images", "gallery"
+    
     zip.Close()
     Response.Write "ZIP created successfully!"
 Else
@@ -86,20 +93,33 @@ End If
 %>
 ```
 
-## Example: Extracting a ZIP
+## Example: Extracting and Listing
 
 ```vbscript
 <%
 Set zip = Server.CreateObject("G3ZIP")
+
 If zip.Open("uploads/archive.zip") Then
+    Response.Write "Files inside ZIP (" & zip.Count & "):<br>"
+    
+    ' Iterate through files
     files = zip.List()
     For Each f In files
-        Response.Write "File: " & f & "<br>"
+        Response.Write "- " & f
+        
+        ' Get detailed info for each file
+        Set info = zip.GetFileInfo(f)
+        If Not info Is Nothing Then
+            Response.Write " (" & info.Item("Size") & " bytes)"
+        End If
+        Response.Write "<br>"
     Next
     
+    ' Extract everything
     If zip.ExtractAll("temp/extracted") Then
         Response.Write "Extracted successfully!"
     End If
+    
     zip.Close()
 End If
 %>

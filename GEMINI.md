@@ -128,6 +128,14 @@ Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAUL
 - `List()` - List files in ZIP
 - `GetFileInfo(name)` - Get file metadata
 
+**G3FC** (g3fc_lib.go)
+- `Create(output, sources, [pass], [opts])` - Create G3FC archive
+- `Extract(archive, dest, [pass])` - Extract all files
+- `List(archive, [pass], [unit], [details])` - List files in archive
+- `Find(archive, pattern, [pass], [regex])` - Search files
+- `ExtractSingle(archive, file, dest, [pass])` - Extract one file
+- `Info(archive, jsonOutput, [pass])` - Export metadata to JSON
+
 ### Standard COM Support
 
 **MSXML2.ServerXMLHTTP** (msxml_lib.go)
@@ -244,6 +252,7 @@ Detailed implementation guides for each library are in docs/ folder:
 - docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md
 - docs/G3FILEUPLOADER_IMPLEMENTATION.md
 - docs/G3ZIP_IMPLEMENTATION.md
+- docs/G3FC_IMPLEMENTATION.md
 
 3. Library Implementation Patterns
 

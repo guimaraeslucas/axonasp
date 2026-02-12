@@ -128,17 +128,15 @@ function Build-Binary {
     # ----------------------------------------------------
 
     Write-Info "Formating..."
-    # (Nota: gofmt não precisa rodar a cada build de arquitetura diferente, mas mantive seu original)
     $BuildCommand = "gofmt -w ./.." 
     Invoke-Expression $BuildCommand | Out-Null
 
     Write-Info "Generating $DisplayName..."
-    $BuildCommand = "go generate ./.."
+    $BuildCommand = "go generate ./..."
     Invoke-Expression $BuildCommand | Out-Null
 
     Write-Info "Building $DisplayName with version $FullVersion..."
     
-    # --- ALTERAÇÃO AQUI: Adicionado -ldflags ---
     $BuildCommand = "go build -trimpath -ldflags `"$LdFlags`" -o `"$OutputFile`" $SourcePath"
     
     # Executa o comando e captura saída de erro

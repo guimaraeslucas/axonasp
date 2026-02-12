@@ -61,6 +61,12 @@ func (z *G3ZIP) SetProperty(name string, value interface{}) {}
 func (z *G3ZIP) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
+	// Handle explicit CallMethod call (e.g. obj.CallMethod("MethodName", args))
+	if method == "callmethod" && len(args) > 0 {
+		actualMethod := fmt.Sprintf("%v", args[0])
+		return z.CallMethod(actualMethod, args[1:]...)
+	}
+
 	switch method {
 	case "open":
 		if len(args) < 1 {
@@ -372,12 +378,12 @@ func (z *G3ZIP) extractFileTo(f *zip.File, targetDir string) bool {
 }
 
 // List returns a slice of file names
-func (z *G3ZIP) List() []string {
+func (z *G3ZIP) List() []interface{} {
 	if z.mode != "r" || z.reader == nil {
-		return []string{}
+		return []interface{}{}
 	}
 
-	var list []string
+	var list []interface{}
 	for _, f := range z.reader.File {
 		list = append(list, f.Name)
 	}

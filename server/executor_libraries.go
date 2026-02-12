@@ -570,3 +570,31 @@ func (zl *ZIPLibrary) SetProperty(name string, value interface{}) error {
 	zl.lib.SetProperty(name, value)
 	return nil
 }
+
+// G3FCLibrary wraps G3FC for ASPLibrary interface compatibility
+type G3FCLibrary struct {
+	lib *G3FC
+}
+
+// NewG3FCLibrary creates a new G3FC library instance
+func NewG3FCLibrary(ctx *ExecutionContext) *G3FCLibrary {
+	return &G3FCLibrary{
+		lib: &G3FC{ctx: ctx},
+	}
+}
+
+// CallMethod calls a method on the G3FC library
+func (gl *G3FCLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return gl.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from the G3FC library
+func (gl *G3FCLibrary) GetProperty(name string) interface{} {
+	return gl.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on the G3FC library
+func (gl *G3FCLibrary) SetProperty(name string, value interface{}) error {
+	gl.lib.SetProperty(name, value)
+	return nil
+}

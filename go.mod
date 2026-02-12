@@ -4,17 +4,25 @@ go 1.25.6
 
 require (
 	github.com/denisenkom/go-mssqldb v0.12.3
+	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/go-ole/go-ole v1.3.0
 	github.com/joho/godotenv v1.5.1
+	github.com/klauspost/compress v1.18.4
+	github.com/klauspost/reedsolomon v1.13.2
 	golang.org/x/crypto v0.47.0
 	golang.org/x/net v0.49.0
+)
+
+require (
+	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 )
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	//github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	//github.com/josephspurrier/goversioninfo v1.5.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
