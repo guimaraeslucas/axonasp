@@ -542,3 +542,31 @@ func (dbl *G3DBLibrary) SetProperty(name string, value interface{}) error {
 	dbl.lib.SetProperty(name, value)
 	return nil
 }
+
+// ZIPLibrary wraps G3ZIP for ASPLibrary interface compatibility
+type ZIPLibrary struct {
+	lib *G3ZIP
+}
+
+// NewZIPLibrary creates a new ZIP library instance
+func NewZIPLibrary(ctx *ExecutionContext) *ZIPLibrary {
+	return &ZIPLibrary{
+		lib: &G3ZIP{ctx: ctx},
+	}
+}
+
+// CallMethod calls a method on the ZIP library
+func (zl *ZIPLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return zl.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from the ZIP library
+func (zl *ZIPLibrary) GetProperty(name string) interface{} {
+	return zl.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on the ZIP library
+func (zl *ZIPLibrary) SetProperty(name string, value interface{}) error {
+	zl.lib.SetProperty(name, value)
+	return nil
+}

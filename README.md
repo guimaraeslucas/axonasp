@@ -215,7 +215,7 @@ G3Pix AxonASP uses a `.env` file for configuration. All settings are optional wi
 | `SERVER_PORT` | `4050` | HTTP server port |
 | `WEB_ROOT` | `./www` | Root directory for ASP files |
 | `TIMEZONE` | `America/Sao_Paulo` | Server timezone |
-| `DEFAULT_PAGE` | `default.asp` | Default document name |
+| `DEFAULT_PAGE` | `index.asp,default.asp,...` | Default document hierarchy (comma-separated) |
 | `SCRIPT_TIMEOUT` | `30` | Script execution timeout (seconds) |
 | `DEBUG_ASP` | `FALSE` | Enable HTML stack traces in ASP files |
 | `ERROR_404_MODE` | `default` | 404 handling mode: `default`, `asp`, or `iis` |
@@ -832,6 +832,7 @@ axonasp/
 │   ├── SCRIPTING_OBJECTS_IMPLEMENTATION.md
 │   ├── WSCRIPT_SHELL_IMPLEMENTATION.md
 │   ├── MSXML2_IMPLEMENTATION.md
+│   ├── (OTHER LIBRARIES AND HELPERS)
 │   └── CUSTOM_FUNCTIONS.md
 ├── www/                    # Web root (your ASP files here)
 │   ├── default.asp         # Default document
@@ -870,6 +871,8 @@ axonasp/
 In `.env`:
 ```env
 DEBUG_ASP=TRUE
+#SQL Tracing Information (very verbose)
+SQL_TRACE=TRUE
 ```
 
 This enables error description for debugging on console.
@@ -883,8 +886,7 @@ G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
 - **Fast Startup**: Server starts in milliseconds
 - **Low Memory Footprint**: Minimal resource consumption
 - **Concurrent Request Handling**: Native Go concurrency for handling multiple requests
-- **Optimized Parsing**: Efficient VBScript lexer and parser
-- **Compiled Binary**: No interpreter overhead, runs as native code
+- **Optimized Parsing**: Efficient VBScript lexer and parser 
 
 ---
 
@@ -981,7 +983,8 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 - [x] ADOX for database schema management
 - [x] 60+ custom functions (Ax* functions)
 - [ ] Image creation
-- [ ] ZIP/G3FC support
+- [x] ZIP support
+- [ ] G3FC support
 - [ ] XML support
 - [ ] PDF support
 - [ ] WebSocket support

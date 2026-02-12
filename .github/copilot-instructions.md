@@ -12,7 +12,7 @@ Must use the standard ASP execution context.
 2. Development & Debugging
 Environment: Windows Powershell.
 Run: go run main.go
-Build: go build -o axonasp.exe -> ./axonasp.exe
+Build: ./build.ps1
 Testing: Access http://localhost:4050/tests/test_basics.asp or other test_*.asp files in www/tests/.
 ASP Debugging: Set <% debug_asp_code = "TRUE" %> in the ASP file for HTML stack traces.
 Compilation Rule: ALWAYS compile Go code after editing to verify success. Do not compile for pure ASP edits.
@@ -20,7 +20,7 @@ Compilation Rule: ALWAYS compile Go code after editing to verify success. Do not
 Try to use Powershell commands with the Yes option set by default
 Don't use CURL
 
-3. Coding Standards & Conventions
+1. Coding Standards & Conventions
 Language: *STRICT ENGLISH ONLY.* Translate any non-English comments/UI/Code and any output or answer immediately to English (US).
 
 VBScript Compatibility: *Strict adherence to VBScript and ASP Classic standards.*
@@ -40,7 +40,7 @@ New Libraries: Name as *_lib.go. Mimic VBScript nomenclature. Document only in E
 1. Configuration (.env)
 File: .env in root (defaults in code).
 
-Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAULT_PAGE (default.asp), SCRIPT_TIMEOUT (30), DEBUG_ASP (FALSE), SMTP settings.
+Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAULT_PAGE (index.asp,default.asp,...), SCRIPT_TIMEOUT (30), DEBUG_ASP (FALSE), SMTP settings.
 
 2. API & Library Reference
 
@@ -117,6 +117,16 @@ Keys: SERVER_PORT (4050), WEB_ROOT (./www), TIMEZONE (America/Sao_Paulo), DEFAUL
 - Extension validation: `BlockExtension()`, `AllowExtension()`, `SetUseAllowedOnly()`
 - `MaxFileSize` property for size limits (default 10MB)
 - Returns rich metadata: Size, MIME type, paths, timestamps
+
+**G3ZIP** (zip_lib.go)
+- `Create(path)` - Create new ZIP file
+- `Open(path)` - Open ZIP for reading
+- `AddFile(path, [name])` - Add file from disk
+- `AddFolder(path, [name])` - Add folder recursively
+- `AddText(name, content)` - Add file from string
+- `ExtractAll(target)` - Extract all contents
+- `List()` - List files in ZIP
+- `GetFileInfo(name)` - Get file metadata
 
 ### Standard COM Support
 
@@ -233,6 +243,7 @@ Detailed implementation guides for each library are in docs/ folder:
 - docs/ADODB_IMPLEMENTATION.md
 - docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md
 - docs/G3FILEUPLOADER_IMPLEMENTATION.md
+- docs/G3ZIP_IMPLEMENTATION.md
 
 3. Library Implementation Patterns
 
@@ -299,7 +310,7 @@ Prioritize secure, testable, and small implementations.
 
 6. Coding & Tooling Expectations
 - Run gofmt on touched Go files; keep ASCII unless a file already needs non-ASCII.
-- Compile after Go changes: go build -o axonasp.exe ./...
+- Compile after Go changes: ./build.ps1
 - Run tests when applicable: go test ./asp ./server ./VBScript-Go
 - For ASP-only changes, do not rebuild; validate by hitting http://localhost:4050/tests/<test>.asp
 - Favor explicit errors; avoid panics in request path; log via existing error handling helpers.

@@ -35,6 +35,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	_ "time/tzdata"
 
 	"g3pix.com.br/axonasp/asp"
 	"g3pix.com.br/axonasp/experimental"
@@ -48,7 +49,7 @@ var (
 	Port              = "4050"
 	RootDir           = "./www"
 	DefaultTimezone   = "America/Sao_Paulo"
-	DefaultPage       = "default.asp"
+	DefaultPages      = []string{"index.asp", "default.asp", "index.html", "default.html", "default.htm", "index.htm", "index.txt"}
 	ScriptTimeout     = 30 // in seconds
 	DebugASP          = false
 	CleanupSessions   = false
@@ -85,7 +86,17 @@ func init() {
 		DefaultTimezone = val
 	}
 	if val := os.Getenv("DEFAULT_PAGE"); val != "" {
-		DefaultPage = val
+		parts := strings.Split(val, ",")
+		var pages []string
+		for _, p := range parts {
+			trimmed := strings.TrimSpace(p)
+			if trimmed != "" {
+				pages = append(pages, trimmed)
+			}
+		}
+		if len(pages) > 0 {
+			DefaultPages = pages
+		}
 	}
 	if val := os.Getenv("SCRIPT_TIMEOUT"); val != "" {
 		if i, err := strconv.Atoi(val); err == nil {
@@ -175,6 +186,12 @@ func init() {
 
 	// Set timezone
 	os.Setenv("TZ", DefaultTimezone)
+	loc, err := time.LoadLocation(DefaultTimezone)
+	if err != nil {
+		fmt.Printf("Warning: Could not load timezone %s, using UTC: %v\n", DefaultTimezone, err)
+		loc = time.UTC
+	}
+	time.Local = loc
 }
 
 func cleanupSessionFiles() {
@@ -387,7 +404,24 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	path = r.URL.Path
 	if path == "/" {
-		path = "/" + DefaultPage
+		// Try each default page
+		found := false
+		for _, page := range DefaultPages {
+			fullPath := filepath.Join(RootDir, page)
+			if _, err := os.Stat(fullPath); err == nil {
+				path = "/" + page
+				found = true
+				break
+			}
+		}
+		if !found {
+			// If none found, fallback to the first one for the 404 to happen later
+			if len(DefaultPages) > 0 {
+				path = "/" + DefaultPages[0]
+			} else {
+				path = "/default.asp"
+			}
+		}
 	}
 
 	fullPath := filepath.Join(RootDir, path)
@@ -424,8 +458,18 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, redirectPath, http.StatusMovedPermanently)
 			return
 		}
-		fullPath = filepath.Join(fullPath, DefaultPage)
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+
+		found := false
+		for _, page := range DefaultPages {
+			checkPath := filepath.Join(fullPath, page)
+			if _, err := os.Stat(checkPath); err == nil {
+				fullPath = checkPath
+				found = true
+				break
+			}
+		}
+
+		if !found {
 			serveErrorPage(w, r, 404)
 			return
 		}

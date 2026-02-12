@@ -33,18 +33,21 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	_ "time/tzdata"
 
 	"g3pix.com.br/axonasp/server"
 	"github.com/joho/godotenv"
 )
 
 var (
-	listenAddr    string
-	webRoot       string
-	timezone      string
-	defaultPage   string
-	scriptTimeout int
-	debugASP      bool
+	ListenAddr      string
+	webRoot         string
+	timezone        string
+	defaultPages    []string
+	defaultPageFlag string
+	scriptTimeout   int
+	debugASP        bool
+	Version         = "0.0.0.0-dev"
 )
 
 func init() {
@@ -52,10 +55,24 @@ func init() {
 	_ = godotenv.Load()
 
 	// Command line flags
-	flag.StringVar(&listenAddr, "listen", getEnv("FCGI_LISTEN", "127.0.0.1:9000"), "FastCGI listen address (host:port or unix:/path/to/socket)")
+	flag.StringVar(&ListenAddr, "listen", getEnv("FCGI_LISTEN", "127.0.0.1:9000"), "FastCGI listen address (host:port or unix:/path/to/socket)")
 	flag.StringVar(&webRoot, "root", getEnv("WEB_ROOT", "./www"), "Web root directory")
 	flag.StringVar(&timezone, "timezone", getEnv("TIMEZONE", "America/Sao_Paulo"), "Server timezone")
-	flag.StringVar(&defaultPage, "default", getEnv("DEFAULT_PAGE", "default.asp"), "Default page")
+	defaultPages = []string{"index.asp", "default.asp", "index.html", "default.html", "default.htm", "index.htm", "index.txt"}
+	if val := os.Getenv("DEFAULT_PAGE"); val != "" {
+		parts := strings.Split(val, ",")
+		var pages []string
+		for _, p := range parts {
+			trimmed := strings.TrimSpace(p)
+			if trimmed != "" {
+				pages = append(pages, trimmed)
+			}
+		}
+		if len(pages) > 0 {
+			defaultPages = pages
+		}
+	}
+	flag.StringVar(&defaultPageFlag, "default", "", "Default page (overrides hierarchy)")
 	flag.IntVar(&scriptTimeout, "timeout", getEnvInt("SCRIPT_TIMEOUT", 30), "Script execution timeout in seconds")
 	flag.BoolVar(&debugASP, "debug", getEnvBool("DEBUG_ASP", false), "Enable ASP debug mode")
 }
@@ -85,7 +102,12 @@ func (d *dummyResponseWriter) WriteHeader(statusCode int) {
 func main() {
 	flag.Parse()
 
+	if defaultPageFlag != "" {
+		defaultPages = []string{defaultPageFlag}
+	}
+
 	// Set timezone
+	os.Setenv("TZ", timezone)
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
 		log.Printf("Warning: Could not load timezone %s, using UTC: %v", timezone, err)
@@ -158,15 +180,15 @@ func main() {
 
 	// Create FastCGI handler
 	handler := &FastCGIHandler{
-		webRoot:     webRoot,
-		defaultPage: defaultPage,
-		processor:   processor,
+		webRoot:      webRoot,
+		defaultPages: defaultPages,
+		processor:    processor,
 	}
 
 	// Determine listen type (TCP or Unix socket)
 	var listener net.Listener
-	if strings.HasPrefix(listenAddr, "unix:") {
-		socketPath := strings.TrimPrefix(listenAddr, "unix:")
+	if strings.HasPrefix(ListenAddr, "unix:") {
+		socketPath := strings.TrimPrefix(ListenAddr, "unix:")
 
 		// Remove existing socket file
 		os.Remove(socketPath)
@@ -181,31 +203,32 @@ func main() {
 
 		log.Printf("AxonASP FastCGI server listening on Unix socket: %s", socketPath)
 	} else {
-		listener, err = net.Listen("tcp", listenAddr)
+		listener, err = net.Listen("tcp", ListenAddr)
 		if err != nil {
-			log.Fatalf("Failed to listen on %s: %v", listenAddr, err)
+			log.Fatalf("Failed to listen on %s: %v", ListenAddr, err)
 		}
 
-		log.Printf("AxonASP FastCGI server listening on: %s", listenAddr)
+		log.Printf("AxonASP FastCGI server listening on: %s", ListenAddr)
+		log.Printf("Version: %s\n", Version)
 	}
 
 	log.Printf("Web root: %s", webRoot)
-	log.Printf("Default page: %s", defaultPage)
+	log.Printf("Default pages: %v", defaultPages)
 	log.Printf("Script timeout: %d seconds", scriptTimeout)
 	log.Printf("Debug mode: %v", debugASP)
-	log.Println("Ready to accept FastCGI requests...")
+	log.Println("Waiting FastCGI requests...")
 
 	// Serve FastCGI requests
 	if err := fcgi.Serve(listener, handler); err != nil {
-		log.Fatalf("FastCGI server error: %v", err)
+		log.Fatalf("AxonASPFastCGI server error: %v", err)
 	}
 }
 
 // FastCGIHandler implements http.Handler for FastCGI requests
 type FastCGIHandler struct {
-	webRoot     string
-	defaultPage string
-	processor   *server.ASPProcessor
+	webRoot      string
+	defaultPages []string
+	processor    *server.ASPProcessor
 }
 
 func (h *FastCGIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -224,9 +247,25 @@ func (h *FastCGIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		scriptName := r.URL.Path
 		if scriptName == "" || scriptName == "/" {
-			scriptName = "/" + h.defaultPage
+			found := false
+			for _, page := range h.defaultPages {
+				checkPath := filepath.Join(docRoot, page)
+				if _, err := os.Stat(checkPath); err == nil {
+					scriptFilename = checkPath
+					found = true
+					break
+				}
+			}
+			if !found {
+				if len(h.defaultPages) > 0 {
+					scriptFilename = filepath.Join(docRoot, h.defaultPages[0])
+				} else {
+					scriptFilename = filepath.Join(docRoot, "default.asp")
+				}
+			}
+		} else {
+			scriptFilename = filepath.Join(docRoot, filepath.FromSlash(scriptName))
 		}
-		scriptFilename = filepath.Join(docRoot, filepath.FromSlash(scriptName))
 	}
 
 	// Clean and validate the path
@@ -246,8 +285,16 @@ func (h *FastCGIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// If it's a directory, try default page
 	if fileInfo.IsDir() {
-		scriptFilename = filepath.Join(scriptFilename, h.defaultPage)
-		if _, err := os.Stat(scriptFilename); err != nil {
+		found := false
+		for _, page := range h.defaultPages {
+			checkPath := filepath.Join(scriptFilename, page)
+			if _, err := os.Stat(checkPath); err == nil {
+				scriptFilename = checkPath
+				found = true
+				break
+			}
+		}
+		if !found {
 			http.Error(w, "404 Not Found", http.StatusNotFound)
 			return
 		}

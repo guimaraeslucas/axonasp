@@ -1544,6 +1544,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewFileUploaderLibrary(ae.context), nil
 	case "G3DB", "DB":
 		return NewG3DBLibrary(ae.context), nil
+	case "G3ZIP", "ZIP":
+		return NewZIPLibrary(ae.context), nil
 
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":
