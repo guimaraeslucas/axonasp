@@ -255,6 +255,49 @@ End If
 	}
 }
 
+func TestClassPropertyGetMemberAccess(t *testing.T) {
+	aspCode := `<%
+Class cls_constant
+    Private p_sValue
+
+    Public Property Let sValue(v)
+        p_sValue = v
+    End Property
+
+    Public Property Get sValue()
+        sValue = p_sValue
+    End Property
+End Class
+
+Dim c
+Set c = New cls_constant
+c.sValue = "HelloProperty"
+
+If c.sValue = "HelloProperty" Then
+    Response.Write "PropertyGet=OK"
+Else
+    Response.Write "PropertyGet=FAIL(" & TypeName(c.sValue) & ":" & c.sValue & ")"
+End If
+%>`
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test.asp", nil)
+
+	executor := NewASPExecutor(&ASPProcessorConfig{
+		RootDir:       ".",
+		ScriptTimeout: 30,
+	})
+	err := executor.Execute(aspCode, "/test.asp", w, r, "test-session-propertyget")
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, "PropertyGet=OK") {
+		t.Fatalf("Property Get member access failed: %s", body)
+	}
+}
+
 // TestClassMemberWithCallMethodOnRecordsetLikeObject tests the real pattern:
 // class method assigns class member from an object's CallMethod result
 func TestClassMemberWithCallMethodOnRecordsetLikeObject(t *testing.T) {

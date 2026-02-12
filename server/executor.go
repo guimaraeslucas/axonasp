@@ -143,6 +143,8 @@ type ExecutionContext struct {
 	// Include tracking for AxIncludeOnce
 	includedOnce map[string]bool
 	includeMutex sync.Mutex
+
+	resumeOnError bool
 }
 
 // NewExecutionContext creates a new execution context
@@ -189,6 +191,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		cancelled:        false,
 		managedResources: make([]interface{}, 0),
 		includedOnce:     make(map[string]bool),
+		resumeOnError:    false,
 	}
 
 	// Initialize Server object with context reference
@@ -573,6 +576,30 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		//fmt.Printf("[DEBUG] GetVariable(rs): NOT FOUND!\n")
 	}
 	return nil, false
+}
+
+// GetGlobalVariable gets a variable directly from global scope (case-insensitive).
+// This bypasses local scopes and context objects.
+func (ec *ExecutionContext) GetGlobalVariable(name string) (interface{}, bool) {
+	nameLower := lowerKey(name)
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+	val, exists := ec.variables[nameLower]
+	return val, exists
+}
+
+// SetResumeOnError updates the current On Error Resume Next state.
+func (ec *ExecutionContext) SetResumeOnError(enabled bool) {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	ec.resumeOnError = enabled
+}
+
+// IsResumeOnError reports whether On Error Resume Next is currently active.
+func (ec *ExecutionContext) IsResumeOnError() bool {
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+	return ec.resumeOnError
 }
 
 // GetVariableFromParentScope gets a variable from the parent scope (for ByRef parameters)
@@ -1615,7 +1642,7 @@ func NewASPVisitor(ctx *ExecutionContext, executor *ASPExecutor) *ASPVisitor {
 		executor:      executor,
 		depth:         0,
 		withStack:     make([]interface{}, 0),
-		resumeOnError: false,
+		resumeOnError: ctx.IsResumeOnError(),
 		forceGlobal:   false,
 	}
 }
@@ -1655,6 +1682,7 @@ func (v *ASPVisitor) handleStatementError(err error) error {
 // VisitStatement executes a single statement from the AST
 
 func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
+	v.context.SetResumeOnError(v.resumeOnError)
 
 	if node == nil {
 
@@ -1736,10 +1764,12 @@ func (v *ASPVisitor) VisitStatement(node ast.Statement) error {
 		return nil
 	case *ast.OnErrorResumeNextStatement:
 		v.resumeOnError = true
+		v.context.SetResumeOnError(true)
 		v.context.Err.Clear()
 		return nil
 	case *ast.OnErrorGoTo0Statement:
 		v.resumeOnError = false
+		v.context.SetResumeOnError(false)
 		v.context.Err.Clear()
 		return nil
 	case *ast.ExitForStatement:
@@ -3518,6 +3548,17 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 				return v.executeSubWithRefs(sub, arguments, v)
 			}
 		}
+
+		// Fallback: if local/parent symbol shadows a function name with a non-callable value,
+		// check global scope for function/sub declarations.
+		if globalVal, exists := v.context.GetGlobalVariable(ident.Name); exists {
+			if fn, ok := globalVal.(*ast.FunctionDeclaration); ok {
+				return v.executeFunctionWithRefs(fn, arguments, v)
+			}
+			if sub, ok := globalVal.(*ast.SubDeclaration); ok {
+				return v.executeSubWithRefs(sub, arguments, v)
+			}
+		}
 	}
 
 	// Evaluate base expression
@@ -4073,11 +4114,6 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		return reqObj.GetProperty(propName), nil
 	}
 
-	// Handle generic property access
-	if aspObj, ok := obj.(asp.ASPObject); ok {
-		return aspObj.GetProperty(propName), nil
-	}
-
 	// Handle ResponseObject properties
 	if respObj, ok := obj.(*ResponseObject); ok {
 		propNameLower := strings.ToLower(propName)
@@ -4207,6 +4243,11 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 		return result, err
 	}
 
+	// Handle generic property access
+	if aspObj, ok := obj.(asp.ASPObject); ok {
+		return aspObj.GetProperty(propName), nil
+	}
+
 	// Handle Collection properties (Count, etc.)
 	if collection, ok := obj.(*Collection); ok {
 		propNameLower := strings.ToLower(propName)
@@ -4299,6 +4340,7 @@ func toString(val interface{}) string {
 	if val == nil {
 		return ""
 	}
+	val = normalizeOLEValue(val)
 	switch v := val.(type) {
 	case EmptyValue:
 		return ""
@@ -4307,6 +4349,9 @@ func toString(val interface{}) string {
 	case string:
 		return v
 	case []byte:
+		if decoded, ok := decodeLikelyUTF16LE(v); ok {
+			return normalizeOLEString(decoded)
+		}
 		// Binary data from BinaryRead - convert to string preserving each byte as a rune
 		// This is similar to Latin-1 encoding where each byte maps directly to a Unicode code point
 		runes := make([]rune, len(v))
@@ -5668,6 +5713,7 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 					evaluatedArgs[i] = val
 				}
 			}
+
 		}
 	}
 

@@ -22,6 +22,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math"
@@ -30,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	vb "g3pix.com.br/axonasp/vbscript"
 	"g3pix.com.br/axonasp/vbscript/ast"
@@ -62,7 +64,7 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 			//fmt.Printf("[DEBUG] ExecuteGlobal: called with no args!\n")
 			return nil, true
 		}
-		code := toString(args[0])
+		code := toExecutableCode(args[0])
 		if code == "" {
 			//fmt.Printf("[DEBUG] ExecuteGlobal: called with empty code!\n")
 			return nil, true
@@ -128,6 +130,7 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// Execute in global scope - use NewASPVisitorGlobal to force variables into global scope
 		// This is critical for ExecuteGlobal called from within class methods (like aspL.exec)
 		visitor := NewASPVisitorGlobal(ctx, ctx.currentExecutor)
+		visitor.resumeOnError = true
 
 		// Hoist declarations (Classes, Subs, Functions) before execution to support forward references
 		if ctx.currentExecutor != nil {
@@ -171,7 +174,7 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		if len(args) == 0 {
 			return nil, true
 		}
-		code := toString(args[0])
+		code := toExecutableCode(args[0])
 		if code == "" {
 			return nil, true
 		}
@@ -201,6 +204,7 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		// Execute in the current context
 		// Use current executor to preserve class method access
 		visitor := NewASPVisitor(ctx, ctx.currentExecutor)
+		visitor.resumeOnError = true
 
 		// Hoist declarations (Classes, Subs, Functions) before execution to support forward references
 		if ctx.currentExecutor != nil {
@@ -660,6 +664,9 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 		}
 		str := toString(args[0])
 		delim := toString(args[1])
+		if delim == "" {
+			return NewVBArrayFromValues(0, []interface{}{str}), true
+		}
 
 		// Handle limit parameter
 		limit := -1
@@ -1418,6 +1425,65 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	default:
 		return nil, false
 	}
+}
+
+func toExecutableCode(arg interface{}) string {
+	normalized := normalizeOLEValue(arg)
+
+	switch v := normalized.(type) {
+	case []byte:
+		if decoded, ok := decodeLikelyUTF16LE(v); ok {
+			return normalizeOLEString(decoded)
+		}
+		return normalizeOLEString(string(v))
+	case string:
+		return normalizeOLEString(v)
+	default:
+		return normalizeOLEString(toString(normalized))
+	}
+}
+
+func decodeLikelyUTF16LE(data []byte) (string, bool) {
+	if len(data) < 2 || len(data)%2 != 0 {
+		return "", false
+	}
+
+	if bytes.HasPrefix(data, []byte{0xFF, 0xFE}) {
+		data = data[2:]
+	} else if bytes.HasPrefix(data, []byte{0xFE, 0xFF}) {
+		return "", false
+	}
+
+	if len(data) < 2 || len(data)%2 != 0 {
+		return "", false
+	}
+
+	nullOddCount := 0
+	pairCount := len(data) / 2
+	for i := 1; i < len(data); i += 2 {
+		if data[i] == 0 {
+			nullOddCount++
+		}
+	}
+
+	if pairCount == 0 || nullOddCount*3 < pairCount {
+		return "", false
+	}
+
+	u16 := make([]uint16, 0, pairCount)
+	for i := 0; i+1 < len(data); i += 2 {
+		u := binary.LittleEndian.Uint16(data[i : i+2])
+		u16 = append(u16, u)
+	}
+
+	if n := len(u16); n > 0 {
+		for n > 0 && u16[n-1] == 0 {
+			n--
+		}
+		u16 = u16[:n]
+	}
+
+	return string(utf16.Decode(u16)), true
 }
 
 // toANSIBytes converts a Go string to a best-effort ANSI byte slice, matching VBScript AscB/LenB semantics.
