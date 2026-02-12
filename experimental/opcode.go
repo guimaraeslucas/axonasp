@@ -64,12 +64,15 @@ const (
 	OP_NEW
 	OP_GET_MEMBER
 	OP_SET_MEMBER
+	OP_CALL_MEMBER
+	OP_SET_INDEXED
 
 	// Optimized Globals/Locals
 	OP_GET_GLOBAL_FAST
 	OP_SET_GLOBAL_FAST
 	OP_INC_LOCAL
 	OP_INC_GLOBAL_FAST
+	OP_FALLBACK
 )
 
 // Definition helps in debugging and disassembly
@@ -121,10 +124,13 @@ var definitions = map[Opcode]*Definition{
 	OP_NEW:             {"OP_NEW", []int{2}},        // 2-byte index constant (class name)
 	OP_GET_MEMBER:      {"OP_GET_MEMBER", []int{2}}, // 2-byte index constant (prop name)
 	OP_SET_MEMBER:      {"OP_SET_MEMBER", []int{2}},
+	OP_CALL_MEMBER:     {"OP_CALL_MEMBER", []int{2, 1}}, // 2-byte index constant (method name), 1-byte arg count
+	OP_SET_INDEXED:     {"OP_SET_INDEXED", []int{1}},    // 1-byte index count
 	OP_GET_GLOBAL_FAST: {"OP_GET_GLOBAL_FAST", []int{2}},
 	OP_SET_GLOBAL_FAST: {"OP_SET_GLOBAL_FAST", []int{2}},
 	OP_INC_LOCAL:       {"OP_INC_LOCAL", []int{1}},
 	OP_INC_GLOBAL_FAST: {"OP_INC_GLOBAL_FAST", []int{2}},
+	OP_FALLBACK:        {"OP_FALLBACK", []int{2}},
 }
 
 func Lookup(op byte) (*Definition, bool) {

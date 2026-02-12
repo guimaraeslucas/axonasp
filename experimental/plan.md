@@ -1,6 +1,6 @@
 # Incremental Plan: AST to Bytecode VM
 
-This plan outlines the steps to migrate AxonASP from an AST-walking interpreter to a Bytecode Virtual Machine.
+This plan outlines the steps to migrate AxonASP from an AST-walking interpreter to a Bytecode Virtual Machine. Don't modify the AST interpreter or the main interpreter. This is a second way to interpret our asp code.
 
 ## Phase 1: Foundation (Current Step)
 - [x] Analyze current AST.
@@ -27,20 +27,18 @@ This plan outlines the steps to migrate AxonASP from an AST-walking interpreter 
 - [x] Map existing `asp/*` and `server/*` libraries (G3JSON, ADODB, etc.) to the VM if user select VM in .env (Mapped via HostEnvironment interface).
 - [x] Implement `OP_CALL_EXTERNAL` or similar to bridge VM to Go host functions if user select VM in .env (Implemented via OP_CALL and BuiltinFunction).
 - [x] Update `server/executor.go` to optionally use the VM instead of the AST walker if user select VM in .env.
-- [ ] Implement add idiv, notOp, concat, and toString helper functions in vm.go,
-- [ ] Implement needed compiler features like MemberExpression alongside FunctionDeclaration and ClassDeclaration for proper method invocation.
-- [ ] Implement missing handling for the AST NothingLiteral and the VM opcode for OP_NOTHING
-- [ ] Optimize "hot paths" (e.g., specific opcodes for common operations like `i = i + 1`).
-- [ ] Optimize variable lookups (resolve names to indices at compile time where possible).
-- [ ] Implement ast.ClassDeclaration and experimental.BuiltinFunction with gob due to interface encoding needs
-- [ ] Implement class and function compilation alongside updating the bytecode cache registrations. 
-- [ ] extend the server's VM host adapter to set variables using the ExecutionContext's SetVariable method.
-- [ ] extend the VM to when something is not implemented, try to run from the AST walker
+- [x] Implement add idiv, notOp, concat, and toString helper functions in vm.go,
+- [x] Implement needed compiler features like MemberExpression alongside FunctionDeclaration and ClassDeclaration for proper method invocation and anything that you judge necessary to run ASP script.
+- [x] Implement missing handling for the AST NothingLiteral and the VM opcode for OP_NOTHING
+- [x] Optimize "hot paths" (e.g., specific opcodes for common operations like `i = i + 1`).
+- [x] Optimize variable lookups (resolve names to indices at compile time where possible).
+- [x] Implement `ast.ClassDeclaration` and `experimental.BuiltinFunction` with `gob` due to interface encoding needs
+- [x] Implement class and function compilation alongside updating the bytecode cache registrations. 
+- [x] extend the VM to when something is not implemented, try to run from the AST walker
 
 
 ## Phase 5: Optimization & Caching
 - [ ] Implement Bytecode caching (serialize `Bytecode` struct to disk/memory).
-
+- [ ] extend the server's VM host adapter to set variables using the ExecutionContext's SetVariable method.
 ## Phase 6: Full Migration
 - [ ] Run full test suite (`www/tests/*.asp`) against the VM.
-- [ ] Deprecate AST walker.

@@ -260,6 +260,7 @@ func registerBytecodeGobTypes() {
 	gob.Register(VBScriptEmpty{})
 	gob.Register(&Bytecode{})
 	gob.Register(&Function{})
+	gob.Register(&CompiledClass{})
 	gob.Register(&BuiltinFunction{})
 	gob.Register(&ast.ClassDeclaration{})
 }

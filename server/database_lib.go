@@ -25,10 +25,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf16"
 
 	_ "github.com/denisenkom/go-mssqldb"
 	"github.com/go-ole/go-ole"
@@ -37,6 +40,100 @@ import (
 	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 )
+
+var (
+	sqlTraceEnabled bool
+	sqlTraceOnce    sync.Once
+)
+
+func shouldTraceSQL() bool {
+	sqlTraceOnce.Do(func() {
+		sqlTraceEnabled = strings.EqualFold(strings.TrimSpace(os.Getenv("SQL_TRACE")), "TRUE")
+	})
+	return sqlTraceEnabled
+}
+
+var accessDateFuncRegex = regexp.MustCompile(`(?i)\b(date|curdate|getdate)\(\)`)
+
+func normalizeAccessDateFunctions(sqlText string) string {
+	return accessDateFuncRegex.ReplaceAllStringFunc(sqlText, func(match string) string {
+		switch strings.ToLower(match) {
+		case "getdate()":
+			return "Now()"
+		default:
+			return "Date()"
+		}
+	})
+}
+
+func normalizeOLEValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case *ole.VARIANT:
+		if v == nil {
+			return nil
+		}
+		return normalizeOLEValue(v.Value())
+	case ole.VARIANT:
+		return normalizeOLEValue(v.Value())
+	case []uint16:
+		trimmed := trimTrailingZeroU16(v)
+		return normalizeOLEString(string(utf16.Decode(trimmed)))
+	case string:
+		return normalizeOLEString(v)
+	default:
+		return value
+	}
+}
+
+func trimTrailingZeroU16(value []uint16) []uint16 {
+	trimmed := value
+	for len(trimmed) > 0 && trimmed[len(trimmed)-1] == 0 {
+		trimmed = trimmed[:len(trimmed)-1]
+	}
+	return trimmed
+}
+
+func normalizeOLEString(value string) string {
+	if value == "" {
+		return value
+	}
+	if strings.IndexByte(value, 0) >= 0 {
+		return strings.ReplaceAll(value, "\x00", "")
+	}
+	return value
+}
+
+func trimForSQLTrace(value string, max int) string {
+	if max <= 0 || len(value) <= max {
+		return value
+	}
+	return value[:max] + "..."
+}
+
+func formatSQLParams(params []interface{}) string {
+	if len(params) == 0 {
+		return "[]"
+	}
+	parts := make([]string, 0, len(params))
+	for _, param := range params {
+		parts = append(parts, fmt.Sprintf("%T=%v", param, param))
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+func logSQLTrace(ctx *ExecutionContext, action string, sqlText string, params []interface{}, driver string, err error) {
+	file := ""
+	if ctx != nil {
+		file = ctx.CurrentFile
+	}
+	sqlText = trimForSQLTrace(sqlText, 2000)
+	paramsText := formatSQLParams(params)
+	if err != nil {
+		fmt.Printf("[SQL TRACE] %s | driver=%s | file=%s | sql=%s | params=%s | err=%s\n", action, driver, file, sqlText, paramsText, err.Error())
+		return
+	}
+	fmt.Printf("[SQL TRACE] %s | driver=%s | file=%s | sql=%s | params=%s\n", action, driver, file, sqlText, paramsText)
+}
 
 // --- ADODB.Error ---
 
@@ -246,7 +343,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			return nil
 		}
 
-		cmdText := fmt.Sprintf("%v", args[0])
+		cmdText := toString(args[0])
 		params := []interface{}{}
 		if len(args) >= 2 {
 			if vbArr, ok := toVBArray(args[1]); ok {
@@ -256,11 +353,27 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			}
 		}
 
+		if strings.TrimSpace(cmdText) == "" {
+			err := fmt.Errorf("empty SQL command")
+			driver := c.dbDriver
+			if c.oleConnection != nil {
+				driver = "ole"
+			}
+			if shouldTraceSQL() {
+				logSQLTrace(c.ctx, "execute", cmdText, params, driver, err)
+			}
+			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+			return NewADORecordset(c.ctx)
+		}
+
 		// Handle SQL driver connections
 		if c.db != nil {
 			if isQueryStatement(cmdText) {
 				rs := NewADORecordset(c.ctx)
 				if err := rs.lib.openRecordsetWithParams(cmdText, c, params); err != nil {
+					if shouldTraceSQL() {
+						logSQLTrace(c.ctx, "query", cmdText, params, c.dbDriver, err)
+					}
 					c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 					return nil
 				}
@@ -269,6 +382,9 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 
 			result, err := c.execStatement(cmdText, params)
 			if err != nil {
+				if shouldTraceSQL() {
+					logSQLTrace(c.ctx, "exec", cmdText, params, c.dbDriver, err)
+				}
 				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 				return nil
 			}
@@ -278,8 +394,15 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 
 		// Handle OLE/Access connections - return Recordset
 		if c.oleConnection != nil {
+			cmdText = normalizeAccessDateFunctions(cmdText)
+			if shouldTraceSQL() {
+				logSQLTrace(c.ctx, "ole-execute", cmdText, nil, "ole", nil)
+			}
 			result, err := oleutil.CallMethod(c.oleConnection, "Execute", cmdText)
 			if err != nil {
+				if shouldTraceSQL() {
+					logSQLTrace(c.ctx, "ole-execute", cmdText, nil, "ole", err)
+				}
 				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
 				return nil
 			}
@@ -288,6 +411,17 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 				oleRs := result.ToIDispatch()
 				if oleRs != nil {
 					return NewADOOLERecordset(NewADODBOLERecordset(oleRs, c.ctx))
+				}
+			}
+
+			if isQueryStatement(cmdText) {
+				rs := NewADORecordset(c.ctx)
+				rs.lib.openOLERecordset([]interface{}{cmdText, c}, c)
+				if rs.lib.oleRecordset != nil {
+					if shouldTraceSQL() {
+						logSQLTrace(c.ctx, "ole-execute-fallback", cmdText, nil, "ole", nil)
+					}
+					return rs
 				}
 			}
 			return nil
@@ -378,10 +512,21 @@ func (c *ADODBConnection) execStatement(sqlText string, params []interface{}) (s
 	}
 
 	prepared := rewritePlaceholders(sqlText, c.dbDriver)
-	if c.tx != nil {
-		return c.tx.Exec(prepared, params...)
+	if shouldTraceSQL() {
+		logSQLTrace(c.ctx, "exec", prepared, params, c.dbDriver, nil)
 	}
-	return c.db.Exec(prepared, params...)
+	if c.tx != nil {
+		result, err := c.tx.Exec(prepared, params...)
+		if err != nil && shouldTraceSQL() {
+			logSQLTrace(c.ctx, "exec", prepared, params, c.dbDriver, err)
+		}
+		return result, err
+	}
+	result, err := c.db.Exec(prepared, params...)
+	if err != nil && shouldTraceSQL() {
+		logSQLTrace(c.ctx, "exec", prepared, params, c.dbDriver, err)
+	}
+	return result, err
 }
 
 func (c *ADODBConnection) queryRows(sqlText string, params []interface{}) (*sql.Rows, error) {
@@ -390,10 +535,21 @@ func (c *ADODBConnection) queryRows(sqlText string, params []interface{}) (*sql.
 	}
 
 	prepared := rewritePlaceholders(sqlText, c.dbDriver)
-	if c.tx != nil {
-		return c.tx.Query(prepared, params...)
+	if shouldTraceSQL() {
+		logSQLTrace(c.ctx, "query", prepared, params, c.dbDriver, nil)
 	}
-	return c.db.Query(prepared, params...)
+	if c.tx != nil {
+		rows, err := c.tx.Query(prepared, params...)
+		if err != nil && shouldTraceSQL() {
+			logSQLTrace(c.ctx, "query", prepared, params, c.dbDriver, err)
+		}
+		return rows, err
+	}
+	rows, err := c.db.Query(prepared, params...)
+	if err != nil && shouldTraceSQL() {
+		logSQLTrace(c.ctx, "query", prepared, params, c.dbDriver, err)
+	}
+	return rows, err
 }
 
 func normalizeAccessProvider(connStr string) string {
@@ -1539,6 +1695,9 @@ func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) in
 
 func (rs *ADODBRecordset) openRecordsetWithParams(sqlStr string, conn *ADODBConnection, params []interface{}) error {
 	rs.Source = sqlStr
+	if shouldTraceSQL() {
+		logSQLTrace(rs.ctx, "recordset-open", sqlStr, params, conn.dbDriver, nil)
+	}
 
 	// Use SQL driver connection
 	if conn.db == nil {
@@ -1550,6 +1709,9 @@ func (rs *ADODBRecordset) openRecordsetWithParams(sqlStr string, conn *ADODBConn
 
 	rows, err := conn.queryRows(sqlStr, params)
 	if err != nil {
+		if shouldTraceSQL() {
+			logSQLTrace(rs.ctx, "recordset-open", sqlStr, params, conn.dbDriver, err)
+		}
 		return err
 	}
 	defer rows.Close()
@@ -1640,7 +1802,14 @@ func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnec
 
 	openArgs := make([]interface{}, 0, 5)
 	if len(args) > 0 {
-		openArgs = append(openArgs, args[0])
+		if sqlText, ok := args[0].(string); ok {
+			openArgs = append(openArgs, normalizeAccessDateFunctions(sqlText))
+		} else {
+			openArgs = append(openArgs, args[0])
+		}
+	}
+	if len(args) > 0 && shouldTraceSQL() {
+		logSQLTrace(rs.ctx, "ole-recordset-open", fmt.Sprintf("%v", openArgs[0]), nil, "ole", nil)
 	}
 	if len(args) >= 2 {
 		switch args[1].(type) {
@@ -1691,6 +1860,9 @@ func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnec
 	}
 
 	if _, err = oleutil.CallMethod(disp, "Open", openArgs...); err != nil {
+		if shouldTraceSQL() {
+			logSQLTrace(rs.ctx, "ole-recordset-open", fmt.Sprintf("%v", openArgs[0]), nil, "ole", err)
+		}
 		disp.Release()
 		unknown.Release()
 		return nil
@@ -2618,9 +2790,56 @@ func (rs *ADODBOLERecordset) getFieldValue(fieldName interface{}) (interface{}, 
 		return nil, false
 	}
 	defer fieldsDisp.Release()
+	itemKey := fieldName
+	switch v := fieldName.(type) {
+	case int:
+		itemKey = int32(v)
+	case int32:
+		itemKey = v
+	case int64:
+		itemKey = int32(v)
+	case float64:
+		itemKey = int32(v)
+	}
 
-	fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", fieldName)
+	fieldResult, err := oleutil.GetProperty(fieldsDisp, "Item", itemKey)
 	if err != nil {
+		name, ok := fieldName.(string)
+		if !ok {
+			return nil, false
+		}
+		countResult, countErr := oleutil.GetProperty(fieldsDisp, "Count")
+		if countErr != nil {
+			return nil, false
+		}
+		count, ok := countResult.Value().(int32)
+		if !ok {
+			return nil, false
+		}
+		for i := int32(0); i < count; i++ {
+			idxFieldResult, idxErr := oleutil.GetProperty(fieldsDisp, "Item", i)
+			if idxErr != nil {
+				continue
+			}
+			idxFieldDisp := idxFieldResult.ToIDispatch()
+			if idxFieldDisp == nil {
+				continue
+			}
+			nameResult, nameErr := oleutil.GetProperty(idxFieldDisp, "Name")
+			if nameErr != nil {
+				idxFieldDisp.Release()
+				continue
+			}
+			if strings.EqualFold(nameResult.ToString(), name) {
+				valueResult, valueErr := oleutil.GetProperty(idxFieldDisp, "Value")
+				idxFieldDisp.Release()
+				if valueErr != nil {
+					return nil, false
+				}
+				return normalizeOLEValue(valueResult.Value()), true
+			}
+			idxFieldDisp.Release()
+		}
 		return nil, false
 	}
 	fieldDisp := fieldResult.ToIDispatch()
@@ -2633,7 +2852,13 @@ func (rs *ADODBOLERecordset) getFieldValue(fieldName interface{}) (interface{}, 
 	if err != nil {
 		return nil, false
 	}
-	return valueResult.Value(), true
+	value := normalizeOLEValue(valueResult.Value())
+	if shouldTraceSQL() {
+		if name, ok := fieldName.(string); ok && strings.EqualFold(name, "sorderby") {
+			fmt.Printf("[SQL TRACE] field=%s type=%T value=%v\n", name, value, value)
+		}
+	}
+	return value, true
 }
 
 func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interface{}) error {

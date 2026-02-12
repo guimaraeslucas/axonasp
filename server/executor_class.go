@@ -25,6 +25,7 @@ import (
 	//"runtime"
 	"strings"
 
+	"g3pix.com.br/axonasp/experimental"
 	"g3pix.com.br/axonasp/vbscript/ast"
 )
 
@@ -65,6 +66,9 @@ type ClassDef struct {
 	Properties     map[string][]PropertyDef            // Properties can be overloaded by type (Get/Let/Set)
 	PrivateMethods map[string]ast.Node                 // Private Subs/Functions
 	DefaultMethod  string                              // Lowercase name of the default member
+
+	// Experimental: Compiled methods for VM
+	CompiledMethods map[string]*experimental.Function
 }
 
 // ClassInstance represents an instance of a Class
@@ -145,7 +149,8 @@ func (ci *ClassInstance) GetProperty(name string) (interface{}, error) {
 	// 1. Try Public Variables
 	if vDef, ok := ci.ClassDef.Variables[nameLower]; ok {
 		if vDef.Visibility == VisPublic {
-			return ci.Variables[nameLower], nil
+			val := ci.Variables[nameLower]
+			return val, nil
 		}
 	}
 
@@ -368,6 +373,14 @@ func (ci *ClassInstance) SetMember(name string, value interface{}) (bool, error)
 	return false, nil
 }
 
+// GetMethod returns a compiled method if available
+func (ci *ClassInstance) GetMethod(name string) *experimental.Function {
+	if ci.ClassDef == nil || ci.ClassDef.CompiledMethods == nil {
+		return nil
+	}
+	return ci.ClassDef.CompiledMethods[strings.ToLower(name)]
+}
+
 // executeMethod executes a method or function node within the class context
 func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (interface{}, error) {
 	// Debug: trace all executeMethod calls (commented out for performance)
@@ -480,6 +493,14 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 	// Set currentFunctionName so that return value assignment (e.g., "json = value") works correctly
 	// This prevents infinite recursion when the function name is used inside the function body
 	v.currentFunctionName = funcName
+
+	// Hoist Dim declarations to the top of the method body (VBScript hoisting semantics)
+	bodyNodes := make([]ast.Node, len(body))
+	for i, s := range body {
+		bodyNodes[i] = s
+	}
+	v.collectAndDefineDimVars(bodyNodes)
+
 	if strings.ToLower(funcName) == "json" {
 		//fmt.Printf("[DEBUG] executeMethod for 'json' function, currentFunctionName set to: %q, body has %d statements\n", funcName, len(body))
 	}

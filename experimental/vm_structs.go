@@ -19,6 +19,8 @@ type HostEnvironment interface {
 	SetVariable(name string, value interface{}) error
 	CallFunction(name string, args []interface{}) (interface{}, error)
 	CreateObject(progID string) (interface{}, error)
+	ExecuteAST(node interface{}) (interface{}, error)
+	SetIndexed(obj interface{}, indexes []interface{}, value interface{}) error
 }
 
 // BuiltinFunction represents a host-provided function (e.g., Len, Mid)
@@ -34,6 +36,13 @@ type Function struct {
 	LocalCount     int // Number of local variables including parameters
 }
 
+// CompiledClass represents a compiled VBScript class
+type CompiledClass struct {
+	Name      string
+	Methods   map[string]*Function
+	Variables []string // Names of public variables
+}
+
 // Value represents a VBScript value (can be anything: int, string, object, etc.)
 type Value interface{}
 
@@ -46,9 +55,10 @@ type Bytecode struct {
 
 // CallFrame represents a function call frame
 type CallFrame struct {
-	Func        *Function
-	IP          int // Instruction Pointer
-	BasePointer int // Where on the stack this frame's locals start
+	Func          *Function
+	IP            int // Instruction Pointer
+	BasePointer   int // Where on the stack this frame's locals start
+	ContextObject Value
 }
 
 // VM is the Virtual Machine

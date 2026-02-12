@@ -63,6 +63,12 @@ go build -o axonaspcgi.exe ./axonaspcgi
 # Then configure your web server to proxy .asp files to port 9000
 ```
 
+**Install Linux (RPM distro - nginx + AxonASP proxy):**
+```bash
+wget https://raw.githubusercontent.com/guimaraeslucas/axonasp/main/linux_install.sh -O linux_install.sh && sed -i 's/\r$//' linux_install.sh && chmod +x linux_install.sh && bash linux_install.sh
+# Then configure your web server to proxy .asp files to port 9000
+```
+
 ---
 
 ## 📦 Installation

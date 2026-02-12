@@ -38,5 +38,5 @@
             "CharsetID": "04B0"
         }
     },
-    "IconPath": "../resources/icon_cgi.ico"
+    "IconPath": "icon_cgi.ico"
 }

@@ -20,7 +20,7 @@
  */
 package main
 
-//go:generate goversioninfo -icon=../resources/icon_cgi.ico
+//go:generate goversioninfo -icon=icon_cgi.ico
 
 import (
 	"flag"

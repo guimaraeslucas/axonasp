@@ -61,6 +61,7 @@ var (
 	BlockedExtensions = ".asax,.ascx,.master,.skin,.browser,.sitemap,.config,.cs,.csproj,.vb,.vbproj,.webinfo,.licx,.resx,.resources,.mdb,.vjsproj,.java,.jsl,.ldb,.dsdgm,.ssdgm,.lsad,.ssmap,.cd,.dsprototype,.lsaprototype,.sdm,.sdmDocument,.mdf,.ldf,.ad,.dd,.ldd,.sd,.adprototype,.lddprototype,.exclude,.refresh,.compiled,.msgx,.vsdisco,.rules,.asa,.inc,.exe,.dll,.env,.config,.htaccess,.env.local,.json,.yaml,.yml"
 	Error404Mode      = "default" // "default" or "IIS"
 	COMProviderMode   = "auto"    // "auto" or "code"
+	Version           = "0.0.0.0-dev"
 )
 
 // Global web.config parser
@@ -222,10 +223,11 @@ func isBlockedExtension(ext string) bool {
 }
 
 func main() {
+
 	fmt.Print("\033[2K")
 	fmt.Printf("\033[48;5;240m\033[37mStarting G3pix AxonASP on http://localhost:%s ► \033[0m\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)
-
+	fmt.Printf("Version: %s\n", Version)
 	// Initialize web.config parser
 	webConfigParser = server.NewWebConfigParser(RootDir)
 	if err := webConfigParser.Load(); err != nil {

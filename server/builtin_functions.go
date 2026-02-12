@@ -810,8 +810,8 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "instr":
 		// INSTR([start], string1, string2, [compare]) - find substring position
 		var s1, s2 string
-		start := 1     // VBScript default start is 1
-		compare := -1  // -1 means use default (binary)
+		start := 1    // VBScript default start is 1
+		compare := -1 // -1 means use default (binary)
 		if len(args) == 2 {
 			// InStr(string1, string2)
 			s1 = toString(args[0])

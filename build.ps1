@@ -1,6 +1,24 @@
-# AxonASP Build Script
-# Copyright (c) 2025 Lucas RH Guimaraes (G3Pix)
-# Licensed under the MIT License
+#                  AxonASP Build Script
+#
+# AxonASP Server
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# Developed by Lucas Guimarães - G3pix Ltda
+# Contact: https://g3pix.com.br
+# Project URL: https://g3pix.com.br/axonasp
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Attribution Notice:
+# If this software is used in other projects, the name "AxonASP Server"
+# must be cited in the documentation or "About" section.
+#
+# Contribution Policy:
+# Modifications to the core source code of AxonASP Server must be
+# made available under this same license terms.
+#
 
 param(
     [Parameter(Mandatory = $false)]
@@ -17,6 +35,30 @@ param(
     [Parameter(Mandatory = $false)]
     [switch]$Test
 )
+
+# --- AUTOMATIC VERSION CONFIGURATION ---
+$Major = "1"
+$Minor = "0"
+$Patch = "0"
+$Revision = "0"
+
+try {
+    # Try to get the commit count (Patch)
+    $GitCount = git rev-list --count HEAD
+    if ($LASTEXITCODE -eq 0) { $Patch = $GitCount.Trim() }
+
+    # Try to get the short hash (Revision)
+    $GitHash = git rev-parse --short HEAD
+    if ($LASTEXITCODE -eq 0) { $Revision = $GitHash.Trim() }
+}
+catch {
+    Write-Warning "Git not found or not a valid repository. Using default versioning."
+}
+
+# Final format: 0.0.150.a1b2c
+$FullVersion = "$Major.$Minor.$Patch.$Revision"
+Write-Host "Build Version: $FullVersion" -ForegroundColor Cyan
+# ------------------------------------------------
 
 # Color output functions
 function Write-Success {
@@ -79,16 +121,27 @@ function Build-Binary {
     $OutputFile = "${OutputName}${Extension}"
     $DisplayName = "$OutputName ($TargetOS/$TargetArch)"
     
+    # --- ALTERAÇÃO AQUI: Definindo as Flags do Linker ---
+    # Injeta a versão na variável 'main.Version' (Ajuste o caminho do pacote se necessário)
+    # O ` escapa as aspas para o PowerShell passar corretamente para o Go
+    $LdFlags = "-X main.Version=$FullVersion"
+    # ----------------------------------------------------
+
     Write-Info "Formating..."
-    $BuildCommand = "gofmt -w ./.."
+    # (Nota: gofmt não precisa rodar a cada build de arquitetura diferente, mas mantive seu original)
+    $BuildCommand = "gofmt -w ./.." 
+    Invoke-Expression $BuildCommand | Out-Null
 
     Write-Info "Generating $DisplayName..."
     $BuildCommand = "go generate ./.."
+    Invoke-Expression $BuildCommand | Out-Null
 
-    Write-Info "Building $DisplayName..."
+    Write-Info "Building $DisplayName with version $FullVersion..."
     
-    $BuildCommand = "go build -trimpath -o `"$OutputFile`" $SourcePath"
+    # --- ALTERAÇÃO AQUI: Adicionado -ldflags ---
+    $BuildCommand = "go build -trimpath -ldflags `"$LdFlags`" -o `"$OutputFile`" $SourcePath"
     
+    # Executa o comando e captura saída de erro
     $Output = Invoke-Expression $BuildCommand 2>&1
     
     if ($LASTEXITCODE -eq 0) {

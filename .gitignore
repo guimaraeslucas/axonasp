@@ -12,6 +12,7 @@
 TODO
 /temp/cache/
 /temp/session/
+/temp/
 .DS_Store
 Thumbs.db
 axonasp.exe~

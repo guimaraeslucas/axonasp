@@ -133,6 +133,18 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case OP_POW:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := pow(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
 		case OP_NEG:
 			val := vm.Pop()
 			res, err := neg(val)
@@ -164,10 +176,31 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case OP_NOT_EQUAL:
+			right := vm.Pop()
+			left := vm.Pop()
+			res := !isEqual(left, right)
+			err := vm.Push(res)
+			if err != nil {
+				return err
+			}
+
 		case OP_GREATER:
 			right := vm.Pop()
 			left := vm.Pop()
 			res, err := isGreater(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_GREATER_EQUAL:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := isGreaterEqual(left, right)
 			if err != nil {
 				return err
 			}
@@ -188,11 +221,248 @@ func (vm *VM) Run() error {
 				return err
 			}
 
+		case OP_LESS_EQUAL:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := isLessEqual(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_IS:
+			right := vm.Pop()
+			left := vm.Pop()
+			// VBScript 'Is' operator checks if two object references refer to the same object
+			err := vm.Push(left == right)
+			if err != nil {
+				return err
+			}
+
+		case OP_AND:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := andOp(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_OR:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := orOp(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_XOR:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := xorOp(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_EQV:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := eqvOp(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_IMP:
+			right := vm.Pop()
+			left := vm.Pop()
+			res, err := impOp(left, right)
+			if err != nil {
+				return err
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_GET_MEMBER:
+			nameIdx := binary.BigEndian.Uint16(instructions[frame.IP:])
+			frame.IP += 2
+			nameVal := vm.Constants[nameIdx]
+			nameStr := nameVal.(string)
+			obj := vm.Pop()
+
+			if obj == nil || obj == EmptyValue {
+				return fmt.Errorf("object required for member access: %s", nameStr)
+			}
+
+			var val Value = EmptyValue
+			switch o := obj.(type) {
+			case interface {
+				GetProperty(string) interface{}
+			}:
+				val = o.GetProperty(nameStr)
+			case map[string]interface{}:
+				val = o[nameStr]
+			default:
+				return fmt.Errorf("object does not support member access: %T", obj)
+			}
+			err := vm.Push(val)
+			if err != nil {
+				return err
+			}
+
+		case OP_SET_MEMBER:
+			nameIdx := binary.BigEndian.Uint16(instructions[frame.IP:])
+			frame.IP += 2
+			nameVal := vm.Constants[nameIdx]
+			nameStr := nameVal.(string)
+			val := vm.Pop()
+			obj := vm.Pop()
+
+			if obj == nil || obj == EmptyValue {
+				return fmt.Errorf("object required for member assignment: %s", nameStr)
+			}
+
+			switch o := obj.(type) {
+			case interface {
+				SetProperty(string, interface{}) error
+			}:
+				err := o.SetProperty(nameStr, val)
+				if err != nil {
+					return err
+				}
+			case map[string]interface{}:
+				o[nameStr] = val
+			default:
+				return fmt.Errorf("object does not support member assignment: %T", obj)
+			}
+
+		case OP_CALL_MEMBER:
+			nameIdx := binary.BigEndian.Uint16(instructions[frame.IP:])
+			frame.IP += 2
+			argCount := int(instructions[frame.IP])
+			frame.IP++
+
+			nameVal := vm.Constants[nameIdx]
+			methodName := nameVal.(string)
+
+			// Stack: [obj, arg1, arg2, ..., argN]
+			// obj is at vm.SP - argCount - 1
+			obj := vm.Stack[vm.SP-argCount-1]
+
+			if obj == nil || obj == EmptyValue {
+				return fmt.Errorf("object required for method call: %s", methodName)
+			}
+
+			// Try to get compiled method for direct VM execution
+			if getter, ok := obj.(interface {
+				GetMethod(string) *Function
+			}); ok {
+				fn := getter.GetMethod(methodName)
+				if fn != nil {
+					if argCount != fn.ParameterCount {
+						return fmt.Errorf("expected %d arguments, got %d", fn.ParameterCount, argCount)
+					}
+
+					newFrame := &CallFrame{
+						Func:          fn,
+						IP:            0,
+						BasePointer:   vm.SP - argCount,
+						ContextObject: obj,
+					}
+
+					localsToAllocate := fn.LocalCount - fn.ParameterCount
+					for i := 0; i < localsToAllocate; i++ {
+						vm.Push(EmptyValue)
+					}
+
+					if vm.FramesIndex >= MaxFrames {
+						return fmt.Errorf("stack overflow (frames)")
+					}
+					vm.Frames[vm.FramesIndex] = newFrame
+					vm.FramesIndex++
+					continue
+				}
+			}
+
+			args := make([]interface{}, argCount)
+			for i := 0; i < argCount; i++ {
+				args[i] = vm.Stack[vm.SP-argCount+i]
+			}
+
+			var res interface{}
+			var err error
+
+			switch o := obj.(type) {
+			case interface {
+				CallMethod(string, ...interface{}) (interface{}, error)
+			}:
+				res, err = o.CallMethod(methodName, args...)
+				if err != nil {
+					return err
+				}
+			case interface {
+				CallMethod(string, ...interface{}) interface{}
+			}:
+				res = o.CallMethod(methodName, args...)
+			default:
+				return fmt.Errorf("object does not support method calls: %T", obj)
+			}
+
+			// Pop obj and args
+			vm.SP -= (argCount + 1)
+
+			if res == nil {
+				res = EmptyValue
+			}
+			err = vm.Push(res)
+			if err != nil {
+				return err
+			}
+
 		case OP_CONCAT:
 			right := vm.Pop()
 			left := vm.Pop()
 			res := concat(left, right)
 			err := vm.Push(res)
+			if err != nil {
+				return err
+			}
+
+		case OP_SET_INDEXED:
+			indexCount := int(instructions[frame.IP])
+			frame.IP++
+
+			// Stack: [obj, index1, ..., indexN, value]
+			value := vm.Pop()
+			indexes := make([]interface{}, indexCount)
+			for i := indexCount - 1; i >= 0; i-- {
+				indexes[i] = vm.Pop()
+			}
+			obj := vm.Pop()
+
+			if vm.Host == nil {
+				return fmt.Errorf("host environment not available for indexed assignment")
+			}
+			err := vm.Host.SetIndexed(obj, indexes, value)
 			if err != nil {
 				return err
 			}
@@ -238,15 +508,45 @@ func (vm *VM) Run() error {
 			}
 			nameStr := frame.Func.Bytecode.GlobalNames[nameIdx]
 			var val Value = EmptyValue
-			if vm.Host != nil {
-				if hVal, ok := vm.Host.GetVariable(nameStr); ok {
-					val = hVal
+
+			// 1. Check Context Object (Class Members)
+			found := false
+			if frame.ContextObject != nil {
+				switch o := frame.ContextObject.(type) {
+				case interface {
+					GetMember(string) (interface{}, bool, error)
+				}:
+					if mVal, ok, _ := o.GetMember(nameStr); ok {
+						val = mVal
+						found = true
+					}
+				case interface {
+					GetProperty(string) interface{}
+				}:
+					if mVal := o.GetProperty(nameStr); mVal != nil {
+						val = mVal
+						found = true
+					}
 				}
-			} else if int(nameIdx) < len(vm.GlobalSlots) {
-				val = vm.GlobalSlots[nameIdx]
-			} else if gVal, ok := vm.Globals[nameStr]; ok {
-				val = gVal
 			}
+
+			if !found {
+				if vm.Host != nil {
+					if hVal, ok := vm.Host.GetVariable(nameStr); ok {
+						val = hVal
+						found = true
+					}
+				}
+			}
+
+			if !found {
+				if int(nameIdx) < len(vm.GlobalSlots) {
+					val = vm.GlobalSlots[nameIdx]
+				} else if gVal, ok := vm.Globals[nameStr]; ok {
+					val = gVal
+				}
+			}
+
 			err := vm.Push(val)
 			if err != nil {
 				return err
@@ -260,13 +560,34 @@ func (vm *VM) Run() error {
 			}
 			nameStr := frame.Func.Bytecode.GlobalNames[nameIdx]
 			val := vm.Pop()
-			if vm.Host != nil {
-				_ = vm.Host.SetVariable(nameStr, val)
+
+			// 1. Check Context Object (Class Members)
+			handled := false
+			if frame.ContextObject != nil {
+				if o, ok := frame.ContextObject.(interface {
+					SetMember(string, interface{}) (bool, error)
+				}); ok {
+					if h, _ := o.SetMember(nameStr, val); h {
+						handled = true
+					}
+				} else if o, ok := frame.ContextObject.(interface {
+					SetProperty(string, interface{}) error
+				}); ok {
+					if err := o.SetProperty(nameStr, val); err == nil {
+						handled = true
+					}
+				}
 			}
-			if int(nameIdx) < len(vm.GlobalSlots) {
-				vm.GlobalSlots[nameIdx] = val
+
+			if !handled {
+				if vm.Host != nil {
+					_ = vm.Host.SetVariable(nameStr, val)
+				}
+				if int(nameIdx) < len(vm.GlobalSlots) {
+					vm.GlobalSlots[nameIdx] = val
+				}
+				vm.Globals[nameStr] = val
 			}
-			vm.Globals[nameStr] = val
 
 		case OP_GET_LOCAL:
 			localIdx := int(instructions[frame.IP])
@@ -335,6 +656,7 @@ func (vm *VM) Run() error {
 				}
 				vm.Frames[vm.FramesIndex] = newFrame
 				vm.FramesIndex++
+				continue
 
 			case *BuiltinFunction:
 				// Collect args
@@ -372,7 +694,7 @@ func (vm *VM) Run() error {
 						}
 						vm.Frames[vm.FramesIndex] = newFrame
 						vm.FramesIndex++
-						break
+						continue
 					}
 					if obj := vm.lookupGlobalValue(f.Name, frame); obj != nil {
 						switch callable := obj.(type) {
@@ -388,7 +710,7 @@ func (vm *VM) Run() error {
 								result = EmptyValue
 							}
 							vm.Push(result)
-							break
+							continue
 						case interface {
 							CallMethod(string, ...interface{}) interface{}
 						}:
@@ -398,7 +720,7 @@ func (vm *VM) Run() error {
 								result = EmptyValue
 							}
 							vm.Push(result)
-							break
+							continue
 						}
 					}
 					return err
@@ -453,7 +775,12 @@ func (vm *VM) Run() error {
 
 			// Pop frame
 			vm.FramesIndex--
-			frame = vm.Frames[vm.FramesIndex-1] // Get previous frame to restore IP later
+			if vm.FramesIndex == 0 {
+				return nil
+			}
+			// Get previous frame to restore local frame variable for next loop iteration
+			// although it will be re-assigned at top of loop.
+			frame = vm.Frames[vm.FramesIndex-1]
 
 			// Pop locals and arguments and function object
 			oldFrame := vm.Frames[vm.FramesIndex]
@@ -465,11 +792,12 @@ func (vm *VM) Run() error {
 		case OP_RETURN:
 			// Pop frame
 			vm.FramesIndex--
-			if vm.FramesIndex > 0 {
-				oldFrame := vm.Frames[vm.FramesIndex]
-				vm.SP = oldFrame.BasePointer - 1
-				vm.Push(EmptyValue)
+			if vm.FramesIndex == 0 {
+				return nil
 			}
+			oldFrame := vm.Frames[vm.FramesIndex]
+			vm.SP = oldFrame.BasePointer - 1
+			vm.Push(EmptyValue)
 
 		case OP_POP:
 			vm.Pop()
@@ -519,6 +847,25 @@ func (vm *VM) Run() error {
 			err = vm.Push(obj)
 			if err != nil {
 				return err
+			}
+
+		case OP_FALLBACK:
+			nodeIdx := binary.BigEndian.Uint16(instructions[frame.IP:])
+			frame.IP += 2
+			node := vm.Constants[nodeIdx]
+
+			if vm.Host == nil {
+				return fmt.Errorf("host environment not available for fallback execution")
+			}
+			res, err := vm.Host.ExecuteAST(node)
+			if err != nil {
+				return err
+			}
+			if res != nil {
+				err = vm.Push(res)
+				if err != nil {
+					return err
+				}
 			}
 
 		default:
@@ -665,6 +1012,18 @@ func div(a, b Value) (Value, error) {
 	return f1 / f2, nil
 }
 
+func pow(a, b Value) (Value, error) {
+	f1, err := toFloat(a)
+	if err != nil {
+		return nil, err
+	}
+	f2, err := toFloat(b)
+	if err != nil {
+		return nil, err
+	}
+	return math.Pow(f1, f2), nil
+}
+
 func mod(a, b Value) (Value, error) {
 	// VBScript rounds both operands to the nearest integer before Mod
 	v1, err := toInt64(a)
@@ -741,6 +1100,18 @@ func isGreater(a, b Value) (bool, error) {
 	return f1 > f2, nil
 }
 
+func isGreaterEqual(a, b Value) (bool, error) {
+	f1, err := toFloat(a)
+	if err != nil {
+		return false, err
+	}
+	f2, err := toFloat(b)
+	if err != nil {
+		return false, err
+	}
+	return f1 >= f2, nil
+}
+
 func isLess(a, b Value) (bool, error) {
 	f1, err := toFloat(a)
 	if err != nil {
@@ -753,8 +1124,105 @@ func isLess(a, b Value) (bool, error) {
 	return f1 < f2, nil
 }
 
+func isLessEqual(a, b Value) (bool, error) {
+	f1, err := toFloat(a)
+	if err != nil {
+		return false, err
+	}
+	f2, err := toFloat(b)
+	if err != nil {
+		return false, err
+	}
+	return f1 <= f2, nil
+}
+
 func concat(a, b Value) Value {
 	return toString(a) + toString(b)
+}
+
+func andOp(a, b Value) (Value, error) {
+	if b1, ok1 := a.(bool); ok1 {
+		if b2, ok2 := b.(bool); ok2 {
+			return b1 && b2, nil
+		}
+	}
+	v1, err := toInt64(a)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := toInt64(b)
+	if err != nil {
+		return nil, err
+	}
+	return v1 & v2, nil
+}
+
+func orOp(a, b Value) (Value, error) {
+	if b1, ok1 := a.(bool); ok1 {
+		if b2, ok2 := b.(bool); ok2 {
+			return b1 || b2, nil
+		}
+	}
+	v1, err := toInt64(a)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := toInt64(b)
+	if err != nil {
+		return nil, err
+	}
+	return v1 | v2, nil
+}
+
+func xorOp(a, b Value) (Value, error) {
+	if b1, ok1 := a.(bool); ok1 {
+		if b2, ok2 := b.(bool); ok2 {
+			return b1 != b2, nil
+		}
+	}
+	v1, err := toInt64(a)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := toInt64(b)
+	if err != nil {
+		return nil, err
+	}
+	return v1 ^ v2, nil
+}
+
+func eqvOp(a, b Value) (Value, error) {
+	if b1, ok1 := a.(bool); ok1 {
+		if b2, ok2 := b.(bool); ok2 {
+			return b1 == b2, nil
+		}
+	}
+	v1, err := toInt64(a)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := toInt64(b)
+	if err != nil {
+		return nil, err
+	}
+	return ^(v1 ^ v2), nil
+}
+
+func impOp(a, b Value) (Value, error) {
+	if b1, ok1 := a.(bool); ok1 {
+		if b2, ok2 := b.(bool); ok2 {
+			return !b1 || b2, nil
+		}
+	}
+	v1, err := toInt64(a)
+	if err != nil {
+		return nil, err
+	}
+	v2, err := toInt64(b)
+	if err != nil {
+		return nil, err
+	}
+	return (^v1) | v2, nil
 }
 
 func toString(v Value) string {

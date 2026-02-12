@@ -78,10 +78,10 @@ func TestSetVariableInParentScope_ClassMemberNotShadowed(t *testing.T) {
 
 	// Push two scopes: caller scope (e.g., constants()) and function scope (e.g., isNumeriek())
 	ctx.PushScope()
-	ctx.DefineVariable("sql", "select *")   // some local variable in caller scope
-	ctx.DefineVariable("rs", nil)            // another local
-	ctx.PushScope()                          // function scope
-	ctx.DefineVariable("p", 73)             // function parameter
+	ctx.DefineVariable("sql", "select *") // some local variable in caller scope
+	ctx.DefineVariable("rs", nil)         // another local
+	ctx.PushScope()                       // function scope
+	ctx.DefineVariable("p", 73)           // function parameter
 
 	// Simulate ByRef writeback: SetVariableInParentScope("iid", 73)
 	// This should go to the class member, NOT create "iid" in the caller scope

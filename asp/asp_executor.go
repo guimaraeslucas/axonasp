@@ -156,6 +156,14 @@ func (a *ASPHostAdapter) CreateObject(progID string) (interface{}, error) {
 	return nil, fmt.Errorf("CreateObject not implemented in ASPHostAdapter")
 }
 
+func (a *ASPHostAdapter) ExecuteAST(node interface{}) (interface{}, error) {
+	return nil, fmt.Errorf("ExecuteAST not implemented in ASPHostAdapter")
+}
+
+func (a *ASPHostAdapter) SetIndexed(obj interface{}, indexes []interface{}, value interface{}) error {
+	return fmt.Errorf("SetIndexed not implemented in ASPHostAdapter")
+}
+
 // GetContext retorna o contexto de execução atual
 func (ae *ASPExecutor) GetContext() *ASPContext {
 	return ae.context

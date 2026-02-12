@@ -369,24 +369,25 @@ func (ec *ExecutionContext) GetContextObject() interface{} {
 }
 
 // SetVariable sets a variable in the execution context (case-insensitive)
-// Returns error if attempting to overwrite a constant
+// Returns error if attempting to overwrite a constant.
+// Resolution order follows VBScript semantics: local constants → local scopes →
+// class members (context object) → global constants → global variables.
+// Class members take priority over global constants so that a class private
+// field with the same name as a global constant can still be assigned.
 func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 	nameLower := lowerKey(name)
 
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
 
-	// Check if this is a constant (local scopes and global)
+	// 1. Check local scope constants (current function / block constants)
 	for i := len(ec.scopeConstStack) - 1; i >= 0; i-- {
 		if _, exists := ec.scopeConstStack[i][nameLower]; exists {
 			return fmt.Errorf("cannot reassign constant '%s'", name)
 		}
 	}
-	if _, exists := ec.constants[nameLower]; exists {
-		return fmt.Errorf("cannot reassign constant '%s'", name)
-	}
 
-	// 1. Check Local Scopes (Top to Bottom)
+	// 2. Check Local Scopes (Top to Bottom)
 	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
 		if _, exists := ec.scopeStack[i][nameLower]; exists {
 			ec.scopeStack[i][nameLower] = value
@@ -394,9 +395,8 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 		}
 	}
 
-	// 3. Check Context Object (Class Member)
+	// 3. Check Context Object (Class Member) — takes priority over global constants
 	if ec.contextObject != nil {
-		// Try internal access first (allows Private members)
 		if internal, ok := ec.contextObject.(interface {
 			SetMember(string, interface{}) (bool, error)
 		}); ok {
@@ -406,18 +406,12 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 		}
 	}
 
-	// 3. Global Variables (Default)
-	// If not found in locals, set in global (Variables)
-	// Note: If we are in a scope (Function), and it's not declared with Dim,
-	// VBScript behavior depends on Option Explicit.
-	// Assuming Option Explicit is OFF (or we treat it loosely), it goes to Global?
-	// Actually, if it's not Dim'ed locally, it searches up. If nowhere, it creates Global.
+	// 4. Check global constants — only after class member check
+	if _, exists := ec.constants[nameLower]; exists {
+		return fmt.Errorf("cannot reassign constant '%s'", name)
+	}
 
-	// BUT, if we want to support 'Dim x' inside function, 'visitVariableDeclaration' calls 'SetVariable'.
-	// We need 'DefineVariable' vs 'SetVariable'.
-	// 'visitVariableDeclaration' should put it in the CURRENT scope.
-
-	// For now, standard SetVariable puts in global if not found in locals.
+	// 5. Global Variables (Default)
 	ec.variables[nameLower] = value
 	return nil
 }
@@ -513,9 +507,6 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 	if len(ec.scopeStack) > 0 {
 		currentScope := ec.scopeStack[len(ec.scopeStack)-1]
 		if val, exists := currentScope[nameLower]; exists {
-			if nameLower == "rs" {
-				//fmt.Printf("[DEBUG] GetVariable(rs): found in current scope, val=%T\n", val)
-			}
 			ec.mu.RUnlock()
 			return val, true
 		}
@@ -620,16 +611,18 @@ func (ec *ExecutionContext) SetVariableInParentScope(name string, value interfac
 
 	ec.mu.Lock()
 
-	// Check constants in all parent scopes
+	// Check constants in all parent scopes — if the variable is a constant,
+	// silently skip the writeback (VBScript allows passing constants ByRef
+	// but the writeback is simply a no-op)
 	for i := len(ec.scopeConstStack) - 2; i >= 0; i-- {
 		if _, exists := ec.scopeConstStack[i][nameLower]; exists {
 			ec.mu.Unlock()
-			return fmt.Errorf("cannot reassign constant '%s'", name)
+			return nil // Silently skip — can't write back to a constant
 		}
 	}
 	if _, exists := ec.constants[nameLower]; exists {
 		ec.mu.Unlock()
-		return fmt.Errorf("cannot reassign constant '%s'", name)
+		return nil // Silently skip — can't write back to a constant
 	}
 
 	// 1. Check parent local scopes (excluding topmost which is the current function)
@@ -2839,10 +2832,10 @@ func (v *ASPVisitor) addPropertyDef(classDef *ClassDef, name string, pType Prope
 }
 
 // visitVariableDeclaration handles variable declarations (Dim statement)
-// In VBScript, module-level Dim statements are hoisted (processed before code execution).
-// At global scope, if a variable already exists (from hoisting or prior assignment), Dim
-// should NOT reset it. Inside a function/sub (local scope), Dim always creates a new local
-// variable, just like standard VBScript behaviour.
+// In VBScript, Dim statements are hoisted (processed before code execution) at both
+// module level AND inside functions/subs. At any scope, if a variable already exists
+// (from hoisting or prior assignment), Dim should NOT reset it.
+// The hoistDimDeclarations helper pre-scans function bodies to achieve this.
 func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) error {
 	if stmt == nil || stmt.Identifier == nil {
 		return nil
@@ -2863,16 +2856,31 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 	// time execution reaches the textual Dim statement, the variable is already
 	// allocated. Re-running DefineVariable would reset it to nil and clobber any
 	// value that was assigned earlier in the script.
+	// VBScript hoists Dim declarations at ALL scopes (module + function/sub),
+	// so by the time execution reaches the textual Dim, the variable was already
+	// pre-defined by hoistDimDeclarations. Skip re-definition to avoid resetting.
 	isGlobalScope := len(v.context.scopeStack) == 0
+
+	// Check whether this variable already exists in the current scope.
+	// If it does, the Dim is a no-op (either hoisting defined it or a prior
+	// assignment already created it in this scope).
+	alreadyInCurrentScope := false
+	if isGlobalScope {
+		v.context.mu.RLock()
+		_, alreadyInCurrentScope = v.context.variables[lowerKey(varName)]
+		v.context.mu.RUnlock()
+	} else if len(v.context.scopeStack) > 0 {
+		v.context.mu.RLock()
+		_, alreadyInCurrentScope = v.context.scopeStack[len(v.context.scopeStack)-1][lowerKey(varName)]
+		v.context.mu.RUnlock()
+	}
 
 	// Check if it's an array declaration
 	if len(stmt.ArrayDims) > 0 {
 		// Fixed-size array: Dim arr(5) or Dim arr(2,3)
-		// At global scope, only create if not already defined (hoisting handled it).
-		if isGlobalScope {
-			if _, exists := v.context.GetVariable(varName); exists {
-				return nil
-			}
+		// Skip if already defined in current scope (hoisting handled it).
+		if alreadyInCurrentScope {
+			return nil
 		}
 		dims := make([]int, len(stmt.ArrayDims))
 		for i, dimExpr := range stmt.ArrayDims {
@@ -2890,21 +2898,17 @@ func (v *ASPVisitor) visitVariableDeclaration(stmt *ast.VariableDeclaration) err
 		}
 	} else if stmt.IsDynamicArray {
 		// Dynamic array: Dim arr() - initialize as empty array
-		if isGlobalScope {
-			if _, exists := v.context.GetVariable(varName); exists {
-				return nil
-			}
+		if alreadyInCurrentScope {
+			return nil
 		}
 		if err := defineVar(varName, NewVBArray(v.context.OptionBase(), 0)); err != nil {
 			return err
 		}
 	} else {
 		// Regular variable
-		// At global scope, skip if the variable already exists (was hoisted or set earlier)
-		if isGlobalScope {
-			if _, exists := v.context.GetVariable(varName); exists {
-				return nil
-			}
+		// Skip if already defined in current scope (hoisted or assigned earlier)
+		if alreadyInCurrentScope {
+			return nil
 		}
 		// Initialize to nil (VBScript Empty)
 		if err := defineVar(varName, nil); err != nil {
@@ -2930,6 +2934,93 @@ func (v *ASPVisitor) visitVariablesDeclaration(stmt *ast.VariablesDeclaration) e
 		}
 	}
 	return nil
+}
+
+// hoistDimDeclarations pre-scans a function/sub body for all Dim statements
+// and defines the variables in the current scope. This implements VBScript's
+// variable hoisting: Dim declarations take effect from the start of the
+// function regardless of where they appear in the source code.
+// Only simple variables (no array dimensions) are hoisted; arrays with
+// computed dimensions are left to be handled inline.
+func (v *ASPVisitor) hoistDimDeclarations(body ast.Node) {
+	if body == nil {
+		return
+	}
+	var stmts []ast.Node
+	switch b := body.(type) {
+	case *ast.StatementList:
+		for _, s := range b.Statements {
+			stmts = append(stmts, s)
+		}
+	default:
+		stmts = []ast.Node{body}
+	}
+	v.collectAndDefineDimVars(stmts)
+}
+
+// collectAndDefineDimVars walks a flat list of statements and defines any Dim
+// variables it finds. It recurses into If/ElseIf/Else, For, While, Do, With,
+// Select blocks to find Dim statements at any nesting level.
+func (v *ASPVisitor) collectAndDefineDimVars(stmts []ast.Node) {
+	for _, stmt := range stmts {
+		if stmt == nil {
+			continue
+		}
+		switch s := stmt.(type) {
+		case *ast.VariableDeclaration:
+			// Simple Dim: define as nil (Empty) in current scope
+			if s.Identifier != nil && len(s.ArrayDims) == 0 && !s.IsDynamicArray {
+				_ = v.context.DefineVariable(s.Identifier.Name, nil)
+			}
+		case *ast.VariablesDeclaration:
+			for _, decl := range s.Variables {
+				if decl != nil && decl.Identifier != nil && len(decl.ArrayDims) == 0 && !decl.IsDynamicArray {
+					_ = v.context.DefineVariable(decl.Identifier.Name, nil)
+				}
+			}
+
+		// Recurse into compound statements to find nested Dim declarations
+		case *ast.IfStatement:
+			if s.Consequent != nil {
+				v.hoistDimDeclarations(s.Consequent)
+			}
+			if s.Alternate != nil {
+				v.hoistDimDeclarations(s.Alternate)
+			}
+		case *ast.ElseIfStatement:
+			if s.Consequent != nil {
+				v.hoistDimDeclarations(s.Consequent)
+			}
+			if s.Alternate != nil {
+				v.hoistDimDeclarations(s.Alternate)
+			}
+		case *ast.ForStatement:
+			v.hoistStatementsSlice(s.Body)
+		case *ast.ForEachStatement:
+			v.hoistStatementsSlice(s.Body)
+		case *ast.WhileStatement:
+			v.hoistStatementsSlice(s.Body)
+		case *ast.DoStatement:
+			v.hoistStatementsSlice(s.Body)
+		case *ast.WithStatement:
+			v.hoistStatementsSlice(s.Body)
+		case *ast.SelectStatement:
+			for _, c := range s.Cases {
+				if c != nil {
+					v.hoistStatementsSlice(c.Body)
+				}
+			}
+		}
+	}
+}
+
+// hoistStatementsSlice converts []ast.Statement to []ast.Node and calls collectAndDefineDimVars
+func (v *ASPVisitor) hoistStatementsSlice(stmts []ast.Statement) {
+	nodes := make([]ast.Node, len(stmts))
+	for i, s := range stmts {
+		nodes[i] = s
+	}
+	v.collectAndDefineDimVars(nodes)
 }
 
 // makeNestedArray creates a nested array based on dimensions and Option Base.
@@ -3055,8 +3146,8 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 			return val, nil
 		}
 
-		// Undefined variable returns nil in VBScript
-		return nil, nil
+		// Undefined variable returns Empty in VBScript
+		return EmptyValue{}, nil
 
 	case *ast.StringLiteral:
 		return e.Value, nil
@@ -3392,6 +3483,15 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 				if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
 					// Call the private method with ByRef support
 					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+				// Check Property Get with arguments (e.g., getClickLink(false))
+				// callClassMethodWithRefs will fall through to CallMethod which handles Properties
+				if props, ok := classInst.ClassDef.Properties[nameLower]; ok {
+					for _, p := range props {
+						if p.Type == PropGet {
+							return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+						}
+					}
 				}
 			}
 		}
@@ -3900,9 +4000,14 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 	// Check if we're accessing a method/property on Nothing
 	// In VBScript, this should raise Error 91: "Object variable or With block variable not set"
 	// With On Error Resume Next, this error is captured and the value becomes Empty
-	if obj == nil || isNothingValue(obj) {
+	if obj == nil || isNothingValue(obj) || isEmptyValue(obj) {
 		// Generate error 91 - this will be captured by On Error Resume Next if active
-		errMsg := fmt.Sprintf("object variable not set when accessing '%s' (Error 91)", propName)
+		// Include object identifier for debugging
+		objIdentifier := "<unknown>"
+		if idExpr, ok := expr.Object.(*ast.Identifier); ok {
+			objIdentifier = idExpr.Name
+		}
+		errMsg := fmt.Sprintf("object variable not set when accessing '%s' on '%s' (Error 91)", propName, objIdentifier)
 		// Return the error so it can be handled properly
 		return nil, fmt.Errorf("%s", errMsg)
 	}
@@ -4130,6 +4235,12 @@ func isTruthy(val interface{}) bool {
 	if val == nil {
 		return false
 	}
+	if _, ok := val.(EmptyValue); ok {
+		return false
+	}
+	if _, ok := val.(NullValue); ok {
+		return false
+	}
 	if b, ok := val.(bool); ok {
 		return b
 	}
@@ -4154,6 +4265,14 @@ func isNothingValue(val interface{}) bool {
 		return true
 	}
 	return false
+}
+
+func isEmptyValue(val interface{}) bool {
+	if val == nil {
+		return false
+	}
+	_, ok := val.(EmptyValue)
+	return ok
 }
 
 func isNullValue(val interface{}) bool {
@@ -4491,11 +4610,48 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 
 // compareEqual compares two values for equality with VBScript rules
 func compareEqual(left, right interface{}, mode ast.OptionCompareMode) bool {
-	if left == nil && right == nil {
+	// Normalize nil to EmptyValue for consistent comparison
+	// In VBScript, Empty = "" → True, Empty = 0 → True, Empty = False → True
+	if left == nil {
+		left = EmptyValue{}
+	}
+	if right == nil {
+		right = EmptyValue{}
+	}
+
+	// Both Empty
+	_, leftIsEmpty := left.(EmptyValue)
+	_, rightIsEmpty := right.(EmptyValue)
+	if leftIsEmpty && rightIsEmpty {
 		return true
 	}
-	if left == nil || right == nil {
-		return false
+
+	// Empty compared to another value — coerce Empty to the other operand's type
+	if leftIsEmpty {
+		switch r := right.(type) {
+		case string:
+			return r == ""
+		case bool:
+			return r == false
+		default:
+			if rn, rok := toNumeric(right); rok {
+				return rn == 0
+			}
+			return toString(right) == ""
+		}
+	}
+	if rightIsEmpty {
+		switch l := left.(type) {
+		case string:
+			return l == ""
+		case bool:
+			return l == false
+		default:
+			if ln, lok := toNumeric(left); lok {
+				return ln == 0
+			}
+			return toString(left) == ""
+		}
 	}
 
 	if ls, ok := left.(string); ok {
@@ -4558,6 +4714,8 @@ func toNumeric(val interface{}) (float64, bool) {
 		return 0, true
 	}
 	switch v := val.(type) {
+	case EmptyValue:
+		return 0, true
 	case int:
 		return float64(v), true
 	case float64:
@@ -5061,6 +5219,12 @@ func (v *ASPVisitor) executeFunction(fn *ast.FunctionDeclaration, args []interfa
 	funcName := fn.Identifier.Name
 	_ = v.context.DefineVariable(funcName, nil)
 
+	// Hoist Dim declarations so variables defined later in the function body
+	// are available from the start (VBScript hoisting semantics)
+	if fn.Body != nil {
+		v.hoistDimDeclarations(fn.Body)
+	}
+
 	// Execute body
 	if fn.Body != nil {
 		if list, ok := fn.Body.(*ast.StatementList); ok {
@@ -5155,6 +5319,11 @@ func (v *ASPVisitor) executeFunctionWithRefs(fn *ast.FunctionDeclaration, argume
 	funcName := fn.Identifier.Name
 	_ = v.context.DefineVariable(funcName, nil)
 
+	// Hoist Dim declarations (VBScript hoisting semantics)
+	if fn.Body != nil {
+		v.hoistDimDeclarations(fn.Body)
+	}
+
 	// Execute body
 	if fn.Body != nil {
 		if list, ok := fn.Body.(*ast.StatementList); ok {
@@ -5213,6 +5382,11 @@ func (v *ASPVisitor) executeSub(sub *ast.SubDeclaration, args []interface{}) (in
 			val = args[i]
 		}
 		_ = v.context.DefineVariable(param.Identifier.Name, val)
+	}
+
+	// Hoist Dim declarations (VBScript hoisting semantics)
+	if sub.Body != nil {
+		v.hoistDimDeclarations(sub.Body)
 	}
 
 	// Execute body
@@ -5296,6 +5470,11 @@ func (v *ASPVisitor) executeSubWithRefs(sub *ast.SubDeclaration, arguments []ast
 		}
 
 		_ = v.context.DefineVariable(param.Identifier.Name, val)
+	}
+
+	// Hoist Dim declarations (VBScript hoisting semantics)
+	if sub.Body != nil {
+		v.hoistDimDeclarations(sub.Body)
 	}
 
 	// Execute body
@@ -5382,6 +5561,7 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 	var methodNode ast.Node
 	var params []*ast.Parameter
 	var funcName string
+
 	//fmt.Printf("[DEBUG] callClassMethodWithRefs: looking up method %s in class %s\n", nameLower, classInst.ClassDef.Name)
 	//fmt.Printf("[DEBUG] callClassMethodWithRefs: class has %d Methods, %d Functions, %d PrivateMethods\n",
 	//	len(classInst.ClassDef.Methods), len(classInst.ClassDef.Functions), len(classInst.ClassDef.PrivateMethods))
@@ -5421,7 +5601,9 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 	}
 
 	classInst.Context.PushScope()
-	defer classInst.Context.PopScope()
+	defer func() {
+		classInst.Context.PopScope()
+	}()
 
 	// Debug: print context object after PushScope (commented out for performance)
 	// if ctxObj := v.context.GetContextObject(); ctxObj != nil {
@@ -5497,6 +5679,19 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 	classVisitor := NewASPVisitor(classInst.Context, v.executor)
 	// Set currentFunctionName so the function can read/write its return value without recursion
 	classVisitor.currentFunctionName = funcName
+
+	// Hoist Dim declarations in the method body (VBScript hoisting semantics)
+	switch n := methodNode.(type) {
+	case *ast.SubDeclaration:
+		if n.Body != nil {
+			classVisitor.hoistDimDeclarations(n.Body)
+		}
+	case *ast.FunctionDeclaration:
+		if n.Body != nil {
+			classVisitor.hoistDimDeclarations(n.Body)
+		}
+	}
+
 	switch n := methodNode.(type) {
 	case *ast.SubDeclaration:
 		if n.Body != nil {

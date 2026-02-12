@@ -139,9 +139,39 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.AssignmentStatement:
+		if mem, ok := n.Left.(*ast.MemberExpression); ok {
+			if err := c.Compile(mem.Object); err != nil {
+				return err
+			}
+			if err := c.Compile(n.Right); err != nil {
+				return err
+			}
+			idx := c.addConstant(mem.Property.Name)
+			c.emit(OP_SET_MEMBER, idx)
+			return nil
+		}
+
+		if idxExpr, ok := n.Left.(*ast.IndexOrCallExpression); ok {
+			// obj(index1, index2) = value
+			// Stack: [obj, index1, index2, value]
+			if err := c.Compile(idxExpr.Object); err != nil {
+				return err
+			}
+			for _, index := range idxExpr.Indexes {
+				if err := c.Compile(index); err != nil {
+					return err
+				}
+			}
+			if err := c.Compile(n.Right); err != nil {
+				return err
+			}
+			c.emit(OP_SET_INDEXED, len(idxExpr.Indexes))
+			return nil
+		}
+
 		id, ok := n.Left.(*ast.Identifier)
 		if !ok {
-			return fmt.Errorf("assignment only supported for simple identifiers in Phase 3")
+			return fmt.Errorf("unsupported assignment target: %T", n.Left)
 		}
 
 		if c.tryEmitIncrement(id, n.Right) {
@@ -208,6 +238,22 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.CallSubStatement:
 		// Sub call without parentheses: SubName arg1, arg2
+		// Or obj.Method arg1, arg2
+		if mem, ok := n.Callee.(*ast.MemberExpression); ok {
+			if err := c.Compile(mem.Object); err != nil {
+				return err
+			}
+			for _, arg := range n.Arguments {
+				if err := c.Compile(arg); err != nil {
+					return err
+				}
+			}
+			nameIdx := c.addConstant(mem.Property.Name)
+			c.emit(OP_CALL_MEMBER, nameIdx, len(n.Arguments))
+			c.emit(OP_POP) // Discard return value
+			break
+		}
+
 		// Callee
 		if err := c.Compile(n.Callee); err != nil {
 			return err
@@ -276,7 +322,55 @@ func (c *Compiler) Compile(node ast.Node) error {
 		if n.Identifier == nil {
 			return nil
 		}
-		idx := c.addConstant(n)
+
+		compiledClass := &CompiledClass{
+			Name:    n.Identifier.Name,
+			Methods: make(map[string]*Function),
+		}
+
+		// Compile methods and collect variables
+		for _, member := range n.Members {
+			switch m := member.(type) {
+			case *ast.FunctionDeclaration:
+				params := make([]string, 0, len(m.Parameters))
+				for _, p := range m.Parameters {
+					if p != nil && p.Identifier != nil {
+						params = append(params, p.Identifier.Name)
+					}
+				}
+				bodyStmts := extractStatementList(m.Body)
+				fn, err := c.CompileFunction(m.Identifier.Name, params, bodyStmts, false)
+				if err != nil {
+					return err
+				}
+				compiledClass.Methods[strings.ToLower(m.Identifier.Name)] = fn
+
+			case *ast.SubDeclaration:
+				params := make([]string, 0, len(m.Parameters))
+				for _, p := range m.Parameters {
+					if p != nil && p.Identifier != nil {
+						params = append(params, p.Identifier.Name)
+					}
+				}
+				bodyStmts := extractStatementList(m.Body)
+				fn, err := c.CompileFunction(m.Identifier.Name, params, bodyStmts, true)
+				if err != nil {
+					return err
+				}
+				compiledClass.Methods[strings.ToLower(m.Identifier.Name)] = fn
+
+			case *ast.VariablesDeclaration:
+				for _, v := range m.Variables {
+					compiledClass.Variables = append(compiledClass.Variables, v.Identifier.Name)
+				}
+			case *ast.FieldsDeclaration:
+				for _, f := range m.Fields {
+					compiledClass.Variables = append(compiledClass.Variables, f.Identifier.Name)
+				}
+			}
+		}
+
+		idx := c.addConstant(compiledClass)
 		c.emit(OP_CONSTANT, idx)
 		nameIdx := c.resolveGlobalIndex(n.Identifier.Name)
 		c.emit(OP_SET_GLOBAL_FAST, nameIdx)
@@ -293,6 +387,21 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.IndexOrCallExpression:
 		// Object(index) or Func(args)
+		// Handle obj.Method(args)
+		if mem, ok := n.Object.(*ast.MemberExpression); ok {
+			if err := c.Compile(mem.Object); err != nil {
+				return err
+			}
+			for _, arg := range n.Indexes {
+				if err := c.Compile(arg); err != nil {
+					return err
+				}
+			}
+			nameIdx := c.addConstant(mem.Property.Name)
+			c.emit(OP_CALL_MEMBER, nameIdx, len(n.Indexes))
+			break
+		}
+
 		if ident, ok := n.Object.(*ast.Identifier); ok {
 			nameLower := strings.ToLower(ident.Name)
 			if !c.isKnownVariable(nameLower) && !c.procedures[nameLower] {
@@ -318,12 +427,11 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.emit(OP_CALL, len(n.Indexes))
 
 	case *ast.MemberExpression:
-		name, ok := formatMemberName(n)
-		if !ok {
-			return fmt.Errorf("unsupported member expression for VM")
+		if err := c.Compile(n.Object); err != nil {
+			return err
 		}
-		idx := c.addConstant(&BuiltinFunction{Name: name})
-		c.emit(OP_CONSTANT, idx)
+		idx := c.addConstant(n.Property.Name)
+		c.emit(OP_GET_MEMBER, idx)
 
 	case *ast.IntegerLiteral:
 		c.emitConstant(n.Value)
@@ -371,6 +479,8 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 		switch n.Operation {
+		case ast.BinaryOperationExponentiation:
+			c.emit(OP_POW)
 		case ast.BinaryOperationAddition:
 			c.emit(OP_ADD)
 		case ast.BinaryOperationSubtraction:
@@ -387,10 +497,28 @@ func (c *Compiler) Compile(node ast.Node) error {
 			c.emit(OP_CONCAT)
 		case ast.BinaryOperationEqual:
 			c.emit(OP_EQUAL)
+		case ast.BinaryOperationNotEqual:
+			c.emit(OP_NOT_EQUAL)
 		case ast.BinaryOperationLess:
 			c.emit(OP_LESS)
+		case ast.BinaryOperationLessOrEqual:
+			c.emit(OP_LESS_EQUAL)
 		case ast.BinaryOperationGreater:
 			c.emit(OP_GREATER)
+		case ast.BinaryOperationGreaterOrEqual:
+			c.emit(OP_GREATER_EQUAL)
+		case ast.BinaryOperationIs:
+			c.emit(OP_IS)
+		case ast.BinaryOperationAnd:
+			c.emit(OP_AND)
+		case ast.BinaryOperationOr:
+			c.emit(OP_OR)
+		case ast.BinaryOperationXor:
+			c.emit(OP_XOR)
+		case ast.BinaryOperationEqv:
+			c.emit(OP_EQV)
+		case ast.BinaryOperationImp:
+			c.emit(OP_IMP)
 		default:
 			return fmt.Errorf("unknown binary operator: %d", n.Operation)
 		}
@@ -409,7 +537,9 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	default:
-		return fmt.Errorf("compilation not implemented for node type: %T", node)
+		// Fallback to AST walker for unimplemented nodes
+		idx := c.addConstant(node)
+		c.emit(OP_FALLBACK, idx)
 	}
 
 	return nil
