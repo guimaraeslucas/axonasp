@@ -215,6 +215,13 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.constants["vbtextcompare"] = 1
 	ctx.constants["vbdatabasecompare"] = 2
 
+	// DateTime format constants (FormatDateTime)
+	ctx.constants["vbgeneraldate"] = 0
+	ctx.constants["vblongdate"] = 1
+	ctx.constants["vbshortdate"] = 2
+	ctx.constants["vblongtime"] = 3
+	ctx.constants["vbshorttime"] = 4
+
 	// We'll set the executor reference after creating it (circular dependency)
 	// This is done in ASPExecutor.Execute()
 
