@@ -93,7 +93,7 @@ wget https://raw.githubusercontent.com/guimaraeslucas/axonasp/main/linux_install
 
 3. **Configure Environment** (Optional)
    
-   Create a `.env` file in the root directory:
+   Create a `.env` file in the root directory (view .env.example to more options):
    ```env
    SERVER_PORT=4050
    WEB_ROOT=./www
@@ -101,6 +101,7 @@ wget https://raw.githubusercontent.com/guimaraeslucas/axonasp/main/linux_install
    DEFAULT_PAGE=default.asp
    SCRIPT_TIMEOUT=30
    DEBUG_ASP=FALSE
+   ERROR_404_MODE=IIS
    ```
 
 4. **Run the Server**
@@ -172,10 +173,7 @@ go build -o axonaspcgi.exe ./axonaspcgi
 **FastCGI Mode Benefits:**
 - ✅ Native web server integration (nginx, Apache, IIS)
 - ✅ Better static file performance (served by web server)
-- ✅ Built-in load balancing and upstream support
-- ✅ Graceful restarts without downtime
-- ✅ Process pool management
-- ✅ Production-grade SSL/TLS handling
+- ✅ Production-grade SSL/TLS handling by server
 - ✅ Advanced caching strategies
 
 **When to use FastCGI:**
@@ -217,46 +215,27 @@ G3Pix AxonASP uses a `.env` file for configuration. All settings are optional wi
 | `TIMEZONE` | `America/Sao_Paulo` | Server timezone |
 | `DEFAULT_PAGE` | `index.asp,default.asp,...` | Default document hierarchy (comma-separated) |
 | `SCRIPT_TIMEOUT` | `30` | Script execution timeout (seconds) |
-| `DEBUG_ASP` | `FALSE` | Enable HTML stack traces in ASP files |
-| `ERROR_404_MODE` | `default` | 404 handling mode: `default`, `asp`, or `iis` |
-| `CUSTOM_404_PAGE` | - | Path to custom 404 ASP page (when mode is `asp`) |
-| `USE_VM` | `FALSE` | Enable experimental bytecode VM |
-| `CLEANUP_SESSIONS` | `TRUE` | Auto-cleanup expired sessions on startup |
-| `BLOCKED_EXTENSIONS` | `.asa,.config,.mdb,.accdb` | Comma-separated list of blocked file extensions |
+| `DEBUG_ASP` | `FALSE` | Enable HTML stack traces and detailed logs |
+| `CLEAN_SESSIONS` | `TRUE` | Auto-cleanup expired sessions on startup |
+| `ASP_CACHE_TYPE` | `disk` | AST cache type: `memory` or `disk` |
+| `ASP_CACHE_TTL_MINUTES` | `0` | TTL for AST cache (0 = forever) |
+| `AXONASP_VM` | `FALSE` | Enable experimental bytecode VM |
+| `VM_CACHE_TYPE` | `disk` | VM bytecode cache type: `memory` or `disk` |
+| `VM_CACHE_TTL_MINUTES` | `0` | TTL for VM bytecode cache (0 = forever) |
+| `MEMORY_LIMIT_MB` | `0` | Memory limit for the process (0 = no limit) |
+| `ERROR_404_MODE` | `DEFAULT` | 404 handling mode: `DEFAULT` or `IIS` |
+| `BLOCKED_EXTENSIONS` | (see .env) | Comma-separated list of blocked file extensions |
+| `COM_PROVIDER` | `auto` | COM provider selection for Access (`auto` or `code`) |
+| `SQL_TRACE` | `FALSE` | Enable verbose SQL tracing |
 | `SMTP_HOST` | - | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP server port |
 | `SMTP_USER` | - | SMTP authentication username |
 | `SMTP_PASS` | - | SMTP authentication password |
 | `SMTP_FROM` | - | Default sender email address |
-
-### Example `.env` File
-
-```env
-SERVER_PORT=4050
-WEB_ROOT=./www
-TIMEZONE=America/New_York
-DEFAULT_PAGE=index.asp
-SCRIPT_TIMEOUT=60
-DEBUG_ASP=TRUE
-
-# Error Handling (IIS Mode)
-ERROR_404_MODE=iis
-CUSTOM_404_PAGE=/errors/404.asp
-
-# Performance
-USE_VM=FALSE
-CLEANUP_SESSIONS=TRUE
-
-# Security
-BLOCKED_EXTENSIONS=.asa,.config,.mdb,.accdb,.env
-
-# SMTP Configuration
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-SMTP_FROM=noreply@example.com
-```
+| `MYSQL_HOST` | `localhost` | MySQL host for G3DB |
+| `POSTGRES_HOST` | `localhost` | PostgreSQL host for G3DB |
+| `MSSQL_HOST` | `localhost` | MS SQL Server host for G3DB |
+| `SQLITE_PATH` | `./database.db` | SQLite database path for G3DB |
 
 ---
 
@@ -680,6 +659,32 @@ Set fileInfo = uploader.Process("fileField", Server.MapPath("/uploads/"), "newna
 Response.Write "Uploaded: " & fileInfo.SavedPath
 ```
 
+#### G3ZIP
+```vbscript
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Create("temp/archive.zip") Then
+    zip.AddFile "data.txt", "docs/data.txt"
+    zip.AddText "hello.txt", "Hello from AxonASP!"
+    zip.Close()
+End If
+```
+
+#### G3FC
+Modern high-performance encrypted container:
+```vbscript
+Set fc = Server.CreateObject("G3FC")
+fc.Create "backup.g3fc", Array("www/data", "www/images"), "secret_password"
+```
+
+#### G3TEMPLATE
+Go-style template rendering:
+```vbscript
+Set tpl = Server.CreateObject("G3TEMPLATE")
+Set data = Server.CreateObject("Scripting.Dictionary")
+data.Add "Name", "World"
+Response.Write tpl.Render("templates/hello.tpl", data)
+```
+
 #### G3DB
 Modern database library with full `database/sql` functionality:
 ```vbscript
@@ -814,6 +819,10 @@ axonasp/
 │   ├── http_lib.go         # G3HTTP library
 │   ├── mail_lib.go         # G3MAIL library
 │   ├── crypto_lib.go       # G3CRYPTO library
+│   ├── zip_lib.go          # G3ZIP library
+│   ├── g3fc_lib.go         # G3FC library
+│   ├── template_lib.go     # G3TEMPLATE library
+│   ├── file_uploader_lib.go # G3FileUploader library
 │   ├── g3db_lib.go         # G3DB library (modern database access)
 │   ├── database_lib.go     # ADODB implementation
 │   ├── adox_lib.go         # ADOX implementation
@@ -918,20 +927,6 @@ G3Pix AxonASP fully supports `global.asa` for application and session lifecycle 
 - `Session_OnStart` - Fires when a new session is created
 - `Session_OnEnd` - Fires when a session expires
 
-### Example global.asa
-
-```vbscript
-<script language="vbscript" runat="server">
-Sub Application_OnStart
-    Application("StartTime") = Now()
-    Application("TotalVisitors") = 0
-End Sub
-
-Sub Session_OnStart
-    Application("TotalVisitors") = Application("TotalVisitors") + 1
-End Sub
-</script>
-```
 
 **⚠️ Important**: Each AxonASP instance supports **one application** per server due to global.asa loading. Run multiple instances for multiple applications.
 
@@ -984,7 +979,7 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 - [x] 60+ custom functions (Ax* functions)
 - [ ] Image creation
 - [x] ZIP support
-- [ ] G3FC support
+- [x] G3FC support
 - [ ] XML support
 - [ ] PDF support
 - [ ] WebSocket support
@@ -1003,7 +998,7 @@ Special thanks to:
 - The Go community for an amazing language and ecosystem
 - Classic ASP developers who keep legacy applications running
 - Contributors and testers who help improve G3Pix AxonASP =)
-- Pieter Cooreman (@PieterCooreman) for the help with real ASP code and bug checks
+- Pieter Cooreman (@PieterCooreman) for the help with real ASP code, tests and bug checks
 
 ---
 
