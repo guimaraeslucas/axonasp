@@ -35,6 +35,7 @@ type SessionObject struct {
 	TimeOut   int // Timeout in minutes
 	CreatedAt time.Time
 	mu        sync.RWMutex
+	stateMu   sync.Mutex
 	locked    bool
 	lockCount int
 }
@@ -126,35 +127,42 @@ func (s *SessionObject) SetIndex(index interface{}, value interface{}) error {
 // Lock prevents other clients from modifying Session variables
 // Supports nested locks - each Lock must have a corresponding Unlock
 func (s *SessionObject) Lock() {
-	s.mu.Lock()
-	s.locked = true
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	s.lockCount++
+	s.locked = s.lockCount > 0
 }
 
 // Unlock allows other clients to modify Session variables
 // Must be called the same number of times as Lock was called
 func (s *SessionObject) Unlock() {
-	if s.locked && s.lockCount > 0 {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if s.lockCount > 0 {
 		s.lockCount--
-		if s.lockCount == 0 {
-			s.locked = false
-			s.mu.Unlock()
-		}
 	}
+	s.locked = s.lockCount > 0
 }
 
 // IsLocked returns whether the Session object is currently locked
 func (s *SessionObject) IsLocked() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	return s.locked
 }
 
 // GetLockCount returns the current lock count
 func (s *SessionObject) GetLockCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	return s.lockCount
+}
+
+// Remove deletes a single session variable by key.
+func (s *SessionObject) Remove(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.Data, strings.ToLower(key))
 }
 
 // Abandon terminates the session (removes it from storage)

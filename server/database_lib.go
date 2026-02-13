@@ -28,6 +28,7 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -3086,7 +3087,11 @@ func (rs *ADODBOLERecordset) SetProperty(name string, value interface{}) {
 	case "cursorlocation":
 		oleutil.PutProperty(rs.oleRecordset, "CursorLocation", toInt32Variant(value))
 	default:
-		if err := rs.setFieldValue(name, value); err != nil {
+		fieldNameOrIndex := interface{}(name)
+		if idx, err := strconv.Atoi(name); err == nil {
+			fieldNameOrIndex = idx
+		}
+		if err := rs.setFieldValue(fieldNameOrIndex, value); err != nil {
 			panic(fmt.Errorf("ADODB.Recordset: Failed to set field '%s'. Details: %v", name, err))
 		}
 	}

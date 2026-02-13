@@ -319,6 +319,39 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 		return r.BinaryRead(count)
 
 	default:
+		// VBScript/ASP default Request("key") dispatch can arrive as CallMethod("key")
+		// with no args depending on parser/executor path.
+		if nameLower != "" && len(args) == 0 {
+			key := name
+
+			// 1. QueryString
+			if r.QueryString.Exists(key) {
+				return r.QueryString.Get(key), nil
+			}
+
+			// 2. Form
+			if r.Form.Exists(key) {
+				return r.Form.Get(key), nil
+			}
+
+			// 3. Cookies
+			if r.Cookies.Exists(key) {
+				return r.Cookies.Get(key), nil
+			}
+
+			// 4. ClientCertificate
+			if r.ClientCertificate.Exists(key) {
+				return r.ClientCertificate.Get(key), nil
+			}
+
+			// 5. ServerVariables
+			if r.ServerVariables.Exists(key) {
+				return r.ServerVariables.Get(key), nil
+			}
+
+			return EmptyValue{}, nil
+		}
+
 		// Default lookup order: QueryString, Form, Cookies, ClientCertificate, ServerVariables
 		if nameLower == "" && len(args) > 0 {
 			key := fmt.Sprintf("%v", args[0])

@@ -131,7 +131,8 @@ type ExecutionContext struct {
 	mu sync.RWMutex
 
 	// Session tracking
-	isNewSession bool
+	isNewSession     bool
+	sessionAbandoned bool
 
 	// Cancellation support for timeout handling
 	cancelChan chan struct{}
@@ -186,6 +187,7 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 		sessionID:        sessionID,
 		sessionManager:   sessionManager,
 		isNewSession:     isNew,
+		sessionAbandoned: false,
 		compareMode:      ast.OptionCompareBinary,
 		optionBase:       0,
 		cancelChan:       make(chan struct{}),
@@ -264,6 +266,20 @@ func (ec *ExecutionContext) SetOptionBase(base int) {
 // OptionBase returns the configured default array lower bound.
 func (ec *ExecutionContext) OptionBase() int {
 	return ec.optionBase
+}
+
+// MarkSessionAbandoned marks the current session for deletion at request end.
+func (ec *ExecutionContext) MarkSessionAbandoned() {
+	ec.mu.Lock()
+	defer ec.mu.Unlock()
+	ec.sessionAbandoned = true
+}
+
+// IsSessionAbandoned returns true when Session.Abandon has been called.
+func (ec *ExecutionContext) IsSessionAbandoned() bool {
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+	return ec.sessionAbandoned
 }
 
 func (ec *ExecutionContext) ensureRandomSource() {
@@ -1129,13 +1145,15 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	}()
 
 	// Wait for execution or timeout
+	stopByControlFlow := false
 	select {
 	case err := <-done:
 		if err != nil {
 			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer || strings.Contains(err.Error(), "runtime panic: RESPONSE_END") {
-				return nil
+				stopByControlFlow = true
+			} else {
+				return err
 			}
-			return err
 		}
 	case <-time.After(timeout):
 		// Cancel the execution context to signal the goroutine to stop
@@ -1145,7 +1163,7 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 
 	// Write response to HTTP ResponseWriter
 	// Check if Response.End() was already called (which flushes headers/content)
-	if !ae.context.Response.IsEnded() {
+	if !stopByControlFlow && !ae.context.Response.IsEnded() {
 		// Flush the Response object (writes headers and buffer)
 		if err := ae.context.Response.Flush(); err != nil {
 			return fmt.Errorf("failed to flush response: %w", err)
@@ -1175,6 +1193,17 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 func (ae *ASPExecutor) saveSession() error {
 	if ae.context == nil || ae.context.sessionManager == nil {
 		return fmt.Errorf("no session context available")
+	}
+
+	for key, value := range ae.context.Session.Data {
+		if strings.Contains(strings.ToLower(key), "isauthenticatedintranet") {
+			traceAuthFlow(ae.context, "session before save %s=%v", key, value)
+		}
+	}
+
+	if ae.context.IsSessionAbandoned() {
+		traceAuthFlow(ae.context, "session abandoned=true; deleting session")
+		return ae.context.sessionManager.DeleteSession(ae.context.sessionID)
 	}
 
 	sessionData := &SessionData{
@@ -2028,6 +2057,18 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 				}
 				return lib.SetProperty(fmt.Sprintf("%v", key), value)
 			}
+
+			// Handle Response.Cookies collection assignment
+			if cookiesCollection, ok := obj.(*ResponseCookiesCollection); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					cookiesCollection.SetItem(fmt.Sprintf("%v", key), fmt.Sprintf("%v", value))
+					return nil
+				}
+			}
 		} else {
 			// For complex expressions, evaluate normally
 			obj, err := v.visitExpression(indexCall.Object)
@@ -2079,6 +2120,18 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 					return err
 				}
 				return lib.SetProperty(fmt.Sprintf("%v", key), value)
+			}
+
+			// If it's a Response.Cookies collection, set the indexed cookie value
+			if cookiesCollection, ok := obj.(*ResponseCookiesCollection); ok {
+				if len(indexCall.Indexes) > 0 {
+					key, err := v.visitExpression(indexCall.Indexes[0])
+					if err != nil {
+						return err
+					}
+					cookiesCollection.SetItem(fmt.Sprintf("%v", key), fmt.Sprintf("%v", value))
+					return nil
+				}
 			}
 		}
 	}
@@ -3572,33 +3625,47 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// 1. Check if objectExpr is an Identifier referring to a User Function/Sub (Manual Lookup)
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
-		hasVariableWithSameName := v.context.HasVariableInAccessibleScopes(ident.Name)
+		localVal, hasVariableWithSameName := v.context.GetVariable(ident.Name)
+		localValueIsCallable := false
+		if hasVariableWithSameName {
+			if _, ok := localVal.(asp.ASPObject); ok {
+				localValueIsCallable = true
+			} else if _, ok := localVal.(interface {
+				CallMethod(string, ...interface{}) (interface{}, error)
+			}); ok {
+				localValueIsCallable = true
+			} else if _, ok := localVal.(interface {
+				CallMethod(string, ...interface{}) interface{}
+			}); ok {
+				localValueIsCallable = true
+			}
+		}
 
-		// First check if we're inside a class and this is a class method call
-		if !hasVariableWithSameName {
-			if ctxObj := v.context.GetContextObject(); ctxObj != nil {
-				if classInst, ok := ctxObj.(*ClassInstance); ok {
-					nameLower := strings.ToLower(ident.Name)
-					// Check if this identifier refers to a class method
-					if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
-						// Call the class method with ByRef support
-						return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-					}
-					if _, exists := classInst.ClassDef.Functions[nameLower]; exists {
-						// Call the class function with ByRef support
-						return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-					}
-					if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
-						// Call the private method with ByRef support
-						return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-					}
-					// Check Property Get with arguments (e.g., getClickLink(false))
-					// callClassMethodWithRefs will fall through to CallMethod which handles Properties
-					if props, ok := classInst.ClassDef.Properties[nameLower]; ok {
-						for _, p := range props {
-							if p.Type == PropGet {
-								return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-							}
+		// First check if we're inside a class and this is a class method call.
+		// In VBScript, recursive calls from inside a Function must still resolve to the
+		// method itself even though the function return variable has the same name.
+		if ctxObj := v.context.GetContextObject(); ctxObj != nil && (!hasVariableWithSameName || !localValueIsCallable) {
+			if classInst, ok := ctxObj.(*ClassInstance); ok {
+				nameLower := strings.ToLower(ident.Name)
+				// Check if this identifier refers to a class method
+				if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
+					// Call the class method with ByRef support
+					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+				if _, exists := classInst.ClassDef.Functions[nameLower]; exists {
+					// Call the class function with ByRef support
+					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+				if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
+					// Call the private method with ByRef support
+					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+				}
+				// Check Property Get with arguments (e.g., getClickLink(false))
+				// callClassMethodWithRefs will fall through to CallMethod which handles Properties
+				if props, ok := classInst.ClassDef.Properties[nameLower]; ok {
+					for _, p := range props {
+						if p.Type == PropGet {
+							return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
 						}
 					}
 				}
@@ -3921,6 +3988,26 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 						return nil, nil
 					case "unlock":
 						appObj.Unlock()
+						return nil, nil
+					}
+				}
+
+				// Try SessionObject methods
+				if sessionObj, ok := parentObj.(*SessionObject); ok {
+					propNameLower := strings.ToLower(propName)
+					switch propNameLower {
+					case "abandon":
+						sessionObj.Abandon()
+						v.context.MarkSessionAbandoned()
+						return nil, nil
+					case "removeall":
+						sessionObj.RemoveAll()
+						return nil, nil
+					case "lock":
+						sessionObj.Lock()
+						return nil, nil
+					case "unlock":
+						sessionObj.Unlock()
 						return nil, nil
 					}
 				}
@@ -4248,6 +4335,11 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 
 	// Handle SessionObject
 	if sessionObj, ok := obj.(*SessionObject); ok {
+		propNameLower := strings.ToLower(propName)
+		switch propNameLower {
+		case "contents":
+			return NewSessionContentsCollection(sessionObj), nil
+		}
 		return sessionObj.GetProperty(propName), nil
 	}
 
@@ -4269,8 +4361,7 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 			// Return the StaticObjects collection (as a map for enumeration)
 			return appObj.GetStaticObjects(), nil
 		case "contents":
-			// Return the Contents collection (as a map for enumeration)
-			return appObj.GetContents(), nil
+			return NewApplicationContentsCollection(appObj), nil
 		}
 	}
 
@@ -4419,6 +4510,18 @@ func toString(val interface{}) string {
 		return ""
 	}
 	val = normalizeOLEValue(val)
+	if aspObj, ok := val.(asp.ASPObject); ok {
+		if inner := aspObj.GetProperty("value"); inner != nil && inner != val {
+			return toString(inner)
+		}
+	}
+	if objWithErrProperty, ok := val.(interface {
+		GetProperty(string) (interface{}, error)
+	}); ok {
+		if inner, err := objWithErrProperty.GetProperty("value"); err == nil && inner != nil && inner != val {
+			return toString(inner)
+		}
+	}
 	switch v := val.(type) {
 	case EmptyValue:
 		return ""
@@ -4460,6 +4563,19 @@ func toString(val interface{}) string {
 func toInt(val interface{}) int {
 	if val == nil {
 		return 0
+	}
+	val = normalizeOLEValue(val)
+	if aspObj, ok := val.(asp.ASPObject); ok {
+		if inner := aspObj.GetProperty("value"); inner != nil && inner != val {
+			return toInt(inner)
+		}
+	}
+	if objWithErrProperty, ok := val.(interface {
+		GetProperty(string) (interface{}, error)
+	}); ok {
+		if inner, err := objWithErrProperty.GetProperty("value"); err == nil && inner != nil && inner != val {
+			return toInt(inner)
+		}
 	}
 	switch v := val.(type) {
 	case EmptyValue, NothingValue:
@@ -4513,6 +4629,19 @@ func toInt(val interface{}) int {
 func toFloat(val interface{}) float64 {
 	if val == nil {
 		return 0
+	}
+	val = normalizeOLEValue(val)
+	if aspObj, ok := val.(asp.ASPObject); ok {
+		if inner := aspObj.GetProperty("value"); inner != nil && inner != val {
+			return toFloat(inner)
+		}
+	}
+	if objWithErrProperty, ok := val.(interface {
+		GetProperty(string) (interface{}, error)
+	}); ok {
+		if inner, err := objWithErrProperty.GetProperty("value"); err == nil && inner != nil && inner != val {
+			return toFloat(inner)
+		}
 	}
 	switch v := val.(type) {
 	case EmptyValue, NothingValue:
@@ -4869,6 +4998,34 @@ func toNumeric(val interface{}) (float64, bool) {
 	}
 }
 
+func shouldTraceAuthFlow() bool {
+	trace := strings.TrimSpace(strings.ToLower(os.Getenv("TRACE_LOGIN_FLOW")))
+	if trace == "1" || trace == "true" || trace == "yes" || trace == "on" {
+		return true
+	}
+	trace = strings.TrimSpace(strings.ToLower(os.Getenv("TRACE_AUTH_FLOW")))
+	return trace == "1" || trace == "true" || trace == "yes" || trace == "on"
+}
+
+func traceAuthFlow(ctx *ExecutionContext, format string, args ...interface{}) {
+	if !shouldTraceAuthFlow() {
+		return
+	}
+	prefix := "[TRACE_AUTH]"
+	if ctx != nil {
+		requestPath := ""
+		if ctx.httpRequest != nil && ctx.httpRequest.URL != nil {
+			requestPath = ctx.httpRequest.URL.Path
+		}
+		if requestPath != "" {
+			prefix = fmt.Sprintf("[TRACE_AUTH sid=%s path=%s]", ctx.sessionID, requestPath)
+		} else {
+			prefix = fmt.Sprintf("[TRACE_AUTH sid=%s]", ctx.sessionID)
+		}
+	}
+	fmt.Printf(prefix+" "+format+"\n", args...)
+}
+
 // populateRequestData fills a RequestObject with data from HTTP request
 func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionContext) {
 	// IMPORTANT: Read and preserve the body BEFORE ParseForm consumes it
@@ -4919,12 +5076,11 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 	}
 
 	// Set form parameters (POST data only)
-	// For multipart, r.Form contains the text fields (not file fields)
-	// For non-multipart, r.Form contains URL-encoded data
+	// For multipart and URL-encoded forms, r.PostForm contains only body fields.
+	// Do not use r.Form here because it also includes query-string values.
 	if r.Method == "POST" || r.Method == "PUT" {
-		for key, values := range r.Form {
-			// Only add if not in QueryString (to avoid duplicates)
-			if !req.QueryString.Exists(key) && len(values) > 0 {
+		for key, values := range r.PostForm {
+			if len(values) > 0 {
 				value := values[0]
 				if len(values) > 1 {
 					value = strings.Join(values, ", ")
@@ -4932,20 +5088,16 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 				req.Form.Add(key, value)
 			}
 		}
-		// For multipart, also check r.PostForm which may have additional fields
-		if isMultipart && r.PostForm != nil {
-			for key, values := range r.PostForm {
-				if !req.QueryString.Exists(key) && !req.Form.Exists(key) && len(values) > 0 {
-					value := values[0]
-					if len(values) > 1 {
-						value = strings.Join(values, ", ")
-					}
-					req.Form.Add(key, value)
-				}
-			}
-		}
 	}
 	// NOTE: The raw body is preserved via PreloadBody() for BinaryRead to work
+
+	traceAuthFlow(ctx,
+		"request prepared method=%s pageAction(q=%v,f=%v) iId(q=%v,f=%v) iPostID(q=%v,f=%v)",
+		r.Method,
+		req.QueryString.Get("pageAction"), req.Form.Get("pageAction"),
+		req.QueryString.Get("iId"), req.Form.Get("iId"),
+		req.QueryString.Get("iPostID"), req.Form.Get("iPostID"),
+	)
 
 	// Set cookies
 	for _, cookie := range r.Cookies() {
@@ -5178,6 +5330,11 @@ func (v *ASPVisitor) visitWithMemberAccess(expr *ast.WithMemberAccessExpression)
 
 	// Handle SessionObject
 	if sessionObj, ok := obj.(*SessionObject); ok {
+		propNameLower := strings.ToLower(propName)
+		switch propNameLower {
+		case "contents":
+			return NewSessionContentsCollection(sessionObj), nil
+		}
 		return sessionObj.GetProperty(propName), nil
 	}
 

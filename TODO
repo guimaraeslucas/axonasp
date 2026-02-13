@@ -9,7 +9,6 @@
 
 
 - [ ] Image creation
-- [ ] ZIP/G3FC support
 - [ ] PDF support
 - [ ] WebSocket support
 - [ ] Built-in Redis session storage
@@ -21,7 +20,7 @@
 - [ ] XML
 - [ ] Implement Session.Abandon() (destroy a session) is not supported/fully implemented
 - [ ] Application.Contents.RemoveAll and Session.Contents.RemoveAll are not supported/fully implemented
-- [ ] IIS supports multiple default documents. AxonASP defaults to default.asp. But IIS had: index.asp, default.asp, index.html, default.html, default.htm and index.htm, index.txt (in this hierarchy)
+
 - exit function does not work. You may  check whether exit sub works...
 function fName
 exit function

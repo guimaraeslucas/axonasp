@@ -39,6 +39,8 @@ type ApplicationObject struct {
 	staticObjects map[string]interface{}
 	// Mutex for Lock/Unlock methods
 	mutex sync.RWMutex
+	// Separate mutex for lock-state bookkeeping
+	stateMu sync.Mutex
 	// Lock state tracking
 	locked bool
 	// Lock count to support nested locks
@@ -57,21 +59,21 @@ func NewApplicationObject() *ApplicationObject {
 // Lock prevents other clients from modifying Application variables
 // Supports nested locks - each Lock must have a corresponding Unlock
 func (app *ApplicationObject) Lock() {
-	app.mutex.Lock()
-	app.locked = true
+	app.stateMu.Lock()
+	defer app.stateMu.Unlock()
 	app.lockCount++
+	app.locked = app.lockCount > 0
 }
 
 // Unlock allows other clients to modify Application variables
 // Must be called the same number of times as Lock was called
 func (app *ApplicationObject) Unlock() {
-	if app.locked && app.lockCount > 0 {
+	app.stateMu.Lock()
+	defer app.stateMu.Unlock()
+	if app.lockCount > 0 {
 		app.lockCount--
-		if app.lockCount == 0 {
-			app.locked = false
-			app.mutex.Unlock()
-		}
 	}
+	app.locked = app.lockCount > 0
 }
 
 // Get retrieves a value from Application.Contents (case-insensitive)
@@ -185,15 +187,15 @@ func (app *ApplicationObject) Count() int {
 
 // IsLocked returns whether the Application object is currently locked
 func (app *ApplicationObject) IsLocked() bool {
-	app.mutex.RLock()
-	defer app.mutex.RUnlock()
+	app.stateMu.Lock()
+	defer app.stateMu.Unlock()
 	return app.locked
 }
 
 // GetLockCount returns the current lock count
 func (app *ApplicationObject) GetLockCount() int {
-	app.mutex.RLock()
-	defer app.mutex.RUnlock()
+	app.stateMu.Lock()
+	defer app.stateMu.Unlock()
 	return app.lockCount
 }
 

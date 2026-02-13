@@ -17,6 +17,11 @@ mode="mode1"
 logonIntranet left(Request.QueryString ("sEmail"),100), left(Request.QueryString ("sPw"),100)
 end if
 end if
+if not authenticatedIntranet then
+if convertBool(Session(cId & "isAUTHENTICATEDIntranet")) then
+authenticatedIntranet=true
+end if
+end if
 p_UserIP=UserIP
 End Sub
 Public Function logon(byRef password)
