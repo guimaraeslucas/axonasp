@@ -461,6 +461,39 @@ func (as *ADOStream) GetName() string {
 	return "ADODB.Stream"
 }
 
+// ADOCommand wraps ADODBCommand for ASPLibrary interface compatibility
+type ADOCommand struct {
+	lib *ADODBCommand
+}
+
+// NewADOCommand creates a new ADOCommand instance
+func NewADOCommand(ctx *ExecutionContext) *ADOCommand {
+	return &ADOCommand{
+		lib: NewADODBCommand(ctx),
+	}
+}
+
+// CallMethod calls a method on ADOCommand
+func (ac *ADOCommand) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return ac.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from ADOCommand
+func (ac *ADOCommand) GetProperty(name string) interface{} {
+	return ac.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on ADOCommand
+func (ac *ADOCommand) SetProperty(name string, value interface{}) error {
+	ac.lib.SetProperty(name, value)
+	return nil
+}
+
+// GetName returns the name of the object
+func (ac *ADOCommand) GetName() string {
+	return "ADODB.Command"
+}
+
 // RegExpLibrary wraps G3REGEXP for ASPLibrary interface compatibility
 type RegExpLibrary struct {
 	lib *G3REGEXP

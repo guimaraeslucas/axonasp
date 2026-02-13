@@ -22,6 +22,27 @@ A comprehensive email library has been implemented for AxonASP, providing profes
    - Enables: `Set mail = Server.CreateObject("G3MAIL")`
    - Also supports: `Server.CreateObject("MAIL")`
 
+2. **`server/executor.go`**
+     - Added legacy COM-compatible aliases mapped to mail object support
+     - Enables: `Server.CreateObject("Persits.MailSender")`
+     - Enables: `Server.CreateObject("CDO.Message")`
+     - Enables: `Server.CreateObject("CDONTS.NewMail")`
+
+### Legacy Mail Compatibility
+
+✓ **Persits.MailSender**
+    - Supports common properties (`Host`, `Port`, `From`, `Subject`, `Body`, `IsHTML`)
+    - Supports recipient methods (`AddAddress`, `AddCC`, `AddBCC`)
+    - `Send()` redirects to existing SMTP sender implementation
+
+✓ **CDO.Message**
+    - Supports classic fields (`From`, `To`, `CC`, `BCC`, `Subject`, `TextBody`, `HTMLBody`)
+    - `Send()` redirects to existing SMTP sender implementation
+
+✓ **CDONTS.NewMail**
+    - Supports classic fields (`From`, `To`, `Subject`, `Body`, `BodyFormat`, `MailFormat`)
+    - Supports `Send(to, subject, body)` signature and `Send()` with prefilled properties
+
 2. **`.env` Configuration**
    - SMTP_HOST - SMTP server address
    - SMTP_PORT - SMTP port (typically 587 or 25)

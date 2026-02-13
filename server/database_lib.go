@@ -1030,6 +1030,330 @@ func rewritePlaceholders(sqlText string, driver string) string {
 	return out.String()
 }
 
+// --- ADODB.Command ---
+
+// ADODBParameter simulates ADODB.Parameter for Command parameters.
+type ADODBParameter struct {
+	Name      string
+	Type      int
+	Direction int
+	Size      int
+	Value     interface{}
+}
+
+func NewADODBParameter() *ADODBParameter {
+	return &ADODBParameter{}
+}
+
+func (p *ADODBParameter) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "name":
+		return p.Name
+	case "type":
+		return p.Type
+	case "direction":
+		return p.Direction
+	case "size":
+		return p.Size
+	case "value":
+		return p.Value
+	}
+	return nil
+}
+
+func (p *ADODBParameter) SetProperty(name string, value interface{}) {
+	switch strings.ToLower(name) {
+	case "name":
+		p.Name = fmt.Sprintf("%v", value)
+	case "type":
+		p.Type = toInt(value)
+	case "direction":
+		p.Direction = toInt(value)
+	case "size":
+		p.Size = toInt(value)
+	case "value":
+		p.Value = value
+	}
+}
+
+func (p *ADODBParameter) CallMethod(name string, args ...interface{}) interface{} {
+	return nil
+}
+
+// ADODBParametersCollection simulates ADODB.Parameters collection.
+type ADODBParametersCollection struct {
+	items []*ADODBParameter
+}
+
+func NewADODBParametersCollection() *ADODBParametersCollection {
+	return &ADODBParametersCollection{items: make([]*ADODBParameter, 0)}
+}
+
+func (pc *ADODBParametersCollection) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "count":
+		return len(pc.items)
+	}
+	return nil
+}
+
+func (pc *ADODBParametersCollection) SetProperty(name string, value interface{}) {}
+
+func (pc *ADODBParametersCollection) CallMethod(name string, args ...interface{}) interface{} {
+	switch strings.ToLower(name) {
+	case "append":
+		if len(args) < 1 {
+			return nil
+		}
+		if param, ok := args[0].(*ADODBParameter); ok && param != nil {
+			pc.items = append(pc.items, param)
+			return nil
+		}
+		return nil
+	case "delete":
+		if len(args) < 1 {
+			return nil
+		}
+		idx := toInt(args[0])
+		if idx >= 0 && idx < len(pc.items) {
+			pc.items = append(pc.items[:idx], pc.items[idx+1:]...)
+		}
+		return nil
+	case "refresh":
+		return nil
+	case "item", "":
+		if len(args) < 1 {
+			return nil
+		}
+		if idx := toInt(args[0]); idx >= 0 && idx < len(pc.items) {
+			return pc.items[idx]
+		}
+		needle := strings.ToLower(fmt.Sprintf("%v", args[0]))
+		for _, param := range pc.items {
+			if strings.ToLower(param.Name) == needle {
+				return param
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
+func (pc *ADODBParametersCollection) Enumeration() []interface{} {
+	out := make([]interface{}, len(pc.items))
+	for i, item := range pc.items {
+		out[i] = item
+	}
+	return out
+}
+
+func (pc *ADODBParametersCollection) Values() []interface{} {
+	values := make([]interface{}, 0, len(pc.items))
+	for _, param := range pc.items {
+		if param == nil {
+			values = append(values, nil)
+			continue
+		}
+		values = append(values, param.Value)
+	}
+	return values
+}
+
+// ADODBCommand simulates ADODB.Command for parameterized SQL execution.
+type ADODBCommand struct {
+	ActiveConnection interface{}
+	CommandText      string
+	CommandType      int
+	CommandTimeout   int
+	Prepared         bool
+	NamedParameters  bool
+	Parameters       *ADODBParametersCollection
+	ctx              *ExecutionContext
+}
+
+func NewADODBCommand(ctx *ExecutionContext) *ADODBCommand {
+	return &ADODBCommand{
+		CommandType:     1,
+		CommandTimeout:  30,
+		NamedParameters: false,
+		Parameters:      NewADODBParametersCollection(),
+		ctx:             ctx,
+	}
+}
+
+func (c *ADODBCommand) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "activeconnection":
+		return c.ActiveConnection
+	case "commandtext":
+		return c.CommandText
+	case "commandtype":
+		return c.CommandType
+	case "commandtimeout":
+		return c.CommandTimeout
+	case "prepared":
+		return c.Prepared
+	case "namedparameters":
+		return c.NamedParameters
+	case "parameters":
+		return c.Parameters
+	}
+	return nil
+}
+
+func (c *ADODBCommand) SetProperty(name string, value interface{}) {
+	switch strings.ToLower(name) {
+	case "activeconnection":
+		c.ActiveConnection = value
+	case "commandtext":
+		c.CommandText = fmt.Sprintf("%v", value)
+	case "commandtype":
+		c.CommandType = toInt(value)
+	case "commandtimeout":
+		c.CommandTimeout = toInt(value)
+	case "prepared":
+		c.Prepared = toBool(value)
+	case "namedparameters":
+		c.NamedParameters = toBool(value)
+	}
+}
+
+func (c *ADODBCommand) CallMethod(name string, args ...interface{}) interface{} {
+	switch strings.ToLower(name) {
+	case "createparameter":
+		param := NewADODBParameter()
+		if len(args) > 0 {
+			param.Name = fmt.Sprintf("%v", args[0])
+		}
+		if len(args) > 1 {
+			param.Type = toInt(args[1])
+		}
+		if len(args) > 2 {
+			param.Direction = toInt(args[2])
+		}
+		if len(args) > 3 {
+			param.Size = toInt(args[3])
+		}
+		if len(args) > 4 {
+			param.Value = args[4]
+		}
+		return param
+	case "execute":
+		return c.execute(args...)
+	case "cancel":
+		return nil
+	}
+	return nil
+}
+
+func (c *ADODBCommand) resolveConnection() *ADODBConnection {
+	switch conn := c.ActiveConnection.(type) {
+	case *ADODBConnection:
+		return conn
+	case *ADOConnection:
+		if conn != nil {
+			return conn.lib
+		}
+	case string:
+		resolved := NewADODBConnection(c.ctx)
+		resolved.ConnectionString = conn
+		_ = resolved.CallMethod("open")
+		return resolved
+	}
+	return nil
+}
+
+func (c *ADODBCommand) execute(args ...interface{}) interface{} {
+	conn := c.resolveConnection()
+	if conn == nil {
+		if c.ctx != nil && c.ctx.Err != nil {
+			c.ctx.Err.Raise(-1, "ADODB.Command", "ActiveConnection is not set")
+		}
+		return nil
+	}
+
+	cmdText := strings.TrimSpace(c.CommandText)
+	if cmdText == "" {
+		if c.ctx != nil && c.ctx.Err != nil {
+			c.ctx.Err.Raise(-1, "ADODB.Command", "CommandText is empty")
+		}
+		return nil
+	}
+
+	params := []interface{}{}
+	if c.Parameters != nil {
+		params = c.Parameters.Values()
+	}
+
+	if conn.oleConnection != nil {
+		resolved := resolveOLECommandText(cmdText, params)
+		return conn.CallMethod("execute", resolved)
+	}
+
+	if len(params) == 0 {
+		return conn.CallMethod("execute", cmdText)
+	}
+	return conn.CallMethod("execute", cmdText, params)
+}
+
+func resolveOLECommandText(commandText string, params []interface{}) string {
+	if len(params) == 0 {
+		return commandText
+	}
+
+	var out strings.Builder
+	paramIndex := 0
+	inSingle := false
+
+	for i := 0; i < len(commandText); i++ {
+		ch := commandText[i]
+		if ch == '\'' {
+			inSingle = !inSingle
+			out.WriteByte(ch)
+			continue
+		}
+		if !inSingle && ch == '?' && paramIndex < len(params) {
+			out.WriteString(formatSQLLiteral(params[paramIndex]))
+			paramIndex++
+			continue
+		}
+		out.WriteByte(ch)
+	}
+
+	return out.String()
+}
+
+func formatSQLLiteral(value interface{}) string {
+	if value == nil {
+		return "NULL"
+	}
+
+	switch v := value.(type) {
+	case bool:
+		if v {
+			return "1"
+		}
+		return "0"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return fmt.Sprintf("%v", v)
+	case time.Time:
+		return "#" + v.Format("2006-01-02 15:04:05") + "#"
+	case string:
+		escaped := strings.ReplaceAll(v, "'", "''")
+		return "'" + escaped + "'"
+	default:
+		if vbArr, ok := toVBArray(value); ok {
+			parts := make([]string, 0, len(vbArr.Values))
+			for _, item := range vbArr.Values {
+				parts = append(parts, formatSQLLiteral(item))
+			}
+			return strings.Join(parts, ",")
+		}
+		escaped := strings.ReplaceAll(fmt.Sprintf("%v", value), "'", "''")
+		return "'" + escaped + "'"
+	}
+}
+
 // --- ADODB.Recordset ---
 
 // Field represents a database field with Name and Value

@@ -10,6 +10,13 @@ Create the object using `Server.CreateObject`:
 Set zip = Server.CreateObject("G3ZIP")
 ```
 
+Legacy aliases are also supported and redirected to the same implementation:
+
+```vbscript
+Set zip = Server.CreateObject("XStandard.Zip")
+Set zip = Server.CreateObject("ASPZip.EasyZip")
+```
+
 ## Methods
 
 ### Create(path)

@@ -19,7 +19,10 @@ A comprehensive XML processing library has been implemented for AxonASP, providi
    - Added ServerXMLHTTP wrapper for MSXML2 compatibility
    - Added DOMDocument wrapper for MSXML2 compatibility
    - Enables: `Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")`
+  - Enables: `Set http = Server.CreateObject("MSXML2.XMLHTTP.6.0")`
    - Enables: `Set xmlDoc = Server.CreateObject("MSXML2.DOMDocument")`
+  - Enables: `Set xmlDoc = Server.CreateObject("MSXML2.DOMDocument.3.0")`
+  - Enables: `Set xmlDoc = Server.CreateObject("Microsoft.XMLDOM")`
 
 ### Key Features Implemented
 

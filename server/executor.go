@@ -1813,6 +1813,12 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewTemplateLibrary(ae.context), nil
 	case "G3MAIL", "MAIL":
 		return NewMailLibrary(ae.context), nil
+	case "PERSITS.MAILSENDER":
+		return NewPersitsMailSender(ae.context), nil
+	case "CDO.MESSAGE":
+		return NewCDOMessage(ae.context), nil
+	case "CDONTS.NEWMAIL":
+		return NewCDONTSNewMail(ae.context), nil
 	case "G3CRYPTO", "CRYPTO":
 		return NewCryptoLibrary(ae.context), nil
 	case "G3REGEXP", "REGEXP":
@@ -1822,6 +1828,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	case "G3DB", "DB":
 		return NewG3DBLibrary(ae.context), nil
 	case "G3ZIP", "ZIP":
+		return NewZIPLibrary(ae.context), nil
+	case "XSTANDARD.ZIP", "ASPZIP.EASYZIP":
 		return NewZIPLibrary(ae.context), nil
 	case "G3FC", "FC":
 		return NewG3FCLibrary(ae.context), nil
@@ -1833,9 +1841,9 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewDictionary(ae.context), nil
 
 	// MSXML2 Objects
-	case "MSXML2.SERVERXMLHTTP", "MSXML2.XMLHTTP", "SERVERXMLHTTP", "XMLHTTP":
+	case "MSXML2.SERVERXMLHTTP", "MSXML2.XMLHTTP", "MSXML2.XMLHTTP.6.0", "SERVERXMLHTTP", "XMLHTTP":
 		return NewServerXMLHTTP(ae.context), nil
-	case "MSXML2.DOMDOCUMENT", "DOMDOCUMENT", "MSXML2.DOMDOCUMENT.6.0", "MSXML2.DOMDOCUMENT.3.0":
+	case "MSXML2.DOMDOCUMENT", "DOMDOCUMENT", "MSXML2.DOMDOCUMENT.6.0", "MSXML2.DOMDOCUMENT.3.0", "MICROSOFT.XMLDOM":
 		return NewDOMDocument(ae.context), nil
 
 	// ADOX Objects
@@ -1849,6 +1857,12 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewADORecordset(ae.context), nil
 	case "ADODB.STREAM", "STREAM":
 		return NewADOStream(ae.context), nil
+	case "ADODB.COMMAND", "COMMAND":
+		return NewADOCommand(ae.context), nil
+
+	// .NET Crypto providers
+	case "SYSTEM.SECURITY.CRYPTOGRAPHY.MD5CRYPTOSERVICEPROVIDER":
+		return NewDotNetMD5CryptoServiceProvider(), nil
 
 	// WScript Objects
 	case "WSCRIPT.SHELL", "SHELL", "WSCRIPT":

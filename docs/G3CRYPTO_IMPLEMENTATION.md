@@ -26,6 +26,18 @@ A comprehensive cryptography library has been implemented for AxonASP, providing
 2. **`server/custom_functions.go`**
    - Added `CryptoHelper()` function for backward compatibility
 
+3. **`server/executor.go`**
+    - Added CreateObject ProgID support for `.NET` compatibility
+    - Enables: `Set md5 = Server.CreateObject("System.Security.Cryptography.MD5CryptoServiceProvider")`
+
+### .NET Compatibility Object
+
+✓ **System.Security.Cryptography.MD5CryptoServiceProvider**
+  - `ComputeHash(input)` - Returns byte array compatible with VBScript consumption
+  - `Initialize()`, `Clear()`, `Dispose()` - Reset internal hash state
+  - `Hash` property - Returns latest computed hash bytes
+  - `HashSize` property - Returns `128`
+
 ### Key Features Implemented
 
 ✓ **Password Hashing**

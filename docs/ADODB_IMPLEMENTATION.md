@@ -25,11 +25,25 @@ A comprehensive database abstraction library has been implemented for AxonASP, p
 #### Integration
 1. **`server/executor_libraries.go`**
    - Added ADOConnection wrapper
+   - Added ADOCommand wrapper
    - Added ADORecordset wrapper
    - Added ADOStream wrapper
    - Enables: `Set conn = Server.CreateObject("ADODB.Connection")`
+   - Enables: `Set cmd = Server.CreateObject("ADODB.Command")`
    - Enables: `Set rs = Server.CreateObject("ADODB.Recordset")`
    - Enables: `Set stream = Server.CreateObject("ADODB.Stream")`
+
+#### ADODB.Command
+
+✓ **Command Execution**
+  - `CreateParameter(name, type, direction, size, value)` - Create parameter objects
+  - `Parameters.Append(param)` - Add parameters to command
+  - `Execute()` - Execute using `ActiveConnection` and `CommandText`
+  - Supports both SQL drivers and Access OLE provider paths
+
+✓ **Command Properties**
+  - `ActiveConnection`, `CommandText`, `CommandType`, `CommandTimeout`
+  - `Prepared`, `NamedParameters`, `Parameters`
 
 ### Key Features Implemented
 
