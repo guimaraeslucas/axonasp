@@ -81,15 +81,29 @@ func ConfigureParseCache(mode string, webRoot string) {
 		parseCacheMode = ParseCacheMemory
 	}
 
-	if webRoot != "" {
-		cleanRoot := filepath.Clean(webRoot)
-		baseDir := filepath.Dir(cleanRoot)
-		parseCacheDir = filepath.Join(baseDir, "temp", "cache", "ast")
-	}
+	parseCacheDir = filepath.Join(resolveExecutableBaseDir(), "temp", "cache", "ast")
 
 	if parseCacheMode == ParseCacheDisk {
 		_ = os.MkdirAll(parseCacheDir, 0o755)
 	}
+}
+
+func resolveExecutableBaseDir() string {
+	execPath, err := os.Executable()
+	if err == nil {
+		execPath, err = filepath.EvalSymlinks(execPath)
+		if err == nil {
+			return filepath.Dir(execPath)
+		}
+		return filepath.Dir(execPath)
+	}
+
+	wd, err := os.Getwd()
+	if err == nil {
+		return wd
+	}
+
+	return "."
 }
 
 // SetParseCacheTTLMinutes sets the disk cache TTL. Use 0 to keep forever.

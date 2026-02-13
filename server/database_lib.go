@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
@@ -2938,10 +2939,16 @@ func (rs *ADODBOLERecordset) getFieldValue(fieldName interface{}) (interface{}, 
 	return value, true
 }
 
-func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interface{}) error {
+func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interface{}) (err error) {
 	if rs.oleRecordset == nil {
 		return fmt.Errorf("Recordset is closed or invalid")
 	}
+
+	defer func() {
+		if rec := recover(); rec != nil {
+			err = fmt.Errorf("OLE field assignment panic for field '%v': %v", fieldName, rec)
+		}
+	}()
 
 	// Try to convert numeric values to int32 if they are whole numbers and fit, to help Access with Integer fields (VT_I4)
 	switch v := value.(type) {
@@ -2976,12 +2983,79 @@ func (rs *ADODBOLERecordset) setFieldValue(fieldName interface{}, value interfac
 	defer fieldDisp.Release()
 
 	value = coerceOLEFieldValue(fieldDisp, value)
+	value = sanitizeOLEPutValue(value)
 
 	if _, err := oleutil.PutProperty(fieldDisp, "Value", value); err != nil {
 		fmt.Printf("[ADODB ERROR] setFieldValue failed for field '%v', value '%v' (Type: %T). Error: %v\n", fieldName, value, value, err)
 		return err
 	}
 	return nil
+}
+
+func sanitizeOLEPutValue(value interface{}) interface{} {
+	value = normalizeOLEValue(value)
+
+	switch v := value.(type) {
+	case nil:
+		return nil
+	case EmptyValue, NullValue, NothingValue:
+		return nil
+	case bool, string, int, int32, int64, float32, float64, time.Time, *ole.IDispatch:
+		return v
+	case int8:
+		return int32(v)
+	case int16:
+		return int32(v)
+	case uint:
+		return int64(v)
+	case uint8:
+		return int32(v)
+	case uint16:
+		return int32(v)
+	case uint32:
+		return int64(v)
+	case uint64:
+		if v > uint64(^uint32(0)) {
+			return fmt.Sprintf("%d", v)
+		}
+		return int64(v)
+	case []byte:
+		if decoded, ok := decodeLikelyUTF16LE(v); ok {
+			return normalizeOLEString(decoded)
+		}
+		return string(v)
+	}
+
+	rv := reflect.ValueOf(value)
+	if rv.IsValid() {
+		switch rv.Kind() {
+		case reflect.Ptr, reflect.Interface:
+			if rv.IsNil() {
+				return nil
+			}
+			return sanitizeOLEPutValue(rv.Elem().Interface())
+		case reflect.String:
+			return rv.String()
+		case reflect.Bool:
+			return rv.Bool()
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32:
+			return int32(rv.Int())
+		case reflect.Int64:
+			return rv.Int()
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32:
+			return int64(rv.Uint())
+		case reflect.Uint64:
+			u := rv.Uint()
+			if u > uint64(^uint32(0)) {
+				return fmt.Sprintf("%d", u)
+			}
+			return int64(u)
+		case reflect.Float32, reflect.Float64:
+			return rv.Float()
+		}
+	}
+
+	return fmt.Sprintf("%v", value)
 }
 
 func coerceOLEFieldValue(fieldDisp *ole.IDispatch, value interface{}) interface{} {

@@ -27,8 +27,7 @@ exit function
 end function
 --Server.Mappath does not return the physical path. It returns a relative path ("/sdfsdf/sdfsdf/sdfsdf"
 -By default, fso.getFolder sorts files alphabetically, our implementation does not
-- The db.execute method is wrapped through a cls_Database class rather than direct ADODB calls, which means each recursive invocation creates a new recordset while the parent's recordset remains open. Since Access has a hard limit around 2048 concurrent objects, stacking multiple levels of recursion across many pages quickly exhausts this limit even though individual recordsets are marked for cleanup after their loops complete. Please make it in a way similar to how IIS reads access database, avoiding the exaustion. 
-- 
+- FSO rename filename fails
 
 
 

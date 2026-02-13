@@ -23,8 +23,11 @@ package server
 import (
 	"crypto/rand"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"g3pix.com.br/axonasp/asp"
 )
@@ -60,6 +63,15 @@ type ASPProcessor struct {
 	config *ASPProcessorConfig
 }
 
+type pendingSessionEntry struct {
+	sessionID string
+	createdAt time.Time
+}
+
+var pendingSessionByClient sync.Map
+
+const pendingSessionTTL = 12 * time.Second
+
 // NewASPProcessor creates a new ASP processor
 func NewASPProcessor(config *ASPProcessorConfig) *ASPProcessor {
 	if config == nil {
@@ -77,6 +89,10 @@ func NewASPProcessor(config *ASPProcessorConfig) *ASPProcessor {
 // Takes the file content as string and returns the rendered output
 // Delegates to ASPExecutor in executor.go
 func (ap *ASPProcessor) ExecuteASPFile(fileContent string, filePath string, w http.ResponseWriter, r *http.Request) error {
+	// Ensure session cookie is established early to avoid first-request races
+	// between document and subresource requests (e.g., CAPTCHA image).
+	sessionID := ensureSessionIDAndCookie(w, r)
+
 	resolvedContent, parsedResult, err := ap.getParsed(filePath, fileContent)
 	if err != nil {
 		return err
@@ -84,9 +100,6 @@ func (ap *ASPProcessor) ExecuteASPFile(fileContent string, filePath string, w ht
 
 	// Create the executor with configuration
 	executor := NewASPExecutor(ap.config)
-
-	// Generate session ID from request cookie or create new one
-	sessionID := generateSessionID(r)
 
 	// Execute using cached parse tree
 	return executor.ExecuteWithParsed(resolvedContent, parsedResult, filePath, w, r, sessionID)
@@ -99,13 +112,101 @@ func (ap *ASPProcessor) GetConfig() *ASPProcessorConfig {
 
 // generateSessionID creates or retrieves a session ID from request cookies
 func generateSessionID(r *http.Request) string {
-	// Look for existing ASPSESSIONID cookie
-	if cookie, err := r.Cookie("ASPSESSIONID"); err == nil {
-		return cookie.Value
+	if r != nil {
+		// Look for existing ASPSESSIONID cookie
+		if cookie, err := r.Cookie("ASPSESSIONID"); err == nil {
+			if strings.TrimSpace(cookie.Value) != "" {
+				return cookie.Value
+			}
+		}
+
+		// Fallback for malformed/empty cookie values
+		if cookieHeader := strings.TrimSpace(r.Header.Get("Cookie")); cookieHeader != "" {
+			parts := strings.Split(cookieHeader, ";")
+			for _, part := range parts {
+				kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+				if len(kv) == 2 && strings.EqualFold(strings.TrimSpace(kv[0]), "ASPSESSIONID") {
+					if val := strings.TrimSpace(kv[1]); val != "" {
+						return val
+					}
+				}
+			}
+		}
 	}
 
 	// Generate new session ID
 	return generateUniqueID()
+}
+
+func ensureSessionIDAndCookie(w http.ResponseWriter, r *http.Request) string {
+	sessionID := generateSessionID(r)
+	if hasSessionCookie(r) {
+		return sessionID
+	}
+
+	sessionID = getOrCreatePendingSessionID(r, sessionID)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "ASPSESSIONID",
+		Value:    sessionID,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	return sessionID
+}
+
+func hasSessionCookie(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+
+	cookie, err := r.Cookie("ASPSESSIONID")
+	return err == nil && strings.TrimSpace(cookie.Value) != ""
+}
+
+func getOrCreatePendingSessionID(r *http.Request, fallbackSessionID string) string {
+	clientKey := clientFingerprint(r)
+	if clientKey == "" {
+		return fallbackSessionID
+	}
+
+	now := time.Now()
+	if existing, ok := pendingSessionByClient.Load(clientKey); ok {
+		if entry, valid := existing.(pendingSessionEntry); valid {
+			if now.Sub(entry.createdAt) <= pendingSessionTTL && strings.TrimSpace(entry.sessionID) != "" {
+				return entry.sessionID
+			}
+		}
+	}
+
+	pendingSessionByClient.Store(clientKey, pendingSessionEntry{
+		sessionID: fallbackSessionID,
+		createdAt: now,
+	})
+
+	return fallbackSessionID
+}
+
+func clientFingerprint(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+
+	host := strings.TrimSpace(r.RemoteAddr)
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+
+	if host == "" {
+		return ""
+	}
+
+	userAgent := strings.TrimSpace(r.UserAgent())
+	acceptLanguage := strings.TrimSpace(r.Header.Get("Accept-Language"))
+	return host + "|" + userAgent + "|" + acceptLanguage
 }
 
 // generateUniqueID generates a unique identifier for sessions

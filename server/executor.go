@@ -1282,6 +1282,10 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 	go func() {
 		defer func() {
 			if rec := recover(); rec != nil {
+				if ae.config != nil && ae.config.DebugASP {
+					done <- fmt.Errorf("runtime panic: %v\n%s", rec, debug.Stack())
+					return
+				}
 				done <- fmt.Errorf("runtime panic: %v", rec)
 			}
 		}()
