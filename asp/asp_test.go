@@ -426,3 +426,63 @@ func TestASPParserWithDirective(t *testing.T) {
 		t.Errorf("Expected to find directive block")
 	}
 }
+
+func TestASPParserSuppressesStructuralWhitespaceBetweenASPBlocks(t *testing.T) {
+	code := "<% Dim firstValue %>\r\n\r\n\r\n<% Dim secondValue %>"
+
+	parser := NewASPParser(code)
+	result, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(result.Errors) > 0 {
+		t.Fatalf("Unexpected parse errors: %v", result.Errors[0])
+	}
+
+	if strings.Contains(result.CombinedVBCode, "Response.Write") {
+		t.Fatalf("Expected no Response.Write for structural whitespace, got: %s", result.CombinedVBCode)
+	}
+}
+
+func TestASPParserKeepsWhitespaceInsideRealHTMLBlocks(t *testing.T) {
+	code := "<div> \n</div>"
+
+	parser := NewASPParser(code)
+	result, err := parser.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	if len(result.Errors) > 0 {
+		t.Fatalf("Unexpected parse errors: %v", result.Errors[0])
+	}
+
+	if !strings.Contains(result.CombinedVBCode, "Response.Write") {
+		t.Fatalf("Expected Response.Write for real HTML output")
+	}
+}
+
+func TestNormalizeBoundaryHTMLContent_TrimsLeadingCRLFBeforeHTML(t *testing.T) {
+	blocks := []*CodeBlock{
+		{Type: "asp", Content: "Dim firstValue"},
+		{Type: "html", Content: "\r\n\r\n<root/>"},
+	}
+
+	normalized := normalizeBoundaryHTMLContent(blocks, 1, blocks[1].Content)
+	if normalized != "<root/>" {
+		t.Fatalf("expected leading boundary CRLF to be trimmed, got %q", normalized)
+	}
+}
+
+func TestNormalizeBoundaryHTMLContent_TrimsTrailingCRLFBeforeASP(t *testing.T) {
+	blocks := []*CodeBlock{
+		{Type: "html", Content: "<root/>\r\n\r\n"},
+		{Type: "asp", Content: "Dim firstValue"},
+	}
+
+	normalized := normalizeBoundaryHTMLContent(blocks, 0, blocks[0].Content)
+	if normalized != "<root/>" {
+		t.Fatalf("expected trailing boundary CRLF to be trimmed, got %q", normalized)
+	}
+}

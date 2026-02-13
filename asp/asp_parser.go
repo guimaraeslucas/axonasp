@@ -24,11 +24,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	vb "g3pix.com.br/axonasp/vbscript"
 	"g3pix.com.br/axonasp/vbscript/ast"
 )
+
+var leadingBoundaryBlankLinesRegex = regexp.MustCompile(`^(?:[ \t]*\r?\n)+`)
+var trailingBoundaryBlankLinesRegex = regexp.MustCompile(`(?:\r?\n[ \t]*)+$`)
 
 // ASPParserResult contém o resultado da análise de código ASP
 type ASPParserResult struct {
@@ -355,7 +359,14 @@ func buildCombinedVBScript(blocks []*CodeBlock) string {
 				sb.WriteString("\n")
 			}
 		case "html":
-			htmlWrite := htmlToVBWrite(block.Content)
+			if shouldSuppressStructuralWhitespaceBlock(blocks, idx) {
+				continue
+			}
+			normalizedHTML := normalizeBoundaryHTMLContent(blocks, idx, block.Content)
+			if normalizedHTML == "" {
+				continue
+			}
+			htmlWrite := htmlToVBWrite(normalizedHTML)
 			if htmlWrite == "" {
 				continue
 			}
@@ -367,6 +378,75 @@ func buildCombinedVBScript(blocks []*CodeBlock) string {
 	}
 
 	return sb.String()
+}
+
+func shouldSuppressStructuralWhitespaceBlock(blocks []*CodeBlock, idx int) bool {
+	if idx < 0 || idx >= len(blocks) {
+		return false
+	}
+
+	block := blocks[idx]
+	if block == nil || block.Type != "html" {
+		return false
+	}
+
+	if strings.TrimSpace(block.Content) != "" {
+		return false
+	}
+
+	if !strings.ContainsAny(block.Content, "\r\n") {
+		return false
+	}
+
+	prevType := nearestOutputRelevantBlockType(blocks, idx, -1)
+	nextType := nearestOutputRelevantBlockType(blocks, idx, 1)
+
+	prevIsASP := prevType == "" || prevType == "asp"
+	nextIsASP := nextType == "" || nextType == "asp"
+
+	return prevIsASP && nextIsASP
+}
+
+func nearestOutputRelevantBlockType(blocks []*CodeBlock, start int, step int) string {
+	for i := start + step; i >= 0 && i < len(blocks); i += step {
+		block := blocks[i]
+		if block == nil {
+			continue
+		}
+
+		switch block.Type {
+		case "directive":
+			continue
+		case "html":
+			if strings.TrimSpace(block.Content) == "" {
+				continue
+			}
+			return "html"
+		default:
+			return block.Type
+		}
+	}
+
+	return ""
+}
+
+func normalizeBoundaryHTMLContent(blocks []*CodeBlock, idx int, content string) string {
+	if content == "" {
+		return ""
+	}
+
+	prevType := nearestOutputRelevantBlockType(blocks, idx, -1)
+	nextType := nearestOutputRelevantBlockType(blocks, idx, 1)
+
+	if prevType == "" || prevType == "asp" {
+		content = leadingBoundaryBlankLinesRegex.ReplaceAllString(content, "")
+	}
+
+	if nextType == "" || nextType == "asp" {
+		content = trailingBoundaryBlankLinesRegex.ReplaceAllString(content, "")
+	}
+
+	return content
 }
 
 // htmlToVBWrite converts raw HTML into a VBScript Response.Write statement

@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"runtime/debug"
 
@@ -68,6 +69,9 @@ var ErrServerTransfer = fmt.Errorf("Server.Transfer")
 // Global Application singleton (shared across all requests)
 var globalApplication *ApplicationObject
 var globalAppOnce sync.Once
+
+var leadingExecutionBoundaryBlankLinesRegex = regexp.MustCompile(`^(?:[ \t]*\r?\n)+`)
+var trailingExecutionBoundaryBlankLinesRegex = regexp.MustCompile(`(?:\r?\n[ \t]*)+$`)
 
 // GetGlobalApplication returns the singleton Application object
 func GetGlobalApplication() *ApplicationObject {
@@ -1501,8 +1505,15 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 
 		switch block.Type {
 		case "html":
+			if shouldSuppressStructuralHTMLBlock(result.Blocks, i) {
+				continue
+			}
+			normalizedHTML := normalizeStructuralBoundaryHTMLBlock(result.Blocks, i, block.Content)
+			if normalizedHTML == "" {
+				continue
+			}
 			// Write HTML content directly
-			if err := ae.context.Response.Write(block.Content); err != nil {
+			if err := ae.context.Response.Write(normalizedHTML); err != nil {
 				return fmt.Errorf("failed to write HTML: %w", err)
 			}
 
@@ -1527,6 +1538,75 @@ func (ae *ASPExecutor) executeBlocks(result *asp.ASPParserResult) error {
 	}
 
 	return nil
+}
+
+func shouldSuppressStructuralHTMLBlock(blocks []*asp.CodeBlock, idx int) bool {
+	if idx < 0 || idx >= len(blocks) {
+		return false
+	}
+
+	block := blocks[idx]
+	if block == nil || block.Type != "html" {
+		return false
+	}
+
+	if strings.TrimSpace(block.Content) != "" {
+		return false
+	}
+
+	if !strings.ContainsAny(block.Content, "\r\n") {
+		return false
+	}
+
+	prevType := nearestRelevantExecutionBlockType(blocks, idx, -1)
+	nextType := nearestRelevantExecutionBlockType(blocks, idx, 1)
+
+	prevIsASP := prevType == "" || prevType == "asp"
+	nextIsASP := nextType == "" || nextType == "asp"
+
+	return prevIsASP && nextIsASP
+}
+
+func nearestRelevantExecutionBlockType(blocks []*asp.CodeBlock, start int, step int) string {
+	for i := start + step; i >= 0 && i < len(blocks); i += step {
+		block := blocks[i]
+		if block == nil {
+			continue
+		}
+
+		switch block.Type {
+		case "directive":
+			continue
+		case "html":
+			if strings.TrimSpace(block.Content) == "" {
+				continue
+			}
+			return "html"
+		default:
+			return block.Type
+		}
+	}
+
+	return ""
+}
+
+func normalizeStructuralBoundaryHTMLBlock(blocks []*asp.CodeBlock, idx int, content string) string {
+	if content == "" {
+		return ""
+	}
+
+	prevType := nearestRelevantExecutionBlockType(blocks, idx, -1)
+	nextType := nearestRelevantExecutionBlockType(blocks, idx, 1)
+
+	if prevType == "" || prevType == "asp" {
+		content = leadingExecutionBoundaryBlankLinesRegex.ReplaceAllString(content, "")
+	}
+
+	if nextType == "" || nextType == "asp" {
+		content = trailingExecutionBoundaryBlankLinesRegex.ReplaceAllString(content, "")
+	}
+
+	return content
 }
 
 func (ae *ASPExecutor) executeVM(resolvedContent string, result *asp.ASPParserResult) error {

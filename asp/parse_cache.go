@@ -42,7 +42,7 @@ const (
 	ParseCacheDisk
 )
 
-const parseCacheVersion = "asp-ast-cache-v1"
+const parseCacheVersion = "asp-ast-cache-v2"
 const parseCacheMaxMemoryBytes = 4 * 1024 * 1024
 
 var (
