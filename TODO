@@ -1,0 +1,36 @@
+
+- Server.CreateObject("Scripting.FileSystemObject") não está funcionando
+- GetLastError() did not return the most recent error
+- Implemente Option Explicit adequadamente
+- Implemente adequadamente Err.Number, Err.Description, and Err.Source. Implemente On Error Resume Next. Aproveite e modifique a tela de debug para que mostre o nome do arquivo com erro, não apenas a linha, o horário que isso ocorreu e se em uma página HTML retorne também a StackTrace
+- Check if folder is acessible without /, eg: /tests and /tests/
+- Implementar adequadamente Include e IncludeOnce, ainda falha.
+- Implement ZIP, G3FC, PDF, IMAGE
+
+
+- [ ] Image creation
+- [ ] ZIP/G3FC support
+- [ ] PDF support
+- [ ] WebSocket support
+- [ ] Built-in Redis session storage
+- [ ] Docker official images
+- [ ] OAuth2 authentication library
+- [ ] REST API generator
+- [ ] GraphQL support
+- [ ] Implement VM/Compiler
+- [ ] XML
+- [ ] Implement Session.Abandon() (destroy a session) is not supported/fully implemented
+- [ ] Application.Contents.RemoveAll and Session.Contents.RemoveAll are not supported/fully implemented
+- [ ] IIS supports multiple default documents. AxonASP defaults to default.asp. But IIS had: index.asp, default.asp, index.html, default.html, default.htm and index.htm, index.txt (in this hierarchy)
+- exit function does not work. You may  check whether exit sub works...
+function fName
+exit function
+end function
+--Server.Mappath does not return the physical path. It returns a relative path ("/sdfsdf/sdfsdf/sdfsdf"
+-By default, fso.getFolder sorts files alphabetically, our implementation does not
+- The db.execute method is wrapped through a cls_Database class rather than direct ADODB calls, which means each recursive invocation creates a new recordset while the parent's recordset remains open. Since Access has a hard limit around 2048 concurrent objects, stacking multiple levels of recursion across many pages quickly exhausts this limit even though individual recordsets are marked for cleanup after their loops complete. Please make it in a way similar to how IIS reads access database, avoiding the exaustion. 
+- 
+
+
+
+http://www.apache-asp.org/config.html#MailAlertTo

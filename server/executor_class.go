@@ -415,7 +415,19 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 	// 1. SAVE PREVIOUS CONTEXT
 	oldContextObj := ci.Context.GetContextObject()
 
-	// 2. PUSH NEW SCOPE
+	// 2. ISOLATE SCOPE & PUSH NEW SCOPE
+	// Save existing scope stack (caller's scope)
+	prevScopeStack := ci.Context.scopeStack
+	prevScopeConstStack := ci.Context.scopeConstStack
+	prevParentScopeStack := ci.Context.parentScopeStack
+
+	// Create empty stack for method isolation
+	ci.Context.scopeStack = make([]map[string]interface{}, 0)
+	ci.Context.scopeConstStack = make([]map[string]interface{}, 0)
+
+	// Keep read-only visibility only to inherited/global scopes at class boundaries.
+	ci.Context.parentScopeStack = buildClassIsolatedParentScopes(prevParentScopeStack, prevScopeStack, oldContextObj)
+
 	ci.Context.PushScope()
 
 	// 3. SET 'ME' CONTEXT
@@ -423,8 +435,13 @@ func (ci *ClassInstance) executeMethod(node ast.Node, args []interface{}) (inter
 
 	// 4. DEFER CLEANUP
 	defer func() {
-		ci.Context.SetContextObject(oldContextObj)
 		ci.Context.PopScope()
+		ci.Context.SetContextObject(oldContextObj)
+
+		// Restore caller's scope stack
+		ci.Context.scopeStack = prevScopeStack
+		ci.Context.scopeConstStack = prevScopeConstStack
+		ci.Context.parentScopeStack = prevParentScopeStack
 	}()
 
 	// 5. IDENTIFY METHOD SIGNATURE

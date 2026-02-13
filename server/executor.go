@@ -121,10 +121,11 @@ type ExecutionContext struct {
 	sessionManager *SessionManager
 
 	// Scoping
-	scopeStack      []map[string]interface{}
-	scopeConstStack []map[string]interface{}
-	contextObject   interface{}  // For Class Instance (Me)
-	currentExecutor *ASPExecutor // Current executor for ExecuteGlobal/Execute
+	scopeStack       []map[string]interface{}
+	parentScopeStack []map[string]interface{} // For "Scope Isolation" (Dynamic Scope Read-Only fallback)
+	scopeConstStack  []map[string]interface{}
+	contextObject    interface{}  // For Class Instance (Me)
+	currentExecutor  *ASPExecutor // Current executor for ExecuteGlobal/Execute
 
 	// Mutex for thread safety
 	mu sync.RWMutex
@@ -397,10 +398,11 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 		}
 	}
 
-	// 2. Check Local Scopes (Top to Bottom)
-	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
-		if _, exists := ec.scopeStack[i][nameLower]; exists {
-			ec.scopeStack[i][nameLower] = value
+	// 2. Check current local scope only
+	if len(ec.scopeStack) > 0 {
+		currentScope := ec.scopeStack[len(ec.scopeStack)-1]
+		if _, exists := currentScope[nameLower]; exists {
+			currentScope[nameLower] = value
 			return nil
 		}
 	}
@@ -421,7 +423,19 @@ func (ec *ExecutionContext) SetVariable(name string, value interface{}) error {
 		return fmt.Errorf("cannot reassign constant '%s'", name)
 	}
 
-	// 5. Global Variables (Default)
+	// 5. Existing Global Variable
+	if _, exists := ec.variables[nameLower]; exists {
+		ec.variables[nameLower] = value
+		return nil
+	}
+
+	// 6. Implicit Local Variable (inside procedure/class scope)
+	if len(ec.scopeStack) > 0 {
+		ec.scopeStack[len(ec.scopeStack)-1][nameLower] = value
+		return nil
+	}
+
+	// 7. Global Variable (module-level assignment)
 	ec.variables[nameLower] = value
 	return nil
 }
@@ -513,18 +527,17 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		return val, true
 	}
 
-	// 3. Check current local scope (topmost only)
-	if len(ec.scopeStack) > 0 {
-		currentScope := ec.scopeStack[len(ec.scopeStack)-1]
-		if val, exists := currentScope[nameLower]; exists {
+	// 3. Check all local scopes (top-down)
+	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
+		if val, exists := ec.scopeStack[i][nameLower]; exists {
 			ec.mu.RUnlock()
 			return val, true
 		}
 	}
 
-	// 4. Check Context Object (Class Member) BEFORE checking parent scopes
-	// This ensures class member variables take precedence over variables from
-	// parent function scopes (preventing shadowing issues)
+	// 4. Check Context Object (Class Member)
+	// Local/procedure scopes are resolved first; class members are fallback
+	// when no scoped symbol exists.
 	// NOTE: We must release the lock BEFORE calling GetMember/GetProperty because
 	// those can trigger property execution which needs to acquire the lock for PushScope
 	ctxObj := ec.contextObject
@@ -550,16 +563,15 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		}
 	}
 
-	// Re-acquire lock to check remaining scopes
+	// Re-acquire lock to check remaining lookups
 	ec.mu.RLock()
 	defer ec.mu.RUnlock()
 
-	// 5. Check parent Local Scopes (excluding the topmost which was checked above)
-	for i := len(ec.scopeStack) - 2; i >= 0; i-- {
-		if val, exists := ec.scopeStack[i][nameLower]; exists {
-			if nameLower == "rs" {
-				//fmt.Printf("[DEBUG] GetVariable(rs): found in parent scope[%d], val=%T\n", i, val)
-			}
+	// 5. Check Parent Scope Stack (Isolated Caller Scopes) - Read Only Fallback
+	// This restores visibility of caller's variables for Class Methods (pseudo-dynamic scoping)
+	// without allowing modification via SetVariable (which only checks scopeStack).
+	for i := len(ec.parentScopeStack) - 1; i >= 0; i-- {
+		if val, exists := ec.parentScopeStack[i][nameLower]; exists {
 			return val, true
 		}
 	}
@@ -576,6 +588,62 @@ func (ec *ExecutionContext) GetVariable(name string) (interface{}, bool) {
 		//fmt.Printf("[DEBUG] GetVariable(rs): NOT FOUND!\n")
 	}
 	return nil, false
+}
+
+// HasVariableInCurrentScope reports whether a variable exists in the current local scope.
+func (ec *ExecutionContext) HasVariableInCurrentScope(name string) bool {
+	nameLower := lowerKey(name)
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+	if len(ec.scopeStack) == 0 {
+		return false
+	}
+	_, exists := ec.scopeStack[len(ec.scopeStack)-1][nameLower]
+	return exists
+}
+
+// HasVariableInAccessibleScopes reports whether a symbol exists in local or parent fallback scopes.
+// This excludes global scope and context-object members; it is used to avoid implicit class-method
+// dispatch when a scoped symbol already exists.
+func (ec *ExecutionContext) HasVariableInAccessibleScopes(name string) bool {
+	nameLower := lowerKey(name)
+	ec.mu.RLock()
+	defer ec.mu.RUnlock()
+
+	for i := len(ec.scopeConstStack) - 1; i >= 0; i-- {
+		if _, exists := ec.scopeConstStack[i][nameLower]; exists {
+			return true
+		}
+	}
+
+	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
+		if _, exists := ec.scopeStack[i][nameLower]; exists {
+			return true
+		}
+	}
+
+	for i := len(ec.parentScopeStack) - 1; i >= 0; i-- {
+		if _, exists := ec.parentScopeStack[i][nameLower]; exists {
+			return true
+		}
+	}
+
+	return false
+}
+
+// buildClassIsolatedParentScopes prepares read-only fallback scopes for class method execution.
+// It keeps previously inherited parents and, when entering a class boundary from non-class
+// code, exposes the caller scope chain as read-only fallback (writes remain isolated).
+func buildClassIsolatedParentScopes(prevParentScopeStack []map[string]interface{}, prevScopeStack []map[string]interface{}, oldContextObj interface{}) []map[string]interface{} {
+	combinedParents := make([]map[string]interface{}, 0, len(prevParentScopeStack)+len(prevScopeStack))
+	combinedParents = append(combinedParents, prevParentScopeStack...)
+
+	_, calledFromClass := oldContextObj.(*ClassInstance)
+	if !calledFromClass && len(prevScopeStack) > 0 {
+		combinedParents = append(combinedParents, prevScopeStack...)
+	}
+
+	return combinedParents
 }
 
 // GetGlobalVariable gets a variable directly from global scope (case-insensitive).
@@ -799,11 +867,7 @@ func (ec *ExecutionContext) Cleanup() {
 			switch res := resource.(type) {
 			case *ADODBConnection:
 				if res != nil {
-					// Close regular SQL database connection
-					if res.db != nil {
-						res.db.Close()
-						res.db = nil
-					}
+					res.db = nil
 				}
 			case *ADODBRecordset:
 				if res != nil && res.oleRecordset != nil {
@@ -3145,6 +3209,20 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 			return val, nil
 		}
 
+		// Intrinsic ASP objects are available when no scoped variable shadows them.
+		switch strings.ToLower(varName) {
+		case "response":
+			return v.context.Response, nil
+		case "request":
+			return v.context.Request, nil
+		case "server":
+			return v.context.Server, nil
+		case "session":
+			return v.context.Session, nil
+		case "application":
+			return v.context.Application, nil
+		}
+
 		// Check if we're inside a class and this identifier is a class method/function
 		// This allows calling class methods without "Me." prefix (e.g., calling "dict" from within cls_asplite)
 		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
@@ -3166,20 +3244,6 @@ func (v *ASPVisitor) visitExpression(expr ast.Expression) (interface{}, error) {
 					return v.callClassMethodWithRefs(classInst, varName, []ast.Expression{})
 				}
 			}
-		}
-
-		// Check built-in ASP objects (case-insensitive)
-		switch strings.ToLower(varName) {
-		case "response":
-			return v.context.Response, nil
-		case "request":
-			return v.context.Request, nil
-		case "server":
-			return v.context.Server, nil
-		case "session":
-			return v.context.Session, nil
-		case "application":
-			return v.context.Application, nil
 		}
 
 		// Check for built-in functions (parameterless call)
@@ -3508,29 +3572,33 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 
 	// 1. Check if objectExpr is an Identifier referring to a User Function/Sub (Manual Lookup)
 	if ident, ok := objectExpr.(*ast.Identifier); ok {
+		hasVariableWithSameName := v.context.HasVariableInAccessibleScopes(ident.Name)
+
 		// First check if we're inside a class and this is a class method call
-		if ctxObj := v.context.GetContextObject(); ctxObj != nil {
-			if classInst, ok := ctxObj.(*ClassInstance); ok {
-				nameLower := strings.ToLower(ident.Name)
-				// Check if this identifier refers to a class method
-				if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
-					// Call the class method with ByRef support
-					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-				}
-				if _, exists := classInst.ClassDef.Functions[nameLower]; exists {
-					// Call the class function with ByRef support
-					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-				}
-				if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
-					// Call the private method with ByRef support
-					return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
-				}
-				// Check Property Get with arguments (e.g., getClickLink(false))
-				// callClassMethodWithRefs will fall through to CallMethod which handles Properties
-				if props, ok := classInst.ClassDef.Properties[nameLower]; ok {
-					for _, p := range props {
-						if p.Type == PropGet {
-							return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+		if !hasVariableWithSameName {
+			if ctxObj := v.context.GetContextObject(); ctxObj != nil {
+				if classInst, ok := ctxObj.(*ClassInstance); ok {
+					nameLower := strings.ToLower(ident.Name)
+					// Check if this identifier refers to a class method
+					if _, exists := classInst.ClassDef.Methods[nameLower]; exists {
+						// Call the class method with ByRef support
+						return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+					}
+					if _, exists := classInst.ClassDef.Functions[nameLower]; exists {
+						// Call the class function with ByRef support
+						return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+					}
+					if _, exists := classInst.ClassDef.PrivateMethods[nameLower]; exists {
+						// Call the private method with ByRef support
+						return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+					}
+					// Check Property Get with arguments (e.g., getClickLink(false))
+					// callClassMethodWithRefs will fall through to CallMethod which handles Properties
+					if props, ok := classInst.ClassDef.Properties[nameLower]; ok {
+						for _, p := range props {
+							if p.Type == PropGet {
+								return v.callClassMethodWithRefs(classInst, ident.Name, arguments)
+							}
 						}
 					}
 				}
@@ -3574,11 +3642,13 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 		if strings.EqualFold(ident.Name, "me") {
 			base = v.context.GetContextObject()
 		} else {
-			// 2. Check Variable
+			// 2. Check Variable first
 			if val, exists := v.context.GetVariable(ident.Name); exists {
 				base = val
-			} else {
-				// 3. Check Built-in Objects
+			}
+
+			// 3. Fallback to intrinsic built-in objects
+			if base == nil {
 				switch strings.ToLower(ident.Name) {
 				case "response":
 					base = v.context.Response
@@ -4060,6 +4130,14 @@ func (v *ASPVisitor) visitMemberExpression(expr *ast.MemberExpression) (interfac
 			objIdentifier = idExpr.Name
 		}
 		errMsg := fmt.Sprintf("object variable not set when accessing '%s' on '%s' (Error 91)", propName, objIdentifier)
+
+		// VBScript semantics: with On Error Resume Next enabled, convert runtime member access
+		// failures into Empty and continue execution while updating Err object state.
+		if v.context.IsResumeOnError() {
+			v.context.Err.SetError(fmt.Errorf("%s", errMsg))
+			return EmptyValue{}, nil
+		}
+
 		// Return the error so it can be handled properly
 		return nil, fmt.Errorf("%s", errMsg)
 	}
@@ -5643,6 +5721,25 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 			funcName = n.Identifier.Name
 		}
 	}
+	// Check Properties (PropGet) - Handles Private Properties too since we are inside the context or explicitly asking for it
+	// NOTE: We only care about PropGet for function calls.
+	if methodNode == nil {
+		if props, ok := classInst.ClassDef.Properties[nameLower]; ok {
+			for _, p := range props {
+				if p.Type == PropGet { // Assuming valid visibility check is implicit or we allow it via callClassMethodWithRefs?
+					// callClassMethodWithRefs is called by resolveCall which verifies current context object.
+					// If we are calling Me.Prop(), we have access.
+					methodNode = p.Node
+					if pg, ok := p.Node.(*ast.PropertyGetDeclaration); ok {
+						params = pg.Parameters
+						funcName = pg.Identifier.Name
+					}
+					break
+				}
+			}
+		}
+	}
+
 	if methodNode == nil {
 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: methodNode is NIL, falling back to CallMethod\n")
 		args := make([]interface{}, len(arguments))
@@ -5656,18 +5753,7 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 		return classInst.CallMethod(methodName, args...)
 	}
 
-	classInst.Context.PushScope()
-	defer func() {
-		classInst.Context.PopScope()
-	}()
-
-	// Debug: print context object after PushScope (commented out for performance)
-	// if ctxObj := v.context.GetContextObject(); ctxObj != nil {
-	// 	if ci, ok := ctxObj.(*ClassInstance); ok {
-	// 		_ = ci
-	// 		//fmt.Printf("[DEBUG] callClassMethodWithRefs: after PushScope, currentContextObj=%s\n", ci.ClassDef.Name)
-	// 	}
-	// }
+	// NOTE: Scope push delayed until after argument evaluation
 
 	// Evaluate all arguments in the CALLER'S context BEFORE switching context
 	evaluatedArgs := make([]interface{}, len(arguments))
@@ -5717,10 +5803,50 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 		}
 	}
 
-	// NOW switch the context to the class instance
+	// NOW switch the context to the class instance (Isolate Scope)
+	// 1. Save Scope Stack
+	prevScopeStack := classInst.Context.scopeStack
+	prevScopeConstStack := classInst.Context.scopeConstStack
+	prevParentScopeStack := classInst.Context.parentScopeStack
 	oldCtxObj := classInst.Context.GetContextObject()
+
+	// 2. Clear Scope Stack (Isolate Class Method)
+	classInst.Context.scopeStack = make([]map[string]interface{}, 0)
+	classInst.Context.scopeConstStack = make([]map[string]interface{}, 0)
+	classInst.Context.parentScopeStack = buildClassIsolatedParentScopes(prevParentScopeStack, prevScopeStack, oldCtxObj)
+
+	// 3. Push Scope for Method
+	classInst.Context.PushScope()
+
+	// 4. Set Context Object
 	classInst.Context.SetContextObject(classInst)
-	defer classInst.Context.SetContextObject(oldCtxObj)
+
+	// Defer Cleanup & Restoration
+	defer func() {
+		// Capture ByRef values from Method Scope (before popping)
+		byRefResults := make(map[string]interface{})
+		for paramName := range byRefMap {
+			if val, exists := classInst.Context.GetVariable(paramName); exists {
+				byRefResults[paramName] = val
+			}
+		}
+
+		classInst.Context.PopScope()
+		classInst.Context.SetContextObject(oldCtxObj)
+
+		// Restore Caller Scope Stack
+		classInst.Context.scopeStack = prevScopeStack
+		classInst.Context.scopeConstStack = prevScopeConstStack
+		classInst.Context.parentScopeStack = prevParentScopeStack
+
+		// Apply ByRef updates to Caller Scope
+		for paramName, origVarName := range byRefMap {
+			if newVal, exists := byRefResults[paramName]; exists {
+				// Use SetVariable (Caller Context is active)
+				v.context.SetVariable(origVarName, newVal)
+			}
+		}
+	}()
 
 	// Define parameters in the class instance context with the evaluated values
 	for i, param := range params {
@@ -5746,6 +5872,11 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 	case *ast.FunctionDeclaration:
 		if n.Body != nil {
 			classVisitor.hoistDimDeclarations(n.Body)
+		}
+	case *ast.PropertyGetDeclaration:
+		// Property Body is []ast.Statement, not ast.Statement
+		for _, stmt := range n.Body {
+			classVisitor.hoistDimDeclarations(stmt)
 		}
 	}
 
@@ -5784,12 +5915,14 @@ func (v *ASPVisitor) callClassMethodWithRefs(classInst *ClassInstance, methodNam
 				}
 			}
 		}
-	}
-
-	// Apply ByRef updates back to the caller's context
-	for paramName, origVarName := range byRefMap {
-		if newVal, exists := classInst.Context.GetVariable(paramName); exists {
-			v.context.SetVariable(origVarName, newVal)
+	case *ast.PropertyGetDeclaration:
+		for _, stmt := range n.Body {
+			if err := classVisitor.VisitStatement(stmt); err != nil {
+				if pe, ok := err.(*ProcedureExitError); ok && pe.Kind == "property" {
+					break
+				}
+				return nil, err
+			}
 		}
 	}
 

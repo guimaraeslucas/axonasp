@@ -157,11 +157,14 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 					////fmt.Printf("[DEBUG] ExecuteGlobal END (Control Flow: %s)\n", errMsg)
 					panic(err)
 				}
-				// Log actual execution errors for debugging
+				// VBScript semantics: with On Error Resume Next enabled, continue with next statement.
+				if ctx.IsResumeOnError() {
+					ctx.Err.SetError(err)
+					continue
+				}
+
 				log.Printf("ExecuteGlobal execution error: %v\n", err)
 				ctx.Err.SetError(err)
-				// Continue execution despite errors (VBScript behavior with On Error Resume Next)
-				//fmt.Printf("[DEBUG] ExecuteGlobal FAILED (Exec Error)\n")
 				return nil, true
 			}
 		}
@@ -224,6 +227,12 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 					//fmt.Printf("[DEBUG] Execute END (Control Flow: %s)\n", errMsg)
 					panic(err)
 				}
+				// VBScript semantics: with On Error Resume Next enabled, continue with next statement.
+				if ctx.IsResumeOnError() {
+					ctx.Err.SetError(err)
+					continue
+				}
+
 				log.Printf("Execute execution error: %v\n", err)
 				ctx.Err.SetError(err)
 				return nil, true

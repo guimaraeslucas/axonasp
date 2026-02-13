@@ -566,6 +566,105 @@ Response.Write "bPushRSS=" & selectedPage.bPushRSS
 	}
 }
 
+// TestClassMethodImplicitVariableStaysLocal verifies undeclared variables created
+// inside class methods do not leak into script-global scope.
+func TestClassMethodImplicitVariableStaysLocal(t *testing.T) {
+	aspCode := `<%
+Class cls_local
+    Public Function Touch()
+        tempOnly = "LOCAL_TEMP"
+        Touch = "OK"
+    End Function
+End Class
+
+Dim obj
+Set obj = New cls_local
+Call obj.Touch()
+
+If IsEmpty(tempOnly) Then
+    Response.Write "NO_GLOBAL_TEMP"
+Else
+    Response.Write "GLOBAL_TEMP=" & CStr(tempOnly)
+End If
+%>`
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test.asp", nil)
+
+	executor := NewASPExecutor(&ASPProcessorConfig{
+		RootDir:       ".",
+		ScriptTimeout: 30,
+	})
+	err := executor.Execute(aspCode, "/test.asp", w, r, "test-session-class-implicit-local")
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	body := w.Body.String()
+	t.Logf("Output: %s", body)
+	if !strings.Contains(body, "NO_GLOBAL_TEMP") {
+		t.Errorf("implicit class variable leaked to global scope: %s", body)
+	}
+}
+
+func TestClassMethodChainThroughDictionaryItem(t *testing.T) {
+	aspCode := `<%
+Class cls_page
+	Public iId
+
+	Public Function Pick(id)
+		iId = id
+	End Function
+
+	Public Function subPages(onlineOnly)
+		Set subPages = Server.CreateObject("Scripting.Dictionary")
+		If CStr(iId) = "1" Then
+			Dim child
+			Set child = New cls_page
+			child.Pick 2
+			subPages.Add child.iId, child
+		End If
+	End Function
+End Class
+
+Function MobiMenu()
+	Dim page, subPages, subPage, subsubPages
+	Set page = New cls_page
+	page.Pick 1
+	Set subPages = page.subPages(True)
+
+	For Each subPage In subPages
+		Set subsubPages = subPages(subPage).subPages(True)
+		If subsubPages.Count > 0 Then
+			Response.Write "HAS_CHILDREN"
+		Else
+			Response.Write "NO_CHILDREN"
+		End If
+	Next
+End Function
+
+MobiMenu
+%>`
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test.asp", nil)
+
+	executor := NewASPExecutor(&ASPProcessorConfig{
+		RootDir:       ".",
+		ScriptTimeout: 30,
+	})
+	err := executor.Execute(aspCode, "/test.asp", w, r, "test-session-class-chain-dict")
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+
+	body := w.Body.String()
+	t.Logf("Output: %s", body)
+	if !strings.Contains(body, "NO_CHILDREN") {
+		t.Fatalf("expected chained class call result, got: %s", body)
+	}
+}
+
 // TestDimHoistingInClassMethod tests the exact bug scenario:
 // A class method uses a variable BEFORE its Dim statement.
 // VBScript hoists Dim declarations, so this should work.

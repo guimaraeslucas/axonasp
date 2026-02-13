@@ -41,14 +41,17 @@ End Function
 Public function getConn()
 On Error Resume Next
 if p_getConn is nothing then
-Set p_getConn = Server.Createobject("ADODB.Connection")
-select case QS_DBS
-case 1 'Access             
-if not dataIsSafe then
-dumpwarning
-end if
-p_getConn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source="&C_DATABASE
-case 2 'SQL Server
+    Set p_getConn = Server.Createobject("ADODB.Connection")
+    
+    select case QS_DBS
+    case 1 'Access             
+    if not dataIsSafe then
+    dumpwarning
+    end if
+    p_getConn.Open "Provider=Microsoft.Jet.OLEDB.4.0;Data Source="&C_DATABASE
+    if Err.Number <> 0 then Response.Write "Open DB err: " & Err.Description & " | Path: " & C_DATABASE & "<br>": Response.End
+    
+    case 2 'SQL Server
 if isLeeg(SQL2005_UID) then
 p_getConn.Open "Provider=SQLOLEDB;SERVER=" & SQL2005_SERVER & ";initial catalog=" & SQL2005_DB  & ";Integrated Security=SSPI;"
 else

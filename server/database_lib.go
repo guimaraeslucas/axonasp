@@ -287,6 +287,13 @@ func (c *ADODBConnection) SetProperty(name string, value interface{}) {
 	}
 }
 
+func (c *ADODBConnection) raiseError(msg string) {
+	c.Errors.AddError(-1, msg, "ADODB.Connection", "")
+	if c.ctx != nil && c.ctx.Err != nil {
+		c.ctx.Err.Raise(-1, "ADODB.Connection", msg)
+	}
+}
+
 func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface{} {
 	method := strings.ToLower(name)
 
@@ -297,7 +304,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			c.ConnectionString = fmt.Sprintf("%v", args[0])
 		}
 		if err := c.openDatabase(); err != nil {
-			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+			c.raiseError(err.Error())
 		}
 		return nil
 
@@ -332,14 +339,17 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 	case "execute":
 		// Execute(CommandText, [RecordsAffected], [Options])
 		c.Errors.Clear()
+		if c.ctx != nil && c.ctx.Err != nil {
+			c.ctx.Err.Clear()
+		}
 		if len(args) < 1 {
-			c.Errors.AddError(-1, "Invalid parameters", "ADODB.Connection", "")
+			c.raiseError("Invalid parameters")
 			return nil
 		}
 
 		// Check if connection is open
 		if c.db == nil && c.oleConnection == nil {
-			c.Errors.AddError(-1, "Connection not open", "ADODB.Connection", "")
+			c.raiseError("Connection not open")
 			return nil
 		}
 
@@ -362,7 +372,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			if shouldTraceSQL() {
 				logSQLTrace(c.ctx, "execute", cmdText, params, driver, err)
 			}
-			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+			c.raiseError(err.Error())
 			return NewADORecordset(c.ctx)
 		}
 
@@ -374,7 +384,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 					if shouldTraceSQL() {
 						logSQLTrace(c.ctx, "query", cmdText, params, c.dbDriver, err)
 					}
-					c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+					c.raiseError(err.Error())
 					return nil
 				}
 				return rs
@@ -385,7 +395,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 				if shouldTraceSQL() {
 					logSQLTrace(c.ctx, "exec", cmdText, params, c.dbDriver, err)
 				}
-				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+				c.raiseError(err.Error())
 				return nil
 			}
 			affected, _ := result.RowsAffected()
@@ -403,7 +413,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 				if shouldTraceSQL() {
 					logSQLTrace(c.ctx, "ole-execute", cmdText, nil, "ole", err)
 				}
-				c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+				c.raiseError(err.Error())
 				return nil
 			}
 
@@ -438,7 +448,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		}
 		tx, err := c.db.Begin()
 		if err != nil {
-			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+			c.raiseError(err.Error())
 			return nil
 		}
 		c.tx = tx
@@ -449,7 +459,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			return nil
 		}
 		if err := c.tx.Commit(); err != nil {
-			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+			c.raiseError(err.Error())
 		}
 		c.tx = nil
 		return nil
@@ -459,7 +469,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 			return nil
 		}
 		if err := c.tx.Rollback(); err != nil {
-			c.Errors.AddError(-1, err.Error(), "ADODB.Connection", "")
+			c.raiseError(err.Error())
 		}
 		c.tx = nil
 		return nil
@@ -1689,7 +1699,13 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 }
 
 func (rs *ADODBRecordset) openRecordset(sqlStr string, conn *ADODBConnection) interface{} {
-	_ = rs.openRecordsetWithParams(sqlStr, conn, nil)
+	if err := rs.openRecordsetWithParams(sqlStr, conn, nil); err != nil {
+		if conn != nil {
+			conn.raiseError(err.Error())
+		} else if rs.ctx != nil && rs.ctx.Err != nil {
+			rs.ctx.Err.Raise(-1, "ADODB.Recordset", err.Error())
+		}
+	}
 	return nil
 }
 
@@ -1780,12 +1796,14 @@ func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnec
 
 	unknown, err := oleutil.CreateObject("ADODB.Recordset")
 	if err != nil {
+		conn.raiseError("Failed to create ADODB.Recordset: " + err.Error())
 		return nil
 	}
 
 	disp, err := unknown.QueryInterface(ole.IID_IDispatch)
 	if err != nil {
 		unknown.Release()
+		conn.raiseError("Failed to QueryInterface IDispatch: " + err.Error())
 		return nil
 	}
 
@@ -1865,6 +1883,7 @@ func (rs *ADODBRecordset) openOLERecordset(args []interface{}, conn *ADODBConnec
 		}
 		disp.Release()
 		unknown.Release()
+		conn.raiseError(err.Error())
 		return nil
 	}
 

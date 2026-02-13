@@ -6,10 +6,7 @@
 # Logs and databases #
 *.log
 *.sql
-.env
 
-#TODO
-TODO
 /temp/cache/
 /temp/session/
 /temp/
@@ -17,4 +14,3 @@ TODO
 Thumbs.db
 axonasp.exe~
 .vscode/
-.env
