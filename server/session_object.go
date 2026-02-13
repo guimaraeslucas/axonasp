@@ -61,6 +61,28 @@ func (s *SessionObject) GetProperty(name string) interface{} {
 	if nameLower == "sessionid" {
 		return s.NumericID
 	}
+	if nameLower == "timeout" {
+		if s.TimeOut <= 0 {
+			return 20
+		}
+		return s.TimeOut
+	}
+	if nameLower == "lcid" {
+		if val, exists := s.Data[nameLower]; exists {
+			switch typed := val.(type) {
+			case nil:
+				return 1033
+			case string:
+				if strings.TrimSpace(typed) == "" {
+					return 1033
+				}
+				return typed
+			default:
+				return typed
+			}
+		}
+		return 1033
+	}
 
 	// Get from session data
 	if val, exists := s.Data[nameLower]; exists {
@@ -90,6 +112,19 @@ func (s *SessionObject) SetProperty(name string, value interface{}) error {
 	// Don't allow setting SessionID
 	if nameLower == "sessionid" {
 		return nil // Ignore attempts to set SessionID
+	}
+	if nameLower == "timeout" {
+		minutes := toInt(value)
+		if minutes <= 0 {
+			s.TimeOut = 20
+		} else {
+			s.TimeOut = minutes
+		}
+		return nil
+	}
+	if nameLower == "lcid" {
+		s.Data[nameLower] = value
+		return nil
 	}
 
 	s.Data[nameLower] = value

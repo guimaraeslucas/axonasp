@@ -1143,12 +1143,14 @@ func EvalBuiltInFunction(funcName string, args []interface{}, ctx *ExecutionCont
 	case "rnd":
 		// RND([seed]) - random number between 0 and 1
 		if ctx == nil {
-			return rand.Float64(), true
+			return math.Round(rand.Float64()*1e7) / 1e7, true
 		}
 		if len(args) > 0 {
-			return ctx.nextRandomValue(args[0], true), true
+			value := ctx.nextRandomValue(args[0], true)
+			return math.Round(value*1e7) / 1e7, true
 		}
-		return ctx.nextRandomValue(nil, false), true
+		value := ctx.nextRandomValue(nil, false)
+		return math.Round(value*1e7) / 1e7, true
 
 	case "randomize":
 		// RANDOMIZE [seed] - initialize random-number generator

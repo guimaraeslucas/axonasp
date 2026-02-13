@@ -29,6 +29,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -263,6 +264,94 @@ type FSOObject struct {
 	ctx *ExecutionContext
 }
 
+func normalizeFSODriveLetter(letter string) string {
+	normalized := strings.TrimSpace(letter)
+	if normalized == "" && runtime.GOOS != "windows" {
+		return "X"
+	}
+	return normalized
+}
+
+func copyFolderRecursive(src, dst string, overwrite bool) error {
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if !srcInfo.IsDir() {
+		return fmt.Errorf("source is not a folder: %s", src)
+	}
+
+	if dstInfo, err := os.Stat(dst); err == nil {
+		if !overwrite {
+			return fmt.Errorf("destination already exists: %s", dst)
+		}
+		if !dstInfo.IsDir() {
+			if err := os.Remove(dst); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		return err
+	}
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			if err := copyFolderRecursive(srcPath, dstPath, overwrite); err != nil {
+				return err
+			}
+			continue
+		}
+
+		srcFile, err := os.Open(srcPath)
+		if err != nil {
+			return err
+		}
+
+		fileMode := os.FileMode(0644)
+		if info, infoErr := entry.Info(); infoErr == nil {
+			fileMode = info.Mode()
+		}
+
+		flags := os.O_CREATE | os.O_WRONLY
+		if overwrite {
+			flags |= os.O_TRUNC
+		} else {
+			flags |= os.O_EXCL
+		}
+
+		dstFile, err := os.OpenFile(dstPath, flags, fileMode)
+		if err != nil {
+			srcFile.Close()
+			return err
+		}
+
+		_, copyErr := io.Copy(dstFile, srcFile)
+		closeSrcErr := srcFile.Close()
+		closeDstErr := dstFile.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if closeSrcErr != nil {
+			return closeSrcErr
+		}
+		if closeDstErr != nil {
+			return closeDstErr
+		}
+	}
+
+	return nil
+}
+
 func (f *FSOObject) GetProperty(name string) interface{} {
 	if strings.EqualFold(name, "Drives") {
 		return &FSODrives{ctx: f.ctx}
@@ -329,7 +418,29 @@ func (f *FSOObject) CallMethod(name string, args ...interface{}) interface{} {
 		os.WriteFile(dst, data, 0644)
 		return nil
 	case "copyfolder":
-		//TODO - CREATE COPYFOLDER PRIORITY
+		if len(args) < 2 {
+			return nil
+		}
+		src := resolve(getStr(0))
+		dst := resolve(getStr(1))
+		if src == "" || dst == "" {
+			return nil
+		}
+		overwrite := false
+		if len(args) > 2 {
+			switch v := args[2].(type) {
+			case bool:
+				overwrite = v
+			case int:
+				overwrite = v != 0
+			case string:
+				value := strings.TrimSpace(strings.ToLower(v))
+				overwrite = value == "true" || value == "1" || value == "-1"
+			}
+		}
+		if err := copyFolderRecursive(src, dst, overwrite); err != nil {
+			return nil
+		}
 		return nil
 	case "createfolder":
 		path := resolve(getStr(0))
@@ -389,7 +500,7 @@ func (f *FSOObject) CallMethod(name string, args ...interface{}) interface{} {
 		dName := getStr(0)
 		return &FSODrive{letter: dName}
 	case "getdrivename":
-		return filepath.VolumeName(getStr(0))
+		return normalizeFSODriveLetter(filepath.VolumeName(getStr(0)))
 	case "getextensionname":
 		return strings.TrimPrefix(filepath.Ext(getStr(0)), ".")
 	case "getfile":
@@ -421,7 +532,7 @@ func (f *FSOObject) CallMethod(name string, args ...interface{}) interface{} {
 		}
 		return "C:\\Windows" // Mock
 	case "gettempname":
-		return fmt.Sprintf("rad%X.tmp", time.Now().UnixNano())
+		return fmt.Sprintf("rad%X.axon.tmp", time.Now().UnixNano())
 	case "movefile":
 		src := resolve(getStr(0))
 		dst := resolve(getStr(1))
@@ -649,7 +760,7 @@ func (f *FSOFile) GetProperty(name string) interface{} {
 	case "datelastmodified":
 		return info.ModTime()
 	case "drive":
-		return &FSODrive{letter: filepath.VolumeName(f.path)}
+		return &FSODrive{letter: normalizeFSODriveLetter(filepath.VolumeName(f.path))}
 	case "name":
 		return info.Name()
 	case "parentfolder":

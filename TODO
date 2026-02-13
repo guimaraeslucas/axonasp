@@ -15,9 +15,4 @@
 - [ ] Implement VM/Compiler
 - [ ] XML
 
-
---Server.Mappath does not return the physical path. It returns a relative path ("/sdfsdf/sdfsdf/sdfsdf"
-
-
-
 http://www.apache-asp.org/config.html#MailAlertTo

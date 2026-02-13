@@ -544,8 +544,8 @@ func formatVBDateDefault(dt time.Time) string {
 func formatDateTime(dt time.Time, format int) string {
 	switch format {
 	case FormatDateTimeGeneralDate:
-		// m/d/yy h:mm:ss AM/PM
-		return dt.Format("1/2/06 3:04:05 PM")
+		// m/d/yyyy h:mm:ss AM/PM
+		return dt.Format("1/2/2006 3:04:05 PM")
 
 	case FormatDateTimeLongDate:
 		// dddd, mmmm dd, yyyy (e.g., Monday, January 01, 2006)
@@ -554,8 +554,8 @@ func formatDateTime(dt time.Time, format int) string {
 		return fmt.Sprintf("%s, %s %02d, %d", weekday, month, dt.Day(), dt.Year())
 
 	case FormatDateTimeShortDate:
-		// m/d/yy
-		return dt.Format("1/2/06")
+		// m/d/yyyy
+		return dt.Format("1/2/2006")
 
 	case FormatDateTimeLongTime:
 		// h:mm:ss AM/PM
@@ -575,6 +575,6 @@ func formatDateTime(dt time.Time, format int) string {
 
 	default:
 		// Default to short date
-		return dt.Format("1/2/06")
+		return dt.Format("1/2/2006")
 	}
 }
