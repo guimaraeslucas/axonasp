@@ -52,3 +52,9 @@ func (c *COMObject) Enumerate() ([]interface{}, error) { return []interface{}{},
 func (c *COMObject) release() {
 	// No-op on non-Windows platforms
 }
+
+// comInitialize is a no-op stub on non-Windows platforms.
+// COM initialization is only available on Windows.
+func comInitialize() (bool, error) {
+	return false, fmt.Errorf("COM is not supported on this platform")
+}
