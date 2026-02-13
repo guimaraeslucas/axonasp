@@ -29,6 +29,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -666,7 +667,20 @@ func (f *FSOFile) GetProperty(name string) interface{} {
 	}
 	return nil
 }
-func (f *FSOFile) SetProperty(name string, value interface{}) {}
+func (f *FSOFile) SetProperty(name string, value interface{}) {
+	switch strings.ToLower(name) {
+	case "name":
+		newName := strings.TrimSpace(fmt.Sprintf("%v", value))
+		if newName == "" {
+			return
+		}
+		dir := filepath.Dir(f.path)
+		destination := filepath.Join(dir, newName)
+		if err := os.Rename(f.path, destination); err == nil {
+			f.path = destination
+		}
+	}
+}
 func (f *FSOFile) CallMethod(name string, args ...interface{}) interface{} {
 	switch strings.ToLower(name) {
 	case "copy":
@@ -741,6 +755,9 @@ func (fs *FSOFiles) CallMethod(name string, args ...interface{}) interface{} {
 func (fs *FSOFiles) Enumeration() []interface{} {
 	var list []interface{}
 	entries, _ := os.ReadDir(fs.folderPath)
+	sort.Slice(entries, func(i, j int) bool {
+		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+	})
 	for _, e := range entries {
 		if !e.IsDir() {
 			list = append(list, &FSOFile{ctx: fs.ctx, path: filepath.Join(fs.folderPath, e.Name())})
@@ -787,7 +804,20 @@ func (f *FSOFolder) GetProperty(name string) interface{} {
 	}
 	return nil
 }
-func (f *FSOFolder) SetProperty(name string, value interface{}) {}
+func (f *FSOFolder) SetProperty(name string, value interface{}) {
+	switch strings.ToLower(name) {
+	case "name":
+		newName := strings.TrimSpace(fmt.Sprintf("%v", value))
+		if newName == "" {
+			return
+		}
+		parentDir := filepath.Dir(f.path)
+		destination := filepath.Join(parentDir, newName)
+		if err := os.Rename(f.path, destination); err == nil {
+			f.path = destination
+		}
+	}
+}
 func (f *FSOFolder) CallMethod(name string, args ...interface{}) interface{} {
 	// Copy, Delete, Move, CreateTextFile
 	switch strings.ToLower(name) {
@@ -857,6 +887,9 @@ func (fs *FSOSubFolders) CallMethod(name string, args ...interface{}) interface{
 func (fs *FSOSubFolders) Enumeration() []interface{} {
 	var list []interface{}
 	entries, _ := os.ReadDir(fs.folderPath)
+	sort.Slice(entries, func(i, j int) bool {
+		return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+	})
 	for _, e := range entries {
 		if e.IsDir() {
 			list = append(list, &FSOFolder{ctx: fs.ctx, path: filepath.Join(fs.folderPath, e.Name())})

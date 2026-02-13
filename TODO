@@ -1,12 +1,8 @@
 
-- Server.CreateObject("Scripting.FileSystemObject") não está funcionando
 - GetLastError() did not return the most recent error
 - Implemente Option Explicit adequadamente
 - Implemente adequadamente Err.Number, Err.Description, and Err.Source. Implemente On Error Resume Next. Aproveite e modifique a tela de debug para que mostre o nome do arquivo com erro, não apenas a linha, o horário que isso ocorreu e se em uma página HTML retorne também a StackTrace
-- Check if folder is acessible without /, eg: /tests and /tests/
 - Implementar adequadamente Include e IncludeOnce, ainda falha.
-- Implement ZIP, G3FC, PDF, IMAGE
-
 
 - [ ] Image creation
 - [ ] PDF support
@@ -18,16 +14,9 @@
 - [ ] GraphQL support
 - [ ] Implement VM/Compiler
 - [ ] XML
-- [ ] Implement Session.Abandon() (destroy a session) is not supported/fully implemented
-- [ ] Application.Contents.RemoveAll and Session.Contents.RemoveAll are not supported/fully implemented
 
-- exit function does not work. You may  check whether exit sub works...
-function fName
-exit function
-end function
+
 --Server.Mappath does not return the physical path. It returns a relative path ("/sdfsdf/sdfsdf/sdfsdf"
--By default, fso.getFolder sorts files alphabetically, our implementation does not
-- FSO rename filename fails
 
 
 

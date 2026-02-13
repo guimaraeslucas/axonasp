@@ -2214,6 +2214,18 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 				return lib.SetProperty(fmt.Sprintf("%v", key), value)
 			}
 
+			// Handle objects with non-error SetProperty signature
+			if lib, ok := obj.(interface {
+				SetProperty(string, interface{})
+			}); ok && len(indexCall.Indexes) > 0 {
+				key, err := v.visitExpression(indexCall.Indexes[0])
+				if err != nil {
+					return err
+				}
+				lib.SetProperty(fmt.Sprintf("%v", key), value)
+				return nil
+			}
+
 			// Handle Response.Cookies collection assignment
 			if cookiesCollection, ok := obj.(*ResponseCookiesCollection); ok {
 				if len(indexCall.Indexes) > 0 {
@@ -2276,6 +2288,18 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 					return err
 				}
 				return lib.SetProperty(fmt.Sprintf("%v", key), value)
+			}
+
+			// If it's an object wrapper with non-error SetProperty, set indexed property
+			if lib, ok := obj.(interface {
+				SetProperty(string, interface{})
+			}); ok && len(indexCall.Indexes) > 0 {
+				key, err := v.visitExpression(indexCall.Indexes[0])
+				if err != nil {
+					return err
+				}
+				lib.SetProperty(fmt.Sprintf("%v", key), value)
+				return nil
 			}
 
 			// If it's a Response.Cookies collection, set the indexed cookie value
@@ -2366,6 +2390,14 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 			SetProperty(string, interface{}) error
 		}); ok {
 			return lib.SetProperty(propName, value)
+		}
+
+		// If it's an object with non-error SetProperty signature, set the property
+		if lib, ok := obj.(interface {
+			SetProperty(string, interface{})
+		}); ok {
+			lib.SetProperty(propName, value)
+			return nil
 		}
 	}
 
