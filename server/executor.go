@@ -39,8 +39,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-ole/go-ole/oleutil"
-
 	"g3pix.com.br/axonasp/asp"
 	"g3pix.com.br/axonasp/experimental"
 	"g3pix.com.br/axonasp/vbscript/ast"
@@ -378,6 +376,157 @@ func (ec *ExecutionContext) PopScope() {
 	}
 	if len(ec.scopeConstStack) > 0 {
 		ec.scopeConstStack = ec.scopeConstStack[:len(ec.scopeConstStack)-1]
+	}
+}
+
+func (ec *ExecutionContext) hasResourceReferenceLocked(value interface{}) bool {
+	for _, existing := range ec.variables {
+		if sameRuntimeResource(existing, value) {
+			return true
+		}
+		if classInst, ok := existing.(*ClassInstance); ok {
+			for _, classVal := range classInst.Variables {
+				if sameRuntimeResource(classVal, value) {
+					return true
+				}
+			}
+		}
+	}
+
+	for i := len(ec.scopeStack) - 1; i >= 0; i-- {
+		for _, existing := range ec.scopeStack[i] {
+			if sameRuntimeResource(existing, value) {
+				return true
+			}
+			if classInst, ok := existing.(*ClassInstance); ok {
+				for _, classVal := range classInst.Variables {
+					if sameRuntimeResource(classVal, value) {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	for i := len(ec.parentScopeStack) - 1; i >= 0; i-- {
+		for _, existing := range ec.parentScopeStack[i] {
+			if sameRuntimeResource(existing, value) {
+				return true
+			}
+			if classInst, ok := existing.(*ClassInstance); ok {
+				for _, classVal := range classInst.Variables {
+					if sameRuntimeResource(classVal, value) {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	if sameRuntimeResource(ec.contextObject, value) {
+		return true
+	}
+	if classInst, ok := ec.contextObject.(*ClassInstance); ok {
+		for _, classVal := range classInst.Variables {
+			if sameRuntimeResource(classVal, value) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (ec *ExecutionContext) ReleaseResourceIfUnreferenced(value interface{}) {
+	if value == nil || isNothingValue(value) || isEmptyValue(value) {
+		return
+	}
+
+	ec.mu.RLock()
+	referenced := ec.hasResourceReferenceLocked(value)
+	ec.mu.RUnlock()
+	if referenced {
+		return
+	}
+
+	releaseRuntimeResource(value)
+}
+
+func sameRuntimeResource(left interface{}, right interface{}) bool {
+	switch l := left.(type) {
+	case *ADODBConnection:
+		switch r := right.(type) {
+		case *ADODBConnection:
+			return l == r
+		case *ADOConnection:
+			return r != nil && l == r.lib
+		}
+	case *ADOConnection:
+		switch r := right.(type) {
+		case *ADOConnection:
+			return l == r
+		case *ADODBConnection:
+			return l != nil && l.lib == r
+		}
+	case *ADODBRecordset:
+		switch r := right.(type) {
+		case *ADODBRecordset:
+			return l == r
+		case *ADORecordset:
+			return r != nil && l == r.lib
+		}
+	case *ADORecordset:
+		switch r := right.(type) {
+		case *ADORecordset:
+			return l == r
+		case *ADODBRecordset:
+			return l != nil && l.lib == r
+		}
+	case *ADODBOLERecordset:
+		switch r := right.(type) {
+		case *ADODBOLERecordset:
+			return l == r
+		case *ADOOLERecordset:
+			return r != nil && l == r.lib
+		}
+	case *ADOOLERecordset:
+		switch r := right.(type) {
+		case *ADOOLERecordset:
+			return l == r
+		case *ADODBOLERecordset:
+			return l != nil && l.lib == r
+		}
+	case *COMObject:
+		if r, ok := right.(*COMObject); ok {
+			return l == r
+		}
+	}
+
+	return false
+}
+
+func releaseRuntimeResource(value interface{}) {
+	switch resource := value.(type) {
+	case *ADODBRecordset:
+		if resource != nil {
+			resource.CallMethod("close")
+		}
+	case *ADORecordset:
+		if resource != nil {
+			_, _ = resource.CallMethod("close")
+		}
+	case *ADODBOLERecordset:
+		if resource != nil {
+			resource.CallMethod("close")
+		}
+	case *ADOOLERecordset:
+		if resource != nil {
+			_, _ = resource.CallMethod("close")
+		}
+	case *COMObject:
+		if resource != nil {
+			resource.release()
+		}
 	}
 }
 
@@ -883,18 +1032,15 @@ func (ec *ExecutionContext) Cleanup() {
 			switch res := resource.(type) {
 			case *ADODBConnection:
 				if res != nil {
-					res.db = nil
+					res.CallMethod("close")
 				}
 			case *ADODBRecordset:
-				if res != nil && res.oleRecordset != nil {
-					// Close OLE recordset safely
-					if rs := res.oleRecordset; rs != nil {
-						if rs.oleRecordset != nil {
-							oleutil.CallMethod(rs.oleRecordset, "Close")
-							rs.oleRecordset.Release()
-							rs.oleRecordset = nil
-						}
-					}
+				if res != nil {
+					res.CallMethod("close")
+				}
+			case *ADODBOLERecordset:
+				if res != nil {
+					res.CallMethod("close")
 				}
 			case *COMObject:
 				if res != nil {
@@ -1910,6 +2056,8 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 
 	// Case 1: Simple variable assignment (Dim x = 5 or x = 5)
 	if ident, ok := stmt.Left.(*ast.Identifier); ok {
+		oldValue, hadOldValue := v.context.GetVariable(ident.Name)
+
 		// Check if this is a function return value assignment
 		// If we're inside a function and assigning to the function name, use SetVariable (local scope)
 		// even if forceGlobal is true, because the function return variable was defined in local scope
@@ -1928,6 +2076,10 @@ func (v *ASPVisitor) visitAssignment(stmt *ast.AssignmentStatement) error {
 			if err := v.context.SetVariable(ident.Name, value); err != nil {
 				return err
 			}
+		}
+
+		if hadOldValue && isNothingValue(value) {
+			v.context.ReleaseResourceIfUnreferenced(oldValue)
 		}
 		return nil
 	}
