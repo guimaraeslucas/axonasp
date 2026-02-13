@@ -34,6 +34,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
+
+	"github.com/ricochet2200/go-disk-usage/du"
 )
 
 // G3FILES implements Component interface for File operations
@@ -674,7 +676,49 @@ type FSODrive struct {
 	letter string
 }
 
+func (d *FSODrive) diskRootPath() string {
+	if runtime.GOOS != "windows" {
+		return string(os.PathSeparator)
+	}
+
+	letter := strings.TrimSpace(d.letter)
+	if letter == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		volume := filepath.VolumeName(cwd)
+		if volume == "" {
+			return ""
+		}
+		return volume + "\\"
+	}
+
+	if strings.HasSuffix(letter, "\\") {
+		return letter
+	}
+	if strings.HasSuffix(letter, ":") {
+		return letter + "\\"
+	}
+	if len(letter) == 1 {
+		return letter + ":\\"
+	}
+
+	volume := filepath.VolumeName(letter)
+	if volume != "" {
+		return volume + "\\"
+	}
+
+	return letter
+}
+
 func (d *FSODrive) GetProperty(name string) interface{} {
+	rootPath := d.diskRootPath()
+	var usage *du.DiskUsage
+	if rootPath != "" {
+		usage = du.NewDiskUsage(rootPath)
+	}
+
 	switch strings.ToLower(name) {
 	case "driveletter":
 		return d.letter
@@ -689,13 +733,20 @@ func (d *FSODrive) GetProperty(name string) interface{} {
 	case "serialnumber":
 		return 12345
 	case "rootfolder":
-		return &FSOFolder{path: d.letter + ":\\"}
+		return &FSOFolder{path: rootPath}
 	case "totalsize":
-		return 10000
-		//return 1024 * 1024 * 1024 * 100 // Mock 100GB
+		if usage == nil {
+			return 0
+		}
+		return int64(usage.Size())
 	case "freespace", "availablespace":
-		return 10000
-		//return 1024 * 1024 * 1024 * 50 // Mock 50GB
+		if usage == nil {
+			return 0
+		}
+		if strings.EqualFold(name, "availablespace") {
+			return int64(usage.Available())
+		}
+		return int64(usage.Free())
 	}
 	return nil
 }

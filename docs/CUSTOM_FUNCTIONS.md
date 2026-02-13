@@ -1,7 +1,7 @@
 # G3 AxonASP - Custom Functions Documentation
 
 ## Overview
-Custom functions have been implemented in a dedicated file following VBScript conventions and PHP behavior patterns. All functions are named with the **Ax** prefix and use **PascalCase**.
+Custom functions have been implemented in a dedicated file following VBScript conventions. All runtime-facing functions are named with the **Ax** prefix and use **PascalCase**.
 
 ## File Structure
 - **Location**: `server/custom_functions.go`
@@ -487,7 +487,7 @@ Response.Write "</pre>"
 
 ## Naming Convention Summary
 
-| PHP Function | G3 AxonASP Function |
+| Reference Function | G3 AxonASP Function |
 |---|---|
 | array_merge | AxArrayMerge |
 | in_array | AxArrayContains |
@@ -540,11 +540,159 @@ Response.Write "</pre>"
 | include_once | AxIncludeOnce |
 | file_get_contents (remote) | AxGetRemoteFile |
 
+### 12. OS Functions (Go `os` equivalents)
+
+#### AxChangeDir
+Change current working directory.
+```vb
+ok = AxChangeDir("C:\\temp")
+```
+
+#### AxChangeMode
+Change file mode/permissions.
+```vb
+ok = AxChangeMode("C:\\temp\\file.txt", "0644")
+```
+
+#### AxChangeOwner
+Change file owner/group (may be unavailable on Windows or without privileges).
+```vb
+ok = AxChangeOwner("/tmp/file.txt", 1000, 1000)
+```
+
+#### AxHostNameValue
+Return machine hostname.
+```vb
+host = AxHostNameValue()
+```
+
+#### AxChangeTimes
+Change file access and modification times (Unix timestamps).
+```vb
+ok = AxChangeTimes("/tmp/file.txt", 1700000000, 1700000100)
+```
+
+#### AxClearEnvironment
+Clear all environment variables for the current process.
+```vb
+Call AxClearEnvironment()
+```
+
+#### AxEnvironmentList
+Return environment entries as array (`KEY=VALUE`).
+```vb
+env = AxEnvironmentList()
+```
+
+#### AxGetEnv / AxEnvironmentValue
+Read environment values.
+```vb
+pathValue = AxGetEnv("PATH")
+value = AxEnvironmentValue("APP_MODE", "production")
+```
+
+#### AxEffectiveUserId / AxProcessId / AxCurrentDir
+Return effective user ID (or `-1` on unsupported platforms), process ID, and current directory.
+```vb
+uid = AxEffectiveUserId()
+pid = AxProcessId()
+cwd = AxCurrentDir()
+```
+
+#### AxIsPathSeparator
+Check if first character is a path separator.
+```vb
+isSep = AxIsPathSeparator("/")
+```
+
+#### AxCreateLink
+Create hard link (may require privileges on some platforms).
+```vb
+ok = AxCreateLink("source.txt", "target.txt")
+```
+
+#### AxUserCacheDirPath / AxUserConfigDirPath / AxUserHomeDirPath
+Return standard user directories.
+```vb
+cacheDir = AxUserCacheDirPath()
+configDir = AxUserConfigDirPath()
+homeDir = AxUserHomeDirPath()
+```
+
+### 13. Runtime Functions
+
+#### AxLastModified
+Return last modification time (Unix timestamp) of current script.
+```vb
+ts = AxLastModified()
+```
+
+#### AxSystemInfo
+Return system information, with support for modes `a`, `s`, `n`, `r`, `v`, `m`.
+```vb
+full = AxSystemInfo("a")
+arch = AxSystemInfo("m")
+```
+
+#### AxCurrentUser
+Return current process user name.
+```vb
+username = AxCurrentUser()
+```
+
+#### AxVersion
+Return AxonASP runtime version. Supports `version_id` option as integer.
+```vb
+ver = AxVersion()
+verId = AxVersion("version_id")
+```
+
+#### AxRuntimeInfo
+Write runtime and environment diagnostic information to response output.
+```vb
+Call AxRuntimeInfo()
+```
+
+### 14. Runtime/Platform Information Helpers
+
+#### AxDirSeparator / AxPathListSeparator
+Return directory separator and path list separator for current OS.
+```vb
+dirSep = AxDirSeparator()
+pathSep = AxPathListSeparator()
+```
+
+#### AxIntegerSizeBytes / AxIntegerMax / AxIntegerMin
+Return integer size in bytes, maximum int, and minimum int.
+```vb
+sizeBytes = AxIntegerSizeBytes()
+maxInt = AxIntegerMax()
+minInt = AxIntegerMin()
+```
+
+#### AxFloatPrecisionDigits / AxSmallestFloatValue
+Return decimal digits with safe round-trip precision for float and smallest non-zero float.
+```vb
+digits = AxFloatPrecisionDigits()
+small = AxSmallestFloatValue()
+```
+
+#### AxPlatformBits / AxExecutablePath
+Return architecture bits (`32` or `64`) and current executable path.
+```vb
+bits = AxPlatformBits()
+binPath = AxExecutablePath()
+```
+
 ## Testing
 
 A comprehensive test file is available at:
 - **File**: `www/tests/test_custom_functions.asp`
 - **URL**: `http://localhost:4050/tests/test_custom_functions.asp`
+
+Additional test page for system/runtime functions:
+- **File**: `www/tests/test_custom_system_php_functions.asp`
+- **URL**: `http://localhost:4050/tests/test_custom_system_php_functions.asp`
 
 ## Implementation Notes
 

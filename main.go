@@ -175,6 +175,7 @@ func init() {
 			COMProviderMode = "auto"
 		}
 	}
+	server.SetEngineVersion(Version)
 	server.SetCOMProviderMode(COMProviderMode)
 	asp.ConfigureParseCache(ASTCacheType, RootDir)
 	asp.SetParseCacheTTLMinutes(ASTCacheTTLMin)

@@ -75,6 +75,7 @@ func init() {
 	flag.StringVar(&defaultPageFlag, "default", "", "Default page (overrides hierarchy)")
 	flag.IntVar(&scriptTimeout, "timeout", getEnvInt("SCRIPT_TIMEOUT", 30), "Script execution timeout in seconds")
 	flag.BoolVar(&debugASP, "debug", getEnvBool("DEBUG_ASP", false), "Enable ASP debug mode")
+	server.SetEngineVersion(Version)
 }
 
 // dummyResponseWriter is a no-op http.ResponseWriter for Application_OnStart

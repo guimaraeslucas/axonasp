@@ -38,14 +38,25 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"g3pix.com.br/axonasp/asp"
 )
+
+var engineVersion = "0.0.0.0-dev"
+
+func SetEngineVersion(version string) {
+	trimmed := strings.TrimSpace(version)
+	if trimmed != "" {
+		engineVersion = trimmed
+	}
+}
 
 // arrayValues extracts the raw slice from VBArray or []interface{} values.
 func arrayValues(val interface{}) ([]interface{}, bool) {
@@ -81,6 +92,198 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		envName := toString(args[0])
 		value := os.Getenv(envName)
 		return value, true
+
+	case "axchangedir":
+		if len(args) == 0 {
+			return false, true
+		}
+		targetDir := toString(args[0])
+		if targetDir == "" {
+			return false, true
+		}
+		if err := os.Chdir(targetDir); err != nil {
+			fmt.Printf("WARNING: AxChangeDir failed for '%s': %v\n", targetDir, err)
+			return false, true
+		}
+		return true, true
+
+	case "axchangemode":
+		if len(args) < 2 {
+			return false, true
+		}
+		targetPath := toString(args[0])
+		mode := parseFileMode(args[1])
+		if err := os.Chmod(targetPath, mode); err != nil {
+			fmt.Printf("WARNING: AxChangeMode failed for '%s': %v\n", targetPath, err)
+			return false, true
+		}
+		return true, true
+
+	case "axchangeowner":
+		if len(args) < 3 {
+			return false, true
+		}
+		targetPath := toString(args[0])
+		uid := toInt(args[1])
+		gid := toInt(args[2])
+		if err := os.Chown(targetPath, uid, gid); err != nil {
+			if runtime.GOOS == "windows" {
+				fmt.Printf("WARNING: AxChangeOwner is not supported on Windows for '%s': %v\n", targetPath, err)
+			} else {
+				fmt.Printf("WARNING: AxChangeOwner failed for '%s': %v\n", targetPath, err)
+			}
+			return false, true
+		}
+		return true, true
+
+	case "axhostnamevalue":
+		host, err := os.Hostname()
+		if err != nil {
+			fmt.Printf("WARNING: AxHostNameValue failed: %v\n", err)
+			return "", true
+		}
+		return host, true
+
+	case "axchangetimes":
+		if len(args) < 3 {
+			return false, true
+		}
+		targetPath := toString(args[0])
+		accessTime := toTimeValue(args[1])
+		modifiedTime := toTimeValue(args[2])
+		if err := os.Chtimes(targetPath, accessTime, modifiedTime); err != nil {
+			fmt.Printf("WARNING: AxChangeTimes failed for '%s': %v\n", targetPath, err)
+			return false, true
+		}
+		return true, true
+
+	case "axclearenvironment":
+		os.Clearenv()
+		return true, true
+
+	case "axenvironmentlist":
+		envList := os.Environ()
+		values := make([]interface{}, len(envList))
+		for i, value := range envList {
+			values[i] = value
+		}
+		return NewVBArrayFromValues(0, values), true
+
+	case "axeffectiveuserid":
+		if runtime.GOOS == "windows" {
+			fmt.Printf("WARNING: AxEffectiveUserId is not supported on Windows; returning -1\n")
+			return -1, true
+		}
+		return os.Geteuid(), true
+
+	case "axprocessid":
+		return os.Getpid(), true
+
+	case "axcurrentdir":
+		workingDir, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("WARNING: AxCurrentDir failed: %v\n", err)
+			return "", true
+		}
+		return workingDir, true
+
+	case "axispathseparator":
+		if len(args) == 0 {
+			return false, true
+		}
+		candidate := toString(args[0])
+		if candidate == "" {
+			return false, true
+		}
+		return os.IsPathSeparator(candidate[0]), true
+
+	case "axcreatelink":
+		if len(args) < 2 {
+			return false, true
+		}
+		source := toString(args[0])
+		target := toString(args[1])
+		if err := os.Link(source, target); err != nil {
+			if runtime.GOOS == "windows" {
+				fmt.Printf("WARNING: AxCreateLink may require special permissions on Windows (%s -> %s): %v\n", source, target, err)
+			} else {
+				fmt.Printf("WARNING: AxCreateLink failed (%s -> %s): %v\n", source, target, err)
+			}
+			return false, true
+		}
+		return true, true
+
+	case "axenvironmentvalue":
+		if len(args) == 0 {
+			return "", true
+		}
+		envName := toString(args[0])
+		value, found := os.LookupEnv(envName)
+		if found {
+			return value, true
+		}
+		if len(args) > 1 {
+			return args[1], true
+		}
+		return "", true
+
+	case "axusercachedirpath":
+		cacheDir, err := os.UserCacheDir()
+		if err != nil {
+			fmt.Printf("WARNING: AxUserCacheDirPath failed: %v\n", err)
+			return "", true
+		}
+		return cacheDir, true
+
+	case "axuserconfigdirpath":
+		configDir, err := os.UserConfigDir()
+		if err != nil {
+			fmt.Printf("WARNING: AxUserConfigDirPath failed: %v\n", err)
+			return "", true
+		}
+		return configDir, true
+
+	case "axuserhomedirpath":
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			fmt.Printf("WARNING: AxUserHomeDirPath failed: %v\n", err)
+			return "", true
+		}
+		return homeDir, true
+
+	case "axdirseparator":
+		return string(os.PathSeparator), true
+
+	case "axpathlistseparator":
+		return string(os.PathListSeparator), true
+
+	case "axintegersizebytes":
+		return strconv.IntSize / 8, true
+
+	case "axintegermax":
+		maxInt := int(^uint(0) >> 1)
+		return maxInt, true
+
+	case "axintegermin":
+		maxInt := int(^uint(0) >> 1)
+		return -maxInt - 1, true
+
+	case "axfloatprecisiondigits":
+		return 15, true
+
+	case "axsmallestfloatvalue":
+		return math.SmallestNonzeroFloat64, true
+
+	case "axplatformbits":
+		return strconv.IntSize, true
+
+	case "axexecutablepath":
+		execPath, err := os.Executable()
+		if err != nil {
+			fmt.Printf("WARNING: AxExecutablePath failed: %v\n", err)
+			return "", true
+		}
+		return execPath, true
 
 	case "axexecute":
 		// AxExecute(command, [output_array], [result_code]) - Execute system command and return output
@@ -1247,6 +1450,49 @@ func evalCustomFunction(funcName string, args []interface{}, ctx *ExecutionConte
 		}
 
 		return string(body), true
+
+	// PHP-like functions
+	case "axlastmodified":
+		if ctx == nil || ctx.CurrentFile == "" {
+			return int64(0), true
+		}
+		info, err := os.Stat(ctx.CurrentFile)
+		if err != nil {
+			fmt.Printf("WARNING: AxLastModified failed for '%s': %v\n", ctx.CurrentFile, err)
+			return int64(0), true
+		}
+		return info.ModTime().Unix(), true
+
+	case "axsysteminfo":
+		mode := "a"
+		if len(args) > 0 {
+			candidate := strings.ToLower(strings.TrimSpace(toString(args[0])))
+			if candidate != "" {
+				mode = candidate
+			}
+		}
+		return axSystemInfoValue(mode), true
+
+	case "axcurrentuser":
+		return getCurrentUserName(), true
+
+	case "axversion":
+		if len(args) > 0 {
+			option := strings.ToLower(strings.TrimSpace(toString(args[0])))
+			if option == "version_id" || option == "id" || option == "versionid" {
+				return parseVersionID(engineVersion), true
+			}
+		}
+		return engineVersion, true
+
+	case "axruntimeinfo":
+		axonAspInfo := buildAxonAspInfo(ctx)
+		if ctx != nil && ctx.Response != nil {
+			safeInfo := html.EscapeString(axonAspInfo)
+			ctx.Response.Write("<pre>" + safeInfo + "</pre>")
+			return -1, true
+		}
+		return axonAspInfo, true
 	}
 
 	return nil, false
@@ -1317,6 +1563,157 @@ func isEmpty(v interface{}) bool {
 		return len(dict) == 0
 	}
 	return false
+}
+
+func parseFileMode(value interface{}) os.FileMode {
+	if modeString, ok := value.(string); ok {
+		trimmed := strings.TrimSpace(modeString)
+		if trimmed != "" {
+			if parsed, err := strconv.ParseUint(trimmed, 8, 32); err == nil {
+				return os.FileMode(parsed)
+			}
+		}
+	}
+	return os.FileMode(toInt(value))
+}
+
+func toTimeValue(value interface{}) time.Time {
+	switch v := value.(type) {
+	case time.Time:
+		return v
+	case int64:
+		return time.Unix(v, 0)
+	case int:
+		return time.Unix(int64(v), 0)
+	case float64:
+		return time.Unix(int64(v), 0)
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return time.Now()
+		}
+		if ts, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+			return time.Unix(ts, 0)
+		}
+		if parsed, err := time.Parse(time.RFC3339, trimmed); err == nil {
+			return parsed
+		}
+	}
+	return time.Unix(int64(toInt(value)), 0)
+}
+
+func getCurrentUserName() string {
+	current, err := user.Current()
+	if err == nil && current != nil {
+		if current.Username != "" {
+			return current.Username
+		}
+		if current.Name != "" {
+			return current.Name
+		}
+	}
+	if runtime.GOOS == "windows" {
+		if val := os.Getenv("USERNAME"); val != "" {
+			return val
+		}
+	}
+	if val := os.Getenv("USER"); val != "" {
+		return val
+	}
+	return ""
+}
+
+func axSystemInfoValue(mode string) string {
+	hostName, err := os.Hostname()
+	if err != nil {
+		hostName = "unknown"
+	}
+
+	systemName := runtime.GOOS
+	release := runtime.GOOS
+	version := runtime.Version()
+	machine := runtime.GOARCH
+
+	switch mode {
+	case "s":
+		return systemName
+	case "n":
+		return hostName
+	case "r":
+		return release
+	case "v":
+		return version
+	case "m":
+		return machine
+	default:
+		return fmt.Sprintf("%s %s %s %s %s", systemName, hostName, release, version, machine)
+	}
+}
+
+func parseVersionID(version string) int {
+	trimmed := strings.TrimSpace(version)
+	if trimmed == "" {
+		return 0
+	}
+
+	if idx := strings.Index(trimmed, "-"); idx >= 0 {
+		trimmed = trimmed[:idx]
+	}
+	parts := strings.Split(trimmed, ".")
+	for len(parts) < 3 {
+		parts = append(parts, "0")
+	}
+
+	major, _ := strconv.Atoi(parts[0])
+	minor, _ := strconv.Atoi(parts[1])
+	patch, _ := strconv.Atoi(parts[2])
+
+	if major < 0 {
+		major = 0
+	}
+	if minor < 0 {
+		minor = 0
+	}
+	if patch < 0 {
+		patch = 0
+	}
+
+	return (major * 10000) + (minor * 100) + patch
+}
+
+func buildAxonAspInfo(ctx *ExecutionContext) string {
+	workingDir, err := os.Getwd()
+	if err != nil {
+		workingDir = ""
+	}
+
+	binaryPath, err := os.Executable()
+	if err != nil {
+		binaryPath = ""
+	}
+
+	var rootDir string
+	if ctx != nil {
+		rootDir = ctx.RootDir
+	}
+
+	return strings.Join([]string{
+		"G3Pix AxonASP Server Info",
+		"version=" + engineVersion,
+		"version_id=" + strconv.Itoa(parseVersionID(engineVersion)),
+		"go_version=" + runtime.Version(),
+		"go_os=" + runtime.GOOS,
+		"go_arch=" + runtime.GOARCH,
+		"hostname=" + axSystemInfoValue("n"),
+		"current_user=" + getCurrentUserName(),
+		"working_dir=" + workingDir,
+		"binary_path=" + binaryPath,
+		"web_root=" + rootDir,
+		"path_separator=" + string(os.PathListSeparator),
+		"directory_separator=" + string(os.PathSeparator),
+		"int_size_bytes=" + strconv.Itoa(strconv.IntSize/8),
+		"architecture_bits=" + strconv.Itoa(strconv.IntSize),
+	}, "\n")
 }
 
 func formatString(format string, args []interface{}) string {

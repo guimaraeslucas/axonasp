@@ -15,6 +15,7 @@ require (
 
 require (
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/ricochet2200/go-disk-usage/du v0.0.0-20210707232629-ac9918953285 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 )
 
