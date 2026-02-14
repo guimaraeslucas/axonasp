@@ -7,7 +7,20 @@
         <meta name="description"
             content="Complete AxonASP reference: ASP compatibility, COM support, G3 libraries, custom functions, security, roadmap, and project structure.">
         <title>Complete Documentation - G3Pix AxonASP</title>
+        <meta name="author" content="G3Pix">
+		<meta name="theme-color" content="#00ADD8">
         <link rel="stylesheet" href="styles.css">
+		<meta name="language" content="en-US">
+		<meta name="robots" content="index,follow">
+		<meta name="referrer" content="always">        
+		<link rel="icon" type="image/svg+xml" href="favicon.svg">
+        <link rel="icon" type="image/x-icon" href="favicon.ico">
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link rel="icon" type="image/svg+xml" href="favicon.svg">
+					<!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <style>
             .docs-content {
                 max-width: 1100px;
@@ -152,7 +165,7 @@
         <nav class="navbar">
             <div class="container">
                 <div class="nav-brand">
-                    <img src="axonasp.svg" alt="G3Pix AxonASP" class="logo">
+                    <img src="favicon.svg" alt="G3Pix AxonASP" class="logo">
                     <span class="brand-name">G3Pix AxonASP</span>
                 </div>
                 <ul class="nav-menu">
@@ -161,7 +174,8 @@
                     <li><a href="index.htm#quickstart">Quick Start</a></li>
                     <li><a href="installation.htm">Installation</a></li>
                     <li><a href="features.htm" class="active">Documentation</a></li>
-                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank" class="btn-github">GitHub</a></li>
+                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank"
+                            class="btn-github">GitHub</a></li>
                 </ul>
             </div>
         </nav>
@@ -169,7 +183,8 @@
         <div class="docs-content">
             <div class="docs-header">
                 <h1>Complete AxonASP Reference</h1>
-                <p style="font-size:1.15rem;color:var(--text-light);">Everything available in the README, organized for fast implementation and confident production deployment.</p>
+                <p style="font-size:1.15rem;color:var(--text-light);">Everything available in the README, organized for
+                    fast implementation and confident production deployment.</p>
             </div>
 
             <div class="docs-nav">
@@ -189,7 +204,8 @@
 
             <section id="compat" class="docs-section">
                 <h2>Classic ASP Compatibility</h2>
-                <p>AxonASP is built to be a practical drop-in replacement with modern speed and near-perfect ASP behavior.</p>
+                <p>AxonASP is built to be a practical drop-in replacement with modern speed and near-perfect ASP
+                    behavior.</p>
                 <div class="api-item">
                     <h4>Request</h4>
                     <p>QueryString, Form, ServerVariables, Cookies, ClientCertificate.</p>
@@ -214,7 +230,8 @@
                 <h3>ADODB</h3>
                 <div class="api-item">
                     <h4>ADODB.Connection</h4>
-                    <p>Open, Close, Execute, BeginTrans, CommitTrans, RollbackTrans with SQLite, MySQL, PostgreSQL, SQL Server, and Access (Windows).</p>
+                    <p>Open, Close, Execute, BeginTrans, CommitTrans, RollbackTrans with SQLite, MySQL, PostgreSQL, SQL
+                        Server, and Access (Windows).</p>
                 </div>
                 <div class="api-item">
                     <h4>ADODB.Recordset</h4>
@@ -229,8 +246,10 @@
                 <div class="api-item">
                     <h4>ADOX.Catalog</h4>
                     <p>Schema operations for creating databases, tables, and indexes.</p>
-                    <div class="example"><pre><code>Set catalog = Server.CreateObject("ADOX.Catalog")
-catalog.Create "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\mydb.mdb"</code></pre></div>
+                    <div class="example">
+                        <pre><code>Set catalog = Server.CreateObject("ADOX.Catalog")
+catalog.Create "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\mydb.mdb"</code></pre>
+                    </div>
                 </div>
 
                 <h3>MSXML2</h3>
@@ -246,7 +265,8 @@ catalog.Create "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\mydb.mdb"</co
                 <h3>Scripting Objects & WScript</h3>
                 <div class="api-item">
                     <h4>Scripting.Dictionary / FileSystemObject / WScript.Shell</h4>
-                    <p>Associative storage, filesystem operations, process execution, environment expansion, and Windows registry helpers.</p>
+                    <p>Associative storage, filesystem operations, process execution, environment expansion, and Windows
+                        registry helpers.</p>
                 </div>
             </section>
 
@@ -254,26 +274,68 @@ catalog.Create "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\mydb.mdb"</co
                 <h2>Custom G3 Libraries</h2>
                 <p>Modern capabilities for classic code with productive APIs.</p>
 
-                <div class="api-item"><h4>G3JSON</h4><p>JSON parse/stringify, object/array creation, file loading.</p></div>
-                <div class="api-item"><h4>G3FILES</h4><p>Read/write/append/copy/move/rename/delete, list, metadata, directory creation with path security.</p></div>
-                <div class="api-item"><h4>G3HTTP</h4><p>Fetch/Request with GET/POST/PUT/DELETE/PATCH and automatic JSON handling.</p></div>
-                <div class="api-item"><h4>G3TEMPLATE</h4><p>Go-style template rendering for HTML, email, and report generation.</p></div>
-                <div class="api-item"><h4>G3MAIL</h4><p>SMTP send with manual config or standard .env config.</p></div>
-                <div class="api-item"><h4>G3CRYPTO</h4><p>UUID v4, bcrypt hashing, verify password helpers.</p></div>
-                <div class="api-item"><h4>G3REGEXP</h4><p>Pattern, IgnoreCase, Global, Multiline, Test/Execute/Replace with match metadata.</p></div>
-                <div class="api-item"><h4>G3FILEUPLOADER</h4><p>Single/multi-file upload processing, extension controls, max size, metadata.</p></div>
-                <div class="api-item"><h4>G3ZIP</h4><p>Create/open ZIP, add files/folders/text, list, extract.</p></div>
-                <div class="api-item"><h4>G3FC</h4><p>Encrypted high-performance archiver: create, extract, list, find, metadata export.</p></div>
-                <div class="api-item"><h4>G3IMAGE</h4><p>2D image drawing and rendering (PNG/JPEG outputs) through gg.</p></div>
-                <div class="api-item"><h4>PDF_LIB (G3PDF)</h4><p>FPDF 1.86 translated to Go with text, image, and HTML rendering. Aliases: G3PDF, PDF, FPDF.</p></div>
-                <div class="api-item"><h4>G3DB</h4><p>database/sql-style modern library with pooling, prepared statements, and transactions.</p></div>
+                <div class="api-item">
+                    <h4>G3JSON</h4>
+                    <p>JSON parse/stringify, object/array creation, file loading.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3FILES</h4>
+                    <p>Read/write/append/copy/move/rename/delete, list, metadata, directory creation with path security.
+                    </p>
+                </div>
+                <div class="api-item">
+                    <h4>G3HTTP</h4>
+                    <p>Fetch/Request with GET/POST/PUT/DELETE/PATCH and automatic JSON handling.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3TEMPLATE</h4>
+                    <p>Go-style template rendering for HTML, email, and report generation.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3MAIL</h4>
+                    <p>SMTP send with manual config or standard .env config.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3CRYPTO</h4>
+                    <p>UUID v4, bcrypt hashing, verify password helpers.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3REGEXP</h4>
+                    <p>Pattern, IgnoreCase, Global, Multiline, Test/Execute/Replace with match metadata.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3FILEUPLOADER</h4>
+                    <p>Single/multi-file upload processing, extension controls, max size, metadata.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3ZIP</h4>
+                    <p>Create/open ZIP, add files/folders/text, list, extract.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3FC</h4>
+                    <p>Encrypted high-performance archiver: create, extract, list, find, metadata export.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3IMAGE</h4>
+                    <p>2D image drawing and rendering (PNG/JPEG outputs) through gg.</p>
+                </div>
+                <div class="api-item">
+                    <h4>PDF_LIB (G3PDF)</h4>
+                    <p>FPDF 1.86 translated to Go with text, image, and HTML rendering. Aliases: G3PDF, PDF, FPDF.</p>
+                </div>
+                <div class="api-item">
+                    <h4>G3DB</h4>
+                    <p>database/sql-style modern library with pooling, prepared statements, and transactions.</p>
+                </div>
 
-                <div class="example"><pre><code>Set pdf = Server.CreateObject("G3PDF")
+                <div class="example">
+                    <pre><code>Set pdf = Server.CreateObject("G3PDF")
 pdf.AddPage
 pdf.SetFont "helvetica", "B", 16
 pdf.Cell 0, 10, "Hello from AxonASP PDF", 0, 1, "L", False, ""
 pdf.WriteHTML "&lt;p&gt;&lt;b&gt;HTML rendering&lt;/b&gt; is supported.&lt;/p&gt;"
-pdf.Output "I", "sample.pdf", True</code></pre></div>
+pdf.Output "I", "sample.pdf", True</code></pre>
+                </div>
             </section>
 
             <section id="functions" class="docs-section">
@@ -282,36 +344,73 @@ pdf.Output "I", "sample.pdf", True</code></pre></div>
 
                 <h3>Array</h3>
                 <div class="function-grid">
-                    <div class="function-card"><h5>AxArrayMerge / AxArrayContains / AxArrayMap / AxArrayFilter</h5><p>Merge, search, transform, and filter arrays.</p></div>
-                    <div class="function-card"><h5>AxCount / AxExplode / AxImplode / AxArrayReverse / AxRange</h5><p>Core array-size and conversion utilities.</p></div>
+                    <div class="function-card">
+                        <h5>AxArrayMerge / AxArrayContains / AxArrayMap / AxArrayFilter</h5>
+                        <p>Merge, search, transform, and filter arrays.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxCount / AxExplode / AxImplode / AxArrayReverse / AxRange</h5>
+                        <p>Core array-size and conversion utilities.</p>
+                    </div>
                 </div>
 
                 <h3>String</h3>
                 <div class="function-grid">
-                    <div class="function-card"><h5>AxStringReplace / AxSprintf / AxPad / AxRepeat</h5><p>Text formatting and manipulation.</p></div>
-                    <div class="function-card"><h5>AxUcFirst / AxWordCount / AxNewLineToBr / AxTrim / AxStringGetCsv</h5><p>Content cleanup and parsing.</p></div>
+                    <div class="function-card">
+                        <h5>AxStringReplace / AxSprintf / AxPad / AxRepeat</h5>
+                        <p>Text formatting and manipulation.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxUcFirst / AxWordCount / AxNewLineToBr / AxTrim / AxStringGetCsv</h5>
+                        <p>Content cleanup and parsing.</p>
+                    </div>
                 </div>
 
                 <h3>Math, Types, Date, Encoding & Validation</h3>
                 <div class="function-grid">
-                    <div class="function-card"><h5>AxCeil / AxFloor / AxMax / AxMin / AxRand / AxNumberFormat</h5><p>Math and numeric formatting.</p></div>
-                    <div class="function-card"><h5>AxIsInt / AxIsFloat / AxCTypeAlpha / AxCTypeAlnum / AxEmpty / AxIsset</h5><p>Type checks and validation support.</p></div>
-                    <div class="function-card"><h5>AxTime / AxDate</h5><p>Date and timestamp helpers.</p></div>
-                    <div class="function-card"><h5>AxMd5 / AxSha1 / AxHash / AxBase64Encode / AxBase64Decode / AxUrlDecode</h5><p>Hashing and encoding operations.</p></div>
-                    <div class="function-card"><h5>AxHtmlSpecialChars / AxStripTags / AxRgbToHex</h5><p>Output safety and utility helpers.</p></div>
-                    <div class="function-card"><h5>AxFilterValidateIp / AxFilterValidateEmail</h5><p>Input validation utilities.</p></div>
+                    <div class="function-card">
+                        <h5>AxCeil / AxFloor / AxMax / AxMin / AxRand / AxNumberFormat</h5>
+                        <p>Math and numeric formatting.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxIsInt / AxIsFloat / AxCTypeAlpha / AxCTypeAlnum / AxEmpty / AxIsset</h5>
+                        <p>Type checks and validation support.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxTime / AxDate</h5>
+                        <p>Date and timestamp helpers.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxMd5 / AxSha1 / AxHash / AxBase64Encode / AxBase64Decode / AxUrlDecode</h5>
+                        <p>Hashing and encoding operations.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxHtmlSpecialChars / AxStripTags / AxRgbToHex</h5>
+                        <p>Output safety and utility helpers.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxFilterValidateIp / AxFilterValidateEmail</h5>
+                        <p>Input validation utilities.</p>
+                    </div>
                 </div>
 
                 <h3>Request & Utility</h3>
                 <div class="function-grid">
-                    <div class="function-card"><h5>AxGetRequest / AxGetGet / AxGetPost</h5><p>Request parameter aggregation.</p></div>
-                    <div class="function-card"><h5>AxGenerateGuid / AxBuildQueryString / AxVarDump / Document.Write</h5><p>Debug, output and integration helpers.</p></div>
+                    <div class="function-card">
+                        <h5>AxGetRequest / AxGetGet / AxGetPost</h5>
+                        <p>Request parameter aggregation.</p>
+                    </div>
+                    <div class="function-card">
+                        <h5>AxGenerateGuid / AxBuildQueryString / AxVarDump / Document.Write</h5>
+                        <p>Debug, output and integration helpers.</p>
+                    </div>
                 </div>
             </section>
 
             <section id="structure" class="docs-section">
                 <h2>Project Structure</h2>
-                <div class="example"><pre><code>axonasp/
+                <div class="example">
+                    <pre><code>axonasp/
 ├── main.go
 ├── asp/
 ├── axonaspcgi/
@@ -320,8 +419,10 @@ pdf.Output "I", "sample.pdf", True</code></pre></div>
 ├── docs/
 ├── www/
 ├── temp/session/
-└── errorpages/</code></pre></div>
-                <p>Core runtime in <code>server/</code>, parser/executor in <code>asp/</code>, web root in <code>www/</code>, and complete implementation guides in <code>docs/</code>.</p>
+└── errorpages/</code></pre>
+                </div>
+                <p>Core runtime in <code>server/</code>, parser/executor in <code>asp/</code>, web root in
+                    <code>www/</code>, and complete implementation guides in <code>docs/</code>.</p>
             </section>
 
             <section id="security" class="docs-section">
@@ -333,7 +434,8 @@ pdf.Output "I", "sample.pdf", True</code></pre></div>
                     <li>Set <code>DEBUG_ASP=FALSE</code> in production.</li>
                     <li>Use HTTPS and reverse proxy for production hardening.</li>
                 </ul>
-                <div class="note-box"><strong>Pro Tip:</strong> Fast, secure, and scalable is the default direction with AxonASP when paired with nginx/Apache/IIS fronting.</div>
+                <div class="note-box"><strong>Pro Tip:</strong> Fast, secure, and scalable is the default direction with
+                    AxonASP when paired with nginx/Apache/IIS fronting.</div>
             </section>
 
             <section id="performance" class="docs-section">
@@ -348,51 +450,98 @@ pdf.Output "I", "sample.pdf", True</code></pre></div>
 
             <section id="globalasa" class="docs-section">
                 <h2>Global.asa Support</h2>
-                <p>Supported events: <code>Application_OnStart</code>, <code>Application_OnEnd</code>, <code>Session_OnStart</code>, <code>Session_OnEnd</code>.</p>
-                <p><strong>Important:</strong> one application per AxonASP instance due to global.asa loading model. Run multiple instances for multiple apps.</p>
+                <p>Supported events: <code>Application_OnStart</code>, <code>Application_OnEnd</code>,
+                    <code>Session_OnStart</code>, <code>Session_OnEnd</code>.</p>
+                <p><strong>Important:</strong> one application per AxonASP instance due to global.asa loading model. Run
+                    multiple instances for multiple apps.</p>
             </section>
 
             <section id="roadmap" class="docs-section">
                 <h2>Roadmap</h2>
-                <p>Shipped: ADODB + Access, FastCGI, web.config rewrite support, custom 404 modes, scripting objects, WScript.Shell, ADOX, 60+ functions, image, ZIP, G3FC, XML.</p>
-                <p>Next targets: PDF completion, WebSocket support, Redis sessions, Docker official images, OAuth2 library, REST generator, GraphQL support, VM/compiler improvements.</p>
+                <p>Shipped: ADODB + Access, FastCGI, web.config rewrite support, custom 404 modes, scripting objects,
+                    WScript.Shell, ADOX, 60+ functions, image, ZIP, G3FC, XML.</p>
+                <p>Next targets: PDF completion, WebSocket support, Redis sessions, Docker official images, OAuth2
+                    library, REST generator, GraphQL support, VM/compiler improvements.</p>
             </section>
 
             <section id="resources" class="docs-section">
                 <h2>Documentation, Community, License</h2>
                 <h3>Implementation Guides</h3>
                 <ul class="link-list">
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3JSON_IMPLEMENTATION.md">G3JSON</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FILES_IMPLEMENTATION.md">G3FILES</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3HTTP_IMPLEMENTATION.md">G3HTTP</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3MAIL_IMPLEMENTATION.md">G3MAIL</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3CRYPTO_IMPLEMENTATION.md">G3CRYPTO</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3REGEXP_IMPLEMENTATION.md">G3REGEXP</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FILEUPLOADER_IMPLEMENTATION.md">G3FILEUPLOADER</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3ZIP_IMPLEMENTATION.md">G3ZIP</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FC_IMPLEMENTATION.md">G3FC</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3TEMPLATE_IMPLEMENTATION.md">G3TEMPLATE</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3DB_IMPLEMENTATION.md">G3DB</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3IMAGE_IMPLEMENTATION.md">G3IMAGE</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/PDF_LIB_IMPLEMENTATION.md">PDF_LIB</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/ADODB_IMPLEMENTATION.md">ADODB</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/ACCESS_DATABASE_SUPPORT.md">Access support</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/MSXML2_IMPLEMENTATION.md">MSXML2</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md">Scripting Objects</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/WSCRIPT_SHELL_IMPLEMENTATION.md">WScript.Shell</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_MODE.md">FastCGI guide</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_QUICKSTART.md">FastCGI quickstart</a></li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3JSON_IMPLEMENTATION.md">G3JSON</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FILES_IMPLEMENTATION.md">G3FILES</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3HTTP_IMPLEMENTATION.md">G3HTTP</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3MAIL_IMPLEMENTATION.md">G3MAIL</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3CRYPTO_IMPLEMENTATION.md">G3CRYPTO</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3REGEXP_IMPLEMENTATION.md">G3REGEXP</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FILEUPLOADER_IMPLEMENTATION.md">G3FILEUPLOADER</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3ZIP_IMPLEMENTATION.md">G3ZIP</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FC_IMPLEMENTATION.md">G3FC</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3TEMPLATE_IMPLEMENTATION.md">G3TEMPLATE</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3DB_IMPLEMENTATION.md">G3DB</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3IMAGE_IMPLEMENTATION.md">G3IMAGE</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/PDF_LIB_IMPLEMENTATION.md">PDF_LIB</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/ADODB_IMPLEMENTATION.md">ADODB</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/ACCESS_DATABASE_SUPPORT.md">Access
+                            support</a></li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/MSXML2_IMPLEMENTATION.md">MSXML2</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md">Scripting
+                            Objects</a></li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/WSCRIPT_SHELL_IMPLEMENTATION.md">WScript.Shell</a>
+                    </li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_MODE.md">FastCGI
+                            guide</a></li>
+                    <li><a target="_blank"
+                            href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_QUICKSTART.md">FastCGI
+                            quickstart</a></li>
                 </ul>
 
                 <h3>Support</h3>
                 <ul>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/issues">GitHub Issues</a></li>
-                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/discussions">GitHub Discussions</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/issues">GitHub Issues</a>
+                    </li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/discussions">GitHub
+                            Discussions</a></li>
                     <li><a target="_blank" href="https://g3pix.com.br/axonasp">Official Website</a></li>
                 </ul>
 
                 <h3>Contributing & License</h3>
-                <p>Contributions are welcome through pull requests with tests and documentation updates. Project is licensed under MPL (see LICENSE).</p>
+                <p>Contributions are welcome through pull requests with tests and documentation updates. Project is
+                    licensed under MPL (see LICENSE).</p>
                 <p><strong>Built with ❤️ by G3Pix</strong> — making Classic ASP modern, fast, and cross-platform.</p>
             </section>
 

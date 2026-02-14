@@ -4,8 +4,23 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="description" content="Complete installation, deployment, FastCGI, and configuration guide for G3Pix AxonASP.">
+        <meta name="description"
+            content="Complete installation, deployment, FastCGI, and configuration guide for G3Pix AxonASP.">
         <title>Installation & Deployment - G3Pix AxonASP</title>
+		        <meta name="author" content="G3Pix">
+		<meta name="theme-color" content="#00ADD8">
+        <link rel="stylesheet" href="styles.css">
+		<meta name="language" content="en-US">
+		<meta name="robots" content="index,follow">
+		<meta name="referrer" content="always">        
+		<link rel="icon" type="image/svg+xml" href="favicon.svg">
+        <link rel="icon" type="image/x-icon" href="favicon.ico">
+        <link rel="icon" type="image/png" href="favicon.png">
+        <link rel="icon" type="image/svg+xml" href="favicon.svg">
+					<!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="styles.css">
         <style>
             .installation-content {
@@ -158,7 +173,7 @@
         <nav class="navbar">
             <div class="container">
                 <div class="nav-brand">
-                    <img src="axonasp.svg" alt="G3Pix AxonASP" class="logo">
+                    <img src="favicon.svg" alt="G3Pix AxonASP" class="logo">
                     <span class="brand-name">G3Pix AxonASP</span>
                 </div>
                 <ul class="nav-menu">
@@ -167,7 +182,8 @@
                     <li><a href="index.htm#quickstart">Quick Start</a></li>
                     <li><a href="installation.htm" class="active">Installation</a></li>
                     <li><a href="features.htm">Documentation</a></li>
-                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank" class="btn-github">GitHub</a></li>
+                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank"
+                            class="btn-github">GitHub</a></li>
                 </ul>
             </div>
         </nav>
@@ -175,7 +191,8 @@
         <div class="installation-content">
             <div class="installation-header">
                 <h1>Installation & Deployment</h1>
-                <p style="font-size:1.1rem;color:var(--text-light);">From first run to production architecture: everything you need to launch AxonASP with confidence.</p>
+                <p style="font-size:1.1rem;color:var(--text-light);">From first run to production architecture:
+                    everything you need to launch AxonASP with confidence.</p>
             </div>
 
             <div class="toc">
@@ -202,7 +219,8 @@
                     <li>Git for cloning the repository</li>
                     <li>Basic Classic ASP / VBScript understanding</li>
                 </ul>
-                <div class="success"><strong>Good news:</strong> AxonASP is a single-binary runtime with simple operational flow.</div>
+                <div class="success"><strong>Good news:</strong> AxonASP is a single-binary runtime with simple
+                    operational flow.</div>
             </section>
 
             <section id="modes" class="install-section">
@@ -215,24 +233,31 @@
 
             <section id="quickstart" class="install-section">
                 <h2>Quick Start</h2>
-                <div class="code-block"><pre><code>git clone https://github.com/guimaraeslucas/axonasp.git
+                <div class="code-block">
+                    <pre><code>git clone https://github.com/guimaraeslucas/axonasp.git
 cd axonasp
 go mod download
-go run main.go</code></pre></div>
+go run main.go</code></pre>
+                </div>
                 <p>Open <code>http://localhost:4050</code>.</p>
 
                 <h3>Linux Installer (RPM distro + nginx proxy)</h3>
-                <div class="code-block"><pre><code>wget https://raw.githubusercontent.com/guimaraeslucas/axonasp/main/linux_install.sh -O linux_install.sh && sed -i 's/\r$//' linux_install.sh && chmod +x linux_install.sh && bash linux_install.sh</code></pre></div>
+                <div class="code-block">
+                    <pre><code>wget https://raw.githubusercontent.com/guimaraeslucas/axonasp/main/linux_install.sh -O linux_install.sh && sed -i 's/\r$//' linux_install.sh && chmod +x linux_install.sh && bash linux_install.sh</code></pre>
+                </div>
             </section>
 
             <section id="build" class="install-section">
                 <h2>Build & Cross-Compile</h2>
-                <div class="code-block"><pre><code>go build
+                <div class="code-block">
+                    <pre><code>go build
 # Windows full build helper
-./build.ps1</code></pre></div>
+./build.ps1</code></pre>
+                </div>
 
                 <h3>Cross-platform</h3>
-                <div class="code-block"><pre><code># Windows
+                <div class="code-block">
+                    <pre><code># Windows
 GOOS=windows GOARCH=amd64 go build
 
 # Linux
@@ -242,59 +267,158 @@ GOOS=linux GOARCH=amd64 go build
 GOOS=darwin GOARCH=amd64 go build
 
 # macOS Apple Silicon
-GOOS=darwin GOARCH=arm64 go build</code></pre></div>
+GOOS=darwin GOARCH=arm64 go build</code></pre>
+                </div>
             </section>
 
             <section id="fastcgi" class="install-section">
                 <h2>FastCGI Mode</h2>
-                <div class="code-block"><pre><code>go build -o axonaspcgi.exe ./axonaspcgi
+                <div class="code-block">
+                    <pre><code>go build -o axonaspcgi.exe ./axonaspcgi
 ./axonaspcgi -listen :9000 -root ./www
 # Unix socket example
-./axonaspcgi -listen unix:/var/run/axonasp.sock -root /var/www/asp</code></pre></div>
+./axonaspcgi -listen unix:/var/run/axonasp.sock -root /var/www/asp</code></pre>
+                </div>
                 <ul>
                     <li>Native integration with nginx, Apache, IIS</li>
                     <li>Great fit for production-grade SSL, cache, and static handling</li>
                     <li>Strong scaling model for high-traffic environments</li>
                 </ul>
-                <p><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_MODE.md">Open complete FastCGI guide</a></p>
+                <p><a target="_blank"
+                        href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_MODE.md">Open complete
+                        FastCGI guide</a></p>
             </section>
 
             <section id="config" class="install-section">
                 <h2>Configuration (.env)</h2>
-                <div class="code-block"><pre><code>SERVER_PORT=4050
+                <div class="code-block">
+                    <pre><code>SERVER_PORT=4050
 WEB_ROOT=./www
 TIMEZONE=America/Sao_Paulo
 DEFAULT_PAGE=index.asp,default.asp
 SCRIPT_TIMEOUT=30
-DEBUG_ASP=FALSE</code></pre></div>
+DEBUG_ASP=FALSE</code></pre>
+                </div>
 
                 <table class="config-table">
                     <thead>
-                        <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+                        <tr>
+                            <th>Variable</th>
+                            <th>Default</th>
+                            <th>Description</th>
+                        </tr>
                     </thead>
                     <tbody>
-                        <tr><td><code>SERVER_PORT</code></td><td>4050</td><td>HTTP server port</td></tr>
-                        <tr><td><code>WEB_ROOT</code></td><td>./www</td><td>Root directory for ASP files</td></tr>
-                        <tr><td><code>TIMEZONE</code></td><td>America/Sao_Paulo</td><td>Server timezone</td></tr>
-                        <tr><td><code>DEFAULT_PAGE</code></td><td>index.asp,default.asp,...</td><td>Default page hierarchy</td></tr>
-                        <tr><td><code>SCRIPT_TIMEOUT</code></td><td>30</td><td>Script timeout (seconds)</td></tr>
-                        <tr><td><code>DEBUG_ASP</code></td><td>FALSE</td><td>Detailed ASP stack traces</td></tr>
-                        <tr><td><code>CLEAN_SESSIONS</code></td><td>TRUE</td><td>Cleanup expired sessions at startup</td></tr>
-                        <tr><td><code>ASP_CACHE_TYPE</code></td><td>disk</td><td>AST cache type (memory/disk)</td></tr>
-                        <tr><td><code>ASP_CACHE_TTL_MINUTES</code></td><td>0</td><td>AST cache TTL</td></tr>
-                        <tr><td><code>AXONASP_VM</code></td><td>FALSE</td><td>Experimental VM toggle</td></tr>
-                        <tr><td><code>VM_CACHE_TYPE</code></td><td>disk</td><td>VM cache type</td></tr>
-                        <tr><td><code>VM_CACHE_TTL_MINUTES</code></td><td>0</td><td>VM cache TTL</td></tr>
-                        <tr><td><code>MEMORY_LIMIT_MB</code></td><td>0</td><td>Process memory limit</td></tr>
-                        <tr><td><code>ERROR_404_MODE</code></td><td>DEFAULT</td><td>DEFAULT or IIS mode</td></tr>
-                        <tr><td><code>BLOCKED_EXTENSIONS</code></td><td>see .env</td><td>Blocked extension list</td></tr>
-                        <tr><td><code>COM_PROVIDER</code></td><td>auto</td><td>Access COM provider strategy</td></tr>
-                        <tr><td><code>SQL_TRACE</code></td><td>FALSE</td><td>Verbose SQL logs</td></tr>
-                        <tr><td><code>SMTP_*</code></td><td>-</td><td>SMTP configuration</td></tr>
-                        <tr><td><code>MYSQL_HOST</code></td><td>localhost</td><td>G3DB MySQL host</td></tr>
-                        <tr><td><code>POSTGRES_HOST</code></td><td>localhost</td><td>G3DB PostgreSQL host</td></tr>
-                        <tr><td><code>MSSQL_HOST</code></td><td>localhost</td><td>G3DB SQL Server host</td></tr>
-                        <tr><td><code>SQLITE_PATH</code></td><td>./database.db</td><td>G3DB SQLite path</td></tr>
+                        <tr>
+                            <td><code>SERVER_PORT</code></td>
+                            <td>4050</td>
+                            <td>HTTP server port</td>
+                        </tr>
+                        <tr>
+                            <td><code>WEB_ROOT</code></td>
+                            <td>./www</td>
+                            <td>Root directory for ASP files</td>
+                        </tr>
+                        <tr>
+                            <td><code>TIMEZONE</code></td>
+                            <td>America/Sao_Paulo</td>
+                            <td>Server timezone</td>
+                        </tr>
+                        <tr>
+                            <td><code>DEFAULT_PAGE</code></td>
+                            <td>index.asp,default.asp,...</td>
+                            <td>Default page hierarchy</td>
+                        </tr>
+                        <tr>
+                            <td><code>SCRIPT_TIMEOUT</code></td>
+                            <td>30</td>
+                            <td>Script timeout (seconds)</td>
+                        </tr>
+                        <tr>
+                            <td><code>DEBUG_ASP</code></td>
+                            <td>FALSE</td>
+                            <td>Detailed ASP stack traces</td>
+                        </tr>
+                        <tr>
+                            <td><code>CLEAN_SESSIONS</code></td>
+                            <td>TRUE</td>
+                            <td>Cleanup expired sessions at startup</td>
+                        </tr>
+                        <tr>
+                            <td><code>ASP_CACHE_TYPE</code></td>
+                            <td>disk</td>
+                            <td>AST cache type (memory/disk)</td>
+                        </tr>
+                        <tr>
+                            <td><code>ASP_CACHE_TTL_MINUTES</code></td>
+                            <td>0</td>
+                            <td>AST cache TTL</td>
+                        </tr>
+                        <tr>
+                            <td><code>AXONASP_VM</code></td>
+                            <td>FALSE</td>
+                            <td>Experimental VM toggle</td>
+                        </tr>
+                        <tr>
+                            <td><code>VM_CACHE_TYPE</code></td>
+                            <td>disk</td>
+                            <td>VM cache type</td>
+                        </tr>
+                        <tr>
+                            <td><code>VM_CACHE_TTL_MINUTES</code></td>
+                            <td>0</td>
+                            <td>VM cache TTL</td>
+                        </tr>
+                        <tr>
+                            <td><code>MEMORY_LIMIT_MB</code></td>
+                            <td>0</td>
+                            <td>Process memory limit</td>
+                        </tr>
+                        <tr>
+                            <td><code>ERROR_404_MODE</code></td>
+                            <td>DEFAULT</td>
+                            <td>DEFAULT or IIS mode</td>
+                        </tr>
+                        <tr>
+                            <td><code>BLOCKED_EXTENSIONS</code></td>
+                            <td>see .env</td>
+                            <td>Blocked extension list</td>
+                        </tr>
+                        <tr>
+                            <td><code>COM_PROVIDER</code></td>
+                            <td>auto</td>
+                            <td>Access COM provider strategy</td>
+                        </tr>
+                        <tr>
+                            <td><code>SQL_TRACE</code></td>
+                            <td>FALSE</td>
+                            <td>Verbose SQL logs</td>
+                        </tr>
+                        <tr>
+                            <td><code>SMTP_*</code></td>
+                            <td>-</td>
+                            <td>SMTP configuration</td>
+                        </tr>
+                        <tr>
+                            <td><code>MYSQL_HOST</code></td>
+                            <td>localhost</td>
+                            <td>G3DB MySQL host</td>
+                        </tr>
+                        <tr>
+                            <td><code>POSTGRES_HOST</code></td>
+                            <td>localhost</td>
+                            <td>G3DB PostgreSQL host</td>
+                        </tr>
+                        <tr>
+                            <td><code>MSSQL_HOST</code></td>
+                            <td>localhost</td>
+                            <td>G3DB SQL Server host</td>
+                        </tr>
+                        <tr>
+                            <td><code>SQLITE_PATH</code></td>
+                            <td>./database.db</td>
+                            <td>G3DB SQLite path</td>
+                        </tr>
                     </tbody>
                 </table>
             </section>
@@ -302,7 +426,8 @@ DEBUG_ASP=FALSE</code></pre></div>
             <section id="proxy" class="install-section">
                 <h2>Reverse Proxy</h2>
                 <h3>Nginx</h3>
-                <div class="code-block"><pre><code>server {
+                <div class="code-block">
+                    <pre><code>server {
     listen 80;
     server_name example.com;
     root /var/www/asp;
@@ -312,18 +437,22 @@ DEBUG_ASP=FALSE</code></pre></div>
         include        fastcgi_params;
         fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
     }
-}</code></pre></div>
+}</code></pre>
+                </div>
 
                 <h3>Apache</h3>
-                <div class="code-block"><pre><code>&lt;VirtualHost *:80&gt;
+                <div class="code-block">
+                    <pre><code>&lt;VirtualHost *:80&gt;
     ServerName app1.example.com
     ProxyPreserveHost On
     ProxyPass / http://localhost:4050/
     ProxyPassReverse / http://localhost:4050/
-&lt;/VirtualHost&gt;</code></pre></div>
+&lt;/VirtualHost&gt;</code></pre>
+                </div>
 
                 <h3>IIS (URL Rewrite + ARR)</h3>
-                <div class="code-block"><pre><code>&lt;configuration&gt;
+                <div class="code-block">
+                    <pre><code>&lt;configuration&gt;
   &lt;system.webServer&gt;
     &lt;rewrite&gt;
       &lt;rules&gt;
@@ -334,7 +463,8 @@ DEBUG_ASP=FALSE</code></pre></div>
       &lt;/rules&gt;
     &lt;/rewrite&gt;
   &lt;/system.webServer&gt;
-&lt;/configuration&gt;</code></pre></div>
+&lt;/configuration&gt;</code></pre>
+                </div>
             </section>
 
             <section id="iis" class="install-section">
@@ -349,29 +479,35 @@ DEBUG_ASP=FALSE</code></pre></div>
                 </ul>
 
                 <h3>Rewrite Example</h3>
-                <div class="code-block"><pre><code>&lt;rule name="Product Page" stopProcessing="true"&gt;
+                <div class="code-block">
+                    <pre><code>&lt;rule name="Product Page" stopProcessing="true"&gt;
   &lt;match url="^product/([0-9]+)$" /&gt;
   &lt;action type="Rewrite" url="/product.asp?id={R:1}" /&gt;
-&lt;/rule&gt;</code></pre></div>
+&lt;/rule&gt;</code></pre>
+                </div>
             </section>
 
             <section id="instances" class="install-section">
                 <h2>Multiple Instances</h2>
                 <p>One application per instance (global.asa model). Run multiple instances for multiple apps:</p>
-                <div class="code-block"><pre><code># App 1
+                <div class="code-block">
+                    <pre><code># App 1
 SERVER_PORT=4050 WEB_ROOT=./app1/www ./axonasp
 
 # App 2
 SERVER_PORT=4051 WEB_ROOT=./app2/www ./axonasp
 
 # App 3
-SERVER_PORT=4052 WEB_ROOT=./app3/www ./axonasp</code></pre></div>
+SERVER_PORT=4052 WEB_ROOT=./app3/www ./axonasp</code></pre>
+                </div>
             </section>
 
             <section id="debug" class="install-section">
                 <h2>Debug & Troubleshooting</h2>
-                <div class="code-block"><pre><code>DEBUG_ASP=TRUE
-SQL_TRACE=TRUE</code></pre></div>
+                <div class="code-block">
+                    <pre><code>DEBUG_ASP=TRUE
+SQL_TRACE=TRUE</code></pre>
+                </div>
                 <ul>
                     <li>Port conflict: change <code>SERVER_PORT</code>.</li>
                     <li>No stack traces: set <code>DEBUG_ASP=TRUE</code>.</li>
@@ -389,7 +525,8 @@ SQL_TRACE=TRUE</code></pre></div>
                     <li>Define memory and cache strategy for your workload.</li>
                     <li>Monitor logs and keep dependencies updated.</li>
                 </ul>
-                <div class="success"><strong>Launch-ready:</strong> with AxonASP you keep classic compatibility and gain modern deployment power immediately.</div>
+                <div class="success"><strong>Launch-ready:</strong> with AxonASP you keep classic compatibility and gain
+                    modern deployment power immediately.</div>
             </section>
 
             <div style="text-align:center;margin-top:2rem;">
@@ -409,8 +546,10 @@ SQL_TRACE=TRUE</code></pre></div>
                         <h4>Resources</h4>
                         <ul>
                             <li><a href="features.htm">Complete Documentation</a></li>
-                            <li><a href="https://github.com/guimaraeslucas/axonasp/issues" target="_blank">Issues</a></li>
-                            <li><a href="https://github.com/guimaraeslucas/axonasp/discussions" target="_blank">Discussions</a></li>
+                            <li><a href="https://github.com/guimaraeslucas/axonasp/issues" target="_blank">Issues</a>
+                            </li>
+                            <li><a href="https://github.com/guimaraeslucas/axonasp/discussions"
+                                    target="_blank">Discussions</a></li>
                         </ul>
                     </div>
                 </div>
