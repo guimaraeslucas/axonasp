@@ -1610,8 +1610,18 @@ func normalizeStructuralBoundaryHTMLBlock(blocks []*asp.CodeBlock, idx int, cont
 }
 
 func (ae *ASPExecutor) executeVM(resolvedContent string, result *asp.ASPParserResult) error {
+	if shouldBypassVMExecution(resolvedContent, result) {
+		if ae.config != nil && ae.config.DebugASP {
+			fmt.Println("[VM] Bypassing VM for large/dynamic script. Using AST block executor.")
+		}
+		return ae.executeBlocks(result)
+	}
+
 	if result == nil || result.CombinedProgram == nil {
-		return nil
+		if ae.config != nil && ae.config.DebugASP {
+			fmt.Println("[VM] CombinedProgram unavailable. Falling back to AST block executor.")
+		}
+		return ae.executeBlocks(result)
 	}
 
 	// Apply options and hoist declarations so script-defined classes are available for CreateObject.
@@ -1630,15 +1640,39 @@ func (ae *ASPExecutor) executeVM(resolvedContent string, result *asp.ASPParserRe
 
 	fn, err := experimental.CompileWithCache(resolvedContent, "default", compileFn)
 	if err != nil {
-		return fmt.Errorf("VM compile error: %w", err)
+		if ae.config != nil && ae.config.DebugASP {
+			fmt.Printf("[VM] Compile failed, falling back to AST: %v\n", err)
+		}
+		return ae.executeBlocks(result)
 	}
 
 	vm := experimental.NewVM(fn, NewVMHostAdapter(ae.context, ae))
 	if err := vm.Run(); err != nil {
-		return fmt.Errorf("VM runtime error: %w", err)
+		if ae.config != nil && ae.config.DebugASP {
+			fmt.Printf("[VM] Runtime failed, falling back to AST: %v\n", err)
+		}
+		return ae.executeBlocks(result)
 	}
 
 	return nil
+}
+
+func shouldBypassVMExecution(resolvedContent string, result *asp.ASPParserResult) bool {
+	const maxVMSourceBytes = 256 * 1024
+	if len(resolvedContent) > maxVMSourceBytes {
+		return true
+	}
+
+	lower := strings.ToLower(resolvedContent)
+	if strings.Contains(lower, "executeglobal") {
+		return true
+	}
+
+	if result != nil && len(result.Blocks) > 400 {
+		return true
+	}
+
+	return false
 }
 
 // executeVBProgram executes a VBScript AST program

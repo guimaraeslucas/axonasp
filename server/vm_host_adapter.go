@@ -70,10 +70,17 @@ func (h *VMHostAdapter) SetVariable(name string, value interface{}) error {
 	if h.ctx == nil {
 		return fmt.Errorf("VM host context is nil")
 	}
+	targetName := name
+	if targetName == "" {
+		targetName = name
+	}
 	if decl, ok := value.(*ast.ClassDeclaration); ok {
 		visitor := NewASPVisitor(h.ctx, h.executor)
 		classDef := visitor.NewClassDefFromDecl(decl)
-		return h.ctx.SetVariable(decl.Identifier.Name, classDef)
+		if decl != nil && decl.Identifier != nil && decl.Identifier.Name != "" {
+			targetName = decl.Identifier.Name
+		}
+		return h.ctx.SetVariable(targetName, classDef)
 	}
 	if compiled, ok := value.(*experimental.CompiledClass); ok {
 		classDef := &ClassDef{
@@ -91,9 +98,12 @@ func (h *VMHostAdapter) SetVariable(name string, value interface{}) error {
 				Visibility: VisPublic,
 			}
 		}
-		return h.ctx.SetVariable(compiled.Name, classDef)
+		if compiled != nil && compiled.Name != "" {
+			targetName = compiled.Name
+		}
+		return h.ctx.SetVariable(targetName, classDef)
 	}
-	return h.ctx.SetVariable(name, value)
+	return h.ctx.SetVariable(targetName, value)
 }
 
 func (h *VMHostAdapter) CallFunction(name string, args []interface{}) (interface{}, error) {
@@ -106,7 +116,6 @@ func (h *VMHostAdapter) CallFunction(name string, args []interface{}) (interface
 	case "response.write", "responsewrite":
 		if len(args) > 0 {
 			_ = h.ctx.Response.Write(toString(args[0]))
-			fmt.Print("response.write")
 		}
 		return nil, nil
 	case "server.createobject", "servercreateobject":
@@ -147,10 +156,40 @@ func (h *VMHostAdapter) ExecuteAST(node interface{}) (interface{}, error) {
 	}
 
 	visitor := NewASPVisitor(h.ctx, h.executor)
+	execStatement := func(stmt ast.Statement) error {
+		if stmt == nil {
+			return nil
+		}
+		if h.ctx.ShouldStop() {
+			return fmt.Errorf("RESPONSE_END")
+		}
+		return visitor.VisitStatement(stmt)
+	}
+
+	if program, ok := node.(*ast.Program); ok {
+		h.executor.hoistDeclarations(visitor, program)
+		for _, stmt := range program.Body {
+			if err := execStatement(stmt); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}
+
+	if list, ok := node.(*ast.StatementList); ok {
+		for _, stmt := range list.Statements {
+			if err := execStatement(stmt); err != nil {
+				return nil, err
+			}
+		}
+		return nil, nil
+	}
 
 	if stmt, ok := node.(ast.Statement); ok {
-		err := visitor.VisitStatement(stmt)
-		return nil, err
+		if err := execStatement(stmt); err != nil {
+			return nil, err
+		}
+		return nil, nil
 	}
 
 	if expr, ok := node.(ast.Expression); ok {

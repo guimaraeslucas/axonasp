@@ -3,23 +3,24 @@ module g3pix.com.br/axonasp
 go 1.25.6
 
 require (
+	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
 	github.com/denisenkom/go-mssqldb v0.12.3
+	github.com/fogleman/gg v1.3.0
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/go-ole/go-ole v1.3.0
 	github.com/joho/godotenv v1.5.1
 	github.com/klauspost/compress v1.18.4
 	github.com/klauspost/reedsolomon v1.13.2
+	github.com/ricochet2200/go-disk-usage/du v0.0.0-20210707232629-ac9918953285
 	golang.org/x/crypto v0.47.0
+	golang.org/x/image v0.36.0
 	golang.org/x/net v0.49.0
 )
 
 require (
-	github.com/fogleman/gg v1.3.0 // indirect
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/ricochet2200/go-disk-usage/du v0.0.0-20210707232629-ac9918953285 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	golang.org/x/image v0.36.0 // indirect
 )
 
 require (

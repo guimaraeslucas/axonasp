@@ -24,6 +24,18 @@ type Compiler struct {
 	scopes          []*Scope
 	procedures      map[string]bool
 	declaredGlobals map[string]bool
+	fallbackCount   int
+}
+
+type RequiresASTFallbackError struct {
+	Reason string
+}
+
+func (e *RequiresASTFallbackError) Error() string {
+	if e == nil || e.Reason == "" {
+		return "vm compilation requires AST fallback"
+	}
+	return e.Reason
 }
 
 // NewCompiler creates a new Compiler instance
@@ -140,32 +152,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	case *ast.AssignmentStatement:
 		if mem, ok := n.Left.(*ast.MemberExpression); ok {
-			if err := c.Compile(mem.Object); err != nil {
+			_ = mem
+			if err := c.emitFallback(n); err != nil {
 				return err
 			}
-			if err := c.Compile(n.Right); err != nil {
-				return err
-			}
-			idx := c.addConstant(mem.Property.Name)
-			c.emit(OP_SET_MEMBER, idx)
 			return nil
 		}
 
 		if idxExpr, ok := n.Left.(*ast.IndexOrCallExpression); ok {
-			// obj(index1, index2) = value
-			// Stack: [obj, index1, index2, value]
-			if err := c.Compile(idxExpr.Object); err != nil {
+			_ = idxExpr
+			if err := c.emitFallback(n); err != nil {
 				return err
 			}
-			for _, index := range idxExpr.Indexes {
-				if err := c.Compile(index); err != nil {
-					return err
-				}
-			}
-			if err := c.Compile(n.Right); err != nil {
-				return err
-			}
-			c.emit(OP_SET_INDEXED, len(idxExpr.Indexes))
 			return nil
 		}
 
@@ -237,44 +235,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 		c.patchJump(jumpToEndPos)
 
 	case *ast.CallSubStatement:
-		// Sub call without parentheses: SubName arg1, arg2
-		// Or obj.Method arg1, arg2
-		if mem, ok := n.Callee.(*ast.MemberExpression); ok {
-			if err := c.Compile(mem.Object); err != nil {
-				return err
-			}
-			for _, arg := range n.Arguments {
-				if err := c.Compile(arg); err != nil {
-					return err
-				}
-			}
-			nameIdx := c.addConstant(mem.Property.Name)
-			c.emit(OP_CALL_MEMBER, nameIdx, len(n.Arguments))
-			c.emit(OP_POP) // Discard return value
-			break
-		}
-
-		// Callee
-		if err := c.Compile(n.Callee); err != nil {
+		if err := c.emitFallback(n); err != nil {
 			return err
 		}
-		// Arguments
-		for _, arg := range n.Arguments {
-			if err := c.Compile(arg); err != nil {
-				return err
-			}
-		}
-		c.emit(OP_CALL, len(n.Arguments))
-		c.emit(OP_POP) // Discard return value (Sub)
 
 	case *ast.CallStatement:
-		// Call SubName(arg1, arg2)
-		if err := c.Compile(n.Callee); err != nil {
+		if err := c.emitFallback(n); err != nil {
 			return err
 		}
-		// In our VM, OP_CALL expects (Func, arg1, arg2, ...) on stack.
-		// If we use the 'Call' keyword, we pop the result.
-		c.emit(OP_POP)
 
 	case *ast.SubDeclaration:
 		if n.Identifier == nil {
@@ -386,52 +354,14 @@ func (c *Compiler) Compile(node ast.Node) error {
 		}
 
 	case *ast.IndexOrCallExpression:
-		// Object(index) or Func(args)
-		// Handle obj.Method(args)
-		if mem, ok := n.Object.(*ast.MemberExpression); ok {
-			if err := c.Compile(mem.Object); err != nil {
-				return err
-			}
-			for _, arg := range n.Indexes {
-				if err := c.Compile(arg); err != nil {
-					return err
-				}
-			}
-			nameIdx := c.addConstant(mem.Property.Name)
-			c.emit(OP_CALL_MEMBER, nameIdx, len(n.Indexes))
-			break
-		}
-
-		if ident, ok := n.Object.(*ast.Identifier); ok {
-			nameLower := strings.ToLower(ident.Name)
-			if !c.isKnownVariable(nameLower) && !c.procedures[nameLower] {
-				idx := c.addConstant(&BuiltinFunction{Name: nameLower})
-				c.emit(OP_CONSTANT, idx)
-				for _, arg := range n.Indexes {
-					if err := c.Compile(arg); err != nil {
-						return err
-					}
-				}
-				c.emit(OP_CALL, len(n.Indexes))
-				break
-			}
-		}
-		if err := c.Compile(n.Object); err != nil {
+		if err := c.emitFallback(n); err != nil {
 			return err
 		}
-		for _, arg := range n.Indexes {
-			if err := c.Compile(arg); err != nil {
-				return err
-			}
-		}
-		c.emit(OP_CALL, len(n.Indexes))
 
 	case *ast.MemberExpression:
-		if err := c.Compile(n.Object); err != nil {
+		if err := c.emitFallback(n); err != nil {
 			return err
 		}
-		idx := c.addConstant(n.Property.Name)
-		c.emit(OP_GET_MEMBER, idx)
 
 	case *ast.IntegerLiteral:
 		c.emitConstant(n.Value)
@@ -538,11 +468,18 @@ func (c *Compiler) Compile(node ast.Node) error {
 
 	default:
 		// Fallback to AST walker for unimplemented nodes
-		idx := c.addConstant(node)
-		c.emit(OP_FALLBACK, idx)
+		if err := c.emitFallback(node); err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+func (c *Compiler) emitFallback(node ast.Node) error {
+	_ = node
+	c.fallbackCount++
+	return &RequiresASTFallbackError{Reason: "vm requires ast fallback for unsupported node"}
 }
 
 func (c *Compiler) tryEmitIncrement(left *ast.Identifier, right ast.Expression) bool {

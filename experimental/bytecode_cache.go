@@ -42,7 +42,7 @@ const (
 	BytecodeCacheDisk
 )
 
-const bytecodeCacheVersion = "axonasp-vm-bytecode-v1"
+const bytecodeCacheVersion = "axonasp-vm-bytecode-v3"
 const bytecodeCacheMaxMemoryBytes = 4 * 1024 * 1024
 
 var (
@@ -83,6 +83,10 @@ func ConfigureBytecodeCache(mode string, webRoot string) {
 	if bytecodeCacheMode == BytecodeCacheDisk {
 		_ = os.MkdirAll(bytecodeCacheDir, 0o755)
 	}
+
+	bytecodeCacheMu.Lock()
+	bytecodeCache = make(map[string]*Function)
+	bytecodeCacheMu.Unlock()
 }
 
 // SetBytecodeCacheTTLMinutes sets the disk cache TTL. Use 0 to keep forever.
