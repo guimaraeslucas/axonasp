@@ -192,7 +192,7 @@ func (p *G3PDF) Reset(orientation, unit, size string) {
 	p.colorFlag = false
 	p.withAlpha = false
 	p.ws = 0
-	p.fontpath = "embedded://fpdf_assets/"
+	p.fontpath = ""
 	p.coreFonts = []string{"courier", "helvetica", "times", "symbol", "zapfdingbats"}
 	p.assetFonts = translatedFPDFFonts()
 
@@ -244,7 +244,7 @@ func (p *G3PDF) Reset(orientation, unit, size string) {
 	p.SetAutoPageBreak(true, 2*margin)
 	p.SetDisplayMode("default", "default")
 	p.SetCompression(true)
-	p.metadata = map[string]string{"Producer": "FPDF 1.86 (AxonASP Go translation)"}
+	p.metadata = map[string]string{"Producer": "G3Pix AxonASP Librarie"}
 	p.pdfVersion = "1.3"
 	p.creationDate = time.Now()
 	p.lastError = ""
@@ -715,6 +715,14 @@ func (p *G3PDF) CallMethod(name string, args ...interface{}) interface{} {
 	}
 }
 
+type pdfHTMLStyle struct {
+	colorR, colorG, colorB float64
+	fontFamily             string
+	fontStyle              string
+	fontSize               float64
+	colorSet               bool
+}
+
 type pdfHTMLState struct {
 	p *G3PDF
 
@@ -726,10 +734,29 @@ type pdfHTMLState struct {
 
 	tableBorder int
 	tdBegin     bool
+	thBegin     bool
 	tdWidth     float64
 	tdHeight    float64
 	tdAlign     string
 	tdBgColor   bool
+	trBgColor   bool
+	cellPadding float64
+	cellSpacing float64
+
+	inTable        bool
+	inRow          bool
+	cellText       string
+	colIndex       int
+	tableColWidths map[int]float64
+	rowStartY      float64
+	maxRowHeight   float64
+	tdWidthAttr    string
+
+	// Cell-specific style overrides
+	tdColorR, tdColorG, tdColorB float64
+	tdColorSet                   bool
+
+	styleStack []pdfHTMLStyle
 
 	fontSet  bool
 	colorSet bool
@@ -743,6 +770,20 @@ type pdfHTMLState struct {
 	defaultFontSize float64
 	scriptActive    bool
 	scriptDeltaY    float64
+}
+
+func parseCSSStyle(style string) map[string]string {
+	styles := map[string]string{}
+	parts := strings.Split(style, ";")
+	for _, part := range parts {
+		kv := strings.SplitN(part, ":", 2)
+		if len(kv) == 2 {
+			key := strings.ToLower(strings.TrimSpace(kv[0]))
+			val := strings.TrimSpace(kv[1])
+			styles[key] = val
+		}
+	}
+	return styles
 }
 
 type pdfHTMLListState struct {
@@ -774,6 +815,7 @@ func (p *G3PDF) WriteHTML(htmlInput string) {
 		tdAlign:         "L",
 		currAlign:       "L",
 		defaultFontSize: p.fontSizePt,
+		tableColWidths:  make(map[int]float64),
 	}
 
 	normalized := strings.ReplaceAll(htmlInput, "\r\n", "\n")
@@ -781,6 +823,32 @@ func (p *G3PDF) WriteHTML(htmlInput string) {
 	normalized = strings.ReplaceAll(normalized, "\t", "")
 
 	state.renderHTML(normalized)
+}
+
+func (s *pdfHTMLState) pushStyle() {
+	style := pdfHTMLStyle{
+		fontFamily: s.p.fontFamily,
+		fontStyle:  s.p.fontStyle,
+		fontSize:   s.p.fontSizePt,
+		colorSet:   s.colorSet,
+	}
+	// Note: G3PDF doesn't store raw RGB easily, but we can't easily retrieve them.
+	// For now, we'll just track if a color was set.
+	s.styleStack = append(s.styleStack, style)
+}
+
+func (s *pdfHTMLState) popStyle() {
+	if len(s.styleStack) == 0 {
+		return
+	}
+	last := s.styleStack[len(s.styleStack)-1]
+	s.styleStack = s.styleStack[:len(s.styleStack)-1]
+
+	s.p.SetFont(last.fontFamily, last.fontStyle, last.fontSize)
+	if !last.colorSet {
+		s.p.SetTextColor(0, math.NaN(), math.NaN()) // Reset to black
+	}
+	s.colorSet = last.colorSet
 }
 
 func (s *pdfHTMLState) renderHTML(input string) {
@@ -805,8 +873,9 @@ func (s *pdfHTMLState) handleText(raw string) {
 	}
 	text := raw
 	if !s.pre {
-		text = strings.ReplaceAll(text, "\n", " ")
-		text = strings.Join(strings.Fields(text), " ")
+		// Replace all whitespace sequences with a single space
+		re := regexp.MustCompile(`\s+`)
+		text = re.ReplaceAllString(text, " ")
 	}
 	text = stdhtml.UnescapeString(text)
 	text = normalizeHTMLTextForPDF(text)
@@ -819,10 +888,12 @@ func (s *pdfHTMLState) handleText(raw string) {
 		return
 	}
 
-	if s.tdBegin {
-		if strings.TrimSpace(text) != "" {
-			s.p.Cell(s.tdWidth, s.tdHeight, text, s.tableBorder, 0, s.tdAlign, s.tdBgColor, "")
-		}
+	if s.tdBegin || s.thBegin {
+		s.cellText += text
+		return
+	}
+
+	if (s.inTable || s.inRow) && strings.TrimSpace(text) == "" {
 		return
 	}
 
@@ -859,6 +930,21 @@ func (s *pdfHTMLState) handleTag(rawTag string) {
 }
 
 func (s *pdfHTMLState) openTag(tag string, attrs map[string]string) {
+	// Handle CSS Style
+	if style, ok := attrs["STYLE"]; ok {
+		css := parseCSSStyle(style)
+		if color, ok := css["color"]; ok {
+			r, g, b := htmlColorToRGB(color)
+			s.p.SetTextColor(float64(r), float64(g), float64(b))
+			s.colorSet = true
+		}
+		if bgColor, ok := css["background-color"]; ok {
+			r, g, b := htmlColorToRGB(bgColor)
+			s.p.SetFillColor(float64(r), float64(g), float64(b))
+			s.tdBgColor = true
+		}
+	}
+
 	switch tag {
 	case "STRONG", "B":
 		s.setStyle("B", true)
@@ -974,7 +1060,7 @@ func (s *pdfHTMLState) openTag(tag string, attrs map[string]string) {
 		w := parseHTMLLengthToMM(attrs["WIDTH"], s.p, 0)
 		h := parseHTMLLengthToMM(attrs["HEIGHT"], s.p, 0)
 		s.p.Image(imgPath, s.p.x, s.p.y, w, h, "", "")
-		if !s.tdBegin {
+		if !s.tdBegin && !s.thBegin {
 			if h > 0 {
 				s.p.Ln(h)
 			} else {
@@ -983,32 +1069,98 @@ func (s *pdfHTMLState) openTag(tag string, attrs map[string]string) {
 		}
 	case "TABLE":
 		s.p.Ln(5)
+		s.inTable = true
+		s.tableColWidths = make(map[int]float64)
 		s.tableBorder = toInt(attrs["BORDER"])
+		s.cellPadding = parseHTMLLengthToMM(attrs["CELLPADDING"], s.p, 1)
+		s.cellSpacing = parseHTMLLengthToMM(attrs["CELLSPACING"], s.p, 0)
+		if v, ok := attrs["BGCOLOR"]; ok {
+			r, g, b := htmlColorToRGB(v)
+			s.p.SetFillColor(float64(r), float64(g), float64(b))
+		}
+		if v, ok := attrs["COLOR"]; ok {
+			r, g, b := htmlColorToRGB(v)
+			s.p.SetTextColor(float64(r), float64(g), float64(b))
+			s.colorSet = true
+		}
 	case "TR":
-		s.p.Ln(6)
-	case "TD":
-		s.tdWidth = parseHTMLLengthToMM(attrs["WIDTH"], s.p, 30)
+		// s.p.Ln(6) // REMOVED to avoid double spacing. closeTag TR handles the line jump.
+		s.inRow = true
+		s.colIndex = 0
+		s.maxRowHeight = 0
+		s.rowStartY = s.p.y
+		s.trBgColor = false
+		if v, ok := attrs["BGCOLOR"]; ok {
+			r, g, b := htmlColorToRGB(v)
+			s.p.SetFillColor(float64(r), float64(g), float64(b))
+			s.trBgColor = true
+		}
+		if v, ok := attrs["COLOR"]; ok {
+			r, g, b := htmlColorToRGB(v)
+			s.p.SetTextColor(float64(r), float64(g), float64(b))
+			s.colorSet = true
+		}
+	case "TD", "TH":
+		s.colIndex++
+		if tag == "TH" {
+			s.setStyle("B", true)
+			s.thBegin = true
+		} else {
+			s.tdBegin = true
+		}
+		s.cellText = ""
+		s.tdWidthAttr = attrs["WIDTH"]
 		s.tdHeight = parseHTMLLengthToMM(attrs["HEIGHT"], s.p, 6)
+
+		// Apply cell spacing
+		if s.cellSpacing > 0 {
+			s.p.SetX(s.p.x + s.cellSpacing)
+		}
+
 		align := strings.ToUpper(attrs["ALIGN"])
 		switch align {
 		case "CENTER":
 			s.tdAlign = "C"
 		case "RIGHT":
 			s.tdAlign = "R"
+		case "JUSTIFY":
+			s.tdAlign = "J"
 		default:
-			s.tdAlign = "L"
+			if s.thBegin {
+				s.tdAlign = "C"
+			} else {
+				s.tdAlign = "L"
+			}
 		}
-		s.tdBgColor = false
+
+		s.tdBgColor = s.trBgColor
 		if v, ok := attrs["BGCOLOR"]; ok {
 			r, g, b := htmlColorToRGB(v)
 			s.p.SetFillColor(float64(r), float64(g), float64(b))
 			s.tdBgColor = true
 		}
-		s.tdBegin = true
+
+		if v, ok := attrs["COLOR"]; ok {
+			r, g, b := htmlColorToRGB(v)
+			s.p.SetTextColor(float64(r), float64(g), float64(b))
+			s.tdColorR, s.tdColorG, s.tdColorB = float64(r), float64(g), float64(b)
+			s.tdColorSet = true
+			s.colorSet = true
+		}
+
+		// Apply padding by adjusting cMargin
+		if s.cellPadding > 0 {
+			s.p.cMargin = s.cellPadding
+		}
 	case "FONT":
+		s.pushStyle()
 		if color, ok := attrs["COLOR"]; ok {
 			r, g, b := htmlColorToRGB(color)
 			s.p.SetTextColor(float64(r), float64(g), float64(b))
+			if s.tdBegin || s.thBegin {
+				s.tdColorR, s.tdColorG, s.tdColorB = float64(r), float64(g), float64(b)
+				s.tdColorSet = true
+			}
 			s.colorSet = true
 		}
 		if face, ok := attrs["FACE"]; ok {
@@ -1092,25 +1244,74 @@ func (s *pdfHTMLState) closeTag(tag string) {
 		s.p.SetLeftMargin(math.Max(0, s.p.lMargin-2))
 		s.p.SetX(s.p.lMargin)
 		s.p.Ln(2)
-	case "TD":
-		s.tdBegin = false
+	case "TD", "TH":
+		w := parseHTMLLengthToMM(s.tdWidthAttr, s.p, 0)
+		if w == 0 {
+			if cw, ok := s.tableColWidths[s.colIndex]; ok {
+				w = cw
+			} else {
+				// Auto-grow for the first row
+				w = s.p.GetStringWidth(s.cellText) + 2*s.p.cMargin
+				if w < 30 {
+					w = 30 // Minimum width
+				}
+				s.tableColWidths[s.colIndex] = w
+			}
+		} else {
+			s.tableColWidths[s.colIndex] = w
+		}
+
+		h := s.tdHeight
+		x, y := s.p.x, s.p.y
+
+		// Apply cell-specific text color if set
+		if s.tdColorSet {
+			s.p.SetTextColor(s.tdColorR, s.tdColorG, s.tdColorB)
+		}
+
+		// Use MultiCell for the cell content
+		s.p.MultiCell(w, h, s.cellText, s.tableBorder, s.tdAlign, s.tdBgColor)
+
+		currY := s.p.y
+		if currY > s.maxRowHeight {
+			s.maxRowHeight = currY
+		}
+
+		// Restore position for next cell
+		s.p.SetXY(x+w, y)
+
+		if tag == "TH" {
+			s.setStyle("B", false)
+			s.thBegin = false
+		} else {
+			s.tdBegin = false
+		}
 		s.tdBgColor = false
+		s.tdColorSet = false
 		s.p.SetFillColor(255, math.NaN(), math.NaN())
+		// Restore cMargin
+		s.p.cMargin = (28.35 / s.p.k) / 10
 	case "TR":
-		s.p.Ln(6)
+		if s.maxRowHeight > 0 {
+			s.p.SetY(s.maxRowHeight+s.cellSpacing, true)
+		} else {
+			s.p.Ln(s.tdHeight + s.cellSpacing)
+		}
+		s.inRow = false
+		s.trBgColor = false
 	case "TABLE":
 		s.tableBorder = 0
+		s.inTable = false
+		s.p.Ln(5)
+		// Reset color to default after table
+		s.p.SetTextColor(0, math.NaN(), math.NaN())
+		s.colorSet = false
 	case "FONT":
-		if s.colorSet {
-			s.p.SetTextColor(0, math.NaN(), math.NaN())
-			s.colorSet = false
-		}
-		if s.fontSet {
-			s.p.SetFont("helvetica", "", s.defaultFontSize)
-			s.fontSet = false
-		}
+		s.popStyle()
+		s.fontSet = false // Already handled by popStyle but keeping for safety
 	case "RED", "BLUE":
 		s.p.SetTextColor(0, math.NaN(), math.NaN())
+		s.colorSet = false
 	}
 }
 
@@ -1275,13 +1476,154 @@ func htmlColorToRGB(color string) (int, int, int) {
 	}
 	color = strings.TrimSpace(strings.ToUpper(color))
 	basic := map[string]string{
-		"BLACK": "#000000",
-		"WHITE": "#FFFFFF",
-		"RED":   "#FF0000",
-		"GREEN": "#00FF00",
-		"BLUE":  "#0000FF",
-		"GRAY":  "#CCCCCC",
-		"GREY":  "#CCCCCC",
+		"ALICEBLUE":            "#F0F8FF",
+		"ANTIQUEWHITE":         "#FAEBD7",
+		"AQUA":                 "#00FFFF",
+		"AQUAMARINE":           "#7FFFD4",
+		"AZURE":                "#F0FFFF",
+		"BEIGE":                "#F5F5DC",
+		"BISQUE":               "#FFE4C4",
+		"BLACK":                "#000000",
+		"BLANCHEDALMOND":       "#FFEBCD",
+		"BLUE":                 "#0000FF",
+		"BLUEVIOLET":           "#8A2BE2",
+		"BROWN":                "#A52A2A",
+		"BURLYWOOD":            "#DEB887",
+		"CADETBLUE":            "#5F9EA0",
+		"CHARTREUSE":           "#7FFF00",
+		"CHOCOLATE":            "#D2691E",
+		"CORAL":                "#FF7F50",
+		"CORNFLOWERBLUE":       "#6495ED",
+		"CORNSILK":             "#FFF8DC",
+		"CRIMSON":              "#DC143C",
+		"CYAN":                 "#00FFFF",
+		"DARKBLUE":             "#00008B",
+		"DARKCYAN":             "#008B8B",
+		"DARKGOLDENROD":        "#B8860B",
+		"DARKGRAY":             "#A9A9A9",
+		"DARKGREY":             "#A9A9A9",
+		"DARKGREEN":            "#006400",
+		"DARKKHAKI":            "#BDB76B",
+		"DARKMAGENTA":          "#8B008B",
+		"DARKOLIVEGREEN":       "#556B2F",
+		"DARKORANGE":           "#FF8C00",
+		"DARKORCHID":           "#9932CC",
+		"DARKRED":              "#8B0000",
+		"DARKSALMON":           "#E9967A",
+		"DARKSEAGREEN":         "#8FBC8F",
+		"DARKSLATEBLUE":        "#483D8B",
+		"DARKSLATEGRAY":        "#2F4F4F",
+		"DARKSLATEGREY":        "#2F4F4F",
+		"DARKTURQUOISE":        "#00CED1",
+		"DARKVIOLET":           "#9400D3",
+		"DEEPPINK":             "#FF1493",
+		"DEEPSKYBLUE":          "#00BFFF",
+		"DIMGRAY":              "#696969",
+		"DIMGREY":              "#696969",
+		"DODGERBLUE":           "#1E90FF",
+		"FIREBRICK":            "#B22222",
+		"FLORALWHITE":          "#FFFAF0",
+		"FORESTGREEN":          "#228B22",
+		"FUCHSIA":              "#FF00FF",
+		"GAINSBORO":            "#DCDCDC",
+		"GHOSTWHITE":           "#F8F8FF",
+		"GOLD":                 "#FFD700",
+		"GOLDENROD":            "#DAA520",
+		"GRAY":                 "#808080",
+		"GREY":                 "#808080",
+		"GREEN":                "#008000",
+		"GREENYELLOW":          "#ADFF2F",
+		"HONEYDEW":             "#F0FFF0",
+		"HOTPINK":              "#FF69B4",
+		"INDIANRED":            "#CD5C5C",
+		"INDIGO":               "#4B0082",
+		"IVORY":                "#FFFFF0",
+		"KHAKI":                "#F0E68C",
+		"LAVENDER":             "#E6E6FA",
+		"LAVENDERBLUSH":        "#FFF0F5",
+		"LAWNGREEN":            "#7CFC00",
+		"LEMONCHIFFON":         "#FFFACD",
+		"LIGHTBLUE":            "#ADD8E6",
+		"LIGHTCORAL":           "#F08080",
+		"LIGHTCYAN":            "#E0FFFF",
+		"LIGHTGOLDENRODYELLOW": "#FAFAD2",
+		"LIGHTGRAY":            "#D3D3D3",
+		"LIGHTGREY":            "#D3D3D3",
+		"LIGHTGREEN":           "#90EE90",
+		"LIGHTPINK":            "#FFB6C1",
+		"LIGHTSALMON":          "#FFA07A",
+		"LIGHTSEAGREEN":        "#20B2AA",
+		"LIGHTSKYBLUE":         "#87CEFA",
+		"LIGHTSLATEGRAY":       "#778899",
+		"LIGHTSLATEGREY":       "#778899",
+		"LIGHTSTEELBLUE":       "#B0C4DE",
+		"LIGHTYELLOW":          "#FFFFE0",
+		"LIME":                 "#00FF00",
+		"LIMEGREEN":            "#32CD32",
+		"LINEN":                "#FAF0E6",
+		"MAGENTA":              "#FF00FF",
+		"MAROON":               "#800000",
+		"MEDIUMAQUAMARINE":     "#66CDAA",
+		"MEDIUMBLUE":           "#0000CD",
+		"MEDIUMORCHID":         "#BA55D3",
+		"MEDIUMPURPLE":         "#9370DB",
+		"MEDIUMSEAGREEN":       "#3CB371",
+		"MEDIUMSLATEBLUE":      "#7B68EE",
+		"MEDIUMSPRINGGREEN":    "#00FA9A",
+		"MEDIUMTURQUOISE":      "#48D1CC",
+		"MEDIUMVIOLETRED":      "#C71585",
+		"MIDNIGHTBLUE":         "#191970",
+		"MINTCREAM":            "#F5FFFA",
+		"MISTYROSE":            "#FFE4E1",
+		"MOCCASIN":             "#FFE4B5",
+		"NAVAJOWHITE":          "#FFDEAD",
+		"NAVY":                 "#000080",
+		"OLDLACE":              "#FDF5E6",
+		"OLIVE":                "#808000",
+		"OLIVEDRAB":            "#6B8E23",
+		"ORANGE":               "#FFA500",
+		"ORANGERED":            "#FF4500",
+		"ORCHID":               "#DA70D6",
+		"PALEGOLDENROD":        "#EEE8AA",
+		"PALEGREEN":            "#98FB98",
+		"PALETURQUOISE":        "#AFEEEE",
+		"PALEVIOLETRED":        "#DB7093",
+		"PAPAYAWHIP":           "#FFEFD5",
+		"PEACHPUFF":            "#FFDAB9",
+		"PERU":                 "#CD853F",
+		"PINK":                 "#FFC0CB",
+		"PLUM":                 "#DDA0DD",
+		"POWDERBLUE":           "#B0E0E6",
+		"PURPLE":               "#800080",
+		"REBECCAPURPLE":        "#663399",
+		"RED":                  "#FF0000",
+		"ROSYBROWN":            "#BC8F8F",
+		"ROYALBLUE":            "#4169E1",
+		"SADDLEBROWN":          "#8B4513",
+		"SALMON":               "#FA8072",
+		"SANDYBROWN":           "#F4A460",
+		"SEAGREEN":             "#2E8B57",
+		"SEASHELL":             "#FFF5EE",
+		"SIENNA":               "#A0522D",
+		"SILVER":               "#C0C0C0",
+		"SKYBLUE":              "#87CEEB",
+		"SLATEBLUE":            "#6A5ACD",
+		"SLATEGRAY":            "#708090",
+		"SLATEGREY":            "#708090",
+		"SNOW":                 "#FFFAFA",
+		"SPRINGGREEN":          "#00FF7F",
+		"STEELBLUE":            "#4682B4",
+		"TAN":                  "#D2B48C",
+		"TEAL":                 "#008080",
+		"THISTLE":              "#D8BFD8",
+		"TOMATO":               "#FF6347",
+		"TURQUOISE":            "#40E0D0",
+		"VIOLET":               "#EE82EE",
+		"WHEAT":                "#F5DEB3",
+		"WHITE":                "#FFFFFF",
+		"WHITESMOKE":           "#F5F5F5",
+		"YELLOW":               "#FFFF00",
+		"YELLOWGREEN":          "#9ACD32",
 	}
 	if v, ok := basic[color]; ok {
 		color = v
@@ -1362,7 +1704,7 @@ func (p *G3PDF) setError(msg string) {
 }
 
 func (p *G3PDF) panicError(msg string) {
-	panic(fmt.Sprintf("FPDF error: %s", msg))
+	panic(fmt.Sprintf("G3PDF error: %s", msg))
 }
 
 func (p *G3PDF) SetMargins(left, top float64, right *float64) {
@@ -1547,9 +1889,10 @@ func (p *G3PDF) Line(x1, y1, x2, y2 float64) {
 
 func (p *G3PDF) Rect(x, y, w, h float64, style string) {
 	op := "S"
-	if style == "F" {
+	switch style {
+	case "F":
 		op = "f"
-	} else if style == "FD" || style == "DF" {
+	case "FD", "DF":
 		op = "B"
 	}
 	p.out(sprintf("%.2F %.2F %.2F %.2F re %s", x*p.k, (p.h-y)*p.k, w*p.k, -h*p.k, op))
@@ -1731,9 +2074,10 @@ func (p *G3PDF) Cell(w, h float64, txt string, border interface{}, ln int, align
 			p.panicError("no font has been set")
 		}
 		dx := p.cMargin
-		if align == "R" {
+		switch align {
+		case "R":
 			dx = w - p.cMargin - p.GetStringWidth(txt)
-		} else if align == "C" {
+		case "C":
 			dx = (w - p.GetStringWidth(txt)) / 2
 		}
 		if p.colorFlag {
@@ -1862,7 +2206,9 @@ func (p *G3PDF) MultiCell(w, h float64, txt string, border interface{}, align st
 		p.ws = 0
 		p.out("0 Tw")
 	}
-	if bs, ok := border.(string); ok && strings.Contains(bs, "B") {
+	if border == 1 || border == "1" {
+		b += "B"
+	} else if bs, ok := border.(string); ok && strings.Contains(bs, "B") {
 		b += "B"
 	}
 	p.Cell(w, h, s[j:i], b, 2, align, fill, "")
@@ -2056,7 +2402,6 @@ func (p *G3PDF) Output(dest, name string, isUTF8 bool) (string, error) {
 			}
 			p.ctx.Response.AddHeader("Content-Disposition", disp+"; "+p.httpEncode("filename", name, isUTF8))
 			p.ctx.Response.AddHeader("Cache-Control", "private, max-age=0, must-revalidate")
-			p.ctx.Response.AddHeader("Pragma", "public")
 			if err := p.ctx.Response.BinaryWrite(pdf); err != nil {
 				return "", err
 			}
@@ -2089,7 +2434,7 @@ func (p *G3PDF) getPageSize(size string) [2]float64 {
 func (p *G3PDF) beginPage(orientation, size string, rotation int) {
 	p.page++
 	p.pages[p.page] = []string{}
-	p.pageLinks[p.page] = [][]interface{}{}
+	p.pageLinks[p.page] = [][]any{}
 	p.state = 2
 	p.x = p.lMargin
 	p.y = p.tMargin
@@ -2432,11 +2777,12 @@ func (p *G3PDF) putCatalog() {
 	switch v := p.zoomMode.(type) {
 	case string:
 		s := strings.ToLower(v)
-		if s == "fullpage" {
+		switch s {
+		case "fullpage":
 			p.put("/OpenAction [" + strconv.Itoa(n) + " 0 R /Fit]")
-		} else if s == "fullwidth" {
+		case "fullwidth":
 			p.put("/OpenAction [" + strconv.Itoa(n) + " 0 R /FitH null]")
-		} else if s == "real" {
+		case "real":
 			p.put("/OpenAction [" + strconv.Itoa(n) + " 0 R /XYZ null null 1]")
 		}
 	case float64:

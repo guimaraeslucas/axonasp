@@ -243,6 +243,7 @@ func isBlockedExtension(ext string) bool {
 func main() {
 
 	fmt.Print("\033[2K")
+	fmt.Print("\033]0;G3Pix AxonASP Server\a")
 	fmt.Printf("\033[48;5;240m\033[37mStarting G3pix AxonASP on http://localhost:%s ► \033[0m\n", Port)
 	fmt.Printf("Serving files from %s\n", RootDir)
 	fmt.Printf("Version: %s\n", Version)
