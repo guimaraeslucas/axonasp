@@ -1913,6 +1913,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewZIPLibrary(ae.context), nil
 	case "G3FC", "FC":
 		return NewG3FCLibrary(ae.context), nil
+	case "G3IMAGE", "IMAGE":
+		return NewImageLibrary(ae.context), nil
 
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":

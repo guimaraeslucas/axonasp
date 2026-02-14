@@ -651,6 +651,15 @@ hash = crypto.HashPassword("mypassword")
 isValid = crypto.VerifyPassword("mypassword", hash)
 ```
 
+#### G3REGEXP
+```vbscript
+Set re = Server.CreateObject("G3REGEXP")
+re.Pattern = "\\d+"
+re.Global = True
+Set matches = re.Execute("Order 123, batch 456")
+Response.Write matches.Count
+```
+
 #### G3FILEUPLOADER
 ```vbscript
 Set uploader = Server.CreateObject("G3FileUploader")
@@ -685,6 +694,26 @@ data.Add "Name", "World"
 Response.Write tpl.Render("templates/hello.tpl", data)
 ```
 
+#### G3IMAGE
+2D image drawing and rendering using `gg`:
+```vbscript
+Set img = Server.CreateObject("G3IMAGE")
+img.NewContext 600, 240
+img.SetHexColor "#111827"
+img.Clear
+img.SetHexColor "#10b981"
+img.DrawCircle 120, 120, 70
+img.Fill
+
+bytes = img.RenderContent("png")
+Response.ContentType = "image/png"
+Response.BinaryWrite bytes
+
+' Explicit release so objects can be garbage collected faster
+img.Close
+Set img = Nothing
+```
+
 #### G3DB
 Modern database library with full `database/sql` functionality:
 ```vbscript
@@ -716,6 +745,20 @@ db.Close()
 **Key Features**: Connection pooling, transactions, prepared statements, environment configuration
 
 **📖 Complete library documentation**: See [docs/](docs/) folder for detailed guides on each library.
+
+Quick links:
+- [docs/G3JSON_IMPLEMENTATION.md](docs/G3JSON_IMPLEMENTATION.md)
+- [docs/G3FILES_IMPLEMENTATION.md](docs/G3FILES_IMPLEMENTATION.md)
+- [docs/G3HTTP_IMPLEMENTATION.md](docs/G3HTTP_IMPLEMENTATION.md)
+- [docs/G3MAIL_IMPLEMENTATION.md](docs/G3MAIL_IMPLEMENTATION.md)
+- [docs/G3CRYPTO_IMPLEMENTATION.md](docs/G3CRYPTO_IMPLEMENTATION.md)
+- [docs/G3REGEXP_IMPLEMENTATION.md](docs/G3REGEXP_IMPLEMENTATION.md)
+- [docs/G3FILEUPLOADER_IMPLEMENTATION.md](docs/G3FILEUPLOADER_IMPLEMENTATION.md)
+- [docs/G3ZIP_IMPLEMENTATION.md](docs/G3ZIP_IMPLEMENTATION.md)
+- [docs/G3FC_IMPLEMENTATION.md](docs/G3FC_IMPLEMENTATION.md)
+- [docs/G3TEMPLATE_IMPLEMENTATION.md](docs/G3TEMPLATE_IMPLEMENTATION.md)
+- [docs/G3DB_IMPLEMENTATION.md](docs/G3DB_IMPLEMENTATION.md)
+- [docs/G3IMAGE_IMPLEMENTATION.md](docs/G3IMAGE_IMPLEMENTATION.md)
 
 ---
 
@@ -819,9 +862,11 @@ axonasp/
 │   ├── http_lib.go         # G3HTTP library
 │   ├── mail_lib.go         # G3MAIL library
 │   ├── crypto_lib.go       # G3CRYPTO library
+│   ├── regexp_lib.go       # G3REGEXP library
 │   ├── zip_lib.go          # G3ZIP library
 │   ├── g3fc_lib.go         # G3FC library
 │   ├── template_lib.go     # G3TEMPLATE library
+│   ├── image_lib.go        # G3IMAGE library
 │   ├── file_uploader_lib.go # G3FileUploader library
 │   ├── g3db_lib.go         # G3DB library (modern database access)
 │   ├── database_lib.go     # ADODB implementation
@@ -968,19 +1013,19 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
-- [x] ADODB database support (SQLite, MySQL, PostgreSQL, SQL Server)
-- [x] Microsoft Access database support (Windows)
-- [x] FastCGI mode for production deployments
-- [x] IIS-style web.config URL rewriting
-- [x] Custom 404 error handling (3 modes)
-- [x] Scripting.FileSystemObject and Dictionary
-- [x] WScript.Shell for system integration
-- [x] ADOX for database schema management
-- [x] 60+ custom functions (Ax* functions)
-- [ ] Image creation
-- [x] ZIP support
-- [x] G3FC support
-- [ ] XML support
+- [X] ADODB database support (SQLite, MySQL, PostgreSQL, SQL Server)
+- [X] Microsoft Access database support (Windows)
+- [X] FastCGI mode for production deployments
+- [X] IIS-style web.config URL rewriting
+- [X] Custom 404 error handling (3 modes)
+- [X] Scripting.FileSystemObject and Dictionary
+- [X] WScript.Shell for system integration
+- [X] ADOX for database schema management
+- [X] 60+ custom functions (Ax* functions)
+- [X] Image creation
+- [X] ZIP support
+- [X] G3FC support
+- [X] XML support
 - [ ] PDF support
 - [ ] WebSocket support
 - [ ] Built-in Redis session storage

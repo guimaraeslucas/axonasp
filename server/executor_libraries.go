@@ -609,10 +609,22 @@ type G3FCLibrary struct {
 	lib *G3FC
 }
 
+// ImageLibrary wraps G3IMAGE for ASPLibrary interface compatibility
+type ImageLibrary struct {
+	lib *G3IMAGE
+}
+
 // NewG3FCLibrary creates a new G3FC library instance
 func NewG3FCLibrary(ctx *ExecutionContext) *G3FCLibrary {
 	return &G3FCLibrary{
 		lib: &G3FC{ctx: ctx},
+	}
+}
+
+// NewImageLibrary creates a new Image library instance
+func NewImageLibrary(ctx *ExecutionContext) *ImageLibrary {
+	return &ImageLibrary{
+		lib: &G3IMAGE{ctx: ctx},
 	}
 }
 
@@ -629,5 +641,21 @@ func (gl *G3FCLibrary) GetProperty(name string) interface{} {
 // SetProperty sets a property on the G3FC library
 func (gl *G3FCLibrary) SetProperty(name string, value interface{}) error {
 	gl.lib.SetProperty(name, value)
+	return nil
+}
+
+// CallMethod calls a method on the Image library
+func (il *ImageLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return il.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from the Image library
+func (il *ImageLibrary) GetProperty(name string) interface{} {
+	return il.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on the Image library
+func (il *ImageLibrary) SetProperty(name string, value interface{}) error {
+	il.lib.SetProperty(name, value)
 	return nil
 }
