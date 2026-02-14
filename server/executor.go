@@ -1949,6 +1949,8 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewG3FCLibrary(ae.context), nil
 	case "G3IMAGE", "IMAGE":
 		return NewImageLibrary(ae.context), nil
+	case "G3PDF", "PDF", "FPDF":
+		return NewPDFLibrary(ae.context), nil
 
 	// Scripting Objects
 	case "SCRIPTING.FILESYSTEMOBJECT", "FILESYSTEMOBJECT", "FSO":

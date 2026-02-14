@@ -614,6 +614,11 @@ type ImageLibrary struct {
 	lib *G3IMAGE
 }
 
+// PDFLibrary wraps G3PDF for ASPLibrary interface compatibility
+type PDFLibrary struct {
+	lib *G3PDF
+}
+
 // NewG3FCLibrary creates a new G3FC library instance
 func NewG3FCLibrary(ctx *ExecutionContext) *G3FCLibrary {
 	return &G3FCLibrary{
@@ -625,6 +630,13 @@ func NewG3FCLibrary(ctx *ExecutionContext) *G3FCLibrary {
 func NewImageLibrary(ctx *ExecutionContext) *ImageLibrary {
 	return &ImageLibrary{
 		lib: &G3IMAGE{ctx: ctx},
+	}
+}
+
+// NewPDFLibrary creates a new PDF library instance
+func NewPDFLibrary(ctx *ExecutionContext) *PDFLibrary {
+	return &PDFLibrary{
+		lib: NewG3PDF(ctx),
 	}
 }
 
@@ -657,5 +669,21 @@ func (il *ImageLibrary) GetProperty(name string) interface{} {
 // SetProperty sets a property on the Image library
 func (il *ImageLibrary) SetProperty(name string, value interface{}) error {
 	il.lib.SetProperty(name, value)
+	return nil
+}
+
+// CallMethod calls a method on the PDF library
+func (pl *PDFLibrary) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return pl.lib.CallMethod(name, args...), nil
+}
+
+// GetProperty gets a property from the PDF library
+func (pl *PDFLibrary) GetProperty(name string) interface{} {
+	return pl.lib.GetProperty(name)
+}
+
+// SetProperty sets a property on the PDF library
+func (pl *PDFLibrary) SetProperty(name string, value interface{}) error {
+	pl.lib.SetProperty(name, value)
 	return nil
 }

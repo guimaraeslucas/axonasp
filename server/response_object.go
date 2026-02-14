@@ -496,7 +496,7 @@ func (r *ResponseObject) flushInternal() error {
 	// On first flush, send headers and status
 	if !r.isFlushed {
 		ct := r.contentType
-		if r.charset != "" && !strings.Contains(strings.ToLower(ct), "charset") {
+		if r.charset != "" && shouldAppendCharset(ct) {
 			ct += "; charset=" + r.charset
 		}
 		if ct != "" {
@@ -592,6 +592,22 @@ func isClientAbortErr(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "broken pipe") || strings.Contains(msg, "connection reset") || strings.Contains(msg, "wsasend") || strings.Contains(msg, "connection was aborted")
+}
+
+func shouldAppendCharset(contentType string) bool {
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if ct == "" || strings.Contains(ct, "charset=") {
+		return false
+	}
+
+	if strings.HasPrefix(ct, "text/") {
+		return true
+	}
+
+	return strings.Contains(ct, "json") ||
+		strings.Contains(ct, "xml") ||
+		strings.Contains(ct, "javascript") ||
+		strings.Contains(ct, "x-www-form-urlencoded")
 }
 
 // toString converts a value to string following ASP rules

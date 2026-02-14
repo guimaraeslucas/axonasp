@@ -5,12 +5,12 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="description"
-            content="Complete features and API documentation for G3Pix AxonASP - Custom functions, libraries, and Classic ASP objects.">
-        <title>Features & Documentation - G3Pix AxonASP</title>
+            content="Complete AxonASP reference: ASP compatibility, COM support, G3 libraries, custom functions, security, roadmap, and project structure.">
+        <title>Complete Documentation - G3Pix AxonASP</title>
         <link rel="stylesheet" href="styles.css">
         <style>
             .docs-content {
-                max-width: 1000px;
+                max-width: 1100px;
                 margin: 0 auto;
                 padding: 4rem 2rem;
             }
@@ -33,28 +33,22 @@
                 position: sticky;
                 top: 80px;
                 background: white;
-                border-radius: 10px;
+                border-radius: 12px;
                 padding: 1.5rem;
                 box-shadow: var(--shadow);
                 margin-bottom: 2rem;
             }
 
-            .docs-nav h3 {
-                margin-bottom: 1rem;
-                color: var(--primary-color);
-            }
-
             .docs-nav ul {
                 list-style: none;
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                gap: 0.5rem;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 0.4rem;
             }
 
             .docs-nav a {
                 color: var(--text-color);
                 text-decoration: none;
-                transition: color 0.3s;
                 font-size: 0.95rem;
             }
 
@@ -63,98 +57,98 @@
             }
 
             .docs-section {
-                margin-bottom: 4rem;
+                margin-bottom: 2rem;
                 background: white;
                 padding: 2rem;
-                border-radius: 10px;
+                border-radius: 12px;
                 box-shadow: var(--shadow);
             }
 
             .docs-section h2 {
-                font-size: 2rem;
-                margin-bottom: 1.5rem;
+                font-size: 1.8rem;
+                margin-bottom: 1rem;
                 color: var(--primary-color);
                 border-bottom: 2px solid var(--primary-color);
                 padding-bottom: 0.5rem;
             }
 
             .docs-section h3 {
-                font-size: 1.5rem;
-                margin-top: 2rem;
-                margin-bottom: 1rem;
+                font-size: 1.2rem;
+                margin: 1.5rem 0 0.8rem;
                 color: var(--text-color);
             }
 
             .api-item {
                 background: #f8f9fa;
-                padding: 1.5rem;
-                border-radius: 8px;
-                margin-bottom: 1.5rem;
                 border-left: 4px solid var(--primary-color);
+                border-radius: 8px;
+                padding: 1rem;
+                margin-bottom: 1rem;
             }
 
             .api-item h4 {
-                font-size: 1.2rem;
                 margin-bottom: 0.5rem;
                 color: var(--primary-color);
                 font-family: 'Courier New', monospace;
             }
 
-            .api-item .description {
-                margin-bottom: 1rem;
-                color: var(--text-light);
-            }
-
-            .api-item .example {
+            .example {
                 background: var(--dark-color);
                 color: #f8f9fa;
                 padding: 1rem;
-                border-radius: 5px;
+                border-radius: 8px;
                 overflow-x: auto;
-                font-size: 0.9rem;
+                margin-top: 0.8rem;
             }
 
-            .api-item .example code {
+            .example code,
+            .example pre {
                 font-family: 'Courier New', monospace;
+                font-size: 0.92rem;
+                margin: 0;
             }
 
             .function-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 1rem;
-                margin: 1.5rem 0;
+                grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+                gap: 0.8rem;
             }
 
             .function-card {
                 background: #f8f9fa;
-                padding: 1rem;
                 border-radius: 8px;
                 border-left: 3px solid var(--primary-color);
+                padding: 0.9rem;
             }
 
             .function-card h5 {
-                font-family: 'Courier New', monospace;
                 color: var(--primary-color);
-                margin-bottom: 0.5rem;
+                font-family: 'Courier New', monospace;
+                margin-bottom: 0.4rem;
             }
 
-            .function-card p {
-                font-size: 0.9rem;
-                color: var(--text-light);
+            .link-list {
+                columns: 2;
+                gap: 2rem;
             }
 
             .note-box {
                 background: #e3f2fd;
                 border-left: 4px solid #2196f3;
-                padding: 1rem 1.5rem;
-                margin: 1.5rem 0;
-                border-radius: 4px;
+                border-radius: 6px;
+                padding: 1rem;
+                margin-top: 1rem;
+            }
+
+            @media (max-width: 900px) {
+                .link-list {
+                    columns: 1;
+                }
             }
         </style>
     </head>
 
     <body>
-        <!-- Navigation -->
         <nav class="navbar">
             <div class="container">
                 <div class="nav-brand">
@@ -167,492 +161,247 @@
                     <li><a href="index.htm#quickstart">Quick Start</a></li>
                     <li><a href="installation.htm">Installation</a></li>
                     <li><a href="features.htm" class="active">Documentation</a></li>
-                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank"
-                            class="btn-github">GitHub</a></li>
+                    <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank" class="btn-github">GitHub</a></li>
                 </ul>
             </div>
         </nav>
 
         <div class="docs-content">
             <div class="docs-header">
-                <h1>Features & API Documentation</h1>
-                <p style="font-size: 1.2rem; color: var(--text-light);">Complete reference for G3Pix AxonASP libraries
-                    and functions</p>
+                <h1>Complete AxonASP Reference</h1>
+                <p style="font-size:1.15rem;color:var(--text-light);">Everything available in the README, organized for fast implementation and confident production deployment.</p>
             </div>
 
-            <!-- Quick Navigation -->
             <div class="docs-nav">
-                <h3>📚 Quick Navigation</h3>
                 <ul>
-                    <li><a href="#asp-objects">Classic ASP Objects</a></li>
-                    <li><a href="#g3-libraries">G3 Custom Libraries</a></li>
-                    <li><a href="#custom-functions">Custom Functions (60+)</a></li>
-                    <li><a href="#com-objects">COM Objects</a></li>
-                    <li><a href="#databases">Database Support</a></li>
+                    <li><a href="#compat">Classic ASP Compatibility</a></li>
+                    <li><a href="#com">COM Object Support</a></li>
+                    <li><a href="#g3">G3 Libraries</a></li>
+                    <li><a href="#functions">Custom Ax Functions</a></li>
+                    <li><a href="#structure">Project Structure</a></li>
+                    <li><a href="#security">Security & Best Practices</a></li>
+                    <li><a href="#performance">Performance</a></li>
+                    <li><a href="#globalasa">Global.asa</a></li>
+                    <li><a href="#roadmap">Roadmap</a></li>
+                    <li><a href="#resources">Docs, Support & License</a></li>
                 </ul>
             </div>
 
-            <!-- Classic ASP Objects -->
-            <div id="asp-objects" class="docs-section">
-                <h2>Classic ASP Objects</h2>
-                <p>Full compatibility with standard Classic ASP objects.</p>
-
+            <section id="compat" class="docs-section">
+                <h2>Classic ASP Compatibility</h2>
+                <p>AxonASP is built to be a practical drop-in replacement with modern speed and near-perfect ASP behavior.</p>
                 <div class="api-item">
-                    <h4>Request Object</h4>
-                    <div class="description">Access HTTP request data including query strings, form data, cookies, and
-                        server variables.</div>
-                    <div class="example">
-                        <pre><code>' Get query string parameter
-name = Request.QueryString("name")
-
-' Get form data
-email = Request.Form("email")
-
-' Get cookie
-userId = Request.Cookies("userId")
-
-' Get server variable
-userAgent = Request.ServerVariables("HTTP_USER_AGENT")</code></pre>
-                    </div>
+                    <h4>Request</h4>
+                    <p>QueryString, Form, ServerVariables, Cookies, ClientCertificate.</p>
                 </div>
-
                 <div class="api-item">
-                    <h4>Response Object</h4>
-                    <div class="description">Control HTTP response including output, redirects, cookies, and headers.
-                    </div>
-                    <div class="example">
-                        <pre><code>' Write output
-Response.Write "Hello World"
-
-' Redirect
-Response.Redirect "login.asp"
-
-' Set cookie
-Response.Cookies("userId") = "12345"
-Response.Cookies("userId").Expires = DateAdd("d", 30, Now())
-
-' Set content type
-Response.ContentType = "application/json"</code></pre>
-                    </div>
+                    <h4>Response</h4>
+                    <p>Write, Redirect, Cookies, Buffer, ContentType, headers, BinaryWrite.</p>
                 </div>
-
                 <div class="api-item">
-                    <h4>Server Object</h4>
-                    <div class="description">Server utilities and object creation.</div>
-                    <div class="example">
-                        <pre><code>' Create object
-Set conn = Server.CreateObject("ADODB.Connection")
-
-' Map path
-physicalPath = Server.MapPath("/data/file.txt")
-
-' Encode HTML
-encoded = Server.HTMLEncode(&quot;&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;&quot;)
-
-' Encode URL
-urlEncoded = Server.URLEncode("hello world")</code></pre>
-                    </div>
+                    <h4>Server</h4>
+                    <p>CreateObject, MapPath, URLEncode, HTMLEncode.</p>
                 </div>
-
                 <div class="api-item">
-                    <h4>Session Object</h4>
-                    <div class="description">Session state management with file-based persistence.</div>
-                    <div class="example">
-                        <pre><code>' Set session variable
-Session("username") = "john_doe"
-
-' Get session variable
-username = Session("username")
-
-' Set timeout (minutes)
-Session.Timeout = 30
-
-' Abandon session
-Session.Abandon()</code></pre>
-                    </div>
+                    <h4>Session / Application</h4>
+                    <p>Session persistence and application-wide state management.</p>
                 </div>
+            </section>
 
-                <div class="api-item">
-                    <h4>Application Object</h4>
-                    <div class="description">Application-wide state management.</div>
-                    <div class="example">
-                        <pre><code>' Set application variable
-Application("SiteName") = "My Website"
-
-' Get application variable
-siteName = Application("SiteName")
-
-' Lock for thread-safe updates
-Application.Lock()
-Application("VisitorCount") = Application("VisitorCount") + 1
-Application.Unlock()</code></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- G3 Libraries -->
-            <div id="g3-libraries" class="docs-section">
-                <h2>G3 Custom Libraries</h2>
-                <p>Modern functionality for Classic ASP applications.</p>
-
-                <div class="api-item">
-                    <h4>G3JSON - JSON Operations</h4>
-                    <div class="description">Parse and stringify JSON data with ease.</div>
-                    <div class="example">
-                        <pre><code>Set json = Server.CreateObject("G3JSON")
-
-' Parse JSON string
-Set obj = json.Parse("{""name"": ""John"", ""age"": 30}")
-Response.Write obj.name  ' Output: John
-
-' Create and stringify object
-Set data = Server.CreateObject("Scripting.Dictionary")
-data.Add "name", "Jane"
-data.Add "age", 25
-jsonString = json.Stringify(data)
-
-' Load from file
-Set config = json.LoadFile("config.json")</code></pre>
-                    </div>
-                </div>
-
-                <div class="api-item">
-                    <h4>G3FILES - File System Operations</h4>
-                    <div class="description">Read, write, and manage files easily.</div>
-                    <div class="example">
-                        <pre><code>Set fs = Server.CreateObject("G3FILES")
-
-' Read file
-content = fs.Read("data.txt")
-
-' Write file
-fs.Write "output.txt", "Hello World"
-
-' Append to file
-fs.Append "log.txt", "New log entry" & vbCrLf
-
-' Check if file exists
-If fs.Exists("config.ini") Then
-    ' File exists
-End If
-
-' Get file size
-size = fs.Size("document.pdf")
-
-' List files in directory
-files = fs.List("/uploads")
-
-' Delete file
-fs.Delete "temp.txt"
-
-' Create directory
-fs.MkDir "newfolder"</code></pre>
-                    </div>
-                </div>
-
-                <div class="api-item">
-                    <h4>G3HTTP - HTTP Requests</h4>
-                    <div class="description">Make HTTP requests to external APIs.</div>
-                    <div class="example">
-                        <pre><code>Set http = Server.CreateObject("G3HTTP")
-
-' GET request
-Set result = http.Fetch("https://api.example.com/data", "GET")
-Response.Write result.body
-
-' POST request
-Set headers = Server.CreateObject("Scripting.Dictionary")
-headers.Add "Content-Type", "application/json"
-Set result = http.Fetch("https://api.example.com/users", "POST", "{""name"":""John""}", headers)
-
-' Check status
-If result.status = 200 Then
-    Response.Write "Success!"
-End If</code></pre>
-                    </div>
-                </div>
-
-                <div class="api-item">
-                    <h4>G3MAIL - Email Sending</h4>
-                    <div class="description">Send emails via SMTP.</div>
-                    <div class="example">
-                        <pre><code>Set mail = Server.CreateObject("G3MAIL")
-
-' Send email
-mail.Send "recipient@example.com", "sender@example.com", "Subject", "Body text", False
-
-' Send HTML email
-mail.Send "recipient@example.com", "sender@example.com", "Subject", "&lt;h1&gt;HTML Body&lt;/h1&gt;", True
-
-' Standard send (uses SMTP config from .env)
-mail.SendStandard "recipient@example.com", "Subject", "Body"</code></pre>
-                    </div>
-                </div>
-
-                <div class="api-item">
-                    <h4>G3CRYPTO - Cryptography</h4>
-                    <div class="description">UUID generation and password hashing.</div>
-                    <div class="example">
-                        <pre><code>Set crypto = Server.CreateObject("G3CRYPTO")
-
-' Generate UUID
-uuid = crypto.UUID()
-
-' Hash password
-hash = crypto.HashPassword("mypassword")
-
-' Verify password
-isValid = crypto.VerifyPassword("mypassword", hash)
-If isValid Then
-    Response.Write "Password correct!"
-End If</code></pre>
-                    </div>
-                </div>
-
-                <div class="api-item">
-                    <h4>G3TEMPLATE - Template Rendering</h4>
-                    <div class="description">Render templates with data.</div>
-                    <div class="example">
-                        <pre><code>Set tpl = Server.CreateObject("G3TEMPLATE")
-Set data = Server.CreateObject("Scripting.Dictionary")
-
-data.Add "name", "John"
-data.Add "title", "Welcome"
-
-' Render template
-html = tpl.Render("template.html", data)
-Response.Write html</code></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Custom Functions -->
-            <div id="custom-functions" class="docs-section">
-                <h2>Custom Functions (60+)</h2>
-                <p>PHP-inspired functions to enhance VBScript capabilities. All functions are prefixed with
-                    <code>Ax</code>.</p>
-
-                <h3>Array Functions</h3>
-                <div class="function-grid">
-                    <div class="function-card">
-                        <h5>AxArrayMerge</h5>
-                        <p>Merge multiple arrays into one</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxArrayContains</h5>
-                        <p>Check if value exists in array</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxCount</h5>
-                        <p>Return array length</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxExplode</h5>
-                        <p>Split string into array</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxImplode</h5>
-                        <p>Join array into string</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxArrayReverse</h5>
-                        <p>Reverse array order</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxRange</h5>
-                        <p>Create range array</p>
-                    </div>
-                </div>
-
-                <h3>String Functions</h3>
-                <div class="function-grid">
-                    <div class="function-card">
-                        <h5>AxStringReplace</h5>
-                        <p>Replace substring in string</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxSprintf</h5>
-                        <p>Format string with placeholders</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxPad</h5>
-                        <p>Pad string to length</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxRepeat</h5>
-                        <p>Repeat string N times</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxUcFirst</h5>
-                        <p>Uppercase first character</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxWordCount</h5>
-                        <p>Count words in string</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxNewLineToBr</h5>
-                        <p>Convert newlines to &lt;br&gt;</p>
-                    </div>
-                </div>
-
-                <h3>Math Functions</h3>
-                <div class="function-grid">
-                    <div class="function-card">
-                        <h5>AxCeil</h5>
-                        <p>Round up to nearest integer</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxFloor</h5>
-                        <p>Round down to nearest integer</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxMax</h5>
-                        <p>Return maximum value</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxMin</h5>
-                        <p>Return minimum value</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxRand</h5>
-                        <p>Random integer between min and max</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxNumberFormat</h5>
-                        <p>Format number with decimals</p>
-                    </div>
-                </div>
-
-                <h3>Hashing & Encoding</h3>
-                <div class="function-grid">
-                    <div class="function-card">
-                        <h5>AxMd5</h5>
-                        <p>MD5 hash</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxSha1</h5>
-                        <p>SHA1 hash</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxHash</h5>
-                        <p>Hash with algorithm</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxBase64Encode</h5>
-                        <p>Base64 encode string</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxBase64Decode</h5>
-                        <p>Base64 decode string</p>
-                    </div>
-                    <div class="function-card">
-                        <h5>AxUrlDecode</h5>
-                        <p>URL decode string</p>
-                    </div>
-                </div>
-
-                <div class="note-box">
-                    <strong>💡 Full Documentation:</strong> For complete list and usage examples, see <a
-                        href="https://github.com/guimaraeslucas/axonasp/blob/main/CUSTOM_FUNCTIONS.md"
-                        target="_blank">CUSTOM_FUNCTIONS.md</a>
-                </div>
-            </div>
-
-            <!-- COM Objects -->
-            <div id="com-objects" class="docs-section">
+            <section id="com" class="docs-section">
                 <h2>COM Object Support</h2>
 
+                <h3>ADODB</h3>
                 <div class="api-item">
                     <h4>ADODB.Connection</h4>
-                    <div class="description">Database connections for SQL Server, MySQL, PostgreSQL, and SQLite.</div>
-                    <div class="example">
-                        <pre><code>Set conn = Server.CreateObject("ADODB.Connection")
-conn.Open "server=localhost;database=mydb;uid=user;pwd=pass"
-
-Set rs = conn.Execute("SELECT * FROM users")
-While Not rs.EOF
-    Response.Write rs("username") & "&lt;br&gt;"
-    rs.MoveNext
-Wend
-
-rs.Close
-conn.Close</code></pre>
-                    </div>
+                    <p>Open, Close, Execute, BeginTrans, CommitTrans, RollbackTrans with SQLite, MySQL, PostgreSQL, SQL Server, and Access (Windows).</p>
+                </div>
+                <div class="api-item">
+                    <h4>ADODB.Recordset</h4>
+                    <p>MoveNext, MovePrevious, MoveFirst, MoveLast, AddNew, Update, Delete, EOF, BOF, Fields.</p>
+                </div>
+                <div class="api-item">
+                    <h4>ADODB.Stream</h4>
+                    <p>Text/binary streams, charset handling, Position/Size support.</p>
                 </div>
 
+                <h3>ADOX</h3>
+                <div class="api-item">
+                    <h4>ADOX.Catalog</h4>
+                    <p>Schema operations for creating databases, tables, and indexes.</p>
+                    <div class="example"><pre><code>Set catalog = Server.CreateObject("ADOX.Catalog")
+catalog.Create "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=C:\db\mydb.mdb"</code></pre></div>
+                </div>
+
+                <h3>MSXML2</h3>
                 <div class="api-item">
                     <h4>MSXML2.ServerXMLHTTP</h4>
-                    <div class="description">Make HTTP requests to external services.</div>
-                    <div class="example">
-                        <pre><code>Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")
-http.Open "GET", "https://api.example.com/data", False
-http.Send
-
-If http.Status = 200 Then
-    Response.Write http.ResponseText
-End If</code></pre>
-                    </div>
+                    <p>Open, Send, SetRequestHeader, Status/ResponseText for HTTP integrations.</p>
                 </div>
-
                 <div class="api-item">
-                    <h4>Scripting.Dictionary</h4>
-                    <div class="description">Key-value pair storage.</div>
-                    <div class="example">
-                        <pre><code>Set dict = Server.CreateObject("Scripting.Dictionary")
-dict.Add "name", "John"
-dict.Add "age", 30
-
-Response.Write dict("name")  ' Output: John
-
-' Check if key exists
-If dict.Exists("age") Then
-    Response.Write dict("age")
-End If</code></pre>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Databases -->
-            <div id="databases" class="docs-section">
-                <h2>Database Support</h2>
-                <p>Connect to multiple database systems using ADODB.</p>
-
-                <h3>SQLite</h3>
-                <div class="example">
-                    <pre><code>Set conn = Server.CreateObject("ADODB.Connection")
-conn.Open "Driver=SQLite3;Database=data.db"
-
-' In-memory database
-conn.Open "Driver=SQLite3;Database=:memory:"</code></pre>
+                    <h4>MSXML2.DOMDocument</h4>
+                    <p>Load/LoadXML/Save, XPath (SelectNodes/SelectSingleNode), full DOM manipulation.</p>
                 </div>
 
-                <h3>MySQL</h3>
-                <div class="example">
-                    <pre><code>Set conn = Server.CreateObject("ADODB.Connection")
-conn.Open "server=localhost;port=3306;database=mydb;uid=root;pwd=password"</code></pre>
+                <h3>Scripting Objects & WScript</h3>
+                <div class="api-item">
+                    <h4>Scripting.Dictionary / FileSystemObject / WScript.Shell</h4>
+                    <p>Associative storage, filesystem operations, process execution, environment expansion, and Windows registry helpers.</p>
+                </div>
+            </section>
+
+            <section id="g3" class="docs-section">
+                <h2>Custom G3 Libraries</h2>
+                <p>Modern capabilities for classic code with productive APIs.</p>
+
+                <div class="api-item"><h4>G3JSON</h4><p>JSON parse/stringify, object/array creation, file loading.</p></div>
+                <div class="api-item"><h4>G3FILES</h4><p>Read/write/append/copy/move/rename/delete, list, metadata, directory creation with path security.</p></div>
+                <div class="api-item"><h4>G3HTTP</h4><p>Fetch/Request with GET/POST/PUT/DELETE/PATCH and automatic JSON handling.</p></div>
+                <div class="api-item"><h4>G3TEMPLATE</h4><p>Go-style template rendering for HTML, email, and report generation.</p></div>
+                <div class="api-item"><h4>G3MAIL</h4><p>SMTP send with manual config or standard .env config.</p></div>
+                <div class="api-item"><h4>G3CRYPTO</h4><p>UUID v4, bcrypt hashing, verify password helpers.</p></div>
+                <div class="api-item"><h4>G3REGEXP</h4><p>Pattern, IgnoreCase, Global, Multiline, Test/Execute/Replace with match metadata.</p></div>
+                <div class="api-item"><h4>G3FILEUPLOADER</h4><p>Single/multi-file upload processing, extension controls, max size, metadata.</p></div>
+                <div class="api-item"><h4>G3ZIP</h4><p>Create/open ZIP, add files/folders/text, list, extract.</p></div>
+                <div class="api-item"><h4>G3FC</h4><p>Encrypted high-performance archiver: create, extract, list, find, metadata export.</p></div>
+                <div class="api-item"><h4>G3IMAGE</h4><p>2D image drawing and rendering (PNG/JPEG outputs) through gg.</p></div>
+                <div class="api-item"><h4>PDF_LIB (G3PDF)</h4><p>FPDF 1.86 translated to Go with text, image, and HTML rendering. Aliases: G3PDF, PDF, FPDF.</p></div>
+                <div class="api-item"><h4>G3DB</h4><p>database/sql-style modern library with pooling, prepared statements, and transactions.</p></div>
+
+                <div class="example"><pre><code>Set pdf = Server.CreateObject("G3PDF")
+pdf.AddPage
+pdf.SetFont "helvetica", "B", 16
+pdf.Cell 0, 10, "Hello from AxonASP PDF", 0, 1, "L", False, ""
+pdf.WriteHTML "&lt;p&gt;&lt;b&gt;HTML rendering&lt;/b&gt; is supported.&lt;/p&gt;"
+pdf.Output "I", "sample.pdf", True</code></pre></div>
+            </section>
+
+            <section id="functions" class="docs-section">
+                <h2>Extended Custom Functions (60+)</h2>
+                <p>PHP-inspired helpers prefixed with <code>Ax</code> to make ASP development faster and cleaner.</p>
+
+                <h3>Array</h3>
+                <div class="function-grid">
+                    <div class="function-card"><h5>AxArrayMerge / AxArrayContains / AxArrayMap / AxArrayFilter</h5><p>Merge, search, transform, and filter arrays.</p></div>
+                    <div class="function-card"><h5>AxCount / AxExplode / AxImplode / AxArrayReverse / AxRange</h5><p>Core array-size and conversion utilities.</p></div>
                 </div>
 
-                <h3>PostgreSQL</h3>
-                <div class="example">
-                    <pre><code>Set conn = Server.CreateObject("ADODB.Connection")
-conn.Open "host=localhost port=5432 dbname=mydb user=postgres password=pass sslmode=disable"</code></pre>
+                <h3>String</h3>
+                <div class="function-grid">
+                    <div class="function-card"><h5>AxStringReplace / AxSprintf / AxPad / AxRepeat</h5><p>Text formatting and manipulation.</p></div>
+                    <div class="function-card"><h5>AxUcFirst / AxWordCount / AxNewLineToBr / AxTrim / AxStringGetCsv</h5><p>Content cleanup and parsing.</p></div>
                 </div>
 
-                <h3>MS SQL Server</h3>
-                <div class="example">
-                    <pre><code>Set conn = Server.CreateObject("ADODB.Connection")
-conn.Open "server=localhost;database=mydb;uid=sa;pwd=password"</code></pre>
+                <h3>Math, Types, Date, Encoding & Validation</h3>
+                <div class="function-grid">
+                    <div class="function-card"><h5>AxCeil / AxFloor / AxMax / AxMin / AxRand / AxNumberFormat</h5><p>Math and numeric formatting.</p></div>
+                    <div class="function-card"><h5>AxIsInt / AxIsFloat / AxCTypeAlpha / AxCTypeAlnum / AxEmpty / AxIsset</h5><p>Type checks and validation support.</p></div>
+                    <div class="function-card"><h5>AxTime / AxDate</h5><p>Date and timestamp helpers.</p></div>
+                    <div class="function-card"><h5>AxMd5 / AxSha1 / AxHash / AxBase64Encode / AxBase64Decode / AxUrlDecode</h5><p>Hashing and encoding operations.</p></div>
+                    <div class="function-card"><h5>AxHtmlSpecialChars / AxStripTags / AxRgbToHex</h5><p>Output safety and utility helpers.</p></div>
+                    <div class="function-card"><h5>AxFilterValidateIp / AxFilterValidateEmail</h5><p>Input validation utilities.</p></div>
                 </div>
-            </div>
 
-            <div style="text-align: center; margin-top: 4rem;">
-                <a href="installation.htm" class="btn btn-primary">← Installation Guide</a>
+                <h3>Request & Utility</h3>
+                <div class="function-grid">
+                    <div class="function-card"><h5>AxGetRequest / AxGetGet / AxGetPost</h5><p>Request parameter aggregation.</p></div>
+                    <div class="function-card"><h5>AxGenerateGuid / AxBuildQueryString / AxVarDump / Document.Write</h5><p>Debug, output and integration helpers.</p></div>
+                </div>
+            </section>
+
+            <section id="structure" class="docs-section">
+                <h2>Project Structure</h2>
+                <div class="example"><pre><code>axonasp/
+├── main.go
+├── asp/
+├── axonaspcgi/
+├── server/
+├── vbscript/
+├── docs/
+├── www/
+├── temp/session/
+└── errorpages/</code></pre></div>
+                <p>Core runtime in <code>server/</code>, parser/executor in <code>asp/</code>, web root in <code>www/</code>, and complete implementation guides in <code>docs/</code>.</p>
+            </section>
+
+            <section id="security" class="docs-section">
+                <h2>Security & Best Practices</h2>
+                <ul>
+                    <li>Sandboxed file access from <code>www/</code> to reduce traversal risks.</li>
+                    <li>Session persistence in <code>temp/session/</code> with controlled lifecycle.</li>
+                    <li>Use input validation and safe output helpers like <code>Document.Write</code>.</li>
+                    <li>Set <code>DEBUG_ASP=FALSE</code> in production.</li>
+                    <li>Use HTTPS and reverse proxy for production hardening.</li>
+                </ul>
+                <div class="note-box"><strong>Pro Tip:</strong> Fast, secure, and scalable is the default direction with AxonASP when paired with nginx/Apache/IIS fronting.</div>
+            </section>
+
+            <section id="performance" class="docs-section">
+                <h2>Performance</h2>
+                <ul>
+                    <li>Fast startup in milliseconds.</li>
+                    <li>Low memory footprint with efficient Go runtime characteristics.</li>
+                    <li>Concurrent request handling with Go concurrency model.</li>
+                    <li>Optimized VBScript parser and executor pipeline.</li>
+                </ul>
+            </section>
+
+            <section id="globalasa" class="docs-section">
+                <h2>Global.asa Support</h2>
+                <p>Supported events: <code>Application_OnStart</code>, <code>Application_OnEnd</code>, <code>Session_OnStart</code>, <code>Session_OnEnd</code>.</p>
+                <p><strong>Important:</strong> one application per AxonASP instance due to global.asa loading model. Run multiple instances for multiple apps.</p>
+            </section>
+
+            <section id="roadmap" class="docs-section">
+                <h2>Roadmap</h2>
+                <p>Shipped: ADODB + Access, FastCGI, web.config rewrite support, custom 404 modes, scripting objects, WScript.Shell, ADOX, 60+ functions, image, ZIP, G3FC, XML.</p>
+                <p>Next targets: PDF completion, WebSocket support, Redis sessions, Docker official images, OAuth2 library, REST generator, GraphQL support, VM/compiler improvements.</p>
+            </section>
+
+            <section id="resources" class="docs-section">
+                <h2>Documentation, Community, License</h2>
+                <h3>Implementation Guides</h3>
+                <ul class="link-list">
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3JSON_IMPLEMENTATION.md">G3JSON</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FILES_IMPLEMENTATION.md">G3FILES</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3HTTP_IMPLEMENTATION.md">G3HTTP</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3MAIL_IMPLEMENTATION.md">G3MAIL</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3CRYPTO_IMPLEMENTATION.md">G3CRYPTO</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3REGEXP_IMPLEMENTATION.md">G3REGEXP</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FILEUPLOADER_IMPLEMENTATION.md">G3FILEUPLOADER</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3ZIP_IMPLEMENTATION.md">G3ZIP</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3FC_IMPLEMENTATION.md">G3FC</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3TEMPLATE_IMPLEMENTATION.md">G3TEMPLATE</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3DB_IMPLEMENTATION.md">G3DB</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/G3IMAGE_IMPLEMENTATION.md">G3IMAGE</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/PDF_LIB_IMPLEMENTATION.md">PDF_LIB</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/ADODB_IMPLEMENTATION.md">ADODB</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/ACCESS_DATABASE_SUPPORT.md">Access support</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/MSXML2_IMPLEMENTATION.md">MSXML2</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/SCRIPTING_OBJECTS_IMPLEMENTATION.md">Scripting Objects</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/WSCRIPT_SHELL_IMPLEMENTATION.md">WScript.Shell</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_MODE.md">FastCGI guide</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/blob/main/docs/FASTCGI_QUICKSTART.md">FastCGI quickstart</a></li>
+                </ul>
+
+                <h3>Support</h3>
+                <ul>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/issues">GitHub Issues</a></li>
+                    <li><a target="_blank" href="https://github.com/guimaraeslucas/axonasp/discussions">GitHub Discussions</a></li>
+                    <li><a target="_blank" href="https://g3pix.com.br/axonasp">Official Website</a></li>
+                </ul>
+
+                <h3>Contributing & License</h3>
+                <p>Contributions are welcome through pull requests with tests and documentation updates. Project is licensed under MPL (see LICENSE).</p>
+                <p><strong>Built with ❤️ by G3Pix</strong> — making Classic ASP modern, fast, and cross-platform.</p>
+            </section>
+
+            <div style="text-align:center;margin-top:2rem;">
+                <a href="installation.htm" class="btn btn-primary">Installation Guide</a>
                 <a href="index.htm" class="btn btn-secondary">Back to Home</a>
             </div>
         </div>
 
-        <!-- Footer -->
         <footer class="footer">
             <div class="container">
                 <div class="footer-content">
@@ -664,7 +413,7 @@ conn.Open "server=localhost;database=mydb;uid=sa;pwd=password"</code></pre>
                         <h4>Documentation</h4>
                         <ul>
                             <li><a href="installation.htm">Installation Guide</a></li>
-                            <li><a href="features.htm">Features & API</a></li>
+                            <li><a href="features.htm">Complete Documentation</a></li>
                             <li><a href="https://github.com/guimaraeslucas/axonasp">GitHub</a></li>
                         </ul>
                     </div>

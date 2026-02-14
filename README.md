@@ -714,6 +714,20 @@ img.Close
 Set img = Nothing
 ```
 
+#### PDF_LIB (G3PDF)
+PDF generation library (FPDF 1.86 translated to Go) with text, images, and HTML rendering:
+```vbscript
+Set pdf = Server.CreateObject("G3PDF")
+pdf.AddPage
+pdf.SetFont "helvetica", "B", 16
+pdf.Cell 0, 10, "Hello from AxonASP PDF", 0, 1, "L", False, ""
+pdf.WriteHTML "<p><b>HTML rendering</b> is supported.</p>"
+pdf.Output "I", "sample.pdf", True
+```
+
+Supported aliases: `G3PDF`, `PDF`, `FPDF`.
+For complete usage examples and API details, see `docs/PDF_LIB_IMPLEMENTATION.md`.
+
 #### G3DB
 Modern database library with full `database/sql` functionality:
 ```vbscript
@@ -759,6 +773,7 @@ Quick links:
 - [docs/G3TEMPLATE_IMPLEMENTATION.md](docs/G3TEMPLATE_IMPLEMENTATION.md)
 - [docs/G3DB_IMPLEMENTATION.md](docs/G3DB_IMPLEMENTATION.md)
 - [docs/G3IMAGE_IMPLEMENTATION.md](docs/G3IMAGE_IMPLEMENTATION.md)
+- [docs/PDF_LIB_IMPLEMENTATION.md](docs/PDF_LIB_IMPLEMENTATION.md)
 
 ---
 
