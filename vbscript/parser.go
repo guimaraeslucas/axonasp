@@ -211,7 +211,7 @@ func (p *Parser) consumeOptionStatement() {
 }
 
 func (p *Parser) parseGlobalStatement() ast.Statement {
-	p.createMarker() // marker
+	marker := p.createMarker()
 
 	var stmt ast.Statement
 	if p.matchKeyword(KeywordClass) {
@@ -224,6 +224,15 @@ func (p *Parser) parseGlobalStatement() ast.Statement {
 		stmt = p.parsePublicOrPrivate(true, false)
 	} else {
 		stmt = p.parseBlockStatement(true)
+	}
+
+	// Set source location on the statement so runtime errors can report line numbers
+	if stmt != nil {
+		endMarker := p.lastMarker
+		stmt.SetLocation(ast.NewLocation(
+			ast.NewPosition(marker.Line, marker.Column),
+			ast.NewPosition(endMarker.Line, endMarker.Column),
+		))
 	}
 
 	return stmt

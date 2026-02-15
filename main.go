@@ -25,6 +25,7 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -68,7 +69,20 @@ var (
 // Global web.config parser
 var webConfigParser *server.WebConfigParser
 
+// executableDir is the directory containing the axonasp binary, resolved at startup.
+// Used to locate bundled assets (e.g. errorpages/) when installed globally.
+var executableDir string
+
 func init() {
+	// Resolve directory containing the executable (for locating bundled assets)
+	if execPath, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(execPath); err == nil {
+			executableDir = filepath.Dir(resolved)
+		} else {
+			executableDir = filepath.Dir(execPath)
+		}
+	}
+
 	// Load .env file
 	err := godotenv.Load()
 	if err != nil {
@@ -175,6 +189,12 @@ func init() {
 			COMProviderMode = "auto"
 		}
 	}
+	// Resolve WEB_ROOT to absolute path so the directory-traversal security
+	// check works correctly regardless of how the server is started.
+	if absRoot, err := filepath.Abs(RootDir); err == nil {
+		RootDir = absRoot
+	}
+
 	server.SetEngineVersion(Version)
 	server.SetCOMProviderMode(COMProviderMode)
 	asp.ConfigureParseCache(ASTCacheType, RootDir)
@@ -538,9 +558,15 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	err = processor.ExecuteASPFile(content, fullPath, w, r)
 	if err != nil {
-		//stack := string(debug.Stack())
 		fmt.Printf("[DEBUG] ASP processing error in %s: %v\n", path, err)
-		//fmt.Printf("[DEBUG] STACK %s\n", stack)
+		if DebugASP {
+			fmt.Fprintf(w, "<br><hr style='border-top: 1px dashed red;'>\n")
+			fmt.Fprintf(w, "<div style='color: red; font-family: monospace; background: #ffe6e6; padding: 10px; border: 1px solid red;'>\n")
+			fmt.Fprintf(w, "<strong>ASP Runtime Error</strong><br>\n")
+			fmt.Fprintf(w, "File: %s<br>\n", html.EscapeString(path))
+			fmt.Fprintf(w, "Error: %s<br>\n", html.EscapeString(err.Error()))
+			fmt.Fprintf(w, "</div>\n")
+		}
 	}
 }
 
@@ -603,6 +629,28 @@ func applyRewriteRules(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
+// getErrorPagePath resolves the path for a static error page file.
+// It checks three locations in order:
+//  1. WEB_ROOT/errorpages/ — per-project custom error pages
+//  2. <binary-dir>/errorpages/ — bundled defaults (global install)
+//  3. errorpages/ relative to CWD — dev mode fallback
+func getErrorPagePath(filename string) string {
+	// 1. Check WEB_ROOT for per-project custom error pages
+	projectPath := filepath.Join(RootDir, "errorpages", filename)
+	if _, err := os.Stat(projectPath); err == nil {
+		return projectPath
+	}
+	// 2. Check next to binary (global install)
+	if executableDir != "" {
+		bundledPath := filepath.Join(executableDir, "errorpages", filename)
+		if _, err := os.Stat(bundledPath); err == nil {
+			return bundledPath
+		}
+	}
+	// 3. Fallback to CWD (dev mode)
+	return filepath.Join("errorpages", filename)
+}
+
 // serveErrorPage serves a custom HTML error page from the errorpages directory
 // or executes custom error handlers based on ERROR_404_MODE configuration
 func serveErrorPage(w http.ResponseWriter, r *http.Request, statusCode int) {
@@ -614,7 +662,7 @@ func serveErrorPage(w http.ResponseWriter, r *http.Request, statusCode int) {
 
 	// Default behavior: serve static error page
 	filename := fmt.Sprintf("%d.html", statusCode)
-	filePath := filepath.Join("errorpages", filename)
+	filePath := getErrorPagePath(filename)
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		// Fallback to default text if custom page is missing
@@ -634,8 +682,7 @@ func handleCustom404(w http.ResponseWriter, r *http.Request) {
 	if fullPath == "" {
 		// No custom handler configured, fall back to default
 		fmt.Println("[DEBUG] No 404 handler found in web.config, using default")
-		filename := "404.html"
-		filePath := filepath.Join("errorpages", filename)
+		filePath := getErrorPagePath("404.html")
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			http.Error(w, "G3Pix AxonASP Error: 404", http.StatusNotFound)
@@ -651,8 +698,7 @@ func handleCustom404(w http.ResponseWriter, r *http.Request) {
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		fmt.Printf("[DEBUG] Custom 404 handler file not found: %s\n", fullPath)
 		// Fall back to default error page
-		filename := "404.html"
-		filePath := filepath.Join("errorpages", filename)
+		filePath := getErrorPagePath("404.html")
 		content, err := os.ReadFile(filePath)
 		if err != nil {
 			http.Error(w, "G3Pix AxonASP Error: 404", http.StatusNotFound)
@@ -710,5 +756,13 @@ func executeASPErrorHandler(w http.ResponseWriter, r *http.Request, aspFilePath 
 	err = processor.ExecuteASPFile(content, aspFilePath, w, r)
 	if err != nil {
 		fmt.Printf("[DEBUG] ASP error handler processing error in %s: %v\n", aspFilePath, err)
+		if DebugASP {
+			fmt.Fprintf(w, "<br><hr style='border-top: 1px dashed red;'>\n")
+			fmt.Fprintf(w, "<div style='color: red; font-family: monospace; background: #ffe6e6; padding: 10px; border: 1px solid red;'>\n")
+			fmt.Fprintf(w, "<strong>ASP Runtime Error</strong><br>\n")
+			fmt.Fprintf(w, "File: %s<br>\n", html.EscapeString(aspFilePath))
+			fmt.Fprintf(w, "Error: %s<br>\n", html.EscapeString(err.Error()))
+			fmt.Fprintf(w, "</div>\n")
+		}
 	}
 }

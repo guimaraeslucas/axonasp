@@ -63,6 +63,20 @@ func (e *ProcedureExitError) Error() string {
 	return fmt.Sprintf("Exit %s", e.Kind)
 }
 
+// LineError wraps an error with the ASP source line number where it occurred
+type LineError struct {
+	Line int
+	Err  error
+}
+
+func (e *LineError) Error() string {
+	return fmt.Sprintf("[line %d] %s", e.Line, e.Err.Error())
+}
+
+func (e *LineError) Unwrap() error {
+	return e.Err
+}
+
 // ErrServerTransfer indicates a Server.Transfer call, stopping current execution
 var ErrServerTransfer = fmt.Errorf("Server.Transfer")
 
@@ -229,6 +243,60 @@ func NewExecutionContext(w http.ResponseWriter, r *http.Request, sessionID strin
 	ctx.constants["vbshortdate"] = 2
 	ctx.constants["vblongtime"] = 3
 	ctx.constants["vbshorttime"] = 4
+
+	// Error constants
+	ctx.constants["vbobjecterror"] = int64(-2147221504) // &H80040000
+
+	// ADODB CursorType constants
+	ctx.constants["adopenforwardonly"] = 0
+	ctx.constants["adopenkeyset"] = 1
+	ctx.constants["adopendynamic"] = 2
+	ctx.constants["adopenstatic"] = 3
+
+	// ADODB LockType constants
+	ctx.constants["adlockreadonly"] = 1
+	ctx.constants["adlockpessimistic"] = 2
+	ctx.constants["adlockoptimistic"] = 3
+	ctx.constants["adlockbatchoptimistic"] = 4
+
+	// ADODB CommandType constants
+	ctx.constants["adcmdtext"] = 1
+	ctx.constants["adcmdtable"] = 2
+	ctx.constants["adcmdstoredproc"] = 4
+	ctx.constants["adcmdunknown"] = 8
+
+	// ADODB DataType constants (used by Fields.Append and METADATA TypeLib)
+	ctx.constants["adboolean"] = 11
+	ctx.constants["adinteger"] = 3
+	ctx.constants["adsmallint"] = 2
+	ctx.constants["adbigint"] = 20
+	ctx.constants["adsingle"] = 4
+	ctx.constants["addouble"] = 5
+	ctx.constants["adcurrency"] = 6
+	ctx.constants["addate"] = 7
+	ctx.constants["addbdate"] = 133
+	ctx.constants["addbtime"] = 134
+	ctx.constants["addbtimestamp"] = 135
+	ctx.constants["advarchar"] = 200
+	ctx.constants["adlongvarchar"] = 201
+	ctx.constants["adwchar"] = 130
+	ctx.constants["advarwchar"] = 202
+	ctx.constants["adlongvarwchar"] = 203
+	ctx.constants["advarbinary"] = 204
+	ctx.constants["adlongvarbinary"] = 205
+	ctx.constants["adbinary"] = 128
+	ctx.constants["adchar"] = 129
+	ctx.constants["adnumeric"] = 131
+	ctx.constants["addecimal"] = 14
+	ctx.constants["adguid"] = 72
+
+	// ADODB Stream Type constants
+	ctx.constants["adtypebinary"] = 1
+	ctx.constants["adtypetext"] = 2
+
+	// ADODB SaveOptions constants
+	ctx.constants["adsavecreatenotexist"] = 1
+	ctx.constants["adsavecreateoverwrite"] = 2
 
 	// We'll set the executor reference after creating it (circular dependency)
 	// This is done in ASPExecutor.Execute()
@@ -1306,6 +1374,11 @@ func (ae *ASPExecutor) executeInternal(fileContent string, filePath string, w ht
 			if err.Error() == "RESPONSE_END" || err == ErrServerTransfer || strings.Contains(err.Error(), "runtime panic: RESPONSE_END") {
 				stopByControlFlow = true
 			} else {
+				// Flush any buffered response content before returning.
+				// Without this, partial output is lost and the client gets an empty body.
+				if ae.context != nil && ae.context.Response != nil && !ae.context.Response.IsEnded() {
+					_ = ae.context.Response.Flush()
+				}
 				return err
 			}
 		}
@@ -1708,12 +1781,17 @@ func (ae *ASPExecutor) executeVBProgram(program *ast.Program) error {
 			if err := v.VisitStatement(stmt); err != nil {
 				// Check if it's a Response.End() or Response.Redirect() signal
 				if err.Error() == "RESPONSE_END" {
-					// This is normal - stop execution and return
 					return err
 				}
 				// Propagate Server.Transfer signal
 				if err == ErrServerTransfer {
 					return err
+				}
+				// Wrap with line number if not already wrapped
+				if _, ok := err.(*LineError); !ok {
+					if loc := stmt.GetLocation(); loc.Start.Line > 0 {
+						return &LineError{Line: loc.Start.Line, Err: err}
+					}
 				}
 				return err
 			}
@@ -1929,6 +2007,10 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewMailLibrary(ae.context), nil
 	case "PERSITS.MAILSENDER":
 		return NewPersitsMailSender(ae.context), nil
+	case "PERSITS.JPEG", "ASPJPEG", "ASPJPEG.IMAGE":
+		return NewPersitsJpeg(ae.context), nil
+	case "PERSITS.PDF", "ASPPDF", "ASPPDF.PDFDOCUMENT":
+		return NewPersitsPDF(ae.context), nil
 	case "CDO.MESSAGE":
 		return NewCDOMessage(ae.context), nil
 	case "CDONTS.NEWMAIL":
@@ -1959,7 +2041,7 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 		return NewDictionary(ae.context), nil
 
 	// MSXML2 Objects
-	case "MSXML2.SERVERXMLHTTP", "MSXML2.XMLHTTP", "MSXML2.XMLHTTP.6.0", "SERVERXMLHTTP", "XMLHTTP":
+	case "MSXML2.SERVERXMLHTTP", "MSXML2.SERVERXMLHTTP.6.0", "MSXML2.XMLHTTP", "MSXML2.XMLHTTP.6.0", "SERVERXMLHTTP", "XMLHTTP":
 		return NewServerXMLHTTP(ae.context), nil
 	case "MSXML2.DOMDOCUMENT", "DOMDOCUMENT", "MSXML2.DOMDOCUMENT.6.0", "MSXML2.DOMDOCUMENT.3.0", "MICROSOFT.XMLDOM":
 		return NewDOMDocument(ae.context), nil
@@ -1985,6 +2067,12 @@ func (ae *ASPExecutor) CreateObject(objType string) (interface{}, error) {
 	// WScript Objects
 	case "WSCRIPT.SHELL", "SHELL", "WSCRIPT":
 		return NewWScriptShell(ae.context), nil
+
+	// Chilkat Objects
+	case "CHILKAT_9_5_0.GLOBAL", "CHILKAT.GLOBAL":
+		return NewChilkatGlobal(ae.context), nil
+	case "CHILKAT_9_5_0.HTTP", "CHILKAT.HTTP":
+		return NewChilkatHttp(ae.context), nil
 
 	default:
 		comObj, err := NewCOMObject(originalObjType)
@@ -4445,9 +4533,15 @@ func (v *ASPVisitor) resolveCall(objectExpr ast.Expression, arguments []ast.Expr
 	}
 
 	// Handle Collection access (Request.QueryString("key"), Request.Form("key"), etc.)
+	// Returns RequestFieldResult to support .Count property (e.g. Request.Form("key").Count)
 	if collection, ok := base.(*Collection); ok && len(args) > 0 {
 		key := fmt.Sprintf("%v", args[0])
-		return collection.Get(key), nil
+		val := collection.Get(key)
+		count := 0
+		if _, isEmpty := val.(EmptyValue); !isEmpty {
+			count = 1
+		}
+		return &RequestFieldResult{Value: val, count: count}, nil
 	}
 
 	// Handle SessionObject index access (Session("key"))
@@ -5028,6 +5122,21 @@ func negateValue(val interface{}) interface{} {
 
 // performBinaryOperation performs a binary operation
 func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mode ast.OptionCompareMode) (interface{}, error) {
+	// Unwrap value-wrapper ASPObjects (e.g. RequestFieldResult, Field)
+	// so that binary operators see the underlying value for type assertions like .(string)
+	if rfr, ok := left.(*RequestFieldResult); ok {
+		left = rfr.Value
+	}
+	if rfr, ok := right.(*RequestFieldResult); ok {
+		right = rfr.Value
+	}
+	if f, ok := left.(*Field); ok {
+		left = f.Value
+	}
+	if f, ok := right.(*Field); ok {
+		right = f.Value
+	}
+
 	// VBScript: if either operand is Null, most operations yield Null (no runtime error)
 	if op != ast.BinaryOperationIs {
 		if isNullValue(left) || isNullValue(right) {
@@ -5193,6 +5302,20 @@ func performBinaryOperation(op ast.BinaryOperation, left, right interface{}, mod
 
 // compareEqual compares two values for equality with VBScript rules
 func compareEqual(left, right interface{}, mode ast.OptionCompareMode) bool {
+	// Unwrap value-wrapper ASPObjects (e.g. RequestFieldResult, Field)
+	if rfr, ok := left.(*RequestFieldResult); ok {
+		left = rfr.Value
+	}
+	if rfr, ok := right.(*RequestFieldResult); ok {
+		right = rfr.Value
+	}
+	if f, ok := left.(*Field); ok {
+		left = f.Value
+	}
+	if f, ok := right.(*Field); ok {
+		right = f.Value
+	}
+
 	// Normalize nil to EmptyValue for consistent comparison
 	// In VBScript, Empty = "" → True, Empty = 0 → True, Empty = False → True
 	if left == nil {
@@ -5260,6 +5383,20 @@ func compareEqual(left, right interface{}, mode ast.OptionCompareMode) bool {
 
 // compareLess compares if left is less than right with VBScript rules
 func compareLess(left, right interface{}, mode ast.OptionCompareMode) bool {
+	// Unwrap value-wrapper ASPObjects (e.g. RequestFieldResult, Field)
+	if rfr, ok := left.(*RequestFieldResult); ok {
+		left = rfr.Value
+	}
+	if rfr, ok := right.(*RequestFieldResult); ok {
+		right = rfr.Value
+	}
+	if f, ok := left.(*Field); ok {
+		left = f.Value
+	}
+	if f, ok := right.(*Field); ok {
+		right = f.Value
+	}
+
 	if ls, ok := left.(string); ok {
 		if rs, ok2 := right.(string); ok2 {
 			return compareStrings(ls, rs, mode) < 0
@@ -5351,11 +5488,13 @@ func populateRequestData(req *RequestObject, r *http.Request, ctx *ExecutionCont
 	// IMPORTANT: Read and preserve the body BEFORE ParseForm consumes it
 	// This is needed because Classic ASP scripts may use Request.BinaryRead to read raw body
 	var bodyBytes []byte
-	if r.Body != nil && r.ContentLength > 0 {
+	if r.Body != nil {
 		bodyBytes, _ = io.ReadAll(r.Body)
 		r.Body.Close()
-		// Restore body for ParseForm AND for potential BinaryRead later
-		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		if len(bodyBytes) > 0 {
+			// Restore body for ParseForm AND for potential BinaryRead later
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		}
 	}
 
 	// Set the HTTP request for BinaryRead support
