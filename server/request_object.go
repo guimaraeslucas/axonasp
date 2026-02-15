@@ -29,6 +29,48 @@ import (
 	"sync"
 )
 
+// RequestFieldResult wraps the result of Request("key") to support .count property.
+// In Classic ASP, Request("key") returns an object that supports .count to check
+// whether the parameter was submitted. This wrapper enables that pattern while
+// still behaving as a string value in other contexts (via GetProperty("value")).
+type RequestFieldResult struct {
+	Value interface{} // The actual value (string or EmptyValue)
+	count int         // Number of values for this key (0 or 1)
+}
+
+func (r *RequestFieldResult) GetName() string {
+	return "RequestFieldResult"
+}
+
+func (r *RequestFieldResult) GetProperty(name string) interface{} {
+	switch strings.ToLower(name) {
+	case "count":
+		return r.count
+	case "value":
+		return r.Value
+	}
+	return nil
+}
+
+func (r *RequestFieldResult) SetProperty(name string, value interface{}) error {
+	return nil
+}
+
+func (r *RequestFieldResult) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return nil, nil
+}
+
+// collectionFieldResult wraps a Collection.Get(key) result as a RequestFieldResult
+// to support .Count property access (e.g. Request.Form("key").Count)
+func collectionFieldResult(c *Collection, key string) *RequestFieldResult {
+	val := c.Get(key)
+	count := 0
+	if _, isEmpty := val.(EmptyValue); !isEmpty {
+		count = 1
+	}
+	return &RequestFieldResult{Value: val, count: count}
+}
+
 // Collection represents a collection object in ASP (QueryString, Form, etc.)
 // Supports indexed access and iteration like the real ASP collections
 type Collection struct {
@@ -141,11 +183,12 @@ func (c *Collection) CallMethod(name string, args ...interface{}) (interface{}, 
 		nameLower == "clientcertificate" {
 		if len(args) > 0 {
 			key := fmt.Sprintf("%v", args[0])
-			// If index is integer, it might be numeric index (1-based in ASP?)
-			// ASP Request collections allow string keys or numeric index.
-			// Our Collection only supports string keys effectively.
-			// But lets support string keys.
-			return c.Get(key), nil
+			val := c.Get(key)
+			count := 0
+			if _, isEmpty := val.(EmptyValue); !isEmpty {
+				count = 1
+			}
+			return &RequestFieldResult{Value: val, count: count}, nil
 		}
 	}
 
@@ -256,45 +299,45 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 			// Return the collection itself for iteration
 			return r.QueryString, nil
 		}
-		// Return specific value
+		// Return RequestFieldResult to support .Count property
 		key := fmt.Sprintf("%v", args[0])
-		return r.QueryString.Get(key), nil
+		return collectionFieldResult(r.QueryString, key), nil
 
 	case "form":
 		if len(args) == 0 {
 			// Return the collection itself for iteration
 			return r.Form, nil
 		}
-		// Return specific value
+		// Return RequestFieldResult to support .Count property
 		key := fmt.Sprintf("%v", args[0])
-		return r.Form.Get(key), nil
+		return collectionFieldResult(r.Form, key), nil
 
 	case "cookies":
 		if len(args) == 0 {
 			// Return the collection itself for iteration
 			return r.Cookies, nil
 		}
-		// Return specific value
+		// Return RequestFieldResult to support .Count property
 		key := fmt.Sprintf("%v", args[0])
-		return r.Cookies.Get(key), nil
+		return collectionFieldResult(r.Cookies, key), nil
 
 	case "servervariables":
 		if len(args) == 0 {
 			// Return the collection itself for iteration
 			return r.ServerVariables, nil
 		}
-		// Return specific value
+		// Return RequestFieldResult to support .Count property
 		key := fmt.Sprintf("%v", args[0])
-		return r.ServerVariables.Get(key), nil
+		return collectionFieldResult(r.ServerVariables, key), nil
 
 	case "clientcertificate":
 		if len(args) == 0 {
 			// Return the collection itself for iteration
 			return r.ClientCertificate, nil
 		}
-		// Return specific value
+		// Return RequestFieldResult to support .Count property
 		key := fmt.Sprintf("%v", args[0])
-		return r.ClientCertificate.Get(key), nil
+		return collectionFieldResult(r.ClientCertificate, key), nil
 
 	case "binaryread":
 		// BinaryRead(count) - reads binary data from request body
@@ -321,71 +364,41 @@ func (r *RequestObject) CallMethod(name string, args ...interface{}) (interface{
 	default:
 		// VBScript/ASP default Request("key") dispatch can arrive as CallMethod("key")
 		// with no args depending on parser/executor path.
+		// Returns RequestFieldResult to support .count property access.
 		if nameLower != "" && len(args) == 0 {
 			key := name
-
-			// 1. QueryString
-			if r.QueryString.Exists(key) {
-				return r.QueryString.Get(key), nil
-			}
-
-			// 2. Form
-			if r.Form.Exists(key) {
-				return r.Form.Get(key), nil
-			}
-
-			// 3. Cookies
-			if r.Cookies.Exists(key) {
-				return r.Cookies.Get(key), nil
-			}
-
-			// 4. ClientCertificate
-			if r.ClientCertificate.Exists(key) {
-				return r.ClientCertificate.Get(key), nil
-			}
-
-			// 5. ServerVariables
-			if r.ServerVariables.Exists(key) {
-				return r.ServerVariables.Get(key), nil
-			}
-
-			return EmptyValue{}, nil
+			return r.lookupField(key), nil
 		}
 
 		// Default lookup order: QueryString, Form, Cookies, ClientCertificate, ServerVariables
 		if nameLower == "" && len(args) > 0 {
 			key := fmt.Sprintf("%v", args[0])
-
-			// 1. QueryString
-			if r.QueryString.Exists(key) {
-				return r.QueryString.Get(key), nil
-			}
-
-			// 2. Form
-			if r.Form.Exists(key) {
-				return r.Form.Get(key), nil
-			}
-
-			// 3. Cookies
-			if r.Cookies.Exists(key) {
-				return r.Cookies.Get(key), nil
-			}
-
-			// 4. ClientCertificate
-			if r.ClientCertificate.Exists(key) {
-				return r.ClientCertificate.Get(key), nil
-			}
-
-			// 5. ServerVariables
-			if r.ServerVariables.Exists(key) {
-				return r.ServerVariables.Get(key), nil
-			}
-
-			// Not found returns nil (which prints as empty string or Empty)
-			return EmptyValue{}, nil
+			return r.lookupField(key), nil
 		}
-		return nil, nil
+		return &RequestFieldResult{Value: EmptyValue{}, count: 0}, nil
 	}
+}
+
+// lookupField searches all Request collections for a key and returns a
+// RequestFieldResult with count=1 if found, count=0 if not.
+func (r *RequestObject) lookupField(key string) *RequestFieldResult {
+	// Search order: QueryString, Form, Cookies, ClientCertificate, ServerVariables
+	if r.QueryString.Exists(key) {
+		return &RequestFieldResult{Value: r.QueryString.Get(key), count: 1}
+	}
+	if r.Form.Exists(key) {
+		return &RequestFieldResult{Value: r.Form.Get(key), count: 1}
+	}
+	if r.Cookies.Exists(key) {
+		return &RequestFieldResult{Value: r.Cookies.Get(key), count: 1}
+	}
+	if r.ClientCertificate.Exists(key) {
+		return &RequestFieldResult{Value: r.ClientCertificate.Get(key), count: 1}
+	}
+	if r.ServerVariables.Exists(key) {
+		return &RequestFieldResult{Value: r.ServerVariables.Get(key), count: 1}
+	}
+	return &RequestFieldResult{Value: EmptyValue{}, count: 0}
 }
 
 // ==================== METHODS ====================
@@ -492,12 +505,10 @@ func (r *RequestObject) SetHTTPRequest(req *http.Request) {
 
 	r.httpRequest = req
 
-	// Set TotalBytes from Content-Length header
-	if req != nil {
+	// Set TotalBytes from Content-Length header (only when known/positive).
+	// PreloadBody() will set the correct value from actual data length.
+	if req != nil && req.ContentLength > 0 {
 		r.totalBytes = req.ContentLength
-		if r.totalBytes < 0 {
-			r.totalBytes = 0
-		}
 	}
 }
 
