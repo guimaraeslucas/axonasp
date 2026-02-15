@@ -354,13 +354,13 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 		}
 		if len(args) < 1 {
 			c.raiseError("Invalid parameters")
-			return nil
+			return NewADORecordset(c.ctx)
 		}
 
 		// Check if connection is open
 		if c.db == nil && c.oleConnection == nil {
 			c.raiseError("Connection not open")
-			return nil
+			return NewADORecordset(c.ctx)
 		}
 
 		cmdText := toString(args[0])
@@ -395,7 +395,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 						logSQLTrace(c.ctx, "query", cmdText, params, c.dbDriver, err)
 					}
 					c.raiseError(err.Error())
-					return nil
+					return rs
 				}
 				return rs
 			}
@@ -406,7 +406,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 					logSQLTrace(c.ctx, "exec", cmdText, params, c.dbDriver, err)
 				}
 				c.raiseError(err.Error())
-				return nil
+				return NewADORecordset(c.ctx)
 			}
 			affected, _ := result.RowsAffected()
 			return int(affected)
@@ -424,7 +424,7 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 					logSQLTrace(c.ctx, "ole-execute", cmdText, nil, "ole", err)
 				}
 				c.raiseError(err.Error())
-				return nil
+				return NewADORecordset(c.ctx)
 			}
 
 			if result != nil {
@@ -444,10 +444,10 @@ func (c *ADODBConnection) CallMethod(name string, args ...interface{}) interface
 					return rs
 				}
 			}
-			return nil
+			return NewADORecordset(c.ctx)
 		}
 
-		return nil
+		return NewADORecordset(c.ctx)
 
 	case "begintrans":
 		if c.db == nil {
@@ -568,7 +568,12 @@ func (c *ADODBConnection) execStatement(sqlText string, params []interface{}) (s
 		return nil, fmt.Errorf("connection not open")
 	}
 
-	prepared := rewritePlaceholders(sqlText, c.dbDriver)
+	// Only rewrite placeholders when there are no positional params —
+	// if params are provided, keep ? placeholders so database/sql binds them correctly.
+	prepared := sqlText
+	if len(params) == 0 {
+		prepared = rewritePlaceholders(sqlText, c.dbDriver)
+	}
 	if shouldTraceSQL() {
 		logSQLTrace(c.ctx, "exec", prepared, params, c.dbDriver, nil)
 	}
@@ -971,6 +976,16 @@ func isQueryStatement(sqlText string) bool {
 	for _, prefix := range []string{"select", "with", "show", "pragma", "describe", "exec", "execute", "call"} {
 		if strings.HasPrefix(trimmed, prefix) {
 			return true
+		}
+	}
+	// Check batch SQL (e.g. "SET NOCOUNT ON;INSERT...;SELECT @@IDENTITY;SET NOCOUNT OFF")
+	// If any statement in the batch is a SELECT, the batch returns a recordset.
+	if strings.Contains(trimmed, ";") {
+		for _, stmt := range strings.Split(trimmed, ";") {
+			s := strings.TrimSpace(stmt)
+			if strings.HasPrefix(s, "select") || strings.HasPrefix(s, "with") {
+				return true
+			}
 		}
 	}
 	return false
@@ -1386,8 +1401,32 @@ func (f *Field) SetProperty(name string, value interface{}) error {
 }
 
 func (f *Field) CallMethod(name string, args ...interface{}) (interface{}, error) {
-	// Default method returns value
-	if strings.ToLower(name) == "" {
+	switch strings.ToLower(name) {
+	case "":
+		return f.Value, nil
+	case "appendchunk":
+		// AppendChunk appends binary data to the field value
+		if len(args) < 1 {
+			return nil, nil
+		}
+		data := args[0]
+		if f.Value == nil {
+			f.Value = data
+		} else {
+			// Concatenate binary data preserving []byte type
+			existing := toBinaryBytes(f.Value)
+			incoming := toBinaryBytes(data)
+			result := make([]byte, len(existing)+len(incoming))
+			copy(result, existing)
+			copy(result[len(existing):], incoming)
+			f.Value = result
+		}
+		return nil, nil
+	case "getchunk":
+		// GetChunk retrieves a portion of binary data from the field
+		if f.Value == nil {
+			return nil, nil
+		}
 		return f.Value, nil
 	}
 	return nil, nil
@@ -1523,6 +1562,17 @@ func (fc *FieldsCollection) CallMethod(name string, args ...interface{}) (interf
 	switch nameLower {
 	case "count":
 		return len(fc.fields), nil
+	case "append":
+		// Fields.Append Name, Type, [DefinedSize], [Attribs]
+		// Used for disconnected recordsets
+		if len(args) < 2 {
+			return nil, nil
+		}
+		fieldName := fmt.Sprintf("%v", args[0])
+		field := &Field{Name: fieldName, Value: nil}
+		fc.fields = append(fc.fields, field)
+		fc.data[strings.ToLower(fieldName)] = nil
+		return nil, nil
 	}
 	return nil, nil
 }
@@ -1704,6 +1754,14 @@ func (rs *ADODBRecordset) SetProperty(name string, value interface{}) {
 		// If in AddNew mode
 		if rs.newData != nil {
 			rs.newData[nameLower] = value
+			// Also update the Field object in the Fields collection
+			for _, f := range rs.Fields.fields {
+				if strings.ToLower(f.Name) == nameLower {
+					f.Value = value
+					break
+				}
+			}
+			rs.Fields.data[nameLower] = value
 			return
 		}
 
@@ -1746,14 +1804,14 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 		return rs.oleRecordset.CallMethod(name, args...)
 	}
 
-	// Handle default method (empty name) - returns field VALUE, not Field object
+	// Handle default method (empty name) - returns Field object so that
+	// rs("field").Value and rs("field").Name work correctly.
 	if method == "" && len(args) > 0 {
-		// Get the field by name or index and return its value
 		field, _ := rs.Fields.CallMethod("item", args...)
 		if f, ok := field.(*Field); ok {
-			return f.Value
+			return f
 		}
-		return field // In case it's already a value
+		return field
 	}
 
 	switch method {
@@ -1769,7 +1827,20 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 
 	case "open":
 		// Open(Source, [ActiveConnection], [CursorType], [LockType], [Options])
-		if len(args) < 1 {
+		// Disconnected recordset: Open with no args or no connection after Fields.Append
+		if len(args) < 1 || (len(args) >= 1 && fmt.Sprintf("%v", args[0]) == "") {
+			// Disconnected recordset mode - fields already added via Fields.Append
+			if len(rs.Fields.fields) > 0 {
+				rs.State = 1
+				rs.EOF = true
+				rs.BOF = true
+				rs.allData = make([]map[string]interface{}, 0)
+				rs.originalData = make([]map[string]interface{}, 0)
+				rs.columns = make([]string, 0, len(rs.Fields.fields))
+				for _, f := range rs.Fields.fields {
+					rs.columns = append(rs.columns, f.Name)
+				}
+			}
 			return nil
 		}
 		sql := fmt.Sprintf("%v", args[0])
@@ -1968,12 +2039,42 @@ func (rs *ADODBRecordset) CallMethod(name string, args ...interface{}) interface
 				}
 			}
 		}
+		// Populate Fields collection from known columns so field access works
+		// during AddNew, even on an empty recordset (0 rows).
+		if len(rs.Fields.fields) == 0 && len(rs.columns) > 0 {
+			for _, col := range rs.columns {
+				colLower := strings.ToLower(col)
+				val := rs.newData[colLower] // nil if not pre-set
+				rs.Fields.fields = append(rs.Fields.fields, &Field{Name: col, Value: val})
+				rs.Fields.data[colLower] = val
+			}
+		}
 		return nil
 
 	case "update":
 		if len(args) >= 2 {
 			rs.SetProperty(fmt.Sprintf("%v", args[0]), args[1])
 		}
+
+		// Sync Field values back to newData/currentData.
+		// ASP code often uses rs.Fields("col").Value = val which updates the Field
+		// object directly but not the underlying data maps.
+		if rs.newData != nil {
+			for _, f := range rs.Fields.fields {
+				if f.Value != nil {
+					rs.newData[strings.ToLower(f.Name)] = f.Value
+				}
+			}
+		} else if rs.CurrentRow >= 0 && rs.CurrentRow < len(rs.allData) {
+			for _, f := range rs.Fields.fields {
+				nameLower := strings.ToLower(f.Name)
+				rs.allData[rs.CurrentRow][nameLower] = f.Value
+				if rs.currentData != nil {
+					rs.currentData[nameLower] = f.Value
+				}
+			}
+		}
+
 		// Handle DB persistence
 		if rs.db != nil && rs.Source != "" {
 			rs.performSQLUpdate()
@@ -2116,10 +2217,20 @@ func (rs *ADODBRecordset) openRecordsetWithParams(sqlStr string, conn *ADODBConn
 	rs.allData = make([]map[string]interface{}, 0)
 	rs.originalData = make([]map[string]interface{}, 0)
 
-	// Get column names
+	// Get column names — for batch SQL (e.g. SET NOCOUNT ON;INSERT...;SELECT @@IDENTITY),
+	// the first result set may be empty. Advance to the next result set that has columns.
 	cols, err := rows.Columns()
 	if err != nil {
 		return err
+	}
+	for len(cols) == 0 {
+		if !rows.NextResultSet() {
+			break
+		}
+		cols, err = rows.Columns()
+		if err != nil {
+			return err
+		}
 	}
 	rs.columns = cols
 
@@ -2137,7 +2248,12 @@ func (rs *ADODBRecordset) openRecordsetWithParams(sqlStr string, conn *ADODBConn
 
 		row := make(map[string]interface{})
 		for i, col := range cols {
-			row[strings.ToLower(col)] = values[i]
+			val := values[i]
+			// Normalize []byte from SQL drivers (e.g. MSSQL returns decimal/numeric as []byte)
+			if b, ok := val.([]byte); ok {
+				val = string(b)
+			}
+			row[strings.ToLower(col)] = val
 		}
 		rs.allData = append(rs.allData, row)
 		rs.originalData = append(rs.originalData, cloneRow(row))
@@ -2929,11 +3045,6 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 		return
 	}
 
-	driver := ""
-	if rs.dbConn != nil {
-		driver = rs.dbConn.dbDriver
-	}
-
 	if rs.newData != nil {
 		// INSERT
 		var cols []string
@@ -2954,7 +3065,8 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 			tableName,
 			strings.Join(cols, ", "),
 			strings.Join(placeholders, ", "))
-		query = rewritePlaceholders(query, driver)
+		// Do NOT rewrite placeholders here — execStatement() does it internally,
+		// and rs.db.Exec() handles ? natively for all drivers.
 
 		var result sql.Result
 		var err error
@@ -2965,6 +3077,7 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 		}
 
 		if err != nil {
+			fmt.Printf("[ADODB] INSERT error on %s: %s\n", tableName, err.Error())
 			if rs.ctx != nil && rs.ctx.Err != nil {
 				rs.ctx.Err.SetError(err)
 			}
@@ -3035,7 +3148,8 @@ func (rs *ADODBRecordset) performSQLUpdate() {
 		values = append(values, whereParams...)
 
 		query := fmt.Sprintf("UPDATE %s SET %s %s", tableName, strings.Join(sets, ", "), whereClause)
-		query = rewritePlaceholders(query, driver)
+		// Do NOT rewrite placeholders here — execStatement() does it internally,
+		// and rs.db.Exec() handles ? natively for all drivers.
 
 		var err error
 		if rs.dbConn != nil {
