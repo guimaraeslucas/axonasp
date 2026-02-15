@@ -148,7 +148,7 @@ func MailHelper(method string, args []string, ctx *ExecutionContext) interface{}
 	return lib.CallMethod(method, ifaceArgs)
 }
 
-func sendMailInternal(host string, port int, username, password, from, to, subject, body string, isHtml bool) interface{} {
+func sendMailInternal(host string, port int, username, password, from, to, subject, body string, isHtml bool, attachments ...string) interface{} {
 	m := gomail.NewMessage()
 	m.SetHeader("From", from)
 	m.SetHeader("To", to)
@@ -158,6 +158,12 @@ func sendMailInternal(host string, port int, username, password, from, to, subje
 		m.SetBody("text/html", body)
 	} else {
 		m.SetBody("text/plain", body)
+	}
+
+	for _, path := range attachments {
+		if path != "" {
+			m.Attach(path)
+		}
 	}
 
 	d := gomail.NewDialer(host, port, username, password)
@@ -188,20 +194,22 @@ func getSMTPConfigFromEnv() (host string, port int, username, password, from str
 }
 
 type LegacyMailMessage struct {
-	ctx      *ExecutionContext
-	objName  string
-	host     string
-	port     int
-	username string
-	password string
-	from     string
-	fromName string
-	to       []string
-	cc       []string
-	bcc      []string
-	subject  string
-	body     string
-	isHTML   bool
+	ctx           *ExecutionContext
+	objName       string
+	host          string
+	port          int
+	username      string
+	password      string
+	from          string
+	fromName      string
+	to            []string
+	cc            []string
+	bcc           []string
+	subject       string
+	body          string
+	isHTML        bool
+	attachments   []string
+	configuration *CDOConfiguration
 }
 
 func newLegacyMailMessage(ctx *ExecutionContext, objName string) *LegacyMailMessage {
@@ -258,6 +266,11 @@ func (m *LegacyMailMessage) GetProperty(name string) interface{} {
 			return 1
 		}
 		return m.isHTML
+	case "configuration":
+		if m.configuration == nil {
+			m.configuration = NewCDOConfiguration(m)
+		}
+		return m.configuration
 	}
 	return nil
 }
@@ -326,6 +339,14 @@ func (m *LegacyMailMessage) CallMethod(name string, args ...interface{}) interfa
 		return true
 	case "send":
 		return m.send(args...)
+	case "addattachment":
+		if len(args) > 0 {
+			path := strings.TrimSpace(fmt.Sprintf("%v", args[0]))
+			if path != "" {
+				m.attachments = append(m.attachments, path)
+			}
+		}
+		return true
 	case "clear":
 		m.to = []string{}
 		m.cc = []string{}
@@ -333,6 +354,7 @@ func (m *LegacyMailMessage) CallMethod(name string, args ...interface{}) interfa
 		m.subject = ""
 		m.body = ""
 		m.isHTML = false
+		m.attachments = nil
 		return true
 	}
 	return nil
@@ -382,7 +404,111 @@ func (m *LegacyMailMessage) send(args ...interface{}) interface{} {
 	}
 
 	to := strings.Join(allRecipients, ",")
-	return sendMailInternal(host, port, username, password, from, to, m.subject, m.body, m.isHTML)
+	return sendMailInternal(host, port, username, password, from, to, m.subject, m.body, m.isHTML, m.attachments...)
+}
+
+// CDOConfiguration mimics the CDO.Message.Configuration sub-object.
+type CDOConfiguration struct {
+	parent *LegacyMailMessage
+	fields *CDOFields
+}
+
+func NewCDOConfiguration(parent *LegacyMailMessage) *CDOConfiguration {
+	cfg := &CDOConfiguration{parent: parent}
+	cfg.fields = &CDOFields{
+		parent: parent,
+		values: make(map[string]string),
+	}
+	return cfg
+}
+
+func (c *CDOConfiguration) GetProperty(name string) interface{} {
+	if strings.ToLower(name) == "fields" {
+		return c.fields
+	}
+	return nil
+}
+
+func (c *CDOConfiguration) SetProperty(name string, value interface{}) {
+	// No settable properties on Configuration itself
+}
+
+func (c *CDOConfiguration) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return nil, nil
+}
+
+// CDOFields holds URL→value pairs for CDO schema configuration.
+type CDOFields struct {
+	parent *LegacyMailMessage
+	values map[string]string
+}
+
+func (f *CDOFields) GetProperty(name string) interface{} {
+	return nil
+}
+
+func (f *CDOFields) SetProperty(name string, value interface{}) {
+	// No direct settable properties
+}
+
+func (f *CDOFields) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	switch strings.ToLower(name) {
+	case "item":
+		if len(args) < 1 {
+			return nil, nil
+		}
+		key := fmt.Sprintf("%v", args[0])
+		return &CDOFieldItem{fields: f, key: key}, nil
+	case "update":
+		f.applyToParent()
+		return nil, nil
+	}
+	return nil, nil
+}
+
+func (f *CDOFields) applyToParent() {
+	for url, val := range f.values {
+		suffix := strings.ToLower(url)
+		// Extract the last path segment from the schema URL
+		if idx := strings.LastIndex(suffix, "/"); idx >= 0 {
+			suffix = suffix[idx+1:]
+		}
+		switch suffix {
+		case "smtpserver":
+			f.parent.host = strings.TrimSpace(val)
+		case "smtpserverport":
+			f.parent.port = toInt(val)
+		case "sendusername":
+			f.parent.username = strings.TrimSpace(val)
+		case "sendpassword":
+			f.parent.password = val
+		case "sendusing", "smtpusessl", "smtpconnectiontimeout", "smtpauthenticate":
+			// Accepted but not acted on
+		}
+	}
+}
+
+// CDOFieldItem is a proxy for a single CDO Configuration field.
+type CDOFieldItem struct {
+	fields *CDOFields
+	key    string
+}
+
+func (fi *CDOFieldItem) GetProperty(name string) interface{} {
+	if strings.ToLower(name) == "value" {
+		return fi.fields.values[fi.key]
+	}
+	return nil
+}
+
+func (fi *CDOFieldItem) SetProperty(name string, value interface{}) {
+	if strings.ToLower(name) == "value" {
+		fi.fields.values[fi.key] = fmt.Sprintf("%v", value)
+	}
+}
+
+func (fi *CDOFieldItem) CallMethod(name string, args ...interface{}) (interface{}, error) {
+	return nil, nil
 }
 
 func parseAddressList(value string) []string {
