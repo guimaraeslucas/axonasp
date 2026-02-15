@@ -713,6 +713,10 @@ func (l *Lexer) nextComment() Token {
 		if c == '\'' {
 			l.Index++
 			return l.nextCommentBody(1, false)
+		} else if c == '/' && l.getChar(l.Index+1) == '/' {
+			// Handle JavaScript-style // comments (common in real-world Classic ASP code)
+			l.Index += 2
+			return l.nextCommentBody(2, false)
 		} else if CharEquals(c, 'r') {
 			c2 := l.getChar(l.Index + 1)
 			c3 := l.getChar(l.Index + 2)

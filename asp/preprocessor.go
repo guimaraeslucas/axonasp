@@ -35,6 +35,10 @@ import (
 // Case insensitive, handles whitespace
 var includeRegex = regexp.MustCompile(`(?i)<!--\s*#include\s+(file|virtual)\s*=\s*"([^"]+)"\s*-->`)
 
+// METADATA directive regex: <!--METADATA TYPE="TypeLib" ... -->
+// IIS uses these to import type library constants; we strip them since constants are built-in.
+var metadataRegex = regexp.MustCompile(`(?is)<!--\s*METADATA\s+[^>]*?-->`)
+
 // ReadFile reads a file from the file system
 func ReadFile(path string) ([]byte, error) {
 	return os.ReadFile(path)
@@ -69,6 +73,9 @@ func ResolveIncludes(content, currentFile, rootDir string, visited map[string]bo
 	}
 	visited[currentFile] = true
 	defer delete(visited, currentFile) // Allow re-visiting in other branches, but usually includes are one-pass
+
+	// Strip <!--METADATA --> directives (IIS type library references)
+	content = metadataRegex.ReplaceAllString(content, "")
 
 	// Find all matches
 	matches := includeRegex.FindAllStringSubmatchIndex(content, -1)

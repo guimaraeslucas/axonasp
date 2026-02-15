@@ -119,6 +119,23 @@ func (s *MsXML2ServerXMLHTTP) CallMethod(name string, args ...interface{}) (inte
 		return s.getResponseHeader(args), nil
 	case "getallresponseheaders":
 		return s.getAllResponseHeaders(), nil
+	case "settimeouts":
+		// SetTimeouts(resolveTimeout, connectTimeout, sendTimeout, receiveTimeout) — all in ms
+		// Use the largest value as the HTTP client timeout
+		var maxMs int
+		for i := 0; i < len(args) && i < 4; i++ {
+			ms := toInt(args[i])
+			if ms > maxMs {
+				maxMs = ms
+			}
+		}
+		if maxMs > 0 {
+			s.timeout = time.Duration(maxMs) * time.Millisecond
+		}
+		return nil, nil
+	case "waitforresponse":
+		// No-op — synchronous requests already block until complete
+		return true, nil
 	}
 	return nil, nil
 }
