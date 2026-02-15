@@ -103,7 +103,7 @@ func (r *ResponseObject) CallMethod(name string, args ...interface{}) (interface
 		return nil, fmt.Errorf("RESPONSE_END")
 	case "redirect":
 		if len(args) > 0 {
-			if err := r.Redirect(fmt.Sprintf("%v", args[0])); err != nil {
+			if err := r.Redirect(toString(args[0])); err != nil {
 				return nil, err
 			}
 			return nil, fmt.Errorf("RESPONSE_END")
@@ -274,6 +274,26 @@ func (r *ResponseObject) Redirect(url string) error {
 
 	// Clear buffer before redirect
 	r.buffer = make([]byte, 0)
+
+	// Flush cookies and custom headers before writing the redirect status
+	for name, value := range r.headers {
+		r.httpWriter.Header().Set(name, value)
+	}
+	for _, cookie := range r.cookiesMap {
+		httpCookie := &http.Cookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Path:     cookie.Path,
+			Domain:   cookie.Domain,
+			Expires:  cookie.Expires,
+			Secure:   cookie.Secure,
+			HttpOnly: cookie.HttpOnly,
+		}
+		if cookie.Path == "" {
+			httpCookie.Path = "/"
+		}
+		http.SetCookie(r.httpWriter, httpCookie)
+	}
 
 	// Set redirect header
 	r.httpWriter.Header().Set("Location", url)
