@@ -14,3 +14,14 @@
 Thumbs.db
 axonasp.exe~
 .vscode/
+
+# Build artifacts
+axonasp
+axonasp_4051
+
+# Runtime data
+server/temp/
+
+# Local config
+.env
+CLAUDE.md
