@@ -304,7 +304,7 @@ func (c *ADODBConnection) SetProperty(name string, value interface{}) {
 	switch strings.ToLower(name) {
 	case "connectionstring":
 		c.ConnectionString = fmt.Sprintf("%v", value)
-		fmt.Printf("ADODB.Connection ConnectionString set to: %s\n", c.ConnectionString)
+		//fmt.Printf("ADODB.Connection ConnectionString set to: %s\n", c.ConnectionString)
 	case "mode":
 		c.Mode = toInt(value)
 	}

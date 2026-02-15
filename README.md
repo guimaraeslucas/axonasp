@@ -34,6 +34,7 @@ Say goodbye to Windows-only hosting and IIS dependencies. G3Pix AxonASP empowers
 - **🛠️ Extended Functionality**: 60+ custom functions inspired by PHP for enhanced productivity
 - **📦 Full COM Support**: ADODB (with Access database support), MSXML2, Scripting objects, WScript.Shell, ADOX
 - **🗄️ Database Support**: SQLite, MySQL, PostgreSQL, MS SQL Server, Microsoft Access (Windows)
+- **⚙️ Database Conversion Tool**: Built-in wizard to migrate Access databases to modern formats
 - **⚙️ Dual Deployment**: Standalone server or FastCGI mode for nginx/Apache/IIS integration
 - **🔌 IIS Compatibility**: web.config support for URL rewriting, redirects, and custom error pages
 - **🚀 Production Ready**: Session management, Application state, Global.asa events, graceful shutdown
@@ -611,6 +612,16 @@ winDir = shell.ExpandEnvironmentStrings("%WINDIR%")
 
 **📖 WScript.Shell documentation**: [docs/WSCRIPT_SHELL_IMPLEMENTATION.md](docs/WSCRIPT_SHELL_IMPLEMENTATION.md)
 
+#### Database Conversion Tool
+
+AxonASP includes a built-in wizard to help you migrate legacy Microsoft Access databases to modern formats:
+
+- **Supported Targets**: SQLite, MySQL, PostgreSQL, MS SQL Server
+- **Features**: Automatic schema mapping, asynchronous processing, transaction-based data migration
+- **Access URL**: `http://localhost:4050/database-convert/`
+
+**📖 Database Conversion Tool Guide**: [docs/DATABASE_CONVERSION_TOOL.md](docs/DATABASE_CONVERSION_TOOL.md)
+
 ### Custom G3 Libraries
 
 G3Pix AxonASP extends Classic ASP with modern functionality through custom libraries:
@@ -1036,6 +1047,7 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 - [X] Scripting.FileSystemObject and Dictionary
 - [X] WScript.Shell for system integration
 - [X] ADOX for database schema management
+- [X] Database Conversion Tool (Access to SQLite/MySQL/PG/MSSQL)
 - [X] 60+ custom functions (Ax* functions)
 - [X] Image creation
 - [X] ZIP support
