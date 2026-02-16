@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>G3pix AxonASP REST API - Interactive Testing Console</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 10px 0; font-size: 28px; }
+    header p { margin: 0; opacity: 0.9; }
+    .content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      min-height: 600px;
+    }
+    .left-panel {
+      padding: 30px;
+      border-right: 1px solid #e0e0e0;
+      overflow-y: auto;
+    }
+    .right-panel {
+      padding: 30px;
+      background: #f5f5f5;
+      overflow-y: auto;
+    }
+    .section {
+      margin-bottom: 25px;
+    }
+    .section h2 {
+      margin-top: 0;
+      color: #667eea;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+      font-size: 18px;
+    }
+    label {
+      display: block;
+      margin: 12px 0 5px 0;
+      font-weight: bold;
+      color: #333;
+    }
+    input[type="text"],
+    input[type="number"],
+    input[type="email"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 5px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: monospace;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+      font-family: 'Courier New', monospace;
+    }
+    input:focus,
+    select:focus,
+    textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    .button-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 20px 0;
+    }
+    button {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    .btn-send {
+      background: #667eea;
+      color: white;
+      grid-column: 1 / -1;
+    }
+    .btn-send:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+    }
+    .btn-clear {
+      background: #f0f0f0;
+      color: #333;
+    }
+    .btn-clear:hover {
+      background: #e0e0e0;
+    }
+    .method-selector {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin: 12px 0;
+    }
+    .method-btn {
+      padding: 8px;
+      border: 2px solid #ddd;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+    .method-btn.get { color: #0066cc; border-color: #0066cc; }
+    .method-btn.post { color: #28a745; border-color: #28a745; }
+    .method-btn.put { color: #ffc107; border-color: #ffc107; }
+    .method-btn.delete { color: #dc3545; border-color: #dc3545; }
+    .method-btn.active {
+      background: currentColor;
+      color: white;
+    }
+    #response {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      margin-top: 15px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 400px;
+      overflow: auto;
+      display: none;
+    }
+    #response.active {
+      display: block;
+    }
+    .response-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .status-info {
+      padding: 8px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 13px;
+    }
+    .status-info.success {
+      background: #d4edda;
+      color: #155724;
+    }
+    .status-info.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .quick-templates {
+      margin: 20px 0;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 4px;
+    }
+    .quick-templates h3 {
+      margin-top: 0;
+      color: #667eea;
+      font-size: 14px;
+    }
+    .quick-btn {
+      display: inline-block;
+      padding: 6px 12px;
+      background: #e8f0fe;
+      color: #667eea;
+      border: 1px solid #667eea;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 4px 4px 4px 0;
+      font-size: 12px;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover {
+      background: #667eea;
+      color: white;
+    }
+    .format-selector {
+      margin: 15px 0;
+    }
+    .format-selector label {
+      display: inline-block;
+      margin-right: 20px;
+      font-weight: normal;
+    }
+    .format-selector input {
+      width: auto;
+      margin-right: 5px;
+    }
+    @media (max-width: 1024px) {
+      .content {
+        grid-template-columns: 1fr;
+      }
+      .left-panel {
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🚀 REST API Interactive Testing Console</h1>
+    <p>Test the G3pix AxonASP REST API with an interactive interface</p>
+  </header>
+
+  <div class="content">
+    <div class="left-panel">
+      <div class="section">
+        <h2>Request Configuration</h2>
+
+        <label>HTTP Method:</label>
+        <div class="method-selector">
+          <button class="method-btn get active" onclick="selectMethod('GET')">GET</button>
+          <button class="method-btn post" onclick="selectMethod('POST')">POST</button>
+          <button class="method-btn put" onclick="selectMethod('PUT')">PUT</button>
+          <button class="method-btn delete" onclick="selectMethod('DELETE')">DELETE</button>
+        </div>
+
+        <label>Endpoint:</label>
+        <input type="text" id="endpoint" placeholder="/rest/users" value="/rest/users?route=users">
+
+        <label>Resource ID (optional):</label>
+        <input type="text" id="resourceId" placeholder="123">
+
+        <div class="format-selector">
+          <label>
+            <input type="radio" name="format" value="json" checked> JSON
+          </label>
+          <label>
+            <input type="radio" name="format" value="html"> HTML
+          </label>
+        </div>
+      </div>
+
+      <div class="section" id="bodySection" style="display: none;">
+        <h2>Request Body</h2>
+        <textarea id="requestBody" placeholder='{"name": "John Doe", "email": "john@example.com", "role": "user"}'></textarea>
+      </div>
+
+      <div class="section">
+        <h2>Quick Templates</h2>
+        <div class="quick-templates">
+          <h3>Users</h3>
+          <button class="quick-btn" onclick="loadTemplate('users-list')">List All</button>
+          <button class="quick-btn" onclick="loadTemplate('users-get')">Get Single</button>
+          <button class="quick-btn" onclick="loadTemplate('users-create')">Create</button>
+          <button class="quick-btn" onclick="loadTemplate('users-update')">Update</button>
+          <button class="quick-btn" onclick="loadTemplate('users-delete')">Delete</button>
+        </div>
+        <div class="quick-templates">
+          <h3>Products</h3>
+          <button class="quick-btn" onclick="loadTemplate('products-list')">List All</button>
+          <button class="quick-btn" onclick="loadTemplate('products-get')">Get Single</button>
+          <button class="quick-btn" onclick="loadTemplate('products-create')">Create</button>
+        </div>
+        <div class="quick-templates">
+          <h3>Items</h3>
+          <button class="quick-btn" onclick="loadTemplate('items-list')">List All</button>
+          <button class="quick-btn" onclick="loadTemplate('items-get')">Get Single</button>
+          <button class="quick-btn" onclick="loadTemplate('items-create')">Create</button>
+        </div>
+        <div class="quick-templates">
+          <h3>Health</h3>
+          <button class="quick-btn" onclick="loadTemplate('status')">API Status</button>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button class="btn-send" onclick="sendRequest()">📤 Send Request</button>
+        <button class="btn-clear" onclick="clearAll()">🗑️ Clear All</button>
+      </div>
+    </div>
+
+    <div class="right-panel">
+      <div class="section" style="margin-top: 0;">
+        <h2>Response</h2>
+        <div id="response"></div>
+        <p style="color: #999; text-align: center; margin-top: 50px;">Response will appear here...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentMethod = 'GET';
+
+  const templates = {
+    'users-list': {
+      method: 'GET',
+      endpoint: '/rest/users?route=users',
+      body: ''
+    },
+    'users-get': {
+      method: 'GET',
+      endpoint: '/rest/users/1?route=users/1',
+      body: ''
+    },
+    'users-create': {
+      method: 'POST',
+      endpoint: '/rest/users?route=users',
+      body: JSON.stringify({
+        name: 'John Doe',
+        email: 'john@example.com',
+        role: 'user'
+      }, null, 2)
+    },
+    'users-update': {
+      method: 'PUT',
+      endpoint: '/rest/users/1?route=users/1',
+      body: JSON.stringify({
+        name: 'Jane Doe',
+        email: 'jane@example.com',
+        role: 'admin'
+      }, null, 2)
+    },
+    'users-delete': {
+      method: 'DELETE',
+      endpoint: '/rest/users/1?route=users/1',
+      body: ''
+    },
+    'products-list': {
+      method: 'GET',
+      endpoint: '/rest/products?route=products',
+      body: ''
+    },
+    'products-get': {
+      method: 'GET',
+      endpoint: '/rest/products/1?route=products/1',
+      body: ''
+    },
+    'products-create': {
+      method: 'POST',
+      endpoint: '/rest/products?route=products',
+      body: JSON.stringify({
+        name: 'New Product',
+        price: 99.99,
+        stock: 50
+      }, null, 2)
+    },
+    'items-list': {
+      method: 'GET',
+      endpoint: '/rest/items?route=items',
+      body: ''
+    },
+    'items-get': {
+      method: 'GET',
+      endpoint: '/rest/items/1?route=items/1',
+      body: ''
+    },
+    'items-create': {
+      method: 'POST',
+      endpoint: '/rest/items?route=items',
+      body: JSON.stringify({
+        name: 'New Item'
+      }, null, 2)
+    },
+    'status': {
+      method: 'GET',
+      endpoint: '/rest/status?route=status',
+      body: ''
+    }
+  };
+
+  function selectMethod(method) {
+    currentMethod = method;
+    document.querySelectorAll('.method-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+    
+    const bodySection = document.getElementById('bodySection');
+    if (method === 'GET' || method === 'DELETE') {
+      bodySection.style.display = 'none';
+    } else {
+      bodySection.style.display = 'block';
+    }
+  }
+
+  function loadTemplate(templateName) {
+    const template = templates[templateName];
+    if (!template) return;
+
+    currentMethod = template.method;
+    
+    // Update method buttons
+    document.querySelectorAll('.method-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+    document.querySelector(`.method-btn.${template.method.toLowerCase()}`).classList.add('active');
+
+    // Update endpoint
+    document.getElementById('endpoint').value = template.endpoint;
+    document.getElementById('resourceId').value = '';
+
+    // Update body
+    document.getElementById('requestBody').value = template.body;
+
+    // Update body section visibility
+    const bodySection = document.getElementById('bodySection');
+    if (template.method === 'GET' || template.method === 'DELETE') {
+      bodySection.style.display = 'none';
+    } else {
+      bodySection.style.display = 'block';
+    }
+
+    // Clear response
+    const responseDiv = document.getElementById('response');
+    responseDiv.classList.remove('active');
+  }
+
+  async function sendRequest() {
+    const endpoint = document.getElementById('endpoint').value;
+    const resourceId = document.getElementById('resourceId').value;
+    const format = document.querySelector('input[name="format"]:checked').value;
+    const requestBody = document.getElementById('requestBody').value;
+
+    // Build full URL
+    let url = endpoint;
+    if (resourceId && !endpoint.includes('route=')) {
+      url += (url.includes('?') ? '&' : '?') + 'route=' + resourceId;
+    }
+    if (!url.includes('format=')) {
+      url += (url.includes('?') ? '&' : '?') + 'format=' + format;
+    }
+
+    // Prepare fetch options
+    const options = {
+      method: currentMethod,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    };
+
+    if (currentMethod !== 'GET' && currentMethod !== 'DELETE' && requestBody) {
+      options.body = requestBody;
+    }
+
+    try {
+      const response = await fetch(url, options);
+      const text = await response.text();
+
+      displayResponse(response.status, response.statusText, text);
+    } catch (error) {
+      displayError(error.message);
+    }
+  }
+
+  function displayResponse(status, statusText, body) {
+    const responseDiv = document.getElementById('response');
+    const statusClass = status >= 200 && status < 300 ? 'success' : 'error';
+
+    // Try to pretty-print JSON
+    let displayBody = body;
+    try {
+      const json = JSON.parse(body);
+      displayBody = JSON.stringify(json, null, 2);
+    } catch (e) {
+      // Not JSON, display as-is
+    }
+
+    responseDiv.innerHTML = `
+<div class="response-header">
+  <div class="status-info ${statusClass}">
+    ${status} ${statusText}
+  </div>
+  <div style="font-size: 12px; color: #666; padding: 8px;">
+    ${new Date().toLocaleTimeString()}
+  </div>
+</div>
+${displayBody}
+    `.trim();
+
+    responseDiv.classList.add('active');
+  }
+
+  function displayError(message) {
+    const responseDiv = document.getElementById('response');
+    responseDiv.innerHTML = `
+<div class="response-header">
+  <div class="status-info error">
+    ERROR: ${message}
+  </div>
+</div>
+    `.trim();
+    responseDiv.classList.add('active');
+  }
+
+  function clearAll() {
+    document.getElementById('endpoint').value = '/rest/users?route=users';
+    document.getElementById('resourceId').value = '';
+    document.getElementById('requestBody').value = '';
+    document.getElementById('response').classList.remove('active');
+    document.querySelectorAll('input[name="format"]')[0].checked = true;
+  }
+
+  // Load first template on page load
+  window.addEventListener('load', () => {
+    const bodySection = document.getElementById('bodySection');
+    bodySection.style.display = 'none';
+  });
+</script>
+
+</body>
+</html>

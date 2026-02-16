@@ -1,0 +1,3 @@
+<%
+response.write Application("visitors")
+%>

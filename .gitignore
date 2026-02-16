@@ -1,0 +1,22 @@
+# Compiler outputs #
+*.a
+*.bat
+
+# Logs and databases #
+*.log
+*.sql
+
+/temp/cache/
+/temp/session/
+/temp/
+/www/*-test/
+/www/temp/
+/.vscode/
+/resources/axonasp-website/
+.DS_Store
+Thumbs.db
+axonasp.exe~
+.vscode/
+database.db
+GEMINI.md
+TODO

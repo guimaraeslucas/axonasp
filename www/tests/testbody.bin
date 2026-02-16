@@ -1,0 +1,6 @@
+------WebKitFormBoundarytestXYZ
+Content-Disposition: form-data; name="testfile"; filename="test.txt"
+Content-Type: text/plain
+
+Hello World!
+------WebKitFormBoundarytestXYZ--

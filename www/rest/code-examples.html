@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>G3pix AxonASP REST API - Code Examples</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    header h1 { margin: 0; font-size: 28px; }
+    .content {
+      padding: 30px;
+    }
+    .code-section {
+      margin-bottom: 40px;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .code-section h2 {
+      background: #f5f5f5;
+      margin: 0;
+      padding: 15px;
+      border-bottom: 2px solid #667eea;
+      color: #333;
+      font-size: 18px;
+    }
+    .code-section p {
+      padding: 15px;
+      margin: 0;
+      color: #666;
+      background: #fafafa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .code-block {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .code-block code {
+      color: inherit;
+    }
+    .keyword { color: #ff79c6; }
+    .string { color: #f1fa8c; }
+    .comment { color: #6272a4; }
+    .section-info {
+      background: #e8f4fd;
+      border-left: 4px solid #0066cc;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .section-info strong { color: #0066cc; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Code Examples - REST API Extension Guide</h1>
+  </header>
+
+  <div class="content">
+
+    <div class="code-section">
+      <h2>1. Adding a New GET Handler (List)</h2>
+      <p>Example: Creating a handler to list all orders</p>
+      <div class="code-block"><pre>Sub HandleOrders(httpMethod, id, outputFormat)
+  Dim response_obj, orders_array, i, order
+  
+  Select Case UCase(httpMethod)
+    Case "GET"
+      If AxEmpty(id) Then
+        <span class="comment">' GET /rest/orders - List all orders</span>
+        Set response_obj = JSON.NewObject()
+        response_obj("status") = "success"
+        
+        Set orders_array = JSON.NewArray()
+        
+        <span class="comment">' Create sample orders</span>
+        Dim order_ids
+        order_ids = AxRange(1000, 1005)
+        
+        For i = 0 To AxCount(order_ids) - 1
+          Set order = JSON.NewObject()
+          order("id") = order_ids(i)
+          order("customer") = "Customer #" & (i + 1)
+          order("amount") = AxNumberFormat(AxRand(100, 5000), 2, ".", ",")
+          order("status") = "pending"
+          order("created_at") = AxDate("Y-m-d H:i:s")
+          orders_array.Add order
+        Next
+        
+        response_obj("data") = orders_array
+        response_obj("count") = AxCount(orders_array)
+        
+        SendResponse 200, response_obj, outputFormat
+      End If
+  End Select
+End Sub</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>2. Adding a GET Handler with Single Resource</h2>
+      <p>Example: Get a specific order by ID</p>
+      <div class="code-block"><pre>      Case "GET"
+        If AxEmpty(id) Then
+          <span class="comment">' ... list handler code ...</span>
+        Else
+          <span class="comment">' GET /rest/orders/1000 - Get specific order</span>
+          Set response_obj = JSON.NewObject()
+          response_obj("status") = "success"
+          
+          Set order = JSON.NewObject()
+          order("id") = CLng(id)
+          order("order_number") = AxPad(id, 8, "ORD-", 2)
+          order("customer_name") = "<span class="string">Customer #</span>" & id
+          order("email") = "<span class="string">customer</span>" & id & "<span class="string">@example.com</span>"
+          order("items_count") = AxRand(1, 10)
+          order("total_amount") = AxNumberFormat(AxRand(100, 5000), 2, ".", ",")
+          order("status") = "<span class="string">completed</span>"
+          order("created_at") = AxDate("<span class="string">Y-m-d H:i:s</span>")
+          order("last_updated") = AxDate("<span class="string">Y-m-d H:i:s</span>")
+          
+          response_obj("data") = order
+          
+          SendResponse 200, response_obj, outputFormat
+        End If</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>3. POST Handler with Validation</h2>
+      <p>Example: Create new order with input validation</p>
+      <div class="code-block"><pre>      Case "POST"
+        Dim post_data, validation_error
+        post_data = GetJSONBody()
+        
+        <span class="comment">' Validate required fields</span>
+        If AxEmpty(post_data("customer_name")) Then
+          SendErrorResponse 422, "<span class="string">Customer name is required</span>", outputFormat
+          Exit Sub
+        End If
+        
+        If Not AxFilterValidateEmail(post_data("email")) Then
+          SendErrorResponse 422, "<span class="string">Invalid email format</span>", outputFormat
+          Exit Sub
+        End If
+        
+        <span class="comment">' Create response</span>
+        Set response_obj = JSON.NewObject()
+        response_obj("status") = "success"
+        response_obj("message") = "<span class="string">Order created successfully</span>"
+        
+        Set order = JSON.NewObject()
+        order("id") = AxRand(10000, 99999)
+        order("customer_name") = AxUcFirst(post_data("customer_name"))
+        order("email") = post_data("email")
+        order("created_at") = AxDate("<span class="string">Y-m-d H:i:s</span>")
+        
+        response_obj("data") = order
+        
+        Response.Status = "<span class="string">201 Created</span>"
+        SendResponse 201, response_obj, outputFormat</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>4. PUT Handler with Update Logic</h2>
+      <p>Example: Update existing order</p>
+      <div class="code-block"><pre>      Case "PUT"
+        If AxEmpty(id) Then
+          SendErrorResponse 400, "<span class="string">Order ID required for PUT</span>", outputFormat
+          Exit Sub
+        End If
+        
+        Dim put_data, updated_order
+        put_data = GetJSONBody()
+        
+        Set response_obj = JSON.NewObject()
+        response_obj("status") = "success"
+        response_obj("message") = "<span class="string">Order updated</span>"
+        
+        Set updated_order = JSON.NewObject()
+        updated_order("id") = CLng(id)
+        updated_order("customer_name") = put_data("customer_name")
+        updated_order("email") = put_data("email")
+        updated_order("status") = put_data("status")
+        updated_order("updated_at") = AxDate("<span class="string">Y-m-d H:i:s</span>")
+        
+        response_obj("data") = updated_order
+        
+        SendResponse 200, response_obj, outputFormat</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>5. DELETE Handler</h2>
+      <p>Example: Delete order</p>
+      <div class="code-block"><pre>      Case "DELETE"
+        If AxEmpty(id) Then
+          SendErrorResponse 400, "<span class="string">Order ID required for DELETE</span>", outputFormat
+          Exit Sub
+        End If
+        
+        Set response_obj = JSON.NewObject()
+        response_obj("status") = "success"
+        response_obj("message") = "<span class="string">Order </span>" & id & <span class="string">" deleted successfully</span>"
+        response_obj("deleted_id") = CLng(id)
+        response_obj("deletion_time") = AxDate("<span class="string">Y-m-d H:i:s</span>")
+        
+        SendResponse 200, response_obj, outputFormat</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>6. Advanced: Using Ax Functions for Data Processing</h2>
+      <p>Example: Complex data manipulation using Ax functions</p>
+      <div class="code-block"><pre>Sub HandleAdvancedExample(httpMethod, id, outputFormat)
+  Dim response_obj, data_obj, i
+  
+  Select Case UCase(httpMethod)
+    Case "GET"
+      Set response_obj = JSON.NewObject()
+      response_obj("status") = "success"
+      
+      Set data_obj = JSON.NewObject()
+      
+      <span class="comment">' String manipulation examples</span>
+      Dim text, values
+      text = "apple|banana|orange|grape"
+      values = AxExplode("|", text)
+      data_obj("fruits_count") = AxCount(values)
+      data_obj("fruits_list") = AxImplode(", ", values)
+      data_obj("first_fruit_capitalized") = AxUcFirst(values(0))
+      
+      <span class="comment">' Array operations</span>
+      Dim numbers
+      numbers = AxRange(1, 5)
+      data_obj("numbers") = numbers
+      data_obj("numbers_max") = AxMax(1, 2, 3, 4, 5)
+      data_obj("numbers_min") = AxMin(1, 2, 3, 4, 5)
+      
+      <span class="comment">' Hash and encoding examples</span>
+      Dim secret, encoded, hashed
+      secret = "<span class="string">my_secret_data</span>"
+      encoded = AxBase64Encode(secret)
+      hashed = AxHash("<span class="string">sha256</span>", secret)
+      data_obj("base64_encoded") = encoded
+      data_obj("sha256_hash") = hashed
+      data_obj("md5_hash") = AxMd5(secret)
+      
+      <span class="comment">' Number formatting</span>
+      Dim amount
+      amount = 1234567.89
+      data_obj("formatted_amount") = AxNumberFormat(amount, 2, ".", ",")
+      data_obj("formatted_amount_br") = AxNumberFormat(amount, 2, ",", ".")
+      
+      <span class="comment">' Padding and repetition</span>
+      data_obj("padded_id") = AxPad(CStr(id), 5, "0", 0)
+      data_obj("separator_line") = AxRepeat("-", 50)
+      
+      <span class="comment">' Date/Time formatting</span>
+      data_obj("current_time_unix") = AxTime()
+      data_obj("current_date") = AxDate("<span class="string">d/m/Y</span>")
+      data_obj("current_datetime") = AxDate("<span class="string">d/m/Y H:i:s</span>")
+      
+      response_obj("data") = data_obj
+      SendResponse 200, response_obj, outputFormat
+  End Select
+End Sub</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>7. Registering New Handler in Main Router</h2>
+      <p>Add this to the main Select Case in index.asp</p>
+      <div class="code-block"><pre><span class="comment">' Add this to the main route handler:</span>
+
+Select Case LCase(resource)
+  Case "<span class="string">users</span>"
+    HandleUsers method, resource_id, format
+  Case "<span class="string">products</span>"
+    HandleProducts method, resource_id, format
+  Case "<span class="string">items</span>"
+    HandleItems method, resource_id, format
+  Case "<span class="string">orders</span>"
+    <span class="keyword">HandleOrders</span> method, resource_id, format
+  Case "<span class="string">status</span>"
+    HandleStatus format
+  Case Else
+    SendErrorResponse 404, "<span class="string">Resource not found: </span>" & resource, format
+End Select</pre></div>
+    </div>
+
+    <div class="code-section">
+      <h2>8. HTTP Error Responses</h2>
+      <p>How to return different error codes</p>
+      <div class="code-block"><pre><span class="comment">' 400 Bad Request</span>
+SendErrorResponse 400, "<span class="string">Missing required parameter</span>", outputFormat
+
+<span class="comment">' 404 Not Found</span>
+SendErrorResponse 404, "<span class="string">Resource not found</span>", outputFormat
+
+<span class="comment">' 405 Method Not Allowed</span>
+SendErrorResponse 405, "<span class="string">Method </span>" & httpMethod & <span class="string">" not allowed</span>", outputFormat
+
+<span class="comment">' 422 Unprocessable Entity (Validation error)</span>
+SendErrorResponse 422, "<span class="string">Invalid email format</span>", outputFormat</pre></div>
+    </div>
+
+    <div class="section-info">
+      <strong>💡 Tips for Extension:</strong>
+      <ul>
+        <li>Always validate user input before processing</li>
+        <li>Use Ax functions for string/number manipulation (they're modern and optimized)</li>
+        <li>Return appropriate HTTP status codes (200, 201, 400, 404, 422, 405)</li>
+        <li>Include consistent response structure (status, data, message)</li>
+        <li>Add timestamps to track when resources were created/modified</li>
+        <li>Use AxEmpty() to check for null/empty values safely</li>
+        <li>Implement proper error messages for debugging</li>
+        <li>Support both JSON and HTML response formats for flexibility</li>
+      </ul>
+    </div>
+
+    <div class="section-info">
+      <strong>🔧 Common Ax Functions Used:</strong>
+      <ul>
+        <li><strong>AxExplode()</strong> - Split string by delimiter</li>
+        <li><strong>AxImplode()</strong> - Join array with glue string</li>
+        <li><strong>AxCount()</strong> - Count array elements</li>
+        <li><strong>AxEmpty()</strong> - Check if value is empty</li>
+        <li><strong>AxUcFirst()</strong> - Uppercase first character</li>
+        <li><strong>AxTrim()</strong> - Remove whitespace</li>
+        <li><strong>AxNumberFormat()</strong> - Format numbers with separators</li>
+        <li><strong>AxHash()</strong> - SHA256 hashing</li>
+        <li><strong>AxBase64Encode/Decode()</strong> - Base64 encoding</li>
+        <li><strong>AxDate()</strong> - Format dates (PHP-like)</li>
+        <li><strong>AxTime()</strong> - Get Unix timestamp</li>
+        <li><strong>AxRand()</strong> - Generate random numbers</li>
+        <li><strong>AxFilterValidateEmail/IP()</strong> - Validation functions</li>
+        <li><strong>AxRange()</strong> - Generate number ranges</li>
+        <li><strong>AxMax/Min()</strong> - Find max/min values</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
