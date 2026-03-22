@@ -1,7 +1,7 @@
 ## ADODB Libraries Implementation Summary
 
 ### Overview
-A comprehensive database abstraction library has been implemented for AxonASP, providing professional-grade ADODB compatibility for multiple database systems including SQLite, MySQL, PostgreSQL, and MS SQL Server with Connection, Recordset, and Stream objects.
+A comprehensive database abstraction library has been implemented for AxonASP, providing professional-grade ADODB compatibility for multiple database systems including SQLite, MySQL, PostgreSQL, MS SQL Server, and Oracle with Connection, Recordset, and Stream objects.
 
 ### Files Created/Modified
 
@@ -20,6 +20,7 @@ A comprehensive database abstraction library has been implemented for AxonASP, p
 - **github.com/denisenkom/go-mssqldb** - MS SQL Server
 - **github.com/go-sql-driver/mysql** - MySQL
 - **github.com/lib/pq** - PostgreSQL
+- **github.com/sijms/go-ora/v2** - Oracle
 - **modernc.org/sqlite** - SQLite
 
 #### Integration
@@ -60,6 +61,7 @@ A comprehensive database abstraction library has been implemented for AxonASP, p
   - MySQL - `Driver={MySQL};Server=host;Database=db;uid=user;pwd=pass`
   - PostgreSQL - `Driver={PostgreSQL};Server=host;Database=db;uid=user;pwd=pass`
   - MS SQL Server - `Provider=SQLOLEDB;Server=host;Database=db;uid=sa;pwd=pass`
+  - Oracle - `Driver={Oracle};Server=host;Service Name=ORCL;uid=user;pwd=pass`
 
 ✓ **Query Execution**
   - `Execute(sql, [parameters])` - Execute query and return Recordset
@@ -297,6 +299,31 @@ Set rs = conn.Execute("EXEC sp_GetAllOrders")
 conn.Close()
 ```
 
+#### Oracle Connection
+```vbscript
+Dim conn, rs
+Set conn = Server.CreateObject("ADODB.Connection")
+
+conn.ConnectionString = "Driver={Oracle};" & _
+    "Server=oracle.example.com;" & _
+    "Service Name=ORCL;" & _
+    "uid=scott;" & _
+    "pwd=tiger"
+
+conn.Open
+
+' Execute query
+Set rs = conn.Execute("SELECT * FROM employees WHERE dept_id = ?", 10)
+
+Do While Not rs.EOF
+    Response.Write "<p>" & rs("name") & " - " & rs("salary") & "</p>"
+    rs.MoveNext
+Loop
+
+rs.Close()
+conn.Close()
+```
+
 #### Parameter Binding (Safe Queries)
 ```vbscript
 Dim conn, rs, userId
@@ -493,6 +520,12 @@ Driver={PostgreSQL};Server=localhost;Database=dbname;uid=postgres;pwd=password
 **MS SQL Server**:
 ```
 Provider=SQLOLEDB;Server=servername;Database=dbname;uid=sa;pwd=password
+```
+
+**Oracle**:
+```
+Driver={Oracle};Server=hostname;Service Name=ORCL;uid=username;pwd=password
+Driver={Oracle};Server=hostname;SID=ORCL;uid=username;pwd=password
 ```
 
 ### Data Types Mapping

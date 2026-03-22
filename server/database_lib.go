@@ -40,6 +40,7 @@ import (
 	"github.com/go-ole/go-ole/oleutil"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+	_ "github.com/sijms/go-ora/v2"
 	_ "modernc.org/sqlite"
 )
 
@@ -935,6 +936,26 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 		return
 	}
 
+	// Oracle
+	if strings.Contains(driverStr, "oracle") || strings.Contains(providerStr, "oraole") || strings.Contains(providerStr, "msdaora") {
+		driver = "oracle"
+		port := params["port"]
+		if port == "" {
+			port = "1521"
+		}
+		serviceName := firstNonEmpty(params["service name"], params["servicename"], database)
+		sid := params["sid"]
+
+		if serviceName != "" {
+			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s/%s", uid, pwd, server, port, serviceName)
+		} else if sid != "" {
+			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s/%s", uid, pwd, server, port, sid)
+		} else {
+			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s", uid, pwd, server, port)
+		}
+		return
+	}
+
 	return
 }
 
@@ -977,7 +998,7 @@ func isQueryStatement(sqlText string) bool {
 }
 
 func rewritePlaceholders(sqlText string, driver string) string {
-	if driver != "postgres" && driver != "mssql" {
+	if driver != "postgres" && driver != "mssql" && driver != "oracle" {
 		return sqlText
 	}
 
@@ -1018,8 +1039,10 @@ func rewritePlaceholders(sqlText string, driver string) string {
 			paramIndex++
 			if driver == "postgres" {
 				out.WriteString(fmt.Sprintf("$%d", paramIndex))
-			} else {
+			} else if driver == "mssql" {
 				out.WriteString(fmt.Sprintf("@p%d", paramIndex))
+			} else if driver == "oracle" {
+				out.WriteString(fmt.Sprintf(":p%d", paramIndex))
 			}
 			continue
 		}
