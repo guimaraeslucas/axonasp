@@ -1072,9 +1072,9 @@ This project is licensed under the MPL License - see the [LICENSE](LICENSE) file
 - [X] G3FC support
 - [X] XML support
 - [X] PDF support
+- [X] Docker official images
 - [ ] WebSocket support
 - [ ] Built-in Redis session storage
-- [ ] Docker official images
 - [ ] OAuth2 authentication library
 - [ ] REST API generator
 - [ ] GraphQL support
