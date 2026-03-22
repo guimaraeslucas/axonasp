@@ -1,0 +1,43 @@
+# AxonASP Server - Local Development Compose
+#
+# AxonASP Server
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Usage:
+#   docker compose up            # Start in foreground
+#   docker compose up -d         # Start in background
+#   docker compose restart       # Restart (rebuilds binary from mounted source)
+#   docker compose down          # Stop and remove containers
+#   docker compose logs -f       # Follow logs
+
+services:
+  axonasp:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: axonasp-dev
+    ports:
+      - "4050:4050"
+    volumes:
+      # Bind-mount source for Go rebuilds on restart
+      - .:/app
+      # Exclude generated artifacts from the bind-mount overlay
+      - /app/temp
+    env_file:
+      - .env
+    environment:
+      # Development overrides (take precedence over .env)
+      DEBUG_ASP: "TRUE"
+      CLEAN_SESSIONS: "TRUE"
+      ASP_CACHE_TYPE: "memory"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4050/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

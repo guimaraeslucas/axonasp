@@ -1,0 +1,46 @@
+# AxonASP Server - Local Development Dockerfile
+#
+# AxonASP Server
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Usage:
+#   docker compose -f docker-compose.yml up
+#
+# Features:
+#   - Full Go toolchain available (go run, go test, go build)
+#   - Source and www/ are bind-mounted for live ASP edits
+#   - DEBUG_ASP=TRUE by default for detailed error output
+#   - Rebuilds the binary on every container start
+
+FROM golang:1.25-alpine
+
+WORKDIR /app
+
+# Install git and timezone data
+RUN apk add --no-cache git tzdata ca-certificates
+
+# Pre-fetch dependencies (leverages Docker layer cache)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source tree (will be overridden by bind-mount in docker-compose.yml)
+COPY . .
+
+# Create required runtime directories
+RUN mkdir -p temp/session temp/cache/ast temp/cache/bytecode
+
+EXPOSE 4050
+
+ENV SERVER_PORT=4050 \
+    WEB_ROOT=./www \
+    TIMEZONE=America/Sao_Paulo \
+    ASP_CACHE_TYPE=memory \
+    DEBUG_ASP=TRUE \
+    CLEAN_SESSIONS=TRUE
+
+# Build fresh on every start so source changes take effect after docker compose restart
+CMD ["sh", "-c", "go build -o axonasp . && ./axonasp"]

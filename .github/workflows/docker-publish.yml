@@ -1,0 +1,177 @@
+# AxonASP Server - Docker Build & Publish to ghcr.io
+#
+# AxonASP Server
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Triggers:
+#   - Push to main          → publishes :latest + :sha-<hash>
+#   - Push of v* tag        → publishes :v1.2.3 + :1.2 + :1
+#   - Pull request          → builds only (no push), runs tests
+
+name: Docker Build & Publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ─── Job 1: Unit & Integration Tests ───────────────────────────────────────
+  test:
+    name: Go Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run unit tests
+        run: go test ./... -v -timeout 120s
+
+  # ─── Job 2: Build Docker image and push to ghcr.io ────────────────────────
+  docker:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version string
+        id: version
+        run: |
+          # Use tag name when triggered by a tag, otherwise use commit count + short sha
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            COUNT=$(git rev-list --count HEAD)
+            SHORT=$(git rev-parse --short HEAD)
+            echo "value=1.0.${COUNT}.${SHORT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Branch push → :latest (main only) and :sha-<short>
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            # Semver tags → :v1.2.3, :1.2, :1
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Branch name tag (e.g. :main)
+            type=ref,event=branch
+            # PR tag (not pushed, but useful for labeling)
+            type=ref,event=pr
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+          # GitHub Actions cache for faster rebuilds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  # ─── Job 3: Docker Smoke Test (runs after image is published) ──────────────
+  docker-test:
+    name: Docker Integration Tests
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start AxonASP container
+        run: |
+          docker run -d \
+            --name axonasp-test \
+            -p 4050:4050 \
+            -e DEBUG_ASP=FALSE \
+            -e CLEAN_SESSIONS=FALSE \
+            -e ASP_CACHE_TYPE=memory \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for AxonASP to start..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:4050/ > /dev/null 2>&1; then
+              echo "Server is up after ${i} seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not start in time"
+          docker logs axonasp-test
+          exit 1
+
+      - name: Run Docker integration tests
+        env:
+          TEST_SERVER_URL: http://localhost:4050
+        run: go test ./docker/... -v -timeout 60s -run TestDocker
+
+      - name: Print container logs on failure
+        if: failure()
+        run: docker logs axonasp-test
+
+      - name: Stop and remove container
+        if: always()
+        run: docker rm -f axonasp-test || true
