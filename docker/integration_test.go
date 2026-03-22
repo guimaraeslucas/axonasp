@@ -85,10 +85,20 @@ func assertNotContains(t *testing.T, body, unexpected string) {
 	}
 }
 
+// skipIfNoServer skips the test when TEST_SERVER_URL is not set.
+// Docker integration tests are opt-in to avoid failures for developers
+// without the server running. CI sets TEST_SERVER_URL to enable them.
+func skipIfNoServer(t *testing.T) {
+	if os.Getenv("TEST_SERVER_URL") == "" {
+		t.Skip("Skipping: TEST_SERVER_URL not set (Docker integration tests are opt-in)")
+	}
+}
+
 // ─── Connectivity ─────────────────────────────────────────────────────────────
 
 // TestDockerServerResponds verifies the server starts and the root URL is reachable.
 func TestDockerServerResponds(t *testing.T) {
+	skipIfNoServer(t)
 	status, body := get(t, "/")
 	if status != http.StatusOK {
 		t.Errorf("expected HTTP 200 from /, got %d\nbody: %s", status, body)
@@ -102,6 +112,7 @@ func TestDockerServerResponds(t *testing.T) {
 
 // TestDockerStaticSVG verifies that static files (non-ASP) are served correctly.
 func TestDockerStaticSVG(t *testing.T) {
+	skipIfNoServer(t)
 	status, body := get(t, "/axonasp.svg")
 	if status != http.StatusOK {
 		t.Errorf("expected HTTP 200 for /axonasp.svg, got %d", status)
@@ -113,6 +124,7 @@ func TestDockerStaticSVG(t *testing.T) {
 
 // TestDockerNotFoundReturns404 verifies the 404 error page is served for missing paths.
 func TestDockerNotFoundReturns404(t *testing.T) {
+	skipIfNoServer(t)
 	status, _ := get(t, "/this-path-does-not-exist-xyz.asp")
 	if status != http.StatusNotFound {
 		t.Errorf("expected HTTP 404 for missing resource, got %d", status)
@@ -121,6 +133,7 @@ func TestDockerNotFoundReturns404(t *testing.T) {
 
 // TestDockerBlockedExtensionReturns404 verifies blocked file types return 404.
 func TestDockerBlockedExtensionReturns404(t *testing.T) {
+	skipIfNoServer(t)
 	for _, ext := range []string{".env", ".config", ".cs", ".dll"} {
 		path := fmt.Sprintf("/blocked-test%s", ext)
 		status, _ := get(t, path)
@@ -134,6 +147,7 @@ func TestDockerBlockedExtensionReturns404(t *testing.T) {
 
 // TestDockerASPHelloWorld verifies basic ASP execution (Response.Write) works.
 func TestDockerASPHelloWorld(t *testing.T) {
+	skipIfNoServer(t)
 	status, body := get(t, "/tests/test_hello.asp")
 	if status != http.StatusOK {
 		t.Errorf("expected HTTP 200, got %d", status)
@@ -143,6 +157,7 @@ func TestDockerASPHelloWorld(t *testing.T) {
 
 // TestDockerASPSimple verifies that the simplest possible ASP page renders.
 func TestDockerASPSimple(t *testing.T) {
+	skipIfNoServer(t)
 	status, body := get(t, "/tests/test_simple.asp")
 	if status != http.StatusOK {
 		t.Errorf("expected HTTP 200, got %d", status)
@@ -155,6 +170,7 @@ func TestDockerASPSimple(t *testing.T) {
 // TestDockerASPEnvironment runs the dedicated Docker validation ASP page and
 // confirms all VBScript feature checks report [PASS].
 func TestDockerASPEnvironment(t *testing.T) {
+	skipIfNoServer(t)
 	status, body := get(t, "/tests/test_docker.asp")
 	if status != http.StatusOK {
 		t.Fatalf("expected HTTP 200 from test_docker.asp, got %d\nbody: %s", status, body)
@@ -176,6 +192,7 @@ func TestDockerASPEnvironment(t *testing.T) {
 
 // TestDockerASPEnvironmentChecks validates individual [PASS] tokens from test_docker.asp.
 func TestDockerASPEnvironmentChecks(t *testing.T) {
+	skipIfNoServer(t)
 	status, body := get(t, "/tests/test_docker.asp")
 	if status != http.StatusOK {
 		t.Fatalf("expected HTTP 200, got %d", status)
@@ -223,6 +240,7 @@ func TestDockerASPEnvironmentChecks(t *testing.T) {
 
 // TestDockerResponseHeaders verifies that ASP pages set a Content-Type header.
 func TestDockerResponseHeaders(t *testing.T) {
+	skipIfNoServer(t)
 	resp, err := newClient().Get(baseURL() + "/tests/test_hello.asp")
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -240,6 +258,7 @@ func TestDockerResponseHeaders(t *testing.T) {
 
 // TestDockerDirectoryTraversalBlocked verifies that path traversal is rejected.
 func TestDockerDirectoryTraversalBlocked(t *testing.T) {
+	skipIfNoServer(t)
 	paths := []string{
 		"/../etc/passwd",
 		"/tests/../../main.go",
@@ -255,6 +274,7 @@ func TestDockerDirectoryTraversalBlocked(t *testing.T) {
 
 // TestDockerConcurrentRequests verifies the server handles multiple simultaneous requests.
 func TestDockerConcurrentRequests(t *testing.T) {
+	skipIfNoServer(t)
 	const workers = 10
 	results := make(chan error, workers)
 
@@ -279,6 +299,7 @@ func TestDockerConcurrentRequests(t *testing.T) {
 // TestDockerHealthEndpoint verifies the root path always returns a success response
 // (serves as a basic health-check target).
 func TestDockerHealthEndpoint(t *testing.T) {
+	skipIfNoServer(t)
 	for attempt := 1; attempt <= 3; attempt++ {
 		status, _ := get(t, "/")
 		if status == http.StatusOK {
