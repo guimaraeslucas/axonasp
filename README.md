@@ -443,6 +443,24 @@ SERVER_PORT=4052 WEB_ROOT=./app3/www ./axonasp
 
 ---
 
+## Docker
+
+AxonASP provides Docker images for containerized deployments:
+
+```bash
+# Run latest image from GitHub Container Registry
+docker run -d -p 4050:4050 -v ./www:/app/www -v ./.env:/app/.env ghcr.io/axonasp/axonasp:latest
+
+# Or with docker-compose
+git clone https://github.com/axonasp/axonasp.git
+cd axonasp
+docker-compose -f docker-compose-dev.yaml up -d
+# or
+# docker-compose -f docker-compose-production.yaml up -d
+```
+
+---
+
 ## 🎯 Features & Compatibility
 
 ### Supported Classic ASP Objects
