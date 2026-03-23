@@ -937,8 +937,19 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 	}
 
 	// Oracle
-	if strings.Contains(driverStr, "oracle") || strings.Contains(providerStr, "oraole") || strings.Contains(providerStr, "msdaora") {
+	if strings.Contains(driverStr, "oracle") || strings.Contains(providerStr, "oraole") || strings.Contains(providerStr, "msdaora") || strings.Contains(providerStr, "msdasql") && strings.Contains(driverStr, "oracle") {
 		driver = "oracle"
+		
+		// Check for Dbq parameter (TNS name or connection descriptor)
+		dbq := params["dbq"]
+		if dbq != "" {
+			// Dbq can be a TNS name or a full connection descriptor
+			// Format: oracle://user:pass@dbq_string
+			dsn = fmt.Sprintf("oracle://%s:%s@%s", uid, pwd, dbq)
+			return
+		}
+		
+		// Fallback to manual connection string construction
 		port := params["port"]
 		if port == "" {
 			port = "1521"
@@ -950,7 +961,7 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s/%s", uid, pwd, server, port, serviceName)
 		} else if sid != "" {
 			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s/%s", uid, pwd, server, port, sid)
-		} else {
+		} else if server != "" {
 			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s", uid, pwd, server, port)
 		}
 		return
