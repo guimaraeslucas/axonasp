@@ -41,7 +41,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     mv /tmp/axonaspcgi /build/axonaspcgi
 
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
-FROM alpine:3.21
+FROM alpine:3.21 AS runtime
 
 LABEL org.opencontainers.image.title="AxonASP Server"
 LABEL org.opencontainers.image.description="G3pix AxonASP - ASP Classic / VBScript web server written in Go"
