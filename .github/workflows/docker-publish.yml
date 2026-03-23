@@ -89,7 +89,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ─── Build and push axonasp image (standalone) ──────────────────────────
+      # ─── Build and push axonasp image─────────────────────────
       - name: Extract metadata for axonasp
         id: meta
         uses: docker/metadata-action@v5
@@ -150,9 +150,9 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
-  # ─── Job 3: Docker Smoke Test (runs after image is published) ──────────────
-  docker-test:
-    name: Docker Integration Tests
+  # ─── Job 3a: Docker Smoke Test - axonasp ────────────────────────────────
+  docker-test-axonasp:
+    name: Docker Integration Tests - axonasp
     runs-on: ubuntu-latest
     needs: docker
     if: github.event_name != 'pull_request'
@@ -177,9 +177,9 @@ jobs:
             -e ASP_CACHE_TYPE=memory \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-      - name: Wait for server to be ready
+      - name: Wait for axonasp server to be ready
         run: |
-          echo "Waiting for AxonASP to start..."
+          echo "Waiting for AxonASP axonasp to start..."
           for i in $(seq 1 20); do
             if curl -sf http://localhost:4050/ > /dev/null 2>&1; then
               echo "Server is up after ${i} seconds"
@@ -191,7 +191,7 @@ jobs:
           docker logs axonasp-test
           exit 1
 
-      - name: Run Docker integration tests
+      - name: Run Docker integration tests axonasp
         env:
           TEST_SERVER_URL: http://localhost:4050
         run: go test ./docker/... -v -timeout 60s -run TestDocker
@@ -203,3 +203,57 @@ jobs:
       - name: Stop and remove container
         if: always()
         run: docker rm -f axonasp-test || true
+
+  # ─── Job 3b: Docker Smoke Test - FastCGI ───────────────────────────────────
+  docker-test-fastcgi:
+    name: Docker Integration Tests - FastCGI
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start AxonASP FastCGI container
+        run: |
+          docker run -d \
+            --name axonasp-cgi-test \
+            -p 9000:9000 \
+            -e DEBUG_ASP=FALSE \
+            -e CLEAN_SESSIONS=FALSE \
+            -e ASP_CACHE_TYPE=memory \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_CGI }}:latest
+
+      - name: Wait for FastCGI server to be ready
+        run: |
+          echo "Waiting for AxonASP FastCGI to start..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:9000/ > /dev/null 2>&1; then
+              echo "FastCGI server is up after ${i} seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "FastCGI server did not start in time"
+          docker logs axonasp-cgi-test
+          exit 1
+
+      - name: Run Docker integration tests (FastCGI)
+        env:
+          TEST_SERVER_URL: http://localhost:9000
+        run: go test ./docker/... -v -timeout 60s -run TestDocker
+
+      - name: Print container logs on failure
+        if: failure()
+        run: docker logs axonasp-cgi-test
+
+      - name: Stop and remove container
+        if: always()
+        run: docker rm -f axonasp-cgi-test || true
