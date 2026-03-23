@@ -1,0 +1,314 @@
+# AxonASP Server - Docker Build & Publish to ghcr.io
+#
+# AxonASP Server
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Triggers:
+#   - Push to main          → publishes :latest + :sha-<hash>
+#   - Push of v* tag        → publishes :v1.2.3 + :1.2 + :1
+#   - Pull request          → builds only (no push), runs tests
+
+name: Docker Build & Publish
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+    branches:
+      - main
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME_CGI: ${{ github.repository }}-cgi
+
+jobs:
+  # ─── Job 1: Unit & Integration Tests ───────────────────────────────────────
+  test:
+    name: Go Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run unit tests
+        run: go test ./... -v -timeout 120s
+
+  # ─── Job 2a: Build and push axonasp image ──────────────────────────────────
+  docker-build-axonasp:
+    name: Docker Build & Push - axonasp
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version string
+        id: version
+        run: |
+          # Use tag name when triggered by a tag, otherwise use commit count + short sha
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            COUNT=$(git rev-list --count HEAD)
+            SHORT=$(git rev-parse --short HEAD)
+            echo "value=1.0.${COUNT}.${SHORT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for axonasp
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=branch
+            type=ref,event=pr
+
+      - name: Build and push axonasp image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: runtime
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  # ─── Job 2b: Build and push axonaspcgi image ───────────────────────────────
+  docker-build-axonaspcgi:
+    name: Docker Build & Push - axonaspcgi
+    runs-on: ubuntu-latest
+    needs: test
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute version string
+        id: version
+        run: |
+          # Use tag name when triggered by a tag, otherwise use commit count + short sha
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            COUNT=$(git rev-list --count HEAD)
+            SHORT=$(git rev-parse --short HEAD)
+            echo "value=1.0.${COUNT}.${SHORT}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for axonaspcgi
+        id: meta-cgi
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_CGI }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=ref,event=branch
+            type=ref,event=pr
+
+      - name: Build and push axonaspcgi image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: fastcgi
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-cgi.outputs.tags }}
+          labels: ${{ steps.meta-cgi.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  # ─── Job 3a: Docker Smoke Test - axonasp ────────────────────────────────
+  docker-test-axonasp:
+    name: Docker Integration Tests - axonasp
+    runs-on: ubuntu-latest
+    needs: docker-build-axonasp
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start AxonASP container
+        run: |
+          docker run -d \
+            --name axonasp-test \
+            -p 4050:4050 \
+            -e DEBUG_ASP=FALSE \
+            -e CLEAN_SESSIONS=FALSE \
+            -e ASP_CACHE_TYPE=memory \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Wait for axonasp server to be ready
+        run: |
+          echo "Waiting for AxonASP axonasp to start..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:4050/ > /dev/null 2>&1; then
+              echo "Server is up after ${i} seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server did not start in time"
+          docker logs axonasp-test
+          exit 1
+
+      - name: Run Docker integration tests axonasp
+        env:
+          TEST_SERVER_URL: http://localhost:4050
+        run: go test ./... -v -timeout 60s
+
+      - name: Print container logs on failure
+        if: failure()
+        run: docker logs axonasp-test
+
+      - name: Stop and remove container
+        if: always()
+        run: docker rm -f axonasp-test || true
+
+  # ─── Job 3b: Docker Smoke Test - axonaspcgi ───────────────────────────────────
+  docker-test-axonaspcgi:
+    name: Docker Integration Tests - axonaspcgi
+    runs-on: ubuntu-latest
+    needs: docker-build-axonaspcgi
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start AxonASP FastCGI container
+        run: |
+          docker run -d \
+            --name axonasp-cgi-test \
+            -e DEBUG_ASP=FALSE \
+            -e CLEAN_SESSIONS=FALSE \
+            -e ASP_CACHE_TYPE=memory \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_CGI }}:latest
+
+      - name: Start nginx container for FastCGI proxy
+        run: |
+          docker run -d \
+            --name nginx-proxy \
+            -p 9000:80 \
+            --link axonasp-cgi-test:axonaspcgi \
+            -v $(pwd)/docker/nginx-fastcgi.conf:/etc/nginx/conf.d/default.conf \
+            -v $(pwd)/www:/var/www/asp \
+            nginx:alpine
+
+      - name: Wait for FastCGI server to be ready
+        run: |
+          echo "Waiting for AxonASP FastCGI to start..."
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:9000/ > /dev/null 2>&1; then
+              echo "FastCGI server is up after ${i} seconds"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "FastCGI server did not start in time"
+          docker logs axonasp-cgi-test
+          exit 1
+
+      - name: Run Docker integration tests (FastCGI)
+        env:
+          TEST_SERVER_URL: http://localhost:9000
+        run: go test ./... -v -timeout 60s
+
+      - name: Print container logs on failure
+        if: failure()
+        run: |
+          echo "=== AxonASP FastCGI logs ==="
+          docker logs axonasp-cgi-test
+          echo "=== Nginx proxy logs ==="
+          docker logs nginx-proxy
+
+      - name: Stop and remove containers
+        if: always()
+        run: |
+          docker rm -f nginx-proxy || true
+          docker rm -f axonasp-cgi-test || true

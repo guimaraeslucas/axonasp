@@ -214,7 +214,7 @@ func TestASPParser_CKEditorInclude(t *testing.T) {
 	ckeditorPath := filepath.Join(wd, "..", "www", "QuickerSite-test", "asp", "includes", "ckeditor.asp")
 	content, err := ReadFileText(ckeditorPath)
 	if err != nil {
-		t.Fatalf("failed to read ckeditor.asp: %v", err)
+		t.Skipf("Skipping test: QuickerSite test files not available: %v", err)
 	}
 
 	parser := NewASPParser(content)
@@ -236,7 +236,7 @@ func TestASPParser_QuickerSiteDefault(t *testing.T) {
 	defaultPath := filepath.Join(rootDir, "QuickerSite-test", "default.asp")
 	content, err := ReadFileText(defaultPath)
 	if err != nil {
-		t.Fatalf("failed to read default.asp: %v", err)
+		t.Skipf("Skipping test: QuickerSite test files not available: %v", err)
 	}
 
 	options := NewASPParsingOptions()

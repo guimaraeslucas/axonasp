@@ -30,9 +30,6 @@ RUN go mod download
 # Copy source tree (will be overridden by bind-mount in docker-compose.yml)
 COPY . .
 
-# Ensure go.sum is up to date with any new dependencies in go.mod
-RUN go mod tidy
-
 # Create required runtime directories
 RUN mkdir -p temp/session temp/cache/ast temp/cache/bytecode
 
@@ -46,4 +43,4 @@ ENV SERVER_PORT=4050 \
     CLEAN_SESSIONS=TRUE
 
 # Build fresh on every start so source changes take effect after docker compose restart
-CMD ["sh", "-c", "go mod tidy && go build -o axonasp . && ./axonasp"]
+CMD ["sh", "-c", "go build -o axonasp . && ./axonasp"]

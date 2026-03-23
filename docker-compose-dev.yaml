@@ -24,7 +24,7 @@ services:
       - "4050:4050"
     volumes:
       # Bind-mount source for Go rebuilds on restart
-      - ./www:/app/www
+      - .:/app
       # Exclude generated artifacts from the bind-mount overlay
       - /app/temp
     env_file:

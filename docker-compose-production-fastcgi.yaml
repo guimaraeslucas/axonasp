@@ -1,0 +1,76 @@
+# AxonASP FastCGI Production Setup
+#
+# This compose file provides a production-ready deployment using FastCGI mode
+# with nginx as the reverse proxy. This setup offers:
+# - Better performance (static files served by nginx)
+# - Native HTTPS support
+# - Load balancing capabilities
+# - Professional process management
+#
+# For simpler deployments, use docker-compose-production.yaml (standalone mode)
+
+services:
+  # FastCGI Application Server
+  axonaspcgi:
+    image: ghcr.io/guimaraeslucas/axonasp-cgi:latest
+    container_name: axonasp-fastcgi
+    volumes:
+      # Mount your ASP application files
+      - ./www:/app/www:ro
+      # Mount your environment configuration
+      - ./.env:/app/.env:ro
+      # Persistent session storage
+      - session-data:/app/temp/session
+    env_file:
+      - .env
+    environment:
+      # Production overrides
+      DEBUG_ASP: "FALSE"
+      CLEAN_SESSIONS: "TRUE"
+      ASP_CACHE_TYPE: "memory"
+      FCGI_LISTEN: "0.0.0.0:9000"
+      WEB_ROOT: /app/www
+    restart: unless-stopped
+    expose:
+      - "9000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://axonaspcgi:9000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: axonasp-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Mount ASP files for static file serving
+      - ./www:/var/www/asp:ro
+      # Nginx configuration
+      - ./docker/nginx-fastcgi.conf:/etc/nginx/conf.d/default.conf:ro
+      # SSL certificates (mount your certs here)
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      axonaspcgi:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+volumes:
+  session-data:

@@ -1,0 +1,39 @@
+services:
+  axonasp:
+    image: ghcr.io/guimaraeslucas/axonasp:latest
+    container_name: axonasp-prod
+    ports:
+      - "4050:4050"
+    volumes:
+      # Mount your ASP application files
+      - ./www:/app/www:ro
+      # Mount your environment configuration
+      - ./.env:/app/.env:ro
+      # Persistent session storage
+      - session-data:/app/temp/session
+    env_file:
+      - .env
+    environment:
+      # Production overrides (take precedence over .env)
+      DEBUG_ASP: "FALSE"
+      CLEAN_SESSIONS: "TRUE"
+      ASP_CACHE_TYPE: "memory"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4050/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+volumes:
+  session-data:

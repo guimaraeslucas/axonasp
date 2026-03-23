@@ -1,0 +1,54 @@
+# Binaries
+axonasp.exe
+axonaspcgi.exe
+
+# Exclude root-level binaries but include source directories
+/axonasp
+/axonaspcgi
+!axonaspcgi/
+
+# Build output
+build/
+
+# Temporary runtime files
+temp/
+www/temp/
+
+# Test site directories (excluded from gitignore too)
+www/*-test/
+
+# Git and IDE
+.git/
+.github/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sql
+database.db
+
+# Windows resource files (not needed in Linux container)
+resource.syso
+axonaspcgi/resource.syso
+versioninfo.json
+axonaspcgi/versioninfo.json
+
+# Documentation
+docs/
+*.md
+
+# Experimental docs
+experimental/*.md
+
+# Environment file (injected at runtime)
+.env
+
+# Test artifacts
+www/tests/temp/
+www/tests/*.bin
+www/tests/*.pdf
+www/tests/test-session.json
+www/tests/test_output.txt
+www/tests/temp_test_output.html
