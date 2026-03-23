@@ -19,6 +19,5 @@ axonasp.exe~
 .vscode/
 database.db
 GEMINI.md
-docker-compose.override.yml
 ssl/
 TODO

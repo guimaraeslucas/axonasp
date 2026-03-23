@@ -3,6 +3,7 @@ module g3pix.com.br/axonasp
 go 1.25.6
 
 require (
+	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
 	github.com/denisenkom/go-mssqldb v0.12.3
 	github.com/fogleman/gg v1.3.0
 	github.com/fxamacker/cbor/v2 v2.9.0
