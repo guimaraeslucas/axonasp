@@ -3236,6 +3236,27 @@ func (v *ASPVisitor) visitClassDeclaration(stmt *ast.ClassDeclaration) error {
 					IsDynamic:  field.IsDynamicArray,
 				}
 			}
+		case *ast.VariablesDeclaration:
+			// Support Dim statements inside classes (treated as private members)
+			for _, decl := range m.Variables {
+				dims := []int{}
+				if len(decl.ArrayDims) > 0 {
+					dims = make([]int, len(decl.ArrayDims))
+					for i, dimExpr := range decl.ArrayDims {
+						dimVal, err := v.visitExpression(dimExpr)
+						if err != nil {
+							return err
+						}
+						dims[i] = toInt(dimVal)
+					}
+				}
+				classDef.Variables[strings.ToLower(decl.Identifier.Name)] = ClassMemberVar{
+					Name:       decl.Identifier.Name,
+					Visibility: VisPrivate, // Dim inside class is private by default
+					Dims:       dims,
+					IsDynamic:  decl.IsDynamicArray,
+				}
+			}
 		case *ast.SubDeclaration:
 			nameLower := strings.ToLower(m.Identifier.Name)
 			if m.AccessModifier == ast.MethodAccessModifierPrivate {
@@ -5774,6 +5795,24 @@ func (v *ASPVisitor) NewClassDefFromDecl(stmt *ast.ClassDeclaration) *ClassDef {
 					Visibility: vis,
 					Dims:       dims,
 					IsDynamic:  field.IsDynamicArray,
+				}
+			}
+		case *ast.VariablesDeclaration:
+			// Support Dim statements inside classes (treated as private members)
+			for _, decl := range m.Variables {
+				dims := []int{}
+				if len(decl.ArrayDims) > 0 {
+					dims = make([]int, len(decl.ArrayDims))
+					for i, dimExpr := range decl.ArrayDims {
+						dimVal, _ := v.visitExpression(dimExpr)
+						dims[i] = toInt(dimVal)
+					}
+				}
+				classDef.Variables[strings.ToLower(decl.Identifier.Name)] = ClassMemberVar{
+					Name:       decl.Identifier.Name,
+					Visibility: VisPrivate, // Dim inside class is private by default
+					Dims:       dims,
+					IsDynamic:  decl.IsDynamicArray,
 				}
 			}
 		case *ast.SubDeclaration:
