@@ -23,6 +23,7 @@ package server
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -40,6 +41,7 @@ import (
 	"github.com/go-ole/go-ole/oleutil"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
+	_ "github.com/sijms/go-ora/v2"
 	_ "modernc.org/sqlite"
 )
 
@@ -935,6 +937,42 @@ func parseConnectionString(connStr string) (driver string, dsn string) {
 		return
 	}
 
+	// Oracle
+	if strings.Contains(driverStr, "oracle") || strings.Contains(providerStr, "oraole") || strings.Contains(providerStr, "msdaora") || strings.Contains(providerStr, "msdasql") && strings.Contains(driverStr, "oracle") {
+		driver = "oracle"
+		
+		// Check for Dbq parameter (TNS name or connection descriptor)
+		dbq := params["dbq"]
+		if dbq != "" {
+			// Dbq can be a TNS name or a full connection descriptor
+			// Format: oracle://user:pass@dbq_string
+			// URL encode password to handle special characters like #
+			pwdEncoded := url.QueryEscape(pwd)
+			dsn = fmt.Sprintf("oracle://%s:%s@%s", uid, pwdEncoded, dbq)
+			return
+		}
+		
+		// Fallback to manual connection string construction
+		port := params["port"]
+		if port == "" {
+			port = "1521"
+		}
+		serviceName := firstNonEmpty(params["service name"], params["servicename"], database)
+		sid := params["sid"]
+		
+		// URL encode password to handle special characters like #
+		pwdEncoded := url.QueryEscape(pwd)
+
+		if serviceName != "" {
+			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s/%s", uid, pwdEncoded, server, port, serviceName)
+		} else if sid != "" {
+			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s/%s", uid, pwdEncoded, server, port, sid)
+		} else if server != "" {
+			dsn = fmt.Sprintf("oracle://%s:%s@%s:%s", uid, pwdEncoded, server, port)
+		}
+		return
+	}
+
 	return
 }
 
@@ -977,7 +1015,7 @@ func isQueryStatement(sqlText string) bool {
 }
 
 func rewritePlaceholders(sqlText string, driver string) string {
-	if driver != "postgres" && driver != "mssql" {
+	if driver != "postgres" && driver != "mssql" && driver != "oracle" {
 		return sqlText
 	}
 
@@ -1018,8 +1056,10 @@ func rewritePlaceholders(sqlText string, driver string) string {
 			paramIndex++
 			if driver == "postgres" {
 				out.WriteString(fmt.Sprintf("$%d", paramIndex))
-			} else {
+			} else if driver == "mssql" {
 				out.WriteString(fmt.Sprintf("@p%d", paramIndex))
+			} else if driver == "oracle" {
+				out.WriteString(fmt.Sprintf(":p%d", paramIndex))
 			}
 			continue
 		}

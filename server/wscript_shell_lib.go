@@ -91,6 +91,8 @@ func (ws *WScriptShell) CallMethod(name string, args ...interface{}) interface{}
 		return ws.CreateObject(args...)
 	case "getenv":
 		return ws.GetEnv(args...)
+	case "expandenvironmentstrings":
+		return ws.ExpandEnvironmentStrings(args...)
 	default:
 		return nil
 	}
@@ -311,6 +313,57 @@ func (ws *WScriptShell) GetEnv(args ...interface{}) interface{} {
 	}
 
 	return os.Getenv(envName)
+}
+
+// ExpandEnvironmentStrings expands environment variables in a string
+// Supports both %VAR% (Windows) and $VAR or ${VAR} (Unix) formats
+func (ws *WScriptShell) ExpandEnvironmentStrings(args ...interface{}) interface{} {
+	if len(args) < 1 {
+		return ""
+	}
+
+	input := toString(args[0])
+	if input == "" {
+		return ""
+	}
+
+	result := input
+
+	// Expand %VAR% format (Windows style)
+	for {
+		start := strings.Index(result, "%")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+1:], "%")
+		if end == -1 {
+			break
+		}
+		end += start + 1
+
+		varName := result[start+1 : end]
+		varValue := os.Getenv(varName)
+		result = result[:start] + varValue + result[end+1:]
+	}
+
+	// Also support ${VAR} format
+	for {
+		start := strings.Index(result, "${")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+2:], "}")
+		if end == -1 {
+			break
+		}
+		end += start + 2
+
+		varName := result[start+2 : end]
+		varValue := os.Getenv(varName)
+		result = result[:start] + varValue + result[end+1:]
+	}
+
+	return result
 }
 
 // WScriptExecObject Methods and Properties
