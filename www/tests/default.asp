@@ -1,0 +1,238 @@
+<%
+@ Language = VBScript
+%>
+<%
+Option Explicit
+
+Dim fso, testsDir, folderObj, fileObj
+Dim testFiles(), testCount
+Dim currentFile
+
+Set fso = Server.CreateObject("Scripting.FileSystemObject")
+' The physical path to the tests directory (where we are)
+testsDir = Server.MapPath(".")
+
+testCount = 0
+ReDim testFiles(0)
+
+If fso.FolderExists(testsDir) Then
+    Set folderObj = fso.GetFolder(testsDir)
+    For Each fileObj In folderObj.Files
+        If LCase(Right(fileObj.Name, 4)) = ".asp" Then
+            ' Only list files starting with test_
+            If LCase(Left(fileObj.Name, 5)) = "test_" Then
+                If LCase(fileObj.Name) <> "default.asp" Then
+                    If testCount > 0 Then
+                        ReDim Preserve testFiles(testCount)
+                    End If
+                    testFiles(testCount) = fileObj.Name
+                    testCount = testCount + 1
+                End If
+            End If
+        End If
+    Next
+End If
+
+' Sort alphabetically
+If testCount > 1 Then
+    Dim i, j, tmp
+    For i = 0 To testCount - 2
+        For j = i + 1 To testCount - 1
+            If LCase(testFiles(i)) > LCase(testFiles(j)) Then
+                tmp = testFiles(i)
+                testFiles(i) = testFiles(j)
+                testFiles(j) = tmp
+            End If
+        Next
+    Next
+End If
+
+currentFile = Request.QueryString("file")
+If currentFile = "" And testCount > 0 Then
+    currentFile = testFiles(0)
+End If
+%>
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>AxonASP Tests Dashboard - G3Pix</title>
+        <link rel="stylesheet" href="../css/axonasp.css" />
+        <style>
+            /* Custom overrides for the test dashboard */
+            #main-container {
+                height: calc(100vh - 85px); /* Header + Status Bar + padding */
+                overflow: hidden;
+            }
+            #sidebar {
+                overflow-y: auto;
+            }
+            #content {
+                padding: 0;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            #test-viewer-header {
+                background-color: #e2e2e2;
+                border-bottom: 1px solid #808080;
+                padding: 5px 15px;
+                font-weight: bold;
+                font-size: 11px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            #test-frame {
+                flex: 1;
+                width: 100%;
+                border: none;
+                background-color: #fff;
+            }
+            .treeview li {
+                margin: 2px 0;
+            }
+            .treeview a.active {
+                background-color: #335ea8;
+                color: #fff !important;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="header">
+            <div class="logo">
+                <img
+                    src="data:image/png;base64,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"
+                    alt="AxonASP"
+                    width="43" />
+            </div>
+            <h1>AxonASP Tests Dashboard</h1>
+        </div>
+
+        <div id="main-container">
+            <div id="sidebar">
+                <div class="section-title">Available Tests</div>
+                <ul class="treeview">
+                    <%
+                    If testCount = 0 Then
+                    %>
+                    <li>No tests found.</li>
+                    <%
+                    Else
+                        Dim index
+                        For index = 0 To testCount - 1
+                            Dim fileName, activeClass
+                            fileName = testFiles(index)
+                            activeClass = ""
+                            If LCase(fileName) = LCase(currentFile) Then
+                                activeClass = " active"
+                            End If
+                    %>
+                    <li class="file">
+                        <a
+                            href="?file=<%= Server.URLEncode(fileName) %>"
+                            class="test-link<%= activeClass %>"
+                            data-file="<%= fileName %>"
+                            onclick="return loadTest(this);"
+                            ><%= fileName %></a
+                        >
+                    </li>
+                    <%
+                        Next
+                    End If
+                    %>
+                </ul>
+
+                <div class="section-title" style="margin-top: 20px">
+                    Navigation
+                </div>
+                <ul>
+                    <li><a href="../default.asp">&laquo; Back to Home</a></li>
+                    <li><a href="../manual/default.asp">Software Manual</a></li>
+                </ul>
+            </div>
+
+            <div id="content">
+                <div id="test-viewer-header">
+                    <span id="current-filename"
+                        ><%= currentFile %></span
+                    >
+                    <button
+                        class="btn"
+                        onclick="refreshTest()"
+                        style="font-size: 10px; padding: 1px 5px">
+                        Refresh
+                    </button>
+                </div>
+                <%
+                If currentFile = "" Then
+                %>
+                <div style="padding: 20px">
+                    <div class="alert alert-info">
+                        <strong>Information:</strong> Please select a test file
+                        from the sidebar to begin execution.
+                    </div>
+                </div>
+                <%
+                Else
+                %>
+                <iframe
+                    id="test-frame"
+                    src="<%= currentFile %>"
+                    title="Test Viewer"></iframe>
+                <%
+                End If
+                %>
+            </div>
+        </div>
+
+        <div id="status-bar">
+            <span class="status-badge"></span>
+            <strong>Status:</strong> Ready | Total Tests:
+            <%= testCount %>
+            | Session:
+            <%= Session.SessionID %>
+        </div>
+
+        <script>
+            function loadTest(element) {
+                var fileName = element.getAttribute("data-file");
+                var frame = document.getElementById("test-frame");
+                var label = document.getElementById("current-filename");
+
+                if (frame) {
+                    frame.src = fileName;
+                }
+
+                if (label) {
+                    label.innerText = fileName;
+                }
+
+                // Update active state
+                var links = document.querySelectorAll(".test-link");
+                links.forEach(function (link) {
+                    link.classList.remove("active");
+                });
+                element.classList.add("active");
+
+                // Update URL without reload
+                if (window.history && window.history.replaceState) {
+                    window.history.replaceState(
+                        null,
+                        null,
+                        "?file=" + encodeURIComponent(fileName)
+                    );
+                }
+
+                return false;
+            }
+
+            function refreshTest() {
+                var frame = document.getElementById("test-frame");
+                if (frame) {
+                    frame.contentWindow.location.reload();
+                }
+            }
+        </script>
+    </body>
+</html>

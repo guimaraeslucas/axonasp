@@ -1,0 +1,318 @@
+#  AxonASP Server
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# Developed by Lucas Guimarães - G3pix Ltda
+# Contact: https://g3pix.com.br
+# Project URL: https://g3pix.com.br/axonasp
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Attribution Notice:
+# If this software is used in other projects, the name "G3Pix AxonASP Server"
+# must be cited in the documentation or "About" section.
+#
+# Contribution Policy:
+# Modifications to the core source code of AxonASP Server must be
+# made available under this same license terms.
+#
+
+###############################################################################
+# This file is used to configure the AxonASP server. You can override the     #
+# default settings by modifying this file or by setting environment variables.#
+# with the same name as the settings in this file, but in uppercase and with  #
+# dots replaced by underscores. For example, to override the default_charset  #
+# setting, you can set an environment variable named DEFAULT_CHARSET with the #
+# desired value. This allows you to easily manage different configurations    #
+# for development and production environments without modifying the           #
+# configuration file directly. Make sure to restart the server after making   #
+# changes to this file or setting environment variables for the changes to    #
+# take effect. Always keep a backup of your original configuration file       #
+# before making any modifications, especially in production environments, to  #
+# prevent any accidental misconfigurations that could affect the stability    #
+# and security of your server.                                                #
+###############################################################################
+
+[global]
+# default_charset is the character encoding used by the server/fastcgi when serving content. It ensures that text is displayed correctly in browsers. UTF-8 is a common choice as it supports a wide range of characters from different languages. Our implementation does not support other charsets, but this setting is here for compatibility with existing ASP applications that may convert characters to the specified charset before sending them to the client, so we allow it to be set in the headers of the response, but it will not affect the actual encoding used by the server, which is always UTF-8. CLI will always use UTF-8 encoding regardless of this setting.
+default_charset = "UTF-8"
+
+# default_mslcid is the default locale identifier (LCID) used by the server for ASP applications. LCIDs are used to specify the locale settings for an application, such as date and time formats, number formats, and language. The value 1046 corresponds to Portuguese (Brazil). You can change this value to match the desired locale for your applications. For example, 1033 is English (United States), 1031 is German (Germany), etc. A full list of LCIDs can be found on Microsoft's documentation or in mslcid.go file in our source code. The server will also use this to set the default locale for the ASP scripting engine, which can affect how certain functions behave based on the locale settings.
+default_mslcid = 1033
+
+# The amount of time in seconds that the server will wait for an ASP script to execute before timing out. If a script takes longer than this time to execute,the server will terminate the script and return an error to the client. You can adjust this value based on the expected execution time of your scripts. A common default is 60 seconds, but you may want to increase it for long-running scripts or decrease it for better performance and resource management.
+default_script_timeout = 60
+
+# The maximum buffered Response output size in megabytes before AxonASP aborts execution with a runtime error. This protects the server from unbounded in-memory buffering while Response.Buffer is enabled. The limit is applied consistently in HTTP, FastCGI, and CLI execution.
+response_buffer_limit_mb = 4
+
+# The timezone setting specifiesb the default timezone for the server. This can affect how dates and times are displayed and processed in your ASP applications. Setting it to "UTC" means that the server will use Coordinated Universal Time as the default timezone. You can change this to a specific timezone if needed, such as "America/New_York" or "Europe/London". Make sure to use a valid timezone identifier from the IANA Time Zone Database.
+default_timezone = "UTC"
+
+# When enabled, the http/fastcgi server will provide additional debugging information for ASP scripts, which can be helpful during development. However, it may also expose sensitive information about the server and should be disabled in production environments for security reasons. The CLI will always provide detailed error messages regardless of this setting, as it is intended for development and debugging purposes. 
+enable_asp_debugging = true
+
+# When enabled, the http/fastcgi server will create an error.log file in ./temp. The CLI will always provide detailed error messages regardless of this setting, as it is intended for development and debugging purposes. 
+enable_error_log_file = true
+
+# When enabled, the server will output in ./temp the full file before the engine compiles it, good for error handling and debugging, but it can consume a lot of disk space if you have a lot of traffic or large scripts, so it's generally recommended to keep this setting disabled in production environments and only enable it during development or when you need to troubleshoot specific issues with your ASP scripts. 
+dump_preprocessed_source = false
+
+# When enabled, the server will clear all existing sessions when it starts up. This can help prevent issues with stale or corrupted session data, but it will also log out any users who are currently logged in when the server restarts. You can disable this if you want to preserve sessions across server restarts, but be aware that it may lead to issues if there are problems with the session data and persistense that should not ocurr. 
+clean_sessions_on_startup = true
+
+# When enabled, the server will cache the compiled bytecode of ASP scripts in memory and disk for faster execution on subsequent requests. This can significantly improve performance for frequently accessed scripts, as it avoids the overhead of recompiling the script on each request. Values can be "enabled" (default), "memory-only", "disk-only" or "disabled". "enabled" will cache compiled scripts in both memory and disk, "memory-only" will cache compiled scripts only in memory (tier 1), "disk-only" will cache compiled scripts only on disk (tier 2), and "disabled" will not cache compiled scripts at all, which can significantly degrade performance but may be useful for development or troubleshooting purposes.
+bytecode_caching_enabled = "enabled"
+
+# The size of the compiled ASP scripts cache in megabytes. When an ASP script is requested for the first time, the server compiles it and stores the compiled version in memory for faster execution on subsequent requests. If the number of cached scripts exceeds this limit, the server will remove the least recently used scripts from the cache to free up memory. Setting this value to a reasonable number can help improve performance by keeping frequently accessed scripts in memory, but setting it too high may lead to increased memory usage, while setting it too low may result in more frequent recompilation of scripts, which can degrade performance. Adjust this value based on the size and traffic of your website, as well as the available memory resources on your server.
+cache_max_size_mb = 128
+
+# When enabled, the server will clear its cache of compiled ASP scripts when it starts up. This can help ensure that any changes to your ASP files are picked up immediately when the server restarts, but it may also increase the startup time of the server as it needs to recompile all scripts. You can disable this if you want to keep the compiled scripts in cache across restarts for faster startup, but be aware that changes to ASP files may not take effect until the server is restarted again.
+clean_cache_on_startup = true
+
+# The size of the pool of virtual machines (VMs) used to execute ASP scripts. Each VM can execute one script at a time, so having a pool of VMs allows the server to handle multiple requests concurrently. Setting this value to a reasonable number can help improve performance by allowing more scripts to be executed simultaneously, but setting it too high may lead to increased memory usage and resource contention, while setting it too low may result in slower response times during periods of high traffic. Adjust this value based on the expected traffic to your website and the available resources on your server. 0 means no limit, but it's generally recommended to set a reasonable limit to ensure stability and prevent resource exhaustion.
+vm_pool_size = 100
+
+# The maximum amount of memory in megabytes that the Go runtime is allowed to use. This can help prevent the server from consuming too much memory and potentially crashing. Setting it to 0 means no limit, but it's generally recommended to set a reasonable limit to ensure stability. If your server has limited memory resources, you may want to set this to a lower value to prevent out-of-memory errors. Setting this value too low may lead to performance issues or out-of-memory errors, while setting it too high may allow the server to consume more memory than is available, leading to crashes. Also note that this setting may not be strictly enforced by the Go runtime, and actual memory usage may vary based on the workload and garbage collection behavior.
+golang_memory_limit_mb = 128
+
+# Interval in seconds used to asynchronously flush dirty in-memory sessions to disk.
+# A value greater than 0 keeps session writes off the request hot path while still
+# guaranteeing a safe flush on process shutdown.
+session_flush_interval_seconds = 15
+
+# The architecture of the platform for which the ADODB library is called from (just for Access Database and in Windows). This is important for compatibility with the database drivers used by your ASP applications. If you are running a 64-bit operating system, you should set this to "amd64". If you are running a 32-bit operating system, you should set this to "386". You can use the 386 ADODB on your 64-bit Windows server, but you need to install the 32-bit version. You can also set it to "auto" to let the server automatically detect the architecture of the platform it is running on. 
+adodb_platform_architecture = "auto"
+
+# List of file extensions that will be treated as ASP scripts and executed by the server. You can add or remove extensions from this list based on your needs. For example, if you want to execute .aspx files as ASP scripts, you can add ".aspx" to the list. Make sure to include the dot before the extension. The server will check the requested file's extension against this list to determine whether to execute it as an ASP script or serve it as a static file.
+execute_as_asp = [".asp"]
+
+# When enabled, the server will watch for changes in the configuration file and automatically reload the configuration without needing to restart the server. This can be useful for making changes to the server settings on the fly, but it may also introduce some overhead as the server needs to monitor the file for changes. It's generally recommended to keep this setting disabled in production environments for better performance and stability, and only enable it during development or when you need to make frequent changes to the configuration. This setting isn't full implented yet.
+viper_watch_config = false
+
+# When enabled, the server will automatically read configuration values from environment variables that match the settings in this configuration file. This allows you to easily override settings without modifying the configuration file directly, which can be especially useful in containerized environments or when using a secrets management solution. The environment variables should be in uppercase and use underscores instead of dots. For example, to override the default_charset setting, you would set an environment variable named DEFAULT_CHARSET with the desired value. This provides flexibility in managing configurations across different environments (development, staging, production) without changing the code or configuration files.
+viper_automatic_env = true
+
+[cli]
+# When enabled, the server will allow the TUI interface that can be used to test ASP scripts and VBScript. However, it can also pose a security risk if not used carefully, as it allows any user with access to the CLI to execute scripts in TUI. It's generally recommended to keep this setting disabled unless you have a specific use case that requires it and you trust the scripts that will be using this functionality. This setting need to be enabled for enable_cli_run_from_command_line to work.
+enable_cli = true
+# When enabled, you can run ASP scripts directly from the command line using "axonasp-cli.exe -r/--run script.asp", which can be useful for running maintenance tasks or scheduled jobs without needing to access them through the web server, but it can also pose a security risk if not used carefully, as it allows any script with access to the CLI to be executed. It's generally recommended to keep this setting disabled unless you have a specific use case that requires it and you trust the scripts that will be using this functionality.
+enable_cli_run_from_command_line = true
+# When true, CLI execution always recompiles scripts as fresh runs and bypasses bytecode caching. Set to false to allow CLI to follow global.bytecode_caching_enabled behavior. When using TUI it's generally recommended to set this to true to ensure that you are always running the latest version of your scripts and to avoid any potential issues with stale bytecode. If you're using the CLI to run scripts (-r) directly from the command line, you can set this to false to take advantage of bytecode caching for improved performance, but be aware that changes to your scripts may not take effect until the bytecode cache is refreshed or cleared.
+force_fresh_compile = true
+
+#Web server configuration for AxonASP Server. This section contains settings related to the web server functionality (axonasp-http), such as the directory for error pages, the web root directory, default pages to serve, the port to listen on, and blocked file extensions. These settings help configure how the server handles incoming HTTP requests and serves content to clients. Adjust these settings according to your specific needs and server environment. This is where you can customize the behavior of the web server to ensure it serves your ASP applications correctly and securely througt the Proxy module, which is the default way to use AxonASP Server, but you can also use the FastCGI module if you prefer, which will allow you to use AxonASP Server with other web servers like Nginx or Apache, but it requires a bit more configuration and is not as straightforward as using the built-in web server, so we recommend using the built-in web server for most users, especially if you are new to web servers and ASP development.
+[server]
+# The directory where the server will look for default error pages. When an error occurs (e.g., 404 Not Found, 500 Internal Server Error), the server will check this directory for corresponding error page files (e.g., 404.html, 500.asp) and serve them to the client. If no custom error page is found, the server will return a default error message. You can customize this directory and the error pages to provide a better user experience when errors occur on your website. This configuration may be overridden by settings in the web.config file of your ASP application, allowing you to specify different error pages for different applications or directories.
+default_error_pages_directory = "./www/error-pages"
+
+# The root directory for the web server. This is the base directory from which the server will serve files. When a client makes a request, the server will look for the requested file within this directory. For example, if the web_root is set to "./www" and a client requests "/index.html", the server will look for "./www/index.html". Make sure to set this to the correct path where your ASP applications and static files are located. This configuration can't be be overridden by settings in the web.config file of your ASP application.
+web_root = "./www/"
+
+# List of default pages to try when a directory is accessed. The server will 
+# look for these files in order and serve the first one it finds.
+default_pages = [
+  "index.asp",
+  "default.asp",
+  "index.html",
+  "default.html",
+  "default.htm",
+  "index.htm",
+  "home.asp",
+  "home.html",
+  "home.htm",
+  "main.asp",
+  "main.html",
+  "main.htm",
+  "index.txt",
+]
+
+# The port on which the web server will listen and you should redirect your reverse proxy. 
+server_port = 8801
+
+# List of file extensions that the server will block from being served. This is a security measure to prevent access to sensitive files that should not be exposed to clients. The server will return a 404 Not found error if a client tries to access a file with one of these extensions. You can customize this list based on the types of files you want to protect. It's important to include any file types that may contain sensitive information or executable code that should not be accessible through the web server.
+blocked_extensions = [
+  ".asax",
+  ".ascx",
+  ".master",
+  ".skin",
+  ".browser",
+  ".sitemap",
+  ".config",
+  ".cs",
+  ".csproj",
+  ".vb",
+  ".vbproj",
+  ".webinfo",
+  ".licx",
+  ".resx",
+  ".resources",
+  ".mdb",
+  ".vjsproj",
+  ".java",
+  ".jsl",
+  ".ldb",
+  ".dsdgm",
+  ".ssdgm",
+  ".lsad",
+  ".ssmap",
+  ".cd",
+  ".dsprototype",
+  ".lsaprototype",
+  ".sdm",
+  ".sdmDocument",
+  ".mdf",
+  ".ldf",
+  ".ad",
+  ".dd",
+  ".ldd",
+  ".sd",
+  ".adprototype",
+  ".lddprototype",
+  ".exclude",
+  ".refresh",
+  ".compiled",
+  ".msgx",
+  ".vsdisco",
+  ".rules",
+  ".asa",
+  ".inc",
+  ".exe",
+  ".dll",
+  ".env",
+  ".htaccess",
+  ".git",
+  ".gitignore",
+]
+
+# List of files that the server will block from being served directly. This is a security measure to prevent access to sensitive files that should not be exposed to clients. The server will return a 404 Not found error if a client tries to access the file. You can customize this list based on the types of files you want to protect. It's important to include any file types that may contain sensitive information or executable code that should not be accessible through the web server.
+blocked_files = [
+  "MyInfo.xml",
+]
+
+# List of files that the server will block from being served directly. This is a security measure to prevent access to sensitive files that should not be exposed to clients. The server will return a 404 Not found error if a client tries to access the file. You can customize this list based on the types of files you want to protect. It's important to include any file types that may contain sensitive information or executable code that should not be accessible through the web server.
+blocked_dirs = [
+  "./www/error-pages", #block direct access to error pages directory
+  "./www/axonasp-pages", #block direct access to AxonASP pages directory
+]
+
+# Allows web.config files to override certain settings for the web server. When set to true, the server will read web.config files in the directories of the web root and apply some settings specified in those files. This allows for more granular control over the behavior of the server for specific applications. It won't work for directories outside the root. For example, you can use web.config files to specify custom error pages, and implement redirections and virtual directories. If set to false, the server will ignore any web.config file and use only the settings specified in this main configuration file.
+enable_webconfig = true
+
+# When enabled, the server will allow directory listing for directories that do not contain a default page. This means that if a client requests a directory and there is no default page (e.g., index.html) in that directory, the server will return a list of the files and subdirectories within that directory. This can be useful for development and debugging purposes, but it can also pose a security risk if sensitive files are exposed. It's generally recommended to keep this setting disabled in production environments to prevent unauthorized access to directory contents.  
+enable_directory_listing = true
+
+# The path to the HTML template used for directory listing when enable_directory_listing is set to true. This template should include placeholders (see the default directory listing template) where the server will inject the list of files and directories. You can customize this template to match the design of your website and provide a better user experience when directory listing is enabled. Make sure to set this to the correct path where your custom directory listing template is located.
+directory_listing_template = "./www/axonasp-pages/directory-listing.html"
+
+# FastCGI configuration for AxonASP Server. This section contains settings related to the FastCGI server functionality (axonasp-fastcgi), such as the port to listen on and the web root directory. These settings help configure how the server handles FastCGI requests, which can be used to integrate AxonASP Server with other web servers like Nginx or Apache. Adjust these settings according to your specific needs and server environment. This is where you can customize the behavior of the FastCGI server to ensure it serves your ASP applications correctly and securely when using it with a reverse proxy or as a backend for another web server.
+[fastcgi]
+# List of default pages to try when a directory is accessed. The server will look for these files in order and serve the first one it finds when requested for a directory. This is similar to the default_pages setting in the [server] section, but it applies specifically to the FastCGI server. You can customize this list based on the default pages you want to serve for directories when using FastCGI. 
+default_pages = [
+  "index.asp",
+  "default.asp",
+  "index.html",
+  "default.html",
+  "default.htm",
+  "index.htm",
+  "home.asp",
+  "home.html",
+  "home.htm",
+  "main.asp",
+  "main.html",
+  "main.htm",
+  "index.txt",
+] 
+server_port = 9000 #can also be a path to socket, e.g. "unix:/tmp/axonasp.sock" on *nix systems
+
+# Database configuration for G3DB Module from AxonASP Server. Adjust these settings according to your specific database setup and requirements. Properly configuring the database settings is crucial for ensuring that your ASP applications can connect to the database efficiently and securely from the G3DB library, which is the default database library for AxonASP Server and provides support for various databases including SQLite, MySQL, PostgreSQL and SQL Server. This configuration does not affect the ADODB library for Access, which has its own configuration settings and is only available on Windows platforms. For better security, it's recommended to use environment variables or a secure secrets management solution to store sensitive information like database credentials instead of hardcoding them in the configuration file, especially in production environments. You can set a .env file in the root of the server executable with the same variables defined here, and the server will load them and override the values in this configuration file, allowing you to keep sensitive information out of your version control system and easily manage different configurations for development and production environments.
+[g3db]
+# MySQL Database Configuration (G3DB)
+mysql_database = "test"
+mysql_host = "localhost"
+mysql_pass = "password"
+mysql_port = 3306
+mysql_user = "root"
+
+# PostgreSQL Database Configuration (G3DB)
+postgres_host = "localhost"
+postgres_user = "postgres"
+postgress_database = "test"
+postgress_pass = "password"
+postgress_port = 5432
+postgress_ssl_mode = "disable"
+
+# MS SQL Server Database Configuration (G3DB)
+mssql_database = "test"
+mssql_host = "localhost"
+mssql_pass = "password"
+mssql_port = 1433
+mssql_user = "sa"
+
+# SQLite Database Configuration (G3DB)
+sqlite_busy_timeout = 5000
+sqlite_path = "./database.db"
+
+# Oracle Database Configuration (G3DB)
+# Provide either oracle_dsn (a full go-ora/v2 URL) or individual host/port/user/pass/service keys.
+# DSN format: oracle://user:password@host:port/service_name
+oracle_dsn = ""
+oracle_host = "localhost"
+oracle_pass = "password"
+oracle_port = 1521
+oracle_service = "ORCLCDB"
+oracle_user = "system"
+
+# Mail configuration for AxonASP Server. This section contains settings related to sending emails from your ASP applications, such as SMTP server details and authentication credentials. Properly configuring these settings is essential for ensuring that your applications can send emails successfully, whether it's for user notifications, password resets, or other email functionalities. Adjust these settings according to your email service provider's requirements and the needs of your applications. This configuration is used by the built-in mail functionality in the ASP scripting engine, which allows you to send emails using any of the g3mail object in your ASP scripts. For better security, it's recommended to use environment variables or a secure secrets management solution to store sensitive information like email credentials instead of hardcoding them in the configuration file, especially in production environments. You can set a .env file in the root of the server executable with the same variables defined here, and the server will load them and override the values in this configuration file, allowing you to keep sensitive information out of your version control system and easily manage different configurations for development and production environments.
+[g3mail]
+smpt_host = "smtp.example.com"
+smtp_from = "sender@example.com"
+smtp_pass = "your_password"
+smtp_port = 587
+smtp_user = "your_email@example.com"
+
+[axfunctions]
+# When enabled, the Ax functions will be avaliable on the global context, without the need to call Server.Object(). This will break compatibility with Classic ASP default
+enable_global_ax = true
+# When enabled, the server will allow the use of the axshutdownaxonaspserver() function in ASP scripts, which can be used to programmatically shut down the server. This can be useful for maintenance or when you want to allow certain scripts to trigger a server shutdown, but it can also pose a severe security risk if not used carefully, as it allows any script with access to this function to shut down the server. It's generally recommended to keep this setting disabled unless you have a specific use case that requires it and you trust the scripts that will be using this function.
+enable_axservershutdown_function = false
+# The path to the CSS file used by the built-in AxonASP pages (e.g., error pages). This allows you to customize the appearance of these pages by providing your own CSS file. 
+ax_default_css_path = "./www/axonasp-pages/css/axonasp.css"
+# The path to the logo used by the built-in AxonASP pages (e.g., error pages). This allows you to customize the appearance of these pages by providing your own logo file. It will be returned as an inline base64 image, so you can use any image format supported by browsers (e.g., PNG, JPEG, SVG) and it will be displayed correctly on the pages. 
+ax_default_logo_path = "./www/axonasp-pages/images/logo.png"
+
+[mcp]
+# You can set it to "stdio" or "sse", if sse, set mcp_sse_port to the desired port. The SSE will be served at http://localhost:{mcp_sse_port}/sse, and you can send commands to http://localhost:{mcp_sse_port}/command. This setting determines the mode of communication for the MCP (Management Control Panel) tool. When set to "stdio", the MCP will communicate through standard input and output, which is suitable for local management and debugging. When set to "sse", the MCP will use Server-Sent Events (SSE) to provide a real-time interface for managing the server, which can be accessed remotely through a web browser or other SSE-compatible client. The SSE mode allows for more interactive and dynamic management of the server, but it may require additional configuration and security considerations if exposed to remote clients. If you opt for the SSE mode, make sure to secure the endpoint properly using a reverse proxy like nginx.
+mcp_mode = "stdio"
+# The port on which the MCP SSE server will listen if mcp_mode is set to "sse". This allows you to use the MCP functionality over SSE, which can be useful for remote management and integration with other tools. If mcp_mode is set to "stdio", this setting will be ignored and the MCP will communicate through standard input and output instead.
+mcp_sse_port = 8000
+# The path to the markdown file that contains the documentation for the MCP tool. This file should be formatted in a very specific way that allows the MCP to parse it and extract relevant information based on user queries. The documentation should include details about the available functions, objects, libraries, and other resources in the AxonASP server, along with examples and usage instructions. Properly maintaining this documentation is crucial for ensuring that users can effectively utilize the MCP tool to get accurate information about the server's capabilities and how to use them in their ASP applications. You can customize this path based on where you store your documentation file, but make sure it is accessible by the server and properly formatted for parsing.
+mcp_docs = "mcp/docs.md"
+
+[mswc]
+# When enabled, the MSWC.PageCounter component will be available for use in ASP scripts. This component allows you to easily track and display the number of hits or visits to a page. When enabled, the server will read and update the hit count from the file specified in pagecounter_file whenever the MSWC.PageCounter component is used in an ASP script. This can be useful for tracking page popularity and visitor engagement on your website. However, it may also introduce some overhead due to file I/O operations, especially on high-traffic websites. It will start a goroutine to save the hit count to the file at regular intervals defined by pagecounter_save_interval_seconds, which can help mitigate performance issues by reducing the frequency of file writes and only if memory values changed. It's generally recommended to enable this setting only if you need the page hit counting functionality provided by the MSWC.PageCounter component, and to monitor the performance impact on your server if you have a high-traffic website.
+pagecounter_enabled = false
+# The path to the file used by the MSWC.PageCounter component to store the hit count. This file will be created if it does not exist, and the server will read and update the hit count in this file whenever the MSWC.PageCounter component is used in an ASP script. Make sure that the server has write permissions to this file and its directory, as it needs to update the hit count each time the component is used. You can customize this path based on your preferences, but it's generally recommended to keep it within a directory that is not publicly accessible through the web server for security reasons. This is a Go-specific binary (gob) file that is used to efficiently store the hit count data, and it is not meant to be edited manually. 
+pagecounter_file = "./temp/hitcnt.gob"
+# The interval in seconds at which the MSWC.PageCounter component will save the hit count to the file specified in pagecounter_file. This setting helps to reduce the frequency of file writes, which can improve performance, especially on high-traffic websites. The server will keep the hit count in memory and only write it to the file at the specified intervals. You can adjust this interval based on your needs and the expected traffic to your website. A shorter interval will provide more up-to-date hit counts but may increase disk I/O, while a longer interval will reduce disk I/O but may result in less accurate hit counts if the server is restarted or crashes before the next save.
+pagecounter_save_interval_seconds = 120
+
+#These settings are only relevant when running the server in service mode using the service wrapper, and it will be ignored when running in normal mode. 
+[service]
+# The name of the service when running in service mode. This is used to identify the service in the operating system's service manager (e.g., Windows Services). You can set this to a descriptive name that reflects the purpose of the service, such as "AxonASP Server". Make sure to choose a unique name if you have multiple services running on the same machine to avoid conflicts. 
+service_name = "AxonASPServer"
+
+# The display name of the service when running in service mode. This is used to provide a more user-friendly name for the service in the operating system's service manager. You can set this to a descriptive name that reflects the purpose of the service, such as "AxonASP Server". This is the name that will be shown in the list of services, so it can be more descriptive than the actual service name used for identification.
+service_display_name = "G3pix AxonASP Server"
+
+# The description of the service when running in service mode. This is used to provide additional information about the service in the operating system's service manager. You can set this to a brief description that explains what the service does, such as "AxonASP Service running AxonASP Server. This is a wrapper to our server." 
+service_description = "AxonASP Service running AxonASP Server. This is a wrapper used by axonasp-http or axonasp-fastcgi."
+
+# Path to the executable that will be run when the service starts, it can be the same as the main server executable or the fast-cgi version. Make sure to set this to the correct path of the executable you want to run when the service starts. Don't append the file extension, the service wrapper will automatically add .exe on Windows. 
+#service_executable_path = "./axonasp-fastcgi" 
+service_executable_path = "./axonasp-http" 
+
+# List of environment variables to set for the service, in the format "KEY=VALUE". These environment variables will be available to the service process when it runs, allowing you to configure the behavior of the server or your ASP applications without modifying the configuration file directly. You can add as many environment variables as needed, and they will be set in the service's environment when it starts. This is especially useful for setting sensitive information like database credentials or API keys in a secure way, such as using a secrets management solution or environment variable management in your deployment platform.
+#service_environment_variables = ["SERVER_SERVER_PORT=9901"] 
+service_environment_variables = [] 

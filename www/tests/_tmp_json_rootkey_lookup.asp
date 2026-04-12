@@ -1,0 +1,1 @@
+﻿<% Option Explicit : dim o,a,v : set o = new JSONobject : set a = new JSONarray : o.add JSON_ROOT_KEY, a : set v = o.value("data") : Response.Write TypeName(v) %>`r`n<!--#include file="json-teste/jsonObject.class.asp" -->

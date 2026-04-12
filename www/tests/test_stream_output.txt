@@ -1,0 +1,3 @@
+Hello from ADODB.Stream!
+This is line 2
+And line 3

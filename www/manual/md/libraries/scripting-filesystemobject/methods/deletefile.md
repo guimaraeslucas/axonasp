@@ -1,0 +1,44 @@
+# DeleteFile Method
+
+## Overview
+
+The DeleteFile method is exposed by the Scripting.FileSystemObject library object. Use it to execute this library operation from Classic ASP/VBScript with AxonASP runtime behavior.
+
+## Syntax
+
+```asp
+result = obj.DeleteFile(...)
+`````
+
+## Parameters and Arguments
+
+- Parameters (Variant, Optional): This method accepts arguments according to the runtime dispatch of the Scripting.FileSystemObject object.
+- Argument validation: invalid count or type raises runtime errors.
+
+## Return Values
+
+Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+
+## Remarks
+
+- Method names are case-insensitive.
+- Prefer explicit variable assignment and defensive checks before using returned values.
+- For object values, use Set when assigning the return value.
+
+## Code Example
+
+```asp
+<%
+Option Explicit
+Dim obj, result
+Set obj = Server.CreateObject("Scripting.FileSystemObject")
+result = obj.DeleteFile()
+If IsObject(result) Then
+    Response.Write "Object returned"
+Else
+    Response.Write CStr(result)
+End If
+Set obj = Nothing
+%>
+`````
+

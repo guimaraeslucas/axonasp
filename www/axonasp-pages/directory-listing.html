@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+    <!--
+            
+            AxonASP Server
+            Copyright (C) 2026 G3pix Ltda. All rights reserved.
+            
+            Developed by Lucas Guimarães - G3pix Ltda
+            Contact: https://g3pix.com.br/
+            Project URL: https://g3pix.com.br/axonasp
+            
+            This Source Code Form is subject to the terms of the Mozilla Public
+            License, v. 2.0. If a copy of the MPL was not distributed with this
+            file, You can obtain one at https://mozilla.org/MPL/2.0/.
+            
+            Attribution Notice:
+            If this software is used in other projects, the name "AxonASP Server"
+            must be cited in the documentation or "About" section.
+            
+            Contribution Policy:
+            Modifications to the core source code of AxonASP Server must be
+            made available under this same license terms.
+            
+            -->
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{{.Title}}</title>
+        <style>
+            {{.InlineCSS}}
+        </style>
+    </head>
+
+    <body class="ax-dir-body">
+        <div id="header" class="ax-dir-header">
+            <div class="logo">
+                <img src="{{.LogoDataURI}}"
+                    alt="AxonASP" width="43" />
+            </div>
+            <h1>Directory Listing</h1>
+        </div>
+
+        <div class="ax-dir-container">
+            <div class="ax-dir-panel">
+                <div class="ax-dir-path">Current Path: {{.RequestPath}}</div>
+                <table class="ax-dir-table" aria-label="Directory entries">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>MIME</th>
+                            <th>Size</th>
+                            <th>Modified</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{if .ParentPath}}
+                        <tr>
+                            <td><a href="{{.ParentPath}}">..</a></td>
+                            <td>Directory</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>-</td>
+                        </tr>
+                        {{end}}
+                        {{if .Entries}}
+                        {{range .Entries}}
+                        <tr>
+                            <td><a href="{{.Href}}">{{.Name}}</a></td>
+                            <td>{{.TypeLabel}}</td>
+                            <td>{{.MimeType}}</td>
+                            <td>{{.SizeDisplay}}</td>
+                            <td>{{.Modified}}</td>
+                        </tr>
+                        {{end}}
+                        {{else}}
+                        <tr>
+                            <td colspan="5">No visible files or directories in this location.</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="status-bar">
+            <span>AxonASP Server</span>
+            <span class="ax-dir-status-time">Generated: {{.GeneratedAt}}</span>
+        </div>
+    </body>
+
+</html>

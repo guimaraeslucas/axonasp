@@ -1,0 +1,9 @@
+<script runat="server" language="VBScript">
+    Sub Application_OnStart
+        Application("FromASA") = "Started!"
+    End Sub
+    
+</script>
+<object runat="server" scope="Application" id="appObj" progid="Scripting.Dictionary">
+</object>
+<object runat="server" scope="Session" id="sessObj" progid="Scripting.Dictionary"></object>

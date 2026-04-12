@@ -1,0 +1,17 @@
+REDIRECT /ad_redirect.asp
+WIDTH 468
+HEIGHT 60
+BORDER 1
+*
+https://via.placeholder.com/468x60?text=Ad+1+50%
+http://example.com/ad1
+Placeholder Ad 1
+50
+https://via.placeholder.com/468x60?text=Ad+2+30%
+http://example.com/ad2
+Placeholder Ad 2
+30
+https://via.placeholder.com/468x60?text=Ad+3+20%
+-
+Placeholder Ad 3 (Non-clickable)
+20

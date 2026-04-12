@@ -1,0 +1,15 @@
+%%
+#1
+<div style="padding:10px; background:#f0f0f0; border:1px solid #ccc;">
+  <strong>Tip 1:</strong> AxonASP supports classic ASP syntax!
+</div>
+%%
+#1
+<div style="padding:10px; background:#f0f0f0; border:1px solid #ccc;">
+  <strong>Tip 2:</strong> Use <code>Server.CreateObject</code> for MSWC!
+</div>
+%%
+#1
+<div style="padding:10px; background:#f0f0f0; border:1px solid #ccc;">
+  <strong>Tip 3:</strong> You can rotate HTML content with <code>ContentRotator</code>!
+</div>

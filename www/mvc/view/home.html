@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{{.PageTitle}}</title>
+        <link rel="stylesheet" href="../css/axonasp.css">
+    </head>
+
+    <body>
+        <div class="container">
+            <h1>{{.Heading}}</h1>
+            <p>{{.Tagline}}</p>
+            <ul>
+                {{range .Highlights}}
+                <li>{{.}}</li>
+                {{end}}
+            </ul>
+            <p><a href="default.asp?page=example">Go to example page</a></p>
+            <p><a href="../default.asp">Back to root default page</a></p>
+            <p>Year: {{.CurrentYear}}</p>
+        </div>
+    </body>
+
+</html>

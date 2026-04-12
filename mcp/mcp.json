@@ -1,0 +1,10 @@
+{
+    "servers": {
+        "AxonASP MCP": {
+            "type": "stdio",
+            "command": ".\\axonasp-mcp.exe",
+            "args": []
+        }
+    },
+    "inputs": []
+}

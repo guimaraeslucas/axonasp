@@ -1,0 +1,56 @@
+#
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Build output
+build/
+
+# Code coverage profiles and other test artifacts
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Git and IDE
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sql
+database.db
+
+# Windows resource files 
+cli/resource.syso
+fastcgi/resource.syso
+mcp/resource.syso
+server/resource.syso
+testesuite/resource.syso
+service/resource.syso
+
+#setup for inno
+setup/
+
+
+# Go workspace file
+go.work
+go.work.sum
+
+# env file
+.env
+
+# Editor/IDE
+.vscode/
+
+#temp
+temp/
+
+#www
+www/temp/
+axonvm/temp
+axonvm/www
