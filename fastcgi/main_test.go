@@ -35,6 +35,72 @@ import (
 	"time"
 )
 
+func TestParseFastCGIListenEndpoint(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantNet   string
+		wantAddr  string
+		wantError bool
+	}{
+		{
+			name:     "numeric tcp port",
+			input:    "9000",
+			wantNet:  "tcp",
+			wantAddr: "127.0.0.1:9000",
+		},
+		{
+			name:     "host port",
+			input:    "0.0.0.0:9100",
+			wantNet:  "tcp",
+			wantAddr: "0.0.0.0:9100",
+		},
+		{
+			name:     "unix socket endpoint",
+			input:    "unix:/tmp/axonasp.sock",
+			wantNet:  "unix",
+			wantAddr: "/tmp/axonasp.sock",
+		},
+		{
+			name:      "invalid tcp port",
+			input:     "70000",
+			wantError: true,
+		},
+		{
+			name:      "missing unix socket path",
+			input:     "unix:",
+			wantError: true,
+		},
+		{
+			name:      "invalid endpoint",
+			input:     "localhost",
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotNet, gotAddr, err := parseFastCGIListenEndpoint(tt.input)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("expected error, got network=%q address=%q", gotNet, gotAddr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotNet != tt.wantNet {
+				t.Fatalf("network mismatch: got %q want %q", gotNet, tt.wantNet)
+			}
+			if gotAddr != tt.wantAddr {
+				t.Fatalf("address mismatch: got %q want %q", gotAddr, tt.wantAddr)
+			}
+		})
+	}
+}
+
 // chanListener is a single-use net.Listener backed by a channel of pre-created
 // net.Conns, allowing fcgi.Serve to be driven by an in-memory net.Pipe pair.
 type chanListener struct {

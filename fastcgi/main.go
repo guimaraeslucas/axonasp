@@ -35,6 +35,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"slices"
 	"strconv"
@@ -53,6 +54,7 @@ import (
 // FastCGI configuration values.
 var (
 	Version                  = "0.0.0.0"
+	ListenNetwork            = "tcp"
 	ListenAddr               = "127.0.0.1:9000"
 	RootDir                  = "./www"
 	DefaultPages             = []string{"default.asp", "default.htm", "index.asp", "index.html", "default.html"}
@@ -99,9 +101,6 @@ func loadFastCGIConfig() {
 	axonvm.SetInternalErrorLogEnabled(v.GetBool("global.enable_error_log_file"))
 	axonvm.SetDumpPreprocessedSourceEnabled(v.GetBool("global.dump_preprocessed_source"))
 
-	if listenPort := v.GetInt("fastcgi.server_port"); listenPort > 0 {
-		ListenAddr = "127.0.0.1:" + strconv.Itoa(listenPort)
-	}
 	if pages := v.GetStringSlice("fastcgi.default_pages"); len(pages) > 0 {
 		DefaultPages = pages
 	}
@@ -117,6 +116,17 @@ func loadFastCGIConfig() {
 	}
 	if responseBufferLimitMB := v.GetInt("global.response_buffer_limit_mb"); responseBufferLimitMB > 0 {
 		ResponseBufferLimitBytes = responseBufferLimitMB * 1024 * 1024
+	}
+
+	rawListenEndpoint := strings.TrimSpace(v.GetString("fastcgi.server_port"))
+	if rawListenEndpoint != "" {
+		network, address, err := parseFastCGIListenEndpoint(rawListenEndpoint)
+		if err != nil {
+			log.Printf("Warning: Invalid fastcgi.server_port value %q, keeping default %s://%s: %v\n", rawListenEndpoint, ListenNetwork, ListenAddr, err)
+		} else {
+			ListenNetwork = network
+			ListenAddr = address
+		}
 	}
 
 	CleanupSessions = v.GetBool("global.clean_sessions_on_startup")
@@ -146,6 +156,98 @@ func loadFastCGIConfig() {
 	axonvm.SetVMPoolSizeLimit(VMPoolSize)
 
 	axonvm.InitGlobalAxonFunctions(v.GetBool("axfunctions.enable_global_ax"))
+}
+
+// parseFastCGIListenEndpoint parses FastCGI listener settings as TCP port/host:port or unix:/path socket endpoint.
+func parseFastCGIListenEndpoint(raw string) (string, string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", "", fmt.Errorf("listen endpoint cannot be empty")
+	}
+
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "unix:") {
+		socketPath := strings.TrimSpace(value[len("unix:"):])
+		if socketPath == "" {
+			return "", "", fmt.Errorf("unix socket path cannot be empty")
+		}
+		return "unix", socketPath, nil
+	}
+
+	if port, err := strconv.Atoi(value); err == nil {
+		if port <= 0 || port > 65535 {
+			return "", "", fmt.Errorf("tcp port must be between 1 and 65535")
+		}
+		return "tcp", "127.0.0.1:" + strconv.Itoa(port), nil
+	}
+
+	if strings.HasPrefix(value, ":") {
+		return "tcp", "127.0.0.1" + value, nil
+	}
+
+	if _, _, err := net.SplitHostPort(value); err == nil {
+		return "tcp", value, nil
+	}
+
+	return "", "", fmt.Errorf("invalid FastCGI listen endpoint")
+}
+
+// prepareFastCGIListener creates the configured FastCGI listener and prepares unix socket paths when needed.
+func prepareFastCGIListener(network, address string) (net.Listener, error) {
+	if network != "unix" {
+		return net.Listen(network, address)
+	}
+
+	if runtime.GOOS == "windows" {
+		return nil, fmt.Errorf("unix socket mode is not supported on Windows")
+	}
+
+	if err := ensureUnixSocketPathReady(address); err != nil {
+		return nil, err
+	}
+
+	listener, err := net.Listen("unix", address)
+	if err != nil {
+		return nil, err
+	}
+
+	if chmodErr := os.Chmod(address, 0o660); chmodErr != nil {
+		log.Printf("Warning: Failed to apply permissions to unix socket %s: %v\n", address, chmodErr)
+	}
+
+	return listener, nil
+}
+
+// ensureUnixSocketPathReady creates parent directories and removes stale unix socket files before binding.
+func ensureUnixSocketPathReady(path string) error {
+	dir := filepath.Dir(path)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	if info.Mode()&os.ModeSocket == 0 {
+		return fmt.Errorf("path exists and is not a unix socket: %s", path)
+	}
+
+	return os.Remove(path)
+}
+
+// cleanupFastCGIListenerArtifact removes unix socket files on graceful shutdown.
+func cleanupFastCGIListenerArtifact(network, address string) {
+	if network != "unix" {
+		return
+	}
+	_ = os.Remove(address)
 }
 
 // applyRuntimeSettings applies timezone and Go memory limit based on loaded configuration.
@@ -272,14 +374,15 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", fastCGIMiddleware(handleRequest))
 
-	listener, err := net.Listen("tcp", ListenAddr)
+	listener, err := prepareFastCGIListener(ListenNetwork, ListenAddr)
 	if err != nil {
-		axonvm.ReportInternalError(axonvm.ErrCouldNotListenOn, err, "FastCGI listener could not start.", ListenAddr, 0)
+		axonvm.ReportInternalError(axonvm.ErrCouldNotListenOn, err, "FastCGI listener could not start.", ListenNetwork+"://"+ListenAddr, 0)
 		os.Exit(1)
 	}
 	defer listener.Close()
+	defer cleanupFastCGIListenerArtifact(ListenNetwork, ListenAddr)
 
-	fmt.Printf("AxonASP FastCGI %s started on %s\n", Version, ListenAddr)
+	fmt.Printf("AxonASP FastCGI %s started on %s://%s\n", Version, ListenNetwork, ListenAddr)
 	fmt.Printf("Serving files from: %s\n", RootDir)
 
 	stop := make(chan os.Signal, 1)
@@ -287,7 +390,7 @@ func main() {
 
 	go func() {
 		if err := fcgi.Serve(listener, mux); err != nil {
-			axonvm.ReportInternalError(axonvm.ErrFastCGIProtocolError, err, "FastCGI server returned an execution error.", ListenAddr, 0)
+			axonvm.ReportInternalError(axonvm.ErrFastCGIProtocolError, err, "FastCGI server returned an execution error.", ListenNetwork+"://"+ListenAddr, 0)
 			os.Exit(1)
 		}
 	}()
