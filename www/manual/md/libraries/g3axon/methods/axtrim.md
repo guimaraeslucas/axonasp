@@ -1,45 +1,33 @@
-﻿# Axtrim Method
+# Trim String Whitespace or Characters
 
 ## Overview
 
-Trims whitespace or custom characters from both ends of a string.
+Removes whitespace or specified characters from the beginning and end of a string.
 
 ## Syntax
 
-```asp
-result = obj.Axtrim(...)
+```vbscript
+strResult = obj.axtrim(str[, chars])
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The string to trim.
+- **chars** (String, Optional): Specific characters to remove. If omitted, defaults to standard whitespace characters.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The trimmed string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Useful for cleaning up user input or formatted text data.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axtrim()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strTrimmed
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strTrimmed = obj.axtrim("  Hello World  ")
+Response.Write strTrimmed ' Outputs: Hello World
 ```
-
-

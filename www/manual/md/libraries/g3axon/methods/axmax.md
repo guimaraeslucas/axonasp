@@ -1,45 +1,33 @@
-﻿# Axmax Method
+# axmax
 
 ## Overview
-
-Returns the largest numeric value from the provided arguments.
+Returns the largest numeric value from the provided arguments in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axmax(...)
+result = obj.axmax(n1, n2, ..., nN)
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **n1, n2, ..., nN** (Numeric): A variable number of numeric values to be compared.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a Double representing the maximum value found among all arguments. If no arguments are provided, it returns 0.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+The function automatically converts non-numeric values to their numeric equivalent before comparison.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axmax()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, maxVal
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+' Returns 45.7
+maxVal = obj.axmax(10, 45.7, 32, -5)
+Response.Write "Max value: " & maxVal
+
 Set obj = Nothing
 %>
 ```
-
-

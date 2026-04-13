@@ -1,45 +1,32 @@
-﻿# Axmd5 Method
+# Compute MD5 Hash
 
 ## Overview
 
-Returns the MD5 hash of a string as lowercase hexadecimal.
+Computes the MD5 hash of a given string.
 
 ## Syntax
 
-```asp
-result = obj.Axmd5(...)
+```vbscript
+strHash = obj.axmd5(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The string to hash.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The hexadecimal MD5 hash of the string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+MD5 is a widely used cryptographic hash function. It is provided for standard hashing purposes.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axmd5()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strHash
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strHash = obj.axmd5("admin")
+Response.Write strHash ' Outputs: 21232f297a57a5a743894a0e4a801fc3
 ```
-
-

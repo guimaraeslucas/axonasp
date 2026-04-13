@@ -36,8 +36,7 @@ Following this template produces a manual page that is consistent with AxonASP s
 - Validate member names against axonvm/lib_*.go dispatch surfaces before publishing.
 - Prefer predictable names such as overview.md, methods.md, properties.md, and family-specific pages where needed.
 - For AI-generated ASP examples, enforce ASP_CODE_GUIDELINES.MD through the authoring/llm-classic-asp-coding.md checklist.
-
-## Code Example
++
 ```asp
 <%
 Dim db

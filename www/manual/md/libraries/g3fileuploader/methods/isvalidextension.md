@@ -1,48 +1,18 @@
 # IsValidExtension Method
 
 ## Overview
-
-Checks whether Valid Extension is valid or enabled.
+Tests logic sequentially running validation over blocked arrays, max limits, against any strictly targeted file type extension, checking engine integrity dynamically without causing data persistence failures directly handling bytes.
 
 ## Syntax
-
 ```asp
-result = obj.IsValidExtension(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+If uploader.IsValidExtension(".xlsx") Then
+    ' Valid configuration
+End If
+```
 
 ## Parameters and Arguments
-
-- fileNameOrExtension (String, Required): Candidate file name or extension to validate.
-- Argument validation: invalid count or type raises runtime errors.
+- `ExtensionName` (String, Required): A string file type identifier (e.g., ".txt").
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.IsValidExtension()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns a boolean representing true if the file validates perfectly under existing internal limits.

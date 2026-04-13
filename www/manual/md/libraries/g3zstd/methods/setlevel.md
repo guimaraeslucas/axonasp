@@ -2,47 +2,48 @@
 
 ## Overview
 
-Sets Level for the G3ZSTD library.
+Sets the default compression level for the G3Pix AxonASP G3ZSTD object. This level is used for all subsequent compression operations that do not explicitly specify a level.
 
 ## Syntax
 
 ```asp
-result = obj.SetLevel(...)
-`````
+result = obj.SetLevel(level)
+```
 
 ## Parameters and Arguments
 
-- level (Integer, Required): Zstd compression level.
-- Argument validation: invalid count or type raises runtime errors.
+- **level**: An Integer specifying the compression level. The range is -5 (fastest, lower ratio) to 22 (slowest, highest ratio).
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean value:
+- **True**: The compression level was successfully updated.
+- **False**: An invalid level was provided (outside the -5 to 22 range).
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is an alias for `SetCompressionLevel`.
+- Setting a new level will re-initialize the internal encoder resource.
+- The default compression level is 3.
+- If an invalid level is provided, the current level is maintained and a runtime error is raised.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZSTD")
-result = obj.SetLevel()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim objZstd
+Set objZstd = Server.CreateObject("G3ZSTD")
+
+' Change default compression level to 12
+If objZstd.SetLevel(12) Then
+    Response.Write "Default compression level set to " & objZstd.Level
 End If
-Set obj = Nothing
+
+' Use the new default level for compression
+Dim compressed
+compressed = objZstd.Compress("Test Data")
+
+Set objZstd = Nothing
 %>
-`````
-
-
-
-
-
+```

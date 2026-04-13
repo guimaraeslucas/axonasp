@@ -1,45 +1,34 @@
-﻿# Axstringgetcsv Method
+# Parse CSV String
 
 ## Overview
 
-Parses one CSV row string and returns the values as an array.
+Parses a comma-separated values (CSV) string and returns an array of values.
 
 ## Syntax
 
-```asp
-result = obj.Axstringgetcsv(...)
+```vbscript
+arrayResult = obj.axstringgetcsv(str[, delimiter])
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The CSV string to parse.
+- **delimiter** (String, Optional): The delimiter character. Defaults to `,`.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Variant (Array of Strings). Contains the parsed values from the CSV string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If the string is empty or parsing fails, an empty array is returned.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axstringgetcsv()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, arr, str
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+str = "apple,banana,orange"
+arr = obj.axstringgetcsv(str)
+Response.Write arr(0) ' Outputs: apple
 ```
-
-

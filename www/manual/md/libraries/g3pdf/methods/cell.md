@@ -1,55 +1,44 @@
-# Cell Method
+# Cell
 
 ## Overview
 
-Writes a positioned cell into the current PDF page.
+Prints a cell (rectangular area) with optional borders, background color, and character string. The upper-left corner of the cell corresponds to the current position.
 
 ## Syntax
 
 ```asp
-result = obj.Cell(...)
-`````
+obj.Cell w, h, txt, [border], [ln], [align], [fill], [link]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- width (Number, Required): Cell width.
-- height (Number, Required): Cell height.
-- text (String, Optional): Cell text.
-- border (Variant, Optional): Border mode.
-- ln (Integer, Optional): Line break behavior.
-- align (String, Optional): Horizontal alignment.
-- fill (Boolean, Optional): Fill background when true.
-- link (String, Optional): Optional link target.
-- Argument validation: invalid count or type raises runtime errors.
+- `w` (Double): Cell width. If 0, the cell extends up to the right margin.
+- `h` (Double): Cell height.
+- `txt` (String): String to print.
+- `border` (Variant, Optional): Indicates if borders must be drawn (0, 1, or string like `LRTB`).
+- `ln` (Integer, Optional): Indicates where the current position should go after the call (0: to the right, 1: to the beginning of the next line, 2: below).
+- `align` (String, Optional): Text alignment (`L`, `C`, `R`).
+- `fill` (Boolean, Optional): Indicates if the cell background must be painted.
+- `link` (Integer, Optional): Identifier or string for a link.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.Cell()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

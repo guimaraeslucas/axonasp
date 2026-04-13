@@ -1,46 +1,31 @@
 # Stroke Method
 
 ## Overview
-
-Executes the Stroke operation provided by the G3IMAGE library.
+Outlines the current path using the active color and line width in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.Stroke(...)
+obj.Stroke()
 ```
-
-## Parameters and Arguments
-
-- none: strokes current path/shape using current stroke style.
-- Argument validation: invalid count or type raises runtime errors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Use SetColor or SetHexColor and SetLineWidth to define the appearance before calling this method.
+- The path is cleared after the stroke operation. Use StrokePreserve if you need to keep the path.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.Stroke()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(200, 200) Then
+    img.SetHexColor("#000000")
+    img.SetLineWidth 2
+    img.DrawCircle 100, 100, 80
+    img.Stroke()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

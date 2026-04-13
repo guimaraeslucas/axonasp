@@ -1,40 +1,29 @@
 # LastTempFile Property
 
 ## Overview
-
-The LastTempFile property is exposed by the G3IMAGE library object and returns the current state/value associated with this member.
+Returns the file path of the temporary file used during the last rendering operation in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-value = obj.LastTempFile
-obj.LastTempFile = newValue
+path = obj.LastTempFile
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a String containing the full file path.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- The file is typically deleted automatically after the operation completes.
+- This property is primarily used for debugging purposes.
+- It is read-only.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3IMAGE")
-value = obj.LastTempFile
-Response.Write CStr(value)
-Set obj = Nothing
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+img.NewContext 100, 100
+img.RenderViaTemp "png", 0
+Response.Write "Temp file used: " & img.LastTempFile
+Set img = Nothing
 %>
 ```

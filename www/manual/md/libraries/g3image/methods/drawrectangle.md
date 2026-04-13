@@ -1,49 +1,35 @@
 # DrawRectangle Method
 
 ## Overview
-
-Draws Rectangle onto the current image canvas.
+Adds a rectangle to the current path in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.DrawRectangle(...)
+obj.DrawRectangle(x, y, w, h)
 ```
 
-## Parameters and Arguments
-
-- x (Number, Required): Left.
-- y (Number, Required): Top.
-- width (Number, Required): Rectangle width.
-- height (Number, Required): Rectangle height.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **x** (Double): The x-coordinate of the top-left corner.
+- **y** (Double): The y-coordinate of the top-left corner.
+- **w** (Double): The width of the rectangle.
+- **h** (Double): The height of the rectangle.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method adds a rectangle to the current path. Call Stroke or Fill to render it.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.DrawRectangle()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(400, 300) Then
+    img.SetHexColor("#0000FF")
+    img.DrawRectangle 50, 50, 300, 200
+    img.Stroke()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

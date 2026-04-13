@@ -1,4 +1,4 @@
-﻿# Axgetconfig Method
+# Axgetconfig
 
 ## Overview
 
@@ -17,8 +17,8 @@ result = obj.Axgetconfig(...)
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+- Returns Empty.
+
 
 ## Remarks
 
@@ -31,7 +31,7 @@ result = obj.Axgetconfig(...)
 <%
 Option Explicit
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 result = obj.Axgetconfig()
 If IsObject(result) Then
     Response.Write "Object returned"

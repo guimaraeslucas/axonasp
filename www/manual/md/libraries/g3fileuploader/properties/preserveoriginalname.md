@@ -1,40 +1,13 @@
 # PreserveOriginalName Property
 
 ## Overview
-
-The PreserveOriginalName property is exposed by the G3FILEUPLOADER library object and returns the current state/value associated with this member.
+Instructs the uploader engine to bypass its internal random hash generator and save files using their exact original names as submitted by the client device.
 
 ## Syntax
-
 ```asp
-value = obj.PreserveOriginalName
-obj.PreserveOriginalName = newValue
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.PreserveOriginalName = True
 ```
-
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
-
-## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-value = obj.PreserveOriginalName
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-```
+Sets or returns a boolean reflecting the name preservation rule.

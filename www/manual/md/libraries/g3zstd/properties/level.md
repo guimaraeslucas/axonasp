@@ -2,40 +2,44 @@
 
 ## Overview
 
-The Level property is exposed by the G3ZSTD library object and returns the current state/value associated with this member.
+Gets the current default compression level for the G3Pix AxonASP G3ZSTD object.
 
 ## Syntax
 
 ```asp
-value = obj.Level
-obj.Level = newValue
-`````
+currentLevel = obj.Level
+```
 
 ## Parameters and Arguments
 
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+This property is read-only. To set the level, use the `SetLevel` method.
 
 ## Return Values
 
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an Integer representing the current compression level. The range is -5 to 22.
 
 ## Remarks
 
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is an alias for `CompressionLevel`.
+- The default compression level is 3.
+- This level is used for all compression methods unless a level is explicitly provided as an argument.
+- Zstandard levels: -5 (fastest) up to 22 (best compression).
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3ZSTD")
-value = obj.Level
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-`````
+Dim objZstd
+Set objZstd = Server.CreateObject("G3ZSTD")
 
+' Read default level
+Response.Write "Default level is " & objZstd.Level
+
+' Change level
+objZstd.SetLevel(15)
+Response.Write "New level is " & objZstd.Level
+
+Set objZstd = Nothing
+%>
+```

@@ -2,46 +2,37 @@
 
 ## Overview
 
-Computes a cryptographic result using the ComputeHash operation.
+Computes a cryptographic hash using the configured or specified algorithm and returns the result as a byte array using the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.ComputeHash(...)
+result = obj.ComputeHash(input, [algorithm])
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- algorithm (String, Required): Hash algorithm name (for example, SHA256).
-- input (String, Required): Input text or binary-safe string.
-- Argument validation: invalid count or type raises runtime errors.
+- **input** (String or Array): The data to be hashed.
+- **algorithm** (String, Optional): The hash algorithm to use (e.g., "sha256", "md5"). If omitted, the default algorithm configured during initialization or "sha256" is used.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a VBScript Array of Byte values (VT_ARRAY | VT_UI1) containing the calculated hash.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- The result of the last hash calculation is also stored in the `Hash` property.
+- Supported algorithms include md5, sha1, sha256, sha384, sha512, sha3_256, sha3_512, blake2b256, and blake2b512.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.ComputeHash()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, hashArray
+Set crypto = Server.CreateObject("G3CRYPTO")
+hashArray = crypto.ComputeHash("Hello World", "sha256")
+Response.Write "Hash size: " & UBound(hashArray) + 1 & " bytes"
+Set crypto = Nothing
 %>
 ```
-
-
-

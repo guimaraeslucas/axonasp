@@ -1,48 +1,37 @@
-# Ln Method
+# Ln
 
 ## Overview
 
-Moves the PDF cursor to the next line position.
+Performs a line break. The current abscissa goes back to the left margin and the ordinate increases by the amount passed in parameter.
 
 ## Syntax
 
 ```asp
-result = obj.Ln(...)
-`````
+obj.Ln [h]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- height (Number, Optional): Vertical move after line break.
-- Argument validation: invalid count or type raises runtime errors.
+- `h` (Double, Optional): The height of the break. By default, the value equals the height of the last printed cell.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.Ln()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

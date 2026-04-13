@@ -1,46 +1,37 @@
-# MD5 Method
+# Md5 Method
 
 ## Overview
 
-Computes a cryptographic result using the MD5 operation.
+Computes an MD5 (Message Digest 5) hash from the provided input string or byte array using the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.MD5(...)
+result = obj.Md5(input)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- input (String, Required): Text or binary-safe string to hash.
-- Argument validation: invalid count or type raises runtime errors.
+- **input** (String or Array): The data to be hashed.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the 128-bit hash result encoded as a lowercase hexadecimal string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- MD5 is widely used for checksums and basic data integrity verification.
+- **Security Note:** MD5 is no longer considered cryptographically secure for high-value applications or password hashing; use SHA-256 or bcrypt instead.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.MD5()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, hash
+Set crypto = Server.CreateObject("G3CRYPTO")
+hash = crypto.Md5("Hello World")
+Response.Write "MD5 Hash: " & hash
+Set crypto = Nothing
 %>
 ```
-
-
-

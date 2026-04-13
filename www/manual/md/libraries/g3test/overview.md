@@ -1,45 +1,66 @@
-# Use G3TestSuite in AxonASP
+# Use the G3TESTSUITE Library
 
 ## Overview
-G3TestSuite is a native assertion object used by the axonasp-testsuite runner to execute Classic ASP unit tests inside the AxonASP VM.
+The **G3TESTSUITE** library provides a native assertion framework for G3Pix AxonASP. It is the primary tool for writing automated unit tests and integration tests within the AxonASP environment. The library enables developers to verify variable states, compare values using native VBScript coercion, and validate error-handling logic.
 
 ## Syntax
+To instantiate the test suite, use the following syntax:
 ```asp
-<%
-Dim t
-Set t = Server.CreateObject("G3TestSuite")
-%>
+Set t = Server.CreateObject("G3TESTSUITE")
 ```
 
-## Parameters and Arguments
-- ProgID (String, Required): Use `G3TestSuite` or `G3Test`.
-- Member access (Optional): Use the documented assertion methods and suite counters.
+## Prerequisites
+No external dependencies are required. The G3TESTSUITE library is a built-in component of the AxonASP Virtual Machine and is designed to work seamlessly with the `axonasp-testsuite` runner.
 
-## Return Values
-Returns a native object handle that records assertion counters and failure messages for the current ASP file.
+## How it Works
+The G3TESTSUITE object maintains internal counters for total, passed, and failed assertions. When an assertion method (such as **AssertEqual**) is called, the library evaluates the condition using the same comparison logic as the AxonASP VM, ensuring that test behavior perfectly matches production behavior.
 
-## Remarks
-- The object is optimized for backend test execution and keeps only compact counters plus failure strings.
-- Member names are case-insensitive.
-- Equality assertions reuse the VM comparison path so VBScript coercion stays aligned with runtime semantics.
-- AssertRaises executes one Execute-compatible VBScript statement block and passes when that block raises a compile or runtime error.
-- The testsuite runner aggregates every G3Test object created during one file execution.
-- Example suites are available under `www/tests/testsuite/`.
+If an assertion fails, the library records a failure message, including the active description set by **Describe**. These failures are aggregated by the AxonASP test runner to produce structured reports.
+
+## API Reference
+
+### Methods
+- **AssertEmpty**: Verifies that a value is the VBScript `Empty` variant.
+- **AssertEqual**: Verifies that two values are equal using standard coercion.
+- **AssertFalse**: Verifies that a condition evaluates to `False`.
+- **AssertLength**: Verifies the number of elements in an array or the length of a string.
+- **AssertNothing**: Verifies that a value is the VBScript `Nothing` object.
+- **AssertNotEqual**: Verifies that two values are not equal.
+- **AssertNull**: Verifies that a value is the VBScript `Null` variant.
+- **AssertRaises**: Verifies that a VBScript code block raises a specific error.
+- **AssertTrue**: Verifies that a condition evaluates to `True`.
+- **AssertTypeName**: Verifies the VBScript `TypeName` of a value.
+- **Describe**: Sets a label for the current block of assertions.
+- **Fail**: Explicitly records an assertion failure.
+
+### Properties
+- **Failed**: Returns the number of failed assertions in the current instance.
+- **HasFailures**: Returns a Boolean indicating if any assertions have failed.
+- **Passed**: Returns the number of passed assertions in the current instance.
+- **Suite**: Gets or sets the current description label.
+- **Total**: Returns the total number of assertions executed.
 
 ## Code Example
+The following example demonstrates how to perform a series of assertions to validate a business logic function.
+
 ```asp
 <%
-Dim t
-Set t = Server.CreateObject("G3TestSuite")
+Dim t, result
+Set t = Server.CreateObject("G3TESTSUITE")
 
-t.Describe "String helpers"
-t.AssertEqual "ABC", UCase("abc"), "UCase should normalize text"
-t.AssertNotEqual "ABC", LCase("abc"), "LCase should produce a different value"
-t.AssertTrue Len("abc") = 3, "Len should return 3"
-t.AssertFalse IsEmpty("abc"), "String should not be Empty"
-t.AssertNothing Nothing, "Nothing should pass AssertNothing"
-t.AssertTypeName "String", "abc", "TypeName should be String"
-t.AssertLength 3, Array("a", "b", "c"), "Array length should be 3"
-t.AssertRaises "Err.Raise 13, ""docs"", ""type mismatch""", 13, "Err.Raise should surface explicit numbers"
+t.Describe "Financial Calculator - Interest Rates"
+
+' Validate simple calculation
+result = CalculateInterest(1000, 0.05, 1)
+t.AssertEqual 50, result, "Interest on 1000 at 5% for 1 year should be 50"
+
+' Validate type safety
+t.AssertTypeName "Double", result, "Result must be a Double type"
+
+' Validate error handling for negative values
+t.AssertRaises "CalculateInterest -100, 0.05, 1", 5, "Should raise Illegal Function Call"
+
+Response.Write "Tests completed. Passed: " & t.Passed & "/" & t.Total
+Set t = Nothing
 %>
 ```

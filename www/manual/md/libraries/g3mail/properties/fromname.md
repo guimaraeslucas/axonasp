@@ -1,40 +1,33 @@
 # FromName Property
 
 ## Overview
-
-The FromName property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **FromName** property gets or sets the display name of the sender for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.FromName
-obj.FromName = newValue
+value = mail.FromName
+mail.FromName = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): The friendly display name of the sender.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the sender's display name.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- When set, the recipient will see this name in their mail client instead of just the email address.
+- This property works in conjunction with the **From** property.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.FromName
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.From = "info@g3pix.com.br"
+mail.FromName = "G3Pix Support"
+
+Set mail = Nothing
 %>
 ```

@@ -2,47 +2,44 @@
 
 ## Overview
 
-Clears the current operation context.
+Clears the internal compression and decompression context of the G3Pix AxonASP G3ZSTD object. This method closes any active encoder or decoder resources and resets the last error message.
 
 ## Syntax
 
 ```asp
-result = obj.Clear(...)
-`````
+result = obj.Clear()
+```
 
 ## Parameters and Arguments
 
-- none: clears internal buffers/state.
-- Argument validation: invalid count or type raises runtime errors.
+This method does not accept any parameters.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean value:
+- **True**: The internal state was successfully cleared.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Use this method to free up system resources if the object is being reused for multiple unrelated operations.
+- This method is also aliased as `Initialize` and `Dispose`.
+- If an error occurs during clearing, a runtime error is raised.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZSTD")
-result = obj.Clear()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim objZstd
+Set objZstd = Server.CreateObject("G3ZSTD")
+
+' Perform operations...
+
+' Clear the internal state
+If objZstd.Clear() Then
+    Response.Write "Context cleared successfully."
 End If
-Set obj = Nothing
+
+Set objZstd = Nothing
 %>
-`````
-
-
-
-
-
+```

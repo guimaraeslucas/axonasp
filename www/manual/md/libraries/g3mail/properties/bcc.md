@@ -1,40 +1,33 @@
-# BCC Property
+# Bcc Property
 
 ## Overview
-
-The BCC property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **Bcc** property gets or sets the blind carbon copy (BCC) recipient list for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.BCC
-obj.BCC = newValue
+value = mail.Bcc
+mail.Bcc = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): A comma-separated or semicolon-separated list of email addresses.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the current BCC recipients, separated by commas.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- Recipients in the BCC list are hidden from other recipients.
+- Setting this property replaces any existing BCC recipients. Use the **AddBcc** method to append to the list instead.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.BCC
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Bcc = "audit@example.com, backup@example.com"
+Response.Write "BCC List: " & mail.Bcc
+
+Set mail = Nothing
 %>
 ```

@@ -1,45 +1,34 @@
-﻿# Axrgbtohex Method
+# Convert RGB to HTML Hexadecimal Color
 
 ## Overview
 
-Converts RGB channel values to an HTML hexadecimal color string.
+Converts individual Red, Green, and Blue color values into an HTML hexadecimal color string.
 
 ## Syntax
 
-```asp
-result = obj.Axrgbtohex(...)
+```vbscript
+strHex = obj.axrgbtohex(r, g, b)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **r** (Integer): The red color component (0-255).
+- **g** (Integer): The green color component (0-255).
+- **b** (Integer): The blue color component (0-255).
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The HTML hexadecimal color code.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If fewer than three arguments are provided, it defaults to returning `#000000`.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axrgbtohex()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strHex
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strHex = obj.axrgbtohex(255, 128, 0)
+Response.Write strHex ' Outputs: #ff8000
 ```
-
-

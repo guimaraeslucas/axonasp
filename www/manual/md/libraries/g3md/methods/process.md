@@ -1,49 +1,34 @@
 # Process Method
 
 ## Overview
-
-Processes current inputs using current configuration.
+Converts a Markdown-formatted string into a string of formatted HTML in the G3Pix AxonASP G3MD library.
 
 ## Syntax
-
 ```asp
-result = obj.Process(...)
-`````
+htmlString = md.Process(markdownText)
+```
 
 ## Parameters and Arguments
-
-- markdownText (String, Required): Markdown input content.
-- options (Variant, Optional): Rendering options map.
-- Argument validation: invalid count or type raises runtime errors.
+- **markdownText** (String, Required): The source text in Markdown format to be converted.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** containing the rendered HTML. If the input is empty or an error occurs during conversion, it returns an empty string.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The output follows the GitHub Flavored Markdown (GFM) specification, including support for tables and task lists.
+- The conversion process respects the current settings of the **HardWraps** and **Unsafe** properties.
+- This method is highly optimized for performance and is suitable for high-traffic backend rendering.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3MD")
-result = obj.Process()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim md, markdown, html
+Set md = Server.CreateObject("G3MD")
+
+markdown = "### System Status" & vbCrLf & "- **CPU**: 10%" & vbCrLf & "- **Memory**: 2GB"
+html = md.Process(markdown)
+
+Response.Write html
+Set md = Nothing
 %>
-`````
-
-
-
-
-
+```

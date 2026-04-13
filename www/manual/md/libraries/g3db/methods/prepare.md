@@ -2,48 +2,54 @@
 
 ## Overview
 
-Prepares a statement for efficient repeated execution.
+The **Prepare** method creates a reusable prepared statement in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.Prepare(...)
-`````
+Set result = obj.Prepare(sql)
+```
 
 ## Parameters and Arguments
 
-- sql (String, Required): Statement text to prepare.
-- cacheKey (String, Optional): Optional statement cache identifier.
-- Argument validation: invalid count or type raises runtime errors.
+- **sql** (String, Required): The SQL statement to be prepared, containing `?` placeholders for parameters.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **G3DBStatement** object. This object represents the prepared statement and can be used to execute queries multiple times with different parameters.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Prepared statements are pre-compiled by the database, which can result in better performance for statements executed repeatedly.
+- The method automatically rewrites the `?` placeholders for the current database driver during the preparation phase.
+- The returned **G3DBStatement** object exposes **Query**, **QueryRow**, and **Exec** methods for execution.
+- It is important to call the **Close** method on the **G3DBStatement** object to release the prepared statement resource from the database server.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.Prepare()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db, stmt, rs, i
+Set db = Server.CreateObject("G3DB")
+
+If db.Open("sqlite", "mydb.db") Then
+    ' Prepare a reusable statement
+    Set stmt = db.Prepare("SELECT name FROM users WHERE id = ?")
+
+    ' Execute the prepared statement multiple times
+    For i = 1 To 3
+        Set rs = stmt.Query(i)
+        If Not rs.EOF Then
+            Response.Write "User " & i & ": " & rs("name") & "<br>"
+        End If
+        rs.Close
+    Next
+
+    ' Properly close the statement
+    stmt.Close
+    db.Close
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
-`````
-
-
-
-
-
+```

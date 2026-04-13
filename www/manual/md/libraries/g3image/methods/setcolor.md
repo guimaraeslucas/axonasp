@@ -1,49 +1,34 @@
 # SetColor Method
 
 ## Overview
-
-Sets Color for the G3IMAGE library.
+Sets the active color for drawing and filling operations using an RGB or RGBA string in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.SetColor(...)
+obj.SetColor(rgb_string)
 ```
 
-## Parameters and Arguments
-
-- red (Integer, Required): 0-255.
-- green (Integer, Required): 0-255.
-- blue (Integer, Required): 0-255.
-- alpha (Integer, Optional): 0-255 or library-specific range.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **rgb_string** (String): A comma-separated string of color values (e.g., "255,0,0" for red or "0,0,255,128" for semi-transparent blue).
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Color values should be between 0 and 255.
+- If four values are provided, the last value is the alpha (transparency) channel.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.SetColor()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(100, 100) Then
+    ' Set to red
+    img.SetColor "255,0,0"
+    img.DrawCircle 50, 50, 40
+    img.Fill()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

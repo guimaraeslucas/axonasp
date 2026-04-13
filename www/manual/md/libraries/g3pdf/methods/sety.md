@@ -1,49 +1,38 @@
-# SetY Method
+# SetY
 
 ## Overview
 
-Sets Y for the G3PDF library.
+Moves the current abscissa back to the left margin and sets the ordinate.
 
 ## Syntax
 
 ```asp
-result = obj.SetY(...)
-`````
+obj.SetY y, [resetX]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- y (Number, Required): Current Y position.
-- resetX (Boolean, Optional): Reset X to left margin when true (implementation dependent).
-- Argument validation: invalid count or type raises runtime errors.
+- `y` (Double): The value of the ordinate.
+- `resetX` (Boolean, Optional): Indicates if the abscissa should be reset to the left margin. Default is true.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetY()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

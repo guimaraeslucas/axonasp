@@ -1,49 +1,41 @@
-# PBKDF2SHA256 Method
+# Pbkdf2Sha256 Method
 
 ## Overview
 
-Computes a cryptographic result using the PBKDF2SHA256 operation.
+Derives a cryptographic key from a password and salt using the PBKDF2 (Password-Based Key Derivation Function 2) with HMAC-SHA256 in the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.PBKDF2SHA256(...)
+result = obj.Pbkdf2Sha256(password, salt, [iterations], [keyLength])
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- password (String, Required): Input password.
-- salt (String, Required): Salt value.
-- iterations (Integer, Required): Number of PBKDF2 rounds.
-- keyLength (Integer, Required): Output key size in bytes.
-- Argument validation: invalid count or type raises runtime errors.
+- **password** (String): The master password to derive the key from.
+- **salt** (String): A random salt string used to ensure unique output for identical passwords.
+- **iterations** (Integer, Optional): The number of hashing iterations. Defaults to 100,000.
+- **keyLength** (Integer, Optional): The desired length of the derived key in bytes. Defaults to 32 (256 bits).
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the derived key encoded as a lowercase hexadecimal string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- PBKDF2 is designed to be computationally expensive to resist brute-force attacks on passwords.
+- The resulting key is also stored in the `Hash` property as a byte array.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.PBKDF2SHA256()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, salt, derivedKey
+Set crypto = Server.CreateObject("G3CRYPTO")
+salt = "random_salt_value"
+derivedKey = crypto.Pbkdf2Sha256("mySecretPassword", salt, 100000, 32)
+Response.Write "Derived Key: " & derivedKey
+Set crypto = Nothing
 %>
 ```
-
-
-

@@ -1,47 +1,34 @@
 # Read Method
 
 ## Overview
-
-Reads content from the active input source.
+Returns the full text content of a file using a specified encoding.
 
 ## Syntax
-
 ```asp
-result = obj.Read(...)
+fileContent = files.Read(path [, encoding])
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): File path to read.
-- encoding (String, Optional): Text encoding, default UTF-8.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The path to the file to be read.
+- **encoding** (String, Optional): The text encoding to use for decoding the file (e.g., "utf-8", "utf-16", "ascii", "iso-8859-1"). The default is "utf-8".
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** containing the full content of the file. If the file cannot be read, it returns an empty string.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The library automatically detects Byte Order Marks (BOM) to determine the correct encoding.
+- This method is also accessible via the **ReadText** alias.
+- Path resolution is relative to the AxonASP sandbox root.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Read()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim files, content
+Set files = Server.CreateObject("G3FILES")
+content = files.Read("/config/app.json", "utf-8")
+If content <> "" Then
+    Response.Write "File read successfully."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

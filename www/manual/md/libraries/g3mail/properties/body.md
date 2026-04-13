@@ -1,40 +1,35 @@
 # Body Property
 
 ## Overview
-
-The Body property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **Body** property gets or sets the main content of the email message for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.Body
-obj.Body = newValue
+value = mail.Body
+mail.Body = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): The text or HTML content of the email.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the current message body.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- Setting this property via **Body**, **Message**, or **TextBody** automatically sets **IsHTML** to False.
+- Setting this property via **HtmlBody** automatically sets **IsHTML** to True.
+- This property is essential for the **Send** method to have content to deliver.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.Body
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Body = "Hello, this is a plain text message."
+' To send HTML:
+' mail.HtmlBody = "<h1>Hello</h1><p>This is HTML.</p>"
+
+Set mail = Nothing
 %>
 ```

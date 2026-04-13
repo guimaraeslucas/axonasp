@@ -1,26 +1,26 @@
-﻿# Methods
+# G3FILES Methods
 
 ## Overview
-
-This page lists methods exposed by G3FILES.
+This page provides a summary of the methods available in the **G3FILES** library for file system operations in AxonASP.
 
 ## Method List
-- Append: Executes the Append operation provided by the G3FILES library.
-- ConvertFileEncoding: Converts File Encoding between supported formats.
-- ConvertTextEncoding: Converts Text Encoding between supported formats.
-- Copy: Copies resources to a new destination.
-- Delete: Executes the Delete operation provided by the G3FILES library.
-- Exists: Checks whether a target resource exists.
-- List: Returns structured runtime information for the current context.
-- Mkdir: Creates a directory path if needed.
-- Move: Moves resources to a new destination.
-- NormalizeEOL: Normalizes EOL to a consistent format.
-- Read: Reads content from the active input source.
-- Size: Executes the Size operation provided by the G3FILES library.
-- Write: Writes content to the active output target.
+
+- **Append**: Appends text content to a file or creates it. Returns a **Boolean**.
+- **ConvertFileEncoding**: Converts the encoding and line endings of a file. Returns a **Boolean**.
+- **ConvertTextEncoding**: Returns a string converted from one text encoding to another.
+- **Copy**: Copies a file from a source to a destination. Returns a **Boolean**.
+- **Delete**: Permanently removes a file or directory. Returns a **Boolean**.
+- **Exists**: Returns a **Boolean** indicating whether a file or directory exists.
+- **List**: Returns an **Array** containing the names of all files in a directory.
+- **Mkdir**: Creates a new directory or full directory path. Returns a **Boolean**.
+- **Move**: Renames or moves a file or directory. Returns a **Boolean**.
+- **NormalizeEOL**: Returns a string with line endings converted to a specified style.
+- **Read**: Returns the full text content of a file using a specified encoding.
+- **Size**: Returns an **Integer** representing the size of a file in bytes.
+- **Write**: Writes text content to a file, overwriting any existing content. Returns a **Boolean**.
 
 ## Remarks
-
 - Method names are case-insensitive.
-- Validate input types and return values in production code.
-- Use Set when assigning object return values.
+- Most methods support aliases like **ReadText**, **WriteText**, **Remove**, and **Rename**.
+- All methods return specific data types that must be validated in production code.
+- Paths are relative to the AxonASP sandbox root.

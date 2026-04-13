@@ -1,50 +1,39 @@
-# SetDrawColor Method
+# SetDrawColor
 
 ## Overview
 
-Sets Draw Color for the G3PDF library.
+Defines the color used for all drawing operations (lines, rectangles and cell borders). It can be expressed in RGB components or grayscale.
 
 ## Syntax
 
 ```asp
-result = obj.SetDrawColor(...)
-`````
+obj.SetDrawColor r, [g], [b]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- red (Integer, Required): 0-255.
-- green (Integer, Required): 0-255.
-- blue (Integer, Required): 0-255.
-- Argument validation: invalid count or type raises runtime errors.
+- `r` (Integer): If `g` and `b` are given, this indicates the red component; else, it indicates the grayscale level.
+- `g` (Integer, Optional): Green component (between 0 and 255).
+- `b` (Integer, Optional): Blue component (between 0 and 255).
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetDrawColor()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

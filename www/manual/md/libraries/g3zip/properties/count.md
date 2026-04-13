@@ -1,40 +1,29 @@
 # Count Property
 
 ## Overview
-
-The Count property is exposed by the G3ZIP library object and returns the current state/value associated with this member.
+Returns the total number of files and directories currently contained in the active ZIP archive in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-value = obj.Count
-obj.Count = newValue
+itemCount = zip.Count
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an **Integer** representing the entry count. If no archive is opened in Read mode, it returns 0.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is only populated when the object is in **Read** mode (initialized via the **Open** method).
+- It is read-only.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3ZIP")
-value = obj.Count
-Response.Write CStr(value)
-Set obj = Nothing
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Open("/assets/data.zip") Then
+    Response.Write "Archive entries: " & zip.Count
+    zip.Close
+End If
+Set zip = Nothing
 %>
 ```

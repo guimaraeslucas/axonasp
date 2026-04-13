@@ -1,48 +1,34 @@
 # AddText Method
 
 ## Overview
-
-Adds Text to the current operation context.
+Creates a new virtual file inside the current write-mode archive using a provided string in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-result = obj.AddText(...)
+success = zip.AddText(nameInZip, content)
 ```
 
 ## Parameters and Arguments
-
-- archiveName (String, Required): File name/path inside archive.
-- text (String, Required): Text content to store.
-- encoding (String, Optional): Text encoding label.
-- Argument validation: invalid count or type raises runtime errors.
+- **nameInZip** (String, Required): The relative path and name for the new file inside the archive.
+- **content** (String, Required): The text content to be written into the file.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the virtual file was successfully created and added.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is ideal for generating dynamic files such as manifest.json, readme.txt, or configuration files on the fly.
+- The object must be in **Write** mode.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZIP")
-result = obj.AddText()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim zip, info
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Create("/temp/report.zip") Then
+    info = "Report generated on: " & Now() & vbCrLf & "System: AxonASP"
+    zip.AddText "metadata.txt", info
+    zip.Close
 End If
-Set obj = Nothing
+Set zip = Nothing
 %>
 ```
-
-
-

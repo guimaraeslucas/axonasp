@@ -2,40 +2,41 @@
 
 ## Overview
 
-The LastError property is exposed by the G3ZSTD library object and returns the current state/value associated with this member.
+Returns a String describing the last error that occurred during a Zstandard (zstd) operation in the G3Pix AxonASP G3ZSTD object.
 
 ## Syntax
 
 ```asp
-value = obj.LastError
-obj.LastError = newValue
-`````
+errorString = obj.LastError
+```
 
 ## Parameters and Arguments
 
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+This property is read-only and does not accept any parameters.
 
 ## Return Values
 
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a String containing the error message associated with the last failed operation. If no error has occurred, it returns an empty string.
 
 ## Remarks
 
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is useful for diagnostic purposes when a method (like `CompressFile`) returns `False`.
+- The error message is reset when `Clear` is called or when a new operation succeeds.
+- Runtime exceptions also contain these messages.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3ZSTD")
-value = obj.LastError
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-`````
+Dim objZstd
+Set objZstd = Server.CreateObject("G3ZSTD")
 
+' Perform an operation that might fail
+If Not objZstd.CompressFile("missing_file.txt", "target.zst") Then
+    Response.Write "Operation failed with error: " & objZstd.LastError
+End If
+
+Set objZstd = Nothing
+%>
+```

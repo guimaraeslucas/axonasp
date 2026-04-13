@@ -2,46 +2,51 @@
 
 ## Overview
 
-Opens a resource for subsequent operations.
+The **Open** method establishes a connection to a database using the specified driver and Data Source Name (DSN) in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.Open(...)
+result = obj.Open(driver, dsn)
 ```
 
 ## Parameters and Arguments
 
-- driverName (String, Required): SQL driver/provider name.
-- connectionString (String, Required): Driver-specific connection string.
-- Argument validation: invalid count or type raises runtime errors.
+- **driver** (String, Required): The name of the database driver. Supported values include "mysql", "postgres", "mssql", "sqlite", and "oracle".
+- **dsn** (String, Required): The driver-specific connection string containing credentials, host, and database name.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value. It returns **True** if the connection was established and verified successfully, and **False** if the connection failed or if a connection is already open.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The method performs an internal 5-second ping to verify the database availability before returning.
+- If the connection fails, the error message can be retrieved using the **LastError** property or **GetError** method.
+- Supported driver aliases:
+    - MySQL: "mysql", "mariadb"
+    - PostgreSQL: "postgres", "postgresql", "pgsql"
+    - MS SQL Server: "mssql", "sqlserver"
+    - SQLite: "sqlite", "sqlite3"
+    - Oracle: "oracle", "ora", "oci"
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.Open()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim db, isConnected
+Set db = Server.CreateObject("G3DB")
+
+' Example for MySQL
+isConnected = db.Open("mysql", "user:password@tcp(127.0.0.1:3306)/my_database")
+
+If isConnected Then
+    Response.Write "Database connected successfully."
+    db.Close
 Else
-    Response.Write CStr(result)
+    Response.Write "Connection failed: " & db.LastError
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
 ```
-
-
-

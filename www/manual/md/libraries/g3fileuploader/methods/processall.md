@@ -1,48 +1,17 @@
 # ProcessAll Method
 
 ## Overview
-
-Processes All using current inputs and configuration.
+Saves all pending multipart files embedded directly onto the stream request simultaneously parsing the system configuration. Validates limits, unique variables, and dynamically writes to the filesystem tracking the final status for each target. Also accepts the `SaveAll` alias.
 
 ## Syntax
-
 ```asp
-result = obj.ProcessAll(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Dim resultsList
+resultsList = uploader.ProcessAll("/uploads/")
+```
 
 ## Parameters and Arguments
-
-- none: processes all upload fields/files in the current request.
-- Argument validation: invalid count or type raises runtime errors.
+- `TargetDir` (String, Optional): Destination virtual directory to securely organize distribution of all incoming items (Defaults to "./").
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.ProcessAll()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns a VBScript array containing separate Dictionary objects mapping independent results for each item processed (sharing attributes akin to `Process`), such as `IsSuccess` and related naming metrics to capture standard logs precisely.

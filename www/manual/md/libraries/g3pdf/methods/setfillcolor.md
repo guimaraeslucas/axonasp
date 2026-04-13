@@ -1,50 +1,39 @@
-# SetFillColor Method
+# SetFillColor
 
 ## Overview
 
-Sets Fill Color for the G3PDF library.
+Defines the color used for all filling operations (filled rectangles and cell backgrounds).
 
 ## Syntax
 
 ```asp
-result = obj.SetFillColor(...)
-`````
+obj.SetFillColor r, [g], [b]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- red (Integer, Required): 0-255.
-- green (Integer, Required): 0-255.
-- blue (Integer, Required): 0-255.
-- Argument validation: invalid count or type raises runtime errors.
+- `r` (Integer): Red component or grayscale level.
+- `g` (Integer, Optional): Green component.
+- `b` (Integer, Optional): Blue component.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetFillColor()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

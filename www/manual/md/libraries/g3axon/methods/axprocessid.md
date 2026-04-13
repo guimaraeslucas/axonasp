@@ -1,45 +1,32 @@
-﻿# Axprocessid Method
+# axprocessid
 
 ## Overview
-
-Returns the current process ID (PID).
+Retrieves the process identifier (PID) of the current G3Pix AxonASP process.
 
 ## Syntax
-
 ```asp
-result = obj.Axprocessid(...)
+result = obj.axprocessid()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Integer representing the current process identifier.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+The process ID is unique to the current running instance of the application.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axprocessid()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, pid
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+pid = obj.axprocessid()
+Response.Write "Current Process ID (PID): " & pid
+
 Set obj = Nothing
 %>
 ```
-
-

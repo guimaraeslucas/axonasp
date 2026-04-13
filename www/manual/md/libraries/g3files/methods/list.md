@@ -1,48 +1,39 @@
 # List Method
 
 ## Overview
-
-Returns structured runtime information for the current context.
+Returns an Array containing the names of all files within a specified directory.
 
 ## Syntax
-
 ```asp
-result = obj.List(...)
+fileNamesArray = files.List(path)
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): Directory path to enumerate.
-- pattern (String, Optional): Wildcard or filter pattern.
-- recursive (Boolean, Optional): Include nested items.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The target directory path to list.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns an **Array** (Variant) containing the names of the files. If the directory is empty or does not exist, it returns an empty array.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The returned array only includes file names, not subdirectories.
+- Path resolution is relative to the AxonASP sandbox root.
+- This method is also accessible via the **ListFiles** alias.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.List()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim files, fileList, i
+Set files = Server.CreateObject("G3FILES")
+fileList = files.List("/uploads")
+
+If UBound(fileList) >= 0 Then
+    Response.Write "Found " & UBound(fileList) + 1 & " files:<br>"
+    For i = 0 To UBound(fileList)
+        Response.Write "- " & fileList(i) & "<br>"
+    Next
 Else
-    Response.Write CStr(result)
+    Response.Write "No files found in directory."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

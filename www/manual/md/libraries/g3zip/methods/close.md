@@ -1,46 +1,29 @@
 # Close Method
 
 ## Overview
-
-Closes the current resource and releases handles.
+Finalizes the archive operations and releases all system resources in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-result = obj.Close(...)
+zip.Close()
 ```
-
-## Parameters and Arguments
-
-- none: closes active archive handle.
-- Argument validation: invalid count or type raises runtime errors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** (True) upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- For **Write** mode, this method is mandatory to ensure all buffers are flushed and the ZIP header is correctly written to disk.
+- For **Read** mode, it closes the file handle and releases the archive reader.
+- After calling **Close**, the **Mode** and **Path** properties are reset.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZIP")
-result = obj.Close()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+zip.Create("/temp/output.zip")
+' ... perform operations ...
+zip.Close
+Set zip = Nothing
 %>
 ```
-
-
-

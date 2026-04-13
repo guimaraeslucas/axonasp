@@ -1,45 +1,27 @@
-﻿# Axsmallestfloatvalue Method
+# Get the Smallest Float Value
 
-## Overview
+Returns the smallest float value greater than zero supported by the system.
 
-Returns the smallest non-zero positive float64 value supported by the runtime.
+## Prerequisites
+The `G3AXON.FUNCTIONS` object must be instantiated to use this method.
+This feature is available in the G3Pix AxonASP environment.
 
 ## Syntax
-
-```asp
-result = obj.Axsmallestfloatvalue(...)
+```vbscript
+Number (Double) = obj.AxSmallestFloatValue()
 ```
 
-## Parameters and Arguments
+## Return Value
+Returns a Number (Double).
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
-
-## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
+## Example
+```vbscript
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axsmallestfloatvalue()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+result = obj.AxSmallestFloatValue()
+
+Response.Write result
+
 Set obj = Nothing
-%>
 ```
-
-

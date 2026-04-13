@@ -1,45 +1,43 @@
-﻿# Axstriptags Method
+# axstriptags
 
 ## Overview
 
-Removes HTML/XML-like tags from a string.
+The `axstriptags` method removes all HTML and XML tags from a provided string using regular expressions. This is useful for sanitizing input or preparing text for plain-text display.
 
 ## Syntax
 
 ```asp
-result = obj.Axstriptags(...)
+result = obj.axstriptags(inputString)
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **inputString** (String): The source string containing HTML or XML tags to be removed.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the text with all tags removed. If the input is empty or no tags are found, it returns the original string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- It uses a regular expression to identify and remove anything within `<` and `>`.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axstriptags()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim ax, html, plainText
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+html = "<p>Hello <b>AxonASP</b>!</p><!-- comment -->"
+plainText = ax.axstriptags(html)
+
+' Output: Hello AxonASP!
+Response.Write plainText
+
+Set ax = Nothing
 %>
 ```
-
-

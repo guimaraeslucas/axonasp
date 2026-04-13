@@ -1,50 +1,46 @@
 # Send Method
 
 ## Overview
-
-Sends data using the current transport configuration.
+The **Send** method attempts to deliver the email message using the configured SMTP server and message properties for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-result = obj.Send(...)
+result = mail.Send([to, subject, body])
 ```
 
 ## Parameters and Arguments
-
-- smtpHost (String, Optional): SMTP host if not set by properties.
-- smtpPort (Integer, Optional): SMTP port.
-- userName (String, Optional): SMTP auth user.
-- password (String, Optional): SMTP auth password.
-- useTLS (Boolean, Optional): Enables TLS/STARTTLS as supported.
-- Argument validation: invalid count or type raises runtime errors.
+- **to** (String, Optional): The recipient email address. If provided, it overrides the **To** property for this call.
+- **subject** (String, Optional): The message subject. If provided, it overrides the **Subject** property for this call.
+- **body** (String, Optional): The message body. If provided, it overrides the **Body** property for this call and sets the format to plain text.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value (True) if the email was sent successfully. If the operation fails, it returns a **String** containing the error message.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- If SMTP server properties (Host, Port, etc.) are not set, the library will attempt to use environment variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`).
+- At least one recipient must be defined (via **AddAddress**, **AddCc**, **AddBcc**, or the **To** property).
+- The method uses the `gomail` library internally for reliable delivery.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Mail")
-result = obj.Send()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim mail, result
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Host = "smtp.example.com"
+mail.From = "system@example.com"
+mail.Subject = "Test Email"
+mail.Body = "This is a test message."
+mail.AddAddress "recipient@example.com"
+
+result = mail.Send()
+
+If result = True Then
+    Response.Write "Success!"
 Else
-    Response.Write CStr(result)
+    Response.Write "Error: " & result
 End If
-Set obj = Nothing
+
+Set mail = Nothing
 %>
 ```
-
-
-

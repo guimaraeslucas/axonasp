@@ -1,40 +1,36 @@
 # BodyFormat Property
 
 ## Overview
-
-The BodyFormat property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **BodyFormat** property gets or sets the format of the email message body (Plain Text or HTML) for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.BodyFormat
-obj.BodyFormat = newValue
+value = mail.BodyFormat
+mail.BodyFormat = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (Integer): Use 0 for HTML format or 1 for Plain Text format.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an **Integer**: 0 if the message is in HTML format, 1 if it is in Plain Text format.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is synchronized with the **IsHTML** property.
+- Setting **BodyFormat** to 0 sets **IsHTML** to True. Setting it to 1 (or any other value) sets **IsHTML** to False.
+- This property can also be accessed using the alias **MailFormat**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.BodyFormat
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.BodyFormat = 0 ' Set to HTML
+If mail.BodyFormat = 0 Then
+    Response.Write "Message is in HTML format."
+End If
+
+Set mail = Nothing
 %>
 ```

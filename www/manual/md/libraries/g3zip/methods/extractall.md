@@ -1,46 +1,35 @@
 # ExtractAll Method
 
 ## Overview
-
-Extracts All from an archive into output paths.
+Unpacks the entire content of the active read-mode archive into a specified directory in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-result = obj.ExtractAll(...)
+success = zip.ExtractAll(targetDirectory)
 ```
 
 ## Parameters and Arguments
-
-- outputFolder (String, Required): Destination directory for all entries.
-- Argument validation: invalid count or type raises runtime errors.
+- **targetDirectory** (String, Required): The destination directory on the server where the files will be extracted.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether all files were successfully extracted.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The object must be in **Read** mode (initialized via the **Open** method).
+- The library automatically recreates any subdirectory structure found within the archive.
+- Existing files in the destination directory will be overwritten if they have the same name.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZIP")
-result = obj.ExtractAll()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Open("/uploads/archive.zip") Then
+    If zip.ExtractAll("/temp/extracted_files") Then
+        Response.Write "Extraction complete."
+    End If
+    zip.Close
 End If
-Set obj = Nothing
+Set zip = Nothing
 %>
 ```
-
-
-

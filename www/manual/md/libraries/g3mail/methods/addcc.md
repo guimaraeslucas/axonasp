@@ -1,47 +1,34 @@
-# AddCC Method
+# AddCc Method
 
 ## Overview
-
-Adds CC to the current operation context.
+The **AddCc** method appends a recipient email address to the carbon copy (CC) list of the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-result = obj.AddCC(...)
+result = mail.AddCc(email)
 ```
 
 ## Parameters and Arguments
-
-- email (String, Required): CC recipient email address.
-- displayName (String, Optional): Recipient display name.
-- Argument validation: invalid count or type raises runtime errors.
+- **email** (String, Required): The recipient's email address to be CC'd.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value (True).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Recipients added via this method will be visible to all other recipients of the email.
+- You can call this method multiple times to add multiple CC recipients.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Mail")
-result = obj.AddCC()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Subject = "Project Update"
+mail.AddAddress "manager@example.com"
+mail.AddCc "team-lead@example.com"
+mail.AddCc "backup@example.com"
+
+Set mail = Nothing
 %>
 ```
-
-
-

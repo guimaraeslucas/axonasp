@@ -1,52 +1,41 @@
-# Rect Method
+# Rect
 
 ## Overview
 
-Draws a rectangle in the current PDF page.
+Outputs a rectangle.
 
 ## Syntax
 
 ```asp
-result = obj.Rect(...)
-`````
+obj.Rect x, y, w, h, [style]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- x (Number, Required): Left.
-- y (Number, Required): Top.
-- width (Number, Required): Width.
-- height (Number, Required): Height.
-- style (String, Optional): Draw style (D/F/DF).
-- Argument validation: invalid count or type raises runtime errors.
+- `x` (Double): Abscissa of upper-left corner.
+- `y` (Double): Ordinate of upper-left corner.
+- `w` (Double): Width.
+- `h` (Double): Height.
+- `style` (String, Optional): Style of rendering. Possible values: `D` (Draw), `F` (Fill), `DF` or `FD` (Draw and fill).
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.Rect()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

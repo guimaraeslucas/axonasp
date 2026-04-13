@@ -1,4 +1,4 @@
-# Axuserhomedirpath Method
+# Axuserhomedirpath
 
 ## Overview
 
@@ -12,7 +12,8 @@ result = obj.Axuserhomedirpath()
 
 ## Return Values
 
-- String: Home directory path, or an empty string when unavailable.
+- Returns a String.
+
 
 ## Code Example
 
@@ -20,7 +21,7 @@ result = obj.Axuserhomedirpath()
 <%
 Option Explicit
 Dim obj, p
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 p = obj.Axuserhomedirpath()
 Response.Write Server.HTMLEncode(p)
 Set obj = Nothing

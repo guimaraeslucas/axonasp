@@ -1,4 +1,4 @@
-﻿# Axshutdownaxonaspserver Method
+# Axshutdownaxonaspserver
 
 ## Overview
 
@@ -16,7 +16,8 @@ result = obj.Axshutdownaxonaspserver(...)
 
 ## Return Values
 
-- Returns nothing (Empty) on success. If the shutdown function is disabled or an error occurs, a runtime error is raised.
+- Returns a Boolean.
+
 
 ## Remarks
 
@@ -29,7 +30,7 @@ result = obj.Axshutdownaxonaspserver(...)
 <%
 Option Explicit
 Dim obj
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 obj.Axshutdownaxonaspserver()
 'The servel will shut down immediately after this call.
 %>

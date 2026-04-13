@@ -1,49 +1,17 @@
 # GetFileInfo Method
 
 ## Overview
-
-Gets File Info from the G3FILEUPLOADER library.
+Extracts data related to a specified inbound form file input before you commit the asset onto system storage via the primary methods. 
 
 ## Syntax
-
 ```asp
-result = obj.GetFileInfo(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Dim details
+Set details = uploader.GetFileInfo("document")
+```
 
 ## Parameters and Arguments
-
-- fieldName (String, Required): Upload field name.
-- index (Integer, Optional): File index for multi-file fields.
-- Argument validation: invalid count or type raises runtime errors.
+- `FieldName` (String, Required): The exact string moniker denoting the form input parameter mapping to a physical attachment stream.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.GetFileInfo()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns a Dictionary object populated mapping string configurations, or a Dictionary representing failure (with `IsSuccess` set to false) if missing details occur, or `Empty` if no HTTP request context is completely available.

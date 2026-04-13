@@ -1,44 +1,42 @@
-# DecompressText Method
+# Decompress Text Using G3ZLIB
 
 ## Overview
 
-Decompresses Text back to original content.
+Decompresses a ZLIB-compressed byte array back to its original text representation.
 
 ## Syntax
 
 ```asp
-result = obj.DecompressText(...)
+Dim textData
+textData = obj.DecompressText(input)
 ```
 
 ## Parameters and Arguments
 
-- input (String, Required): Compressed text payload.
-- encoding (String, Optional): Output text encoding.
-- Argument validation: invalid count or type raises runtime errors.
+- input (Variant, Required): The compressed byte array to decompress.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the decompressed text. If the decompression fails, it returns an empty string and updates the LastError property.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method assumes the original data was a string and automatically handles the text conversion.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, textData, compressedData
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.DecompressText()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+
+compressedData = obj.Compress("Sample text")
+textData = obj.DecompressText(compressedData)
+
+Response.Write textData
+
 Set obj = Nothing
 %>
 ```

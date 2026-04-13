@@ -1,47 +1,33 @@
 # NormalizeEOL Method
 
 ## Overview
-
-Normalizes EOL to a consistent format.
+Returns a string with line endings converted to a specified style.
 
 ## Syntax
-
 ```asp
-result = obj.NormalizeEOL(...)
+normalizedText = files.NormalizeEOL(text, style)
 ```
 
 ## Parameters and Arguments
-
-- text (String, Required): Input text.
-- eolStyle (String, Optional): Target line ending (CRLF, LF).
-- Argument validation: invalid count or type raises runtime errors.
+- **text** (String, Required): The source text containing inconsistent line endings.
+- **style** (String, Required): The target line ending style (e.g., "windows", "linux", "mac").
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** with the normalized line endings.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Styles include "windows" (CRLF), "linux" (LF), and "mac" (CR).
+- This method is performed in memory and does not affect any files on disk.
+- This method is also accessible via the **NormalizeLineEndings** alias.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.NormalizeEOL()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim files, rawText, normalizedText
+Set files = Server.CreateObject("G3FILES")
+rawText = "Line 1" & Chr(10) & "Line 2" & Chr(13) & "Line 3"
+normalizedText = files.NormalizeEOL(rawText, "windows")
+' All line endings are now CRLF
+Set files = Nothing
 %>
 ```
-
-
-

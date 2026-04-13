@@ -1,46 +1,32 @@
 # SetLineWidth Method
 
 ## Overview
-
-Sets Line Width for the G3IMAGE library.
+Sets the width of the line for subsequent stroke operations in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.SetLineWidth(...)
+obj.SetLineWidth(width)
 ```
 
-## Parameters and Arguments
-
-- width (Number, Required): Stroke width in pixels.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **width** (Double): The thickness of the line in pixels.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This setting affects all future Stroke calls until it is changed again.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.SetLineWidth()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(100, 100) Then
+    img.SetLineWidth 5.5
+    img.DrawLine 0, 0, 100, 100
+    img.Stroke()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

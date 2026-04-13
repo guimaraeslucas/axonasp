@@ -1,49 +1,38 @@
 # ExtractFile Method
 
 ## Overview
-
-Extracts File from an archive into output paths.
+Decompresses and pushes one designated file from the connected TAR compilation directly onto the host storage medium.
 
 ## Syntax
-
 ```asp
-result = obj.ExtractFile(...)
-`````
+Dim success
+success = obj.ExtractFile(archiveName, outputPath)
+```
 
 ## Parameters and Arguments
-
-- archiveName (String, Required): Entry path/name inside archive.
-- outputPath (String, Required): Destination file path.
-- Argument validation: invalid count or type raises runtime errors.
+- archiveName (String, Required): Target path naming referring directly to the stored inner artifact.
+- outputPath (String, Required): Exact endpoint pointer declaring where the output payload becomes solidified onto disk storage.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Dispatches a `Boolean` expression rendering True for success and False upon error constraints.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This approach assumes a correct reference initialization on Open usage.
+- If folders matching the destination parameters cannot be identified, this sequence will automatically scaffold paths as configured internally.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, success
 Set obj = Server.CreateObject("G3TAR")
-result = obj.ExtractFile()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+If obj.Open("C:\data\packages\files.tar") Then
+    success = obj.ExtractFile("source/test.jpg", "C:\data\extracted\test.jpg")
+    If success Then
+        Response.Write "Extract sequence finalized smoothly."
+    End If
+    obj.Close()
 End If
 Set obj = Nothing
 %>
-`````
-
-
-
-
-
+```

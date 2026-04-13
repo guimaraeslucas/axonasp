@@ -1,4 +1,4 @@
-# Axuserconfigdirpath Method
+# Axuserconfigdirpath
 
 ## Overview
 
@@ -12,7 +12,8 @@ result = obj.Axuserconfigdirpath()
 
 ## Return Values
 
-- String: Full path to config/axonasp.toml.
+- Returns a String.
+
 
 ## Code Example
 
@@ -20,7 +21,7 @@ result = obj.Axuserconfigdirpath()
 <%
 Option Explicit
 Dim obj, cfg
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 cfg = obj.Axuserconfigdirpath()
 Response.Write Server.HTMLEncode(cfg)
 Set obj = Nothing

@@ -1,47 +1,32 @@
 # MeasureString Method
 
 ## Overview
-
-Measures String and returns dimension metrics.
+Measures the width and height of a string if it were rendered with the current font in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.MeasureString(...)
+result = obj.MeasureString(s)
 ```
 
-## Parameters and Arguments
-
-- text (String, Required): Text to measure.
-- fontSize (Number, Optional): Font size used for measurement.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **s** (String): The text to measure.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a VBArray containing two Doubles: the width [0] and the height [1] of the string.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- A context must be active and a font must be loaded using LoadFontFace for this method to provide accurate measurements.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.MeasureString()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img, size
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(400, 200) Then
+    img.LoadFontFace "C:\Windows\Fonts\arial.ttf", 12
+    size = img.MeasureString("Hello")
+    Response.Write "Width: " & size(0) & ", Height: " & size(1)
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

@@ -1,53 +1,42 @@
-# MultiCell Method
+# MultiCell
 
 ## Overview
 
-Writes wrapped multi-line text blocks in the current PDF page.
+Allows printing text with line breaks. They can be automatic (as soon as the text reaches the right border of the cell) or explicit (via the newline character).
 
 ## Syntax
 
 ```asp
-result = obj.MultiCell(...)
-`````
+obj.MultiCell w, h, txt, [border], [align], [fill]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- width (Number, Required): Cell width.
-- height (Number, Required): Line height.
-- text (String, Required): Multi-line text.
-- border (Variant, Optional): Border mode.
-- align (String, Optional): Alignment.
-- fill (Boolean, Optional): Fill background.
-- Argument validation: invalid count or type raises runtime errors.
+- `w` (Double): Width of cells. If 0, they extend up to the right margin of the page.
+- `h` (Double): Height of cells.
+- `txt` (String): String to print.
+- `border` (Variant, Optional): Indicates if borders must be drawn (0, 1, or string like `LRTB`).
+- `align` (String, Optional): Allows to center or align the text. Possible values: `L`, `C`, `R`, `J`.
+- `fill` (Boolean, Optional): Indicates if the cell background must be painted.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.MultiCell()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

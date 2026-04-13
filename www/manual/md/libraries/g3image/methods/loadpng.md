@@ -1,46 +1,31 @@
 # LoadPNG Method
 
 ## Overview
-
-Loads PNG into the current operation context.
+Loads a PNG image file from the specified path into the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.LoadPNG(...)
+result = obj.LoadPNG(path)
 ```
 
-## Parameters and Arguments
-
-- imagePath (String, Required): PNG file path to load.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **path** (String): The file path to the PNG image.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean indicating whether the image was successfully loaded.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method specifically targets PNG files. For general image loading, use the LoadImage method.
+- The path is resolved relative to the web root if possible.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.LoadPNG()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.LoadPNG("images/logo.png") Then
+    ' PNG loaded successfully
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

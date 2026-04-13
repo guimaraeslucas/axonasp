@@ -1,47 +1,34 @@
 # Delete Method
 
 ## Overview
-
-Executes the Delete operation provided by the G3FILES library.
+Permanently removes a file or directory from the file system.
 
 ## Syntax
-
 ```asp
-result = obj.Delete(...)
+success = files.Delete(path)
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): File or folder path.
-- recursive (Boolean, Optional): When true, deletes directories recursively.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The target file or directory path to be removed.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the deletion was successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- If the target path is a directory, it must be empty before it can be deleted.
+- This method is also accessible via the **Remove** alias.
+- Path resolution is relative to the AxonASP sandbox root.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Delete()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim files
+Set files = Server.CreateObject("G3FILES")
+If files.Delete("/temp/old_data.txt") Then
+    Response.Write "File deleted."
 Else
-    Response.Write CStr(result)
+    Response.Write "Failed to delete file."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

@@ -1,4 +1,4 @@
-# Axcachedirpath Method
+# Axcachedirpath
 
 ## Overview
 
@@ -12,7 +12,8 @@ result = obj.Axcachedirpath()
 
 ## Return Values
 
-- String: Absolute cache directory path ending with path separator.
+- Returns a String.
+
 
 ## Code Example
 
@@ -20,7 +21,7 @@ result = obj.Axcachedirpath()
 <%
 Option Explicit
 Dim obj, p
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 p = obj.Axcachedirpath()
 Response.Write Server.HTMLEncode(p)
 Set obj = Nothing

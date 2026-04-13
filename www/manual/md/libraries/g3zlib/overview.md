@@ -1,24 +1,25 @@
-# Use G3ZLIB in AxonASP
+﻿# Use G3ZLIB in G3Pix AxonASP
 
 ## Overview
-ZLIB compression library.
+G3ZLIB is a compression library that allows you to compress and decompress data using the ZLIB format.
 
 ## Syntax
 ```asp
+Dim obj
 Set obj = Server.CreateObject("G3ZLIB")
-`````
+```
 
 ## Parameters and Arguments
-- ProgID (String, Required): Use one of the supported ProgID forms for this object family.
-- Member access (Optional): Use documented method/property members from the library reference pages.
+- ProgID (String, Required): Use `G3ZLIB` to instantiate this object.
+- Member access (Optional): Use the methods and properties provided by the library.
 
 ## Return Values
-Returns a native object handle for this object family.
+Returns a native object handle for the G3ZLIB library.
 
 ## Remarks
 - Member names are case-insensitive.
 - Runtime validation is enforced by object dispatch logic.
-- See the central library methods/properties pages for member-level coverage.
+- See the methods and properties pages for member-level coverage.
 
 ## Code Example
 ```asp
@@ -26,6 +27,6 @@ Returns a native object handle for this object family.
 Dim obj
 Set obj = Server.CreateObject("G3ZLIB")
 Response.Write TypeName(obj)
+Set obj = Nothing
 %>
-`````
-
+```

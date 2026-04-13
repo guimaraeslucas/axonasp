@@ -1,47 +1,32 @@
 # LoadFontFace Method
 
 ## Overview
-
-Loads Font Face into the current operation context.
+Loads a TrueType font for use in text rendering operations in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.LoadFontFace(...)
+result = obj.LoadFontFace(path, points)
 ```
 
-## Parameters and Arguments
-
-- fontPath (String, Required): Path to TTF/OTF file.
-- alias (String, Optional): Name used to reference the loaded font.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **path** (String): The file path to the .ttf font file.
+- **points** (Double): The font size in points.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean indicating whether the font was successfully loaded.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- If a context is active, this method also sets the font for that context.
+- Always check the return value or the LastError property if loading fails.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.LoadFontFace()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.LoadFontFace("C:\Windows\Fonts\verdanab.ttf", 12) Then
+    ' Font loaded successfully
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

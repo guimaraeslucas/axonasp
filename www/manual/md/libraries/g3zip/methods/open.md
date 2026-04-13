@@ -1,46 +1,32 @@
 # Open Method
 
 ## Overview
-
-Opens a resource for subsequent operations.
+Opens an existing ZIP archive file for reading and inspection in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-result = obj.Open(...)
+success = zip.Open(archivePath)
 ```
 
 ## Parameters and Arguments
-
-- archivePath (String, Required): Existing ZIP path to open.
-- Argument validation: invalid count or type raises runtime errors.
+- **archivePath** (String, Required): The path to the ZIP file on the server.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the archive was successfully opened.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Calling **Open** will close any archive currently managed by the object.
+- Once opened, the object enters **Read** mode, enabling methods like **List**, **GetInfo**, and **ExtractAll**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZIP")
-result = obj.Open()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Open("/data/source.zip") Then
+    Response.Write "Archive has " & zip.Count & " files."
+    zip.Close
 End If
-Set obj = Nothing
+Set zip = Nothing
 %>
 ```
-
-
-

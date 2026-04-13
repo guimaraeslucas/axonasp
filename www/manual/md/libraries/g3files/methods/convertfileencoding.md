@@ -1,49 +1,37 @@
 # ConvertFileEncoding Method
 
 ## Overview
-
-Converts File Encoding between supported formats.
+Converts the text encoding and line endings of a file on disk and saves the result to a destination path.
 
 ## Syntax
-
 ```asp
-result = obj.ConvertFileEncoding(...)
+success = files.ConvertFileEncoding(source, dest, srcEnc, dstEnc [, lineEnding] [, includeBOM])
 ```
 
 ## Parameters and Arguments
-
-- filePath (String, Required): Input file path.
-- sourceEncoding (String, Required): Source encoding label.
-- targetEncoding (String, Required): Target encoding label.
-- outputPath (String, Optional): Optional output path; overwrite behavior depends on implementation.
-- Argument validation: invalid count or type raises runtime errors.
+- **source** (String, Required): The path to the source file.
+- **dest** (String, Required): The path to the destination file.
+- **srcEnc** (String, Required): The encoding of the source file.
+- **dstEnc** (String, Required): The target encoding for the destination file.
+- **lineEnding** (String, Optional): The target line ending style (e.g., "windows", "linux").
+- **includeBOM** (Boolean, Optional): Specifies whether to include a Byte Order Mark in the destination file.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the conversion and save operation were successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is useful for batch-processing files for cross-platform compatibility.
+- Supported encodings include "utf-8", "utf-16", "ascii", and "iso-8859-1".
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.ConvertFileEncoding()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim files
+Set files = Server.CreateObject("G3FILES")
+' Convert an ISO-8859-1 file to UTF-8 with Windows line endings and a BOM
+If files.ConvertFileEncoding("legacy.txt", "modern.txt", "iso-8859-1", "utf-8", "windows", True) Then
+    Response.Write "File converted successfully."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

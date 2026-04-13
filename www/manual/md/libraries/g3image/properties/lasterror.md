@@ -1,40 +1,28 @@
 # LastError Property
 
 ## Overview
-
-The LastError property is exposed by the G3IMAGE library object and returns the current state/value associated with this member.
+Returns the error message for the last operation performed in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-value = obj.LastError
-obj.LastError = newValue
+err = obj.LastError
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a String containing the last error message. Returns an empty string if no error occurred.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- Check this property after any operation that returns False or Empty to understand why it failed.
+- This property is read-only.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3IMAGE")
-value = obj.LastError
-Response.Write CStr(value)
-Set obj = Nothing
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If Not img.LoadImage("missing.png") Then
+    Response.Write "Error: " & img.LastError
+End If
+Set img = Nothing
 %>
 ```

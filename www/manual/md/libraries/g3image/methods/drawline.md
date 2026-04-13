@@ -1,49 +1,36 @@
 # DrawLine Method
 
 ## Overview
-
-Draws Line onto the current image canvas.
+Adds a line segment to the current path in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.DrawLine(...)
+obj.DrawLine(x1, y1, x2, y2)
 ```
 
-## Parameters and Arguments
-
-- x1 (Number, Required): Start X.
-- y1 (Number, Required): Start Y.
-- x2 (Number, Required): End X.
-- y2 (Number, Required): End Y.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **x1** (Double): The x-coordinate of the starting point.
+- **y1** (Double): The y-coordinate of the starting point.
+- **x2** (Double): The x-coordinate of the ending point.
+- **y2** (Double): The y-coordinate of the ending point.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method defines a line in the current path. Call Stroke to render the line.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.DrawLine()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(200, 200) Then
+    img.SetHexColor("#000000")
+    img.SetLineWidth 2
+    img.DrawLine 10, 10, 190, 190
+    img.Stroke()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

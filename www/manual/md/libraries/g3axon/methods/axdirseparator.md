@@ -1,45 +1,32 @@
-﻿# Axdirseparator Method
+# axdirseparator
 
 ## Overview
-
-Returns the OS directory separator character.
+Retrieves the operating system's directory separator character in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axdirseparator(...)
+result = obj.axdirseparator()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the character used by the operating system to separate directory levels in a path.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Typically returns "\" on Windows systems and "/" on Unix-like systems.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axdirseparator()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, separator
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+separator = obj.axdirseparator()
+Response.Write "System Directory Separator: " & separator
+
 Set obj = Nothing
 %>
 ```
-
-

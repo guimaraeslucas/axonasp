@@ -1,40 +1,13 @@
 # MaxFileSize Property
 
 ## Overview
-
-The MaxFileSize property is exposed by the G3FILEUPLOADER library object and returns the current state/value associated with this member.
+Controls the maximum permitted file size (in bytes) per individual request. By default, this is set to 10 MB (10485760 bytes).
 
 ## Syntax
-
 ```asp
-value = obj.MaxFileSize
-obj.MaxFileSize = newValue
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.MaxFileSize = 5242880 ' 5 MB maximum
 ```
-
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
-
-## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-value = obj.MaxFileSize
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-```
+Sets or returns a long integer reflecting the maximum file size configured in the uploader instance.

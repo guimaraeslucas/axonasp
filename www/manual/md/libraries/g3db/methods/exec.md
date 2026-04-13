@@ -2,46 +2,51 @@
 
 ## Overview
 
-Executes a command and returns status or output.
+The **Exec** method executes a SQL statement that does not return data rows, such as INSERT, UPDATE, or DELETE, in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.Exec(...)
+Set result = obj.Exec(sql [, params...])
 ```
 
 ## Parameters and Arguments
 
-- sql (String, Required): Command text (INSERT/UPDATE/DELETE/DDL).
-- params (Variant, Optional): Positional parameters array/value list.
-- Argument validation: invalid count or type raises runtime errors.
+- **sql** (String, Required): The SQL statement to be executed.
+- **params** (Variant, Optional): One or more values to be used as parameters in the SQL statement, replacing the `?` placeholders.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **G3DBResult** object. This object contains metadata about the operation, such as the number of rows affected and any last inserted ID.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is designed for data modification operations where a record set is not expected.
+- It automatically rewrites the `?` placeholders into the format required by the current database driver.
+- The returned **G3DBResult** object provides **LastInsertId** and **RowsAffected** properties or methods.
+- If the operation fails, the method returns an **Empty** value, and the error can be retrieved using the **LastError** property.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.Exec()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db, res
+Set db = Server.CreateObject("G3DB")
+
+If db.Open("mysql", "user:pass@tcp(localhost)/dbname") Then
+    ' Execute an INSERT statement
+    Set res = db.Exec("INSERT INTO users (username, status) VALUES (?, ?)", "john_doe", "active")
+
+    If Not IsEmpty(res) Then
+        Response.Write "Inserted ID: " & res.LastInsertId & "<br>"
+        Response.Write "Rows affected: " & res.RowsAffected
+    Else
+        Response.Write "Error executing query: " & db.LastError
+    End If
+
+    db.Close
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
 ```
-
-
-

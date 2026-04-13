@@ -1,47 +1,38 @@
-# HmacSHA512 Method
+# HmacSha512 Method
 
 ## Overview
 
-Computes a cryptographic result using the HmacSHA512 operation.
+Computes an HMAC (Hash-based Message Authentication Code) using the SHA-512 hash function and a secret key with the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.HmacSHA512(...)
+result = obj.HmacSha512(data, key)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- key (String, Required): Secret key.
-- message (String, Required): Message to sign.
-- Argument validation: invalid count or type raises runtime errors.
+- **data** (String): The message content to be hashed.
+- **key** (String): The secret cryptographic key used for HMAC calculation.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the calculated HMAC-SHA512 result encoded as a lowercase hexadecimal string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- SHA-512 provides a stronger security level compared to SHA-256 for systems requiring higher integrity guarantees.
+- The resulting hash is also stored in the `Hash` property as a byte array.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.HmacSHA512()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, signature
+Set crypto = Server.CreateObject("G3CRYPTO")
+signature = crypto.HmacSha512("Hello World", "mySecretKey")
+Response.Write "HMAC Signature: " & signature
+Set crypto = Nothing
 %>
 ```
-
-
-

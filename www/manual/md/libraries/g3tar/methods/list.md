@@ -1,48 +1,37 @@
 # List Method
 
 ## Overview
-
-Returns structured runtime information for the current context.
+Generates an enumeration of paths that correspond exactly to the current contents found inside the loaded TAR archive.
 
 ## Syntax
-
 ```asp
-result = obj.List(...)
-`````
+Dim stringArray
+stringArray = obj.List()
+```
 
 ## Parameters and Arguments
-
-- none: lists entries from currently opened TAR archive.
-- Argument validation: invalid count or type raises runtime errors.
+- No parameters. Read access must first be set up.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a one-dimensional native array storing String definitions, mapped natively within AxonASP.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Needs a preceding call referencing an archive via Open.
+- Ideal when validating content prior to executing intensive extractions or when generating diagnostic listings.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, files, i
 Set obj = Server.CreateObject("G3TAR")
-result = obj.List()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+If obj.Open("C:\data\packages\archive.tar") Then
+    files = obj.List()
+    For i = LBound(files) To UBound(files)
+        Response.Write files(i) & "<br>"
+    Next
+    obj.Close()
 End If
 Set obj = Nothing
 %>
-`````
-
-
-
-
-
+```

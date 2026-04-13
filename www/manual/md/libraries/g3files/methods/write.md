@@ -1,48 +1,39 @@
 # Write Method
 
 ## Overview
-
-Writes content to the active output target.
+Writes text content to a file, overwriting any existing content.
 
 ## Syntax
-
 ```asp
-result = obj.Write(...)
+success = files.Write(path, content [, encoding] [, lineEnding] [, includeBOM])
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): Target file path.
-- content (String, Required): Text content to write.
-- encoding (String, Optional): Text encoding, default UTF-8.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The target file path.
+- **content** (String, Required): The text content to write.
+- **encoding** (String, Optional): The text encoding to use (e.g., "utf-8", "utf-16", "ascii", "iso-8859-1"). The default is "utf-8".
+- **lineEnding** (String, Optional): The line ending style to apply (e.g., "windows", "linux"). The default is "linux" (LF).
+- **includeBOM** (Boolean, Optional): Specifies whether to include a Byte Order Mark in the file. The default is **False**.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the write operation was successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- If the file already exists, it is overwritten.
+- The library automatically handles directory creation if the target path includes missing folders.
+- This method is also accessible via the **WriteText** alias.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Write()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim files, content, success
+Set files = Server.CreateObject("G3FILES")
+content = "Configuration Data" & vbCrLf & "Version: 2.1"
+' Write as UTF-8 with a BOM and Windows line endings
+success = files.Write("config.txt", content, "utf-8", "windows", True)
+If success Then
+    Response.Write "Configuration saved."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

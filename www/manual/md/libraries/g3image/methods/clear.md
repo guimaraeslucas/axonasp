@@ -1,46 +1,29 @@
 # Clear Method
 
 ## Overview
-
-Clears the current operation context.
+Clears the current image context using the current fill color. This operation resets the canvas within the active context of the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.Clear(...)
+obj.Clear()
 ```
-
-## Parameters and Arguments
-
-- colorHex (String, Optional): Fill color applied to the full canvas.
-- Argument validation: invalid count or type raises runtime errors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Ensure a context has been initialized using NewContext before calling this method.
+- The method uses the color previously set by SetColor or SetHexColor.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.Clear()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(400, 300) Then
+    img.SetHexColor("#FFFFFF")
+    img.Clear()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

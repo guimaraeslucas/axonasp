@@ -1,41 +1,26 @@
 # HashSize Property
 
 ## Overview
-
-The HashSize property is exposed by the G3Crypto library object and returns the current state/value associated with this member.
+Returns the size of the last computed cryptographic hash in bits.
 
 ## Syntax
-
 ```asp
-value = obj.HashSize
-obj.HashSize = newValue
-`````
-
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+sizeBits = crypto.HashSize
+```
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an **Integer** representing the number of bits in the hash digest.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+The value returned depends on the algorithm used for the last operation. For example, it returns 256 for **SHA256** and 512 for **SHA512**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Crypto")
-value = obj.HashSize
-Response.Write CStr(value)
-Set obj = Nothing
+Dim crypto
+Set crypto = Server.CreateObject("G3CRYPTO")
+crypto.SHA256("Bit Size Test")
+Response.Write "Hash Size: " & crypto.HashSize & " bits"
+Set crypto = Nothing
 %>
-`````
-
+```

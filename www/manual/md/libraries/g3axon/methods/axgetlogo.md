@@ -1,45 +1,32 @@
-﻿# Axgetlogo Method
+# Retrieve Default Configured Logo
 
 ## Overview
 
-Loads the configured logo file and returns it as a Base64 data URI.
+Retrieves the server's configured default logo as an inline Base64 data URI string.
 
 ## Syntax
 
-```asp
-result = obj.Axgetlogo(...)
+```vbscript
+strDataUri = obj.axgetlogo()
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- None.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The data URI containing the encoded logo image.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+The logo source file is defined in the `axfunctions.ax_default_logo_path` property within the AxonASP configuration file. Returns an empty string if the file is missing or invalid.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axgetlogo()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strUri
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strUri = obj.axgetlogo()
+Response.Write "<img src=""" & strUri & """>"
 ```
-
-

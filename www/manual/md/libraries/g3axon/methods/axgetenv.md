@@ -1,4 +1,4 @@
-﻿# Axgetenv Method
+# Axgetenv
 
 ## Overview
 
@@ -17,8 +17,8 @@ result = obj.Axgetenv(...)
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+- Returns a String.
+
 
 ## Remarks
 
@@ -31,7 +31,7 @@ result = obj.Axgetenv(...)
 <%
 Option Explicit
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 result = obj.Axgetenv()
 If IsObject(result) Then
     Response.Write "Object returned"

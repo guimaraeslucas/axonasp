@@ -1,40 +1,28 @@
 # Path Property
 
 ## Overview
-
-The Path property is exposed by the G3ZIP library object and returns the current state/value associated with this member.
+Returns the absolute physical path of the archive file currently managed by the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-value = obj.Path
-obj.Path = newValue
+fullPath = zip.Path
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the full path to the ZIP file. Returns an empty string if no archive is active.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only.
+- It reflects the resolved path after `Server.MapPath` or relative resolution has been applied by the engine.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3ZIP")
-value = obj.Path
-Response.Write CStr(value)
-Set obj = Nothing
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+zip.Open "data.zip"
+Response.Write "Resolved path: " & zip.Path
+zip.Close
+Set zip = Nothing
 %>
 ```

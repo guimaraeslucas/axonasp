@@ -1,51 +1,40 @@
-# Line Method
+# Line
 
 ## Overview
 
-Draws a line segment in the current PDF page.
+Draws a line between two points.
 
 ## Syntax
 
 ```asp
-result = obj.Line(...)
-`````
+obj.Line x1, y1, x2, y2
+```
 
-## Parameters and Arguments
+## Parameters
 
-- x1 (Number, Required): Start X.
-- y1 (Number, Required): Start Y.
-- x2 (Number, Required): End X.
-- y2 (Number, Required): End Y.
-- Argument validation: invalid count or type raises runtime errors.
+- `x1` (Double): Abscissa of first point.
+- `y1` (Double): Ordinate of first point.
+- `x2` (Double): Abscissa of second point.
+- `y2` (Double): Ordinate of second point.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.Line()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

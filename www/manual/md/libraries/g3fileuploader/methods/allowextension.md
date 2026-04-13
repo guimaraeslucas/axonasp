@@ -1,48 +1,16 @@
 # AllowExtension Method
 
 ## Overview
-
-Allows Extension in the current validation rules.
+Appends a single file extension to the internally maintained allowed extensions permit list. Usually used in tandem with the `SetUseAllowedOnly` mechanism.
 
 ## Syntax
-
 ```asp
-result = obj.AllowExtension(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.AllowExtension ".pdf"
+```
 
 ## Parameters and Arguments
-
-- extension (String, Required): Single extension without dot or with dot based on implementation.
-- Argument validation: invalid count or type raises runtime errors.
+- `Extension` (String, Required): The literal file extension (with or without the leading dot).
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.AllowExtension()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns an `Empty` variant.

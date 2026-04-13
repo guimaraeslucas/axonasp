@@ -1,44 +1,46 @@
-# DecompressFile Method
+# Decompress a File Using G3ZLIB
 
 ## Overview
 
-Decompresses File back to original content.
+Decompresses a single compressed file back into its original content.
 
 ## Syntax
 
 ```asp
-result = obj.DecompressFile(...)
+Dim success
+success = obj.DecompressFile(inputPath, outputPath)
 ```
 
 ## Parameters and Arguments
 
-- inputPath (String, Required): Compressed source file path.
-- outputPath (String, Required): Decompressed output path.
-- Argument validation: invalid count or type raises runtime errors.
+- inputPath (String, Required): The full path to the compressed source file.
+- outputPath (String, Required): The destination path for the decompressed file.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean value. Returns True if the file was decompressed and saved successfully; otherwise, returns False and updates the LastError property.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Ensure the destination path allows write operations.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, success
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.DecompressFile()
-If IsObject(result) Then
-    Response.Write "Object returned"
+
+success = obj.DecompressFile(Server.MapPath("document.zlib"), Server.MapPath("extracted_document.txt"))
+
+If success Then
+    Response.Write "File decompressed successfully."
 Else
-    Response.Write CStr(result)
+    Response.Write "Error: " & obj.LastError
 End If
+
 Set obj = Nothing
 %>
 ```

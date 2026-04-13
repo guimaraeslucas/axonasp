@@ -1,49 +1,38 @@
-# SetAutoPageBreak Method
+# SetAutoPageBreak
 
 ## Overview
 
-Sets Auto Page Break for the G3PDF library.
+Enables or disables the automatic page breaking mode.
 
 ## Syntax
 
 ```asp
-result = obj.SetAutoPageBreak(...)
-`````
+obj.SetAutoPageBreak auto, [margin]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- auto (Boolean, Required): Enable automatic page breaks.
-- margin (Number, Optional): Bottom margin used by page-break logic.
-- Argument validation: invalid count or type raises runtime errors.
+- `auto` (Boolean): Boolean indicating if mode should be on or off.
+- `margin` (Double, Optional): Distance from the bottom of the page that triggers the break.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetAutoPageBreak()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

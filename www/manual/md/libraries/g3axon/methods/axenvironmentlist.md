@@ -1,45 +1,37 @@
-﻿# Axenvironmentlist Method
+# axenvironmentlist
 
 ## Overview
-
-Returns an array of environment entries in KEY=VALUE format.
+Retrieves a list of all environment variables for the current G3Pix AxonASP process.
 
 ## Syntax
-
 ```asp
-result = obj.Axenvironmentlist(...)
+result = obj.axenvironmentlist()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Array of Strings, where each element represents an environment variable in "KEY=VALUE" format.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Internal or pseudo-environment variables (such as those starting with '=' on Windows) are automatically filtered from the results.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axenvironmentlist()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim obj, envList, item
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+envList = obj.axenvironmentlist()
+
+If IsArray(envList) Then
+    For Each item In envList
+        Response.Write item & "<br>"
+    Next
 End If
+
 Set obj = Nothing
 %>
 ```
-
-

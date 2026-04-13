@@ -1,40 +1,32 @@
 # Password Property
 
 ## Overview
-
-The Password property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **Password** property sets the authentication password for the SMTP server for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.Password
-obj.Password = newValue
+value = mail.Password
+mail.Password = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): The password for the SMTP account.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the current password (if set).
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- For security reasons, avoid hardcoding passwords in scripts. Use environment variables (`SMTP_PASS`) or encrypted configuration files.
+- This property can also be accessed using the aliases **Pass** or **AuthPassword**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.Password
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Password = "mySecretPassword"
+
+Set mail = Nothing
 %>
 ```

@@ -1,45 +1,32 @@
-﻿# Axbase64decode Method
+# Decode Base64 String
 
 ## Overview
 
-Decodes a Base64 string back to plain text.
+Decodes a Base64 encoded string back to its original value.
 
 ## Syntax
 
-```asp
-result = obj.Axbase64decode(...)
+```vbscript
+strDecoded = obj.axbase64decode(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The Base64 string to decode.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The decoded original string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If the input string is not a valid Base64 string, an empty string is returned.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axbase64decode()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strDecode
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strDecode = obj.axbase64decode("SGVsbG8gV29ybGQ=")
+Response.Write strDecode ' Outputs: Hello World
 ```
-
-

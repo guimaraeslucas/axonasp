@@ -2,47 +2,43 @@
 
 ## Overview
 
-Sets Conn Max Idle Time for the G3DB library.
+The **SetConnMaxIdleTime** method sets the maximum duration in seconds that a connection can remain idle in the pool before being closed in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.SetConnMaxIdleTime(...)
-`````
+obj.SetConnMaxIdleTime(seconds)
+```
 
 ## Parameters and Arguments
 
-- seconds (Integer, Required): Maximum idle time for a connection in seconds.
-- Argument validation: invalid count or type raises runtime errors.
+- **seconds** (Integer, Required): The maximum idle time for a connection in seconds. Use 0 for no limit.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns **Empty**.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This setting helps to proactively reclaim system resources from database connections that are not actively in use.
+- It is particularly useful for environments with intermittent database traffic.
+- This method should be called before or after establishing a connection to configure the pool behavior.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.SetConnMaxIdleTime()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db
+Set db = Server.CreateObject("G3DB")
+
+' Set maximum idle time to 120 seconds (2 minutes)
+db.SetConnMaxIdleTime 120
+
+If db.Open("mysql", "user:pass@tcp(localhost)/dbname") Then
+    ' Database operations...
+    db.Close
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
-`````
-
-
-
-
-
+```

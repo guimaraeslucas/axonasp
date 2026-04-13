@@ -1,46 +1,30 @@
 # Size Method
 
 ## Overview
-
-Executes the Size operation provided by the G3FILES library.
+Returns the size of a specified file in bytes.
 
 ## Syntax
-
 ```asp
-result = obj.Size(...)
+fileSize = files.Size(path)
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): File path, or folder path when recursive sizing is supported.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The path to the file.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns an **Integer** (int64) representing the size of the file in bytes. If the file does not exist or is a directory, it returns 0.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method provides a quick way to check file metadata without reading the content.
+- Path resolution is relative to the AxonASP sandbox root.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Size()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim files, s
+Set files = Server.CreateObject("G3FILES")
+s = files.Size("/backups/dump.sql")
+Response.Write "Backup size: " & FormatNumber(s / 1024, 2) & " KB"
+Set files = Nothing
 %>
 ```
-
-
-

@@ -1,48 +1,16 @@
 # SetUseAllowedOnly Method
 
 ## Overview
-
-Sets Use Allowed Only for the G3FILEUPLOADER library.
+Activates an internal strict lockdown, discarding all system capabilities globally barring those extensions exclusively pushed directly into engine array mechanisms matching precise whitelist entries.
 
 ## Syntax
-
 ```asp
-result = obj.SetUseAllowedOnly(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.SetUseAllowedOnly True
+```
 
 ## Parameters and Arguments
-
-- enabled (Boolean, Required): True to enforce allow-list only.
-- Argument validation: invalid count or type raises runtime errors.
+- `Enabled` (Boolean, Required): True directly configures whitelist-only uploads.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.SetUseAllowedOnly()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns an `Empty` variant.

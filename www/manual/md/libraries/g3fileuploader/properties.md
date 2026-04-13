@@ -1,16 +1,12 @@
-﻿# Properties
+# G3FILEUPLOADER Properties
 
 ## Overview
+The `G3FILEUPLOADER` library provides several properties to configure file limits, debug mode, extension rules, and file naming algorithms.
 
-This page lists properties exposed by G3FILEUPLOADER.
+## Available Properties
 
-## Property List
-- BlockedExtensions
-- AllowedExtensions
-- MaxFileSize
-- PreserveOriginalName
-- DebugMode
-
-## Remarks
-
-Read-only properties reject assignment and raise runtime errors when not writable.
+* `AllowedExtensions`
+* `BlockedExtensions`
+* `DebugMode`
+* `MaxFileSize`
+* `PreserveOriginalName`

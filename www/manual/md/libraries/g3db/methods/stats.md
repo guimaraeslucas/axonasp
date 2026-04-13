@@ -2,45 +2,53 @@
 
 ## Overview
 
-Returns structured runtime information for the current context.
+The **Stats** method retrieves runtime connection pool statistics for the current database connection in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.Stats(...)
+Set result = obj.Stats()
 ```
 
 ## Parameters and Arguments
 
-- none: returns current connection pool statistics.
-- Argument validation: invalid count or type raises runtime errors.
+None.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Scripting.Dictionary** object containing detailed information about the current state of the database connection pool.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The dictionary keys returned by this method include:
+    - **MaxOpenConnections**: The maximum number of open connections allowed.
+    - **OpenConnections**: The total number of established connections (in-use + idle).
+    - **InUse**: The number of connections currently active in a transaction or query.
+    - **Idle**: The number of idle connections sitting in the pool.
+    - **WaitCount**: The total number of connections that had to wait before being granted.
+    - **WaitDurationSeconds**: The total duration in seconds that callers blocked waiting for a connection.
+    - **MaxIdleClosed**: The number of connections closed because of the **SetMaxIdleConns** limit.
+    - **MaxIdleTimeClosed**: The number of connections closed because of the **SetConnMaxIdleTime** limit.
+    - **MaxLifetimeClosed**: The number of connections closed because of the **SetConnMaxLifetime** limit.
+- This method is useful for monitoring the performance and health of the database connection pool during runtime.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.Stats()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db, stats
+Set db = Server.CreateObject("G3DB")
+
+If db.Open("mysql", "user:pass@tcp(localhost)/dbname") Then
+    Set stats = db.Stats()
+    
+    Response.Write "Active Connections: " & stats("InUse") & "<br>"
+    Response.Write "Idle Connections: " & stats("Idle") & "<br>"
+    Response.Write "Total Open: " & stats("OpenConnections") & "<br>"
+    
+    db.Close
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
 ```
-
-
-

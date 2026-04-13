@@ -1,41 +1,31 @@
 # Hash Property
 
 ## Overview
-
-The Hash property is exposed by the G3Crypto library object and returns the current state/value associated with this member.
+Returns the raw byte array of the most recently computed cryptographic hash.
 
 ## Syntax
-
 ```asp
-value = obj.Hash
-obj.Hash = newValue
-`````
-
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+byteArray = crypto.Hash
+```
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an **Array** (VBScript Byte Array) containing the raw binary data of the last hash operation.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+This property is useful when you need to store or transmit the hash in binary format rather than a hexadecimal string. It is updated automatically every time a hashing method (like **SHA256**, **MD5**, or **ComputeHash**) is called.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Crypto")
-value = obj.Hash
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-`````
+Dim crypto, rawHash, i
+Set crypto = Server.CreateObject("G3CRYPTO")
+crypto.SHA256("Binary Output Test")
+rawHash = crypto.Hash
 
+Response.Write "First 4 bytes: "
+For i = 0 To 3
+    Response.Write Hex(rawHash(i)) & " "
+Next
+Set crypto = Nothing
+%>
+```

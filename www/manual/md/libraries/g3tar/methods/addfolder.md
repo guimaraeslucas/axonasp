@@ -1,49 +1,38 @@
 # AddFolder Method
 
 ## Overview
-
-Adds Folder to the current operation context.
+Adds a local folder hierarchy to the newly created G3TAR archive.
 
 ## Syntax
-
 ```asp
-result = obj.AddFolder(...)
-`````
+Dim success
+success = obj.AddFolder(folderPath, archiveRoot)
+```
 
 ## Parameters and Arguments
-
-- folderPath (String, Required): Source folder path.
-- archiveRoot (String, Optional): Root folder inside archive.
-- Argument validation: invalid count or type raises runtime errors.
+- folderPath (String, Required): The absolute or relative local path to the directory on the server disk.
+- archiveRoot (String, Optional): An alternative folder name under which these files will reside inside the TAR archive.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a `Boolean` representing the operation outcome. Returns True if the folder contents were appended successfully, otherwise False.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Must be called after initializing an archive using the Create method.
+- Calling this method automatically cascades into all subdirectories.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, success
 Set obj = Server.CreateObject("G3TAR")
-result = obj.AddFolder()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+If obj.Create("C:\temp\backup.tar") Then
+    success = obj.AddFolder("C:\temp\reports", "reports_backup")
+    If success Then
+        Response.Write "Folder added!"
+    End If
+    obj.Close()
 End If
 Set obj = Nothing
 %>
-`````
-
-
-
-
-
+```

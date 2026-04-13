@@ -1,45 +1,41 @@
-﻿# Axtime Method
+# axtime
 
 ## Overview
 
-Returns the current Unix timestamp in seconds.
+The `axtime` method returns the current Unix timestamp, which is the number of seconds that have elapsed since January 1, 1970 (UTC).
 
 ## Syntax
 
 ```asp
-result = obj.Axtime(...)
+result = obj.axtime()
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+This method does not accept any parameters.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Integer representing the current Unix timestamp in seconds.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- The returned value is based on the system's current time and configured time zone.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axtime()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim ax, ts
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+ts = ax.axtime()
+
+Response.Write "Current Unix Timestamp: " & ts
+
+Set ax = Nothing
 %>
 ```
-
-

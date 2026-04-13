@@ -1,40 +1,29 @@
 # LastBytes Property
 
 ## Overview
-
-The LastBytes property is exposed by the G3IMAGE library object and returns the current state/value associated with this member.
+Returns the binary data of the last rendered or loaded image in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-value = obj.LastBytes
-obj.LastBytes = newValue
+data = obj.LastBytes
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a VBArray containing binary bytes.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is populated after calling methods like RenderViaTemp.
+- It is read-only.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3IMAGE")
-value = obj.LastBytes
-Response.Write CStr(value)
-Set obj = Nothing
+Dim img, bytes
+Set img = Server.CreateObject("G3IMAGE")
+img.NewContext 100, 100
+img.RenderViaTemp "png", 0
+bytes = img.LastBytes
+' bytes now contains the binary PNG data
+Set img = Nothing
 %>
 ```

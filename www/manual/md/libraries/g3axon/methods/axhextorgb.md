@@ -1,45 +1,32 @@
-﻿# Axhextorgb Method
+# Convert HTML Hexadecimal to RGB Color
 
 ## Overview
 
-Converts an HTML hex color string into an rgb(r,g,b) string.
+Converts an HTML hexadecimal color string into an equivalent RGB function format string.
 
 ## Syntax
 
-```asp
-result = obj.Axhextorgb(...)
+```vbscript
+strRgb = obj.axhextorgb(hex)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **hex** (String): The hexadecimal color string.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The RGB representation.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If the hex code format is invalid, it defaults to returning `rgb(0,0,0)`.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axhextorgb()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strRgb
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strRgb = obj.axhextorgb("#0080FF")
+Response.Write strRgb ' Outputs: rgb(0,128,255)
 ```
-
-

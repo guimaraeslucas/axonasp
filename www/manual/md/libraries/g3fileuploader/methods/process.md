@@ -1,48 +1,19 @@
 # Process Method
 
 ## Overview
-
-Processes current inputs using current configuration.
+Processes a specific attached form file payload byte stream, pushing it directly to an allocated destination directory on disk, optionally allowing overrides of the core internal naming generator. Also supports the `Save` alias.
 
 ## Syntax
-
 ```asp
-result = obj.Process(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Dim res
+Set res = uploader.Process("myFile", "/uploads/", "forcedName.png")
+```
 
 ## Parameters and Arguments
-
-- fieldName (String, Optional): Specific upload field; when omitted processes according to default behavior.
-- Argument validation: invalid count or type raises runtime errors.
+- `FieldName` (String, Required): File form field identifier.
+- `TargetDir` (String, Optional): Destination virtual directory to save the file (Defaults to "./").
+- `NewFileName` (String, Optional): Explicit string name formatting option ignoring internal hash behaviors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.Process()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns a Dictionary object structured heavily reflecting successful operation indicators (via a boolean `IsSuccess` property). Other Dictionary keys include `OriginalFileName`, `NewFileName`, `Size`, `MimeType`, `Extension`, `FinalPath`, `RelativePath`, and `ErrorMessage`.

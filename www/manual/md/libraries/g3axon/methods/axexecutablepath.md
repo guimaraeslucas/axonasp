@@ -1,45 +1,32 @@
-﻿# Axexecutablepath Method
+# axexecutablepath
 
 ## Overview
-
-Returns the absolute path of the running AxonASP executable.
+Retrieves the absolute path of the executable that started the G3Pix AxonASP process.
 
 ## Syntax
-
 ```asp
-result = obj.Axexecutablepath(...)
+result = obj.axexecutablepath()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the full path to the current executable.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If an error occurs while determining the path, an empty string is returned.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axexecutablepath()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, execPath
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+execPath = obj.axexecutablepath()
+Response.Write "Current executable path: " & execPath
+
 Set obj = Nothing
 %>
 ```
-
-

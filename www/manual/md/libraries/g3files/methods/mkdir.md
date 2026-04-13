@@ -1,47 +1,33 @@
 # Mkdir Method
 
 ## Overview
-
-Creates a directory path if needed.
+Creates a new directory or a full directory path recursively.
 
 ## Syntax
-
 ```asp
-result = obj.Mkdir(...)
+success = files.Mkdir(path)
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): Directory path to create.
-- recursive (Boolean, Optional): Create parent directories when needed.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The directory path to be created.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the directory creation was successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is recursive; it will create any missing parent directories in the path automatically.
+- If the directory already exists, the method returns **True**.
+- This method is also accessible via the **MakeDir** alias.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Mkdir()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim files
+Set files = Server.CreateObject("G3FILES")
+' Creates the entire directory structure recursively
+If files.Mkdir("/data/logs/archives/2026") Then
+    Response.Write "Directory path created."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

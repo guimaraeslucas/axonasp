@@ -1,48 +1,16 @@
 # AllowExtensions Method
 
 ## Overview
-
-Allows Extensions in the current validation rules.
+Bulk injects multiple allowed file extensions by processing a comma-delimited string of formats.
 
 ## Syntax
-
 ```asp
-result = obj.AllowExtensions(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.AllowExtensions "pdf,doc,docx"
+```
 
 ## Parameters and Arguments
-
-- extensions (Variant, Required): Delimited string or array of allowed extensions.
-- Argument validation: invalid count or type raises runtime errors.
+- `ExtensionsList` (String, Required): A comma-separated list of file extensions.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.AllowExtensions()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns an `Empty` variant.

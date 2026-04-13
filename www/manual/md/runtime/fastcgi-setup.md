@@ -267,7 +267,7 @@ upstream axonasp_fcgi {
 ## Remarks
 
 - The FastCGI server supports the same ASP libraries and functions as the HTTP server. Feature parity is maintained between all runtime modes.
-- `global.asa` is loaded from the configured web root on startup, identical to the HTTP server.
-- The FastCGI server does not serve static files directly. The front-end web server handles static content.
+- `global.asa` is loaded from the configured web root on startup, identical to the HTTP server, you should set the `server.web_root` key to the parent directory of `global.asa` for it to be loaded properly.
+- The FastCGI server does not serve static files directly. The front-end web server handles static content. 
 - Increase `instanceMaxRequests` or `maxInstances` in IIS for high-traffic deployments.
 - For Nginx, use `fastcgi_read_timeout` to match the AxonASP script timeout configured in `axonasp.toml`.

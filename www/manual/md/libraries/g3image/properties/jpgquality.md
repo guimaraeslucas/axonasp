@@ -1,40 +1,31 @@
-# JPGQuality Property
+# JpgQuality Property
 
 ## Overview
-
-The JPGQuality property is exposed by the G3IMAGE library object and returns the current state/value associated with this member.
+Gets or sets the quality level for JPEG encoding in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-value = obj.JPGQuality
-obj.JPGQuality = newValue
+' Get current quality
+q = obj.JpgQuality
+
+' Set new quality
+obj.JpgQuality = 85
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an Integer representing the quality level (1 to 100).
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- The default quality is 90.
+- Higher values result in better image quality but larger file sizes.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3IMAGE")
-value = obj.JPGQuality
-Response.Write CStr(value)
-Set obj = Nothing
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+img.JpgQuality = 70
+' Perform save or render operations
+Set img = Nothing
 %>
 ```

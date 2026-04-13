@@ -1,45 +1,32 @@
-﻿# Axw Method
+# axw
 
 ## Overview
-
-Writes HTML-escaped text to the current response output stream.
+Writes HTML-escaped text to the current HTTP response in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axw(...)
+obj.axw(text)
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **text** (String): The text to be written to the response.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns Empty.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+This method is a secure alternative to `Response.Write` as it automatically escapes HTML characters, protecting against cross-site scripting (XSS) vulnerabilities. Use it when displaying data that may contain HTML tags that should be rendered as literal text.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axw()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+' This will render exactly as: <b>Secure Output</b>
+obj.axw "<b>Secure Output</b>"
+
 Set obj = Nothing
 %>
 ```
-
-

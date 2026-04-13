@@ -1,41 +1,30 @@
 # BCryptCost Property
 
 ## Overview
-
-The BCryptCost property is exposed by the G3Crypto library object and returns the current state/value associated with this member.
+Gets or sets the work factor (cost) used for bcrypt password hashing.
 
 ## Syntax
-
 ```asp
-value = obj.BCryptCost
-obj.BCryptCost = newValue
-`````
+' Get current cost
+cost = crypto.BCryptCost
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+' Set new cost
+crypto.BCryptCost = 12
+```
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an **Integer** (int64) representing the current work factor. The default value is 10.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+The work factor represents the number of iterations performed during hashing (2^cost). Increasing this value improves security against brute-force attacks but significantly increases the CPU time required for each hash and verification. Accepted values are between 4 and 31.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Crypto")
-value = obj.BCryptCost
-Response.Write CStr(value)
-Set obj = Nothing
+Dim crypto
+Set crypto = Server.CreateObject("G3CRYPTO")
+crypto.BCryptCost = 12
+Response.Write "New BCrypt Cost: " & crypto.BCryptCost
+Set crypto = Nothing
 %>
-`````
-
+```

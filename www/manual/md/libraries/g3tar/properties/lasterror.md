@@ -1,41 +1,35 @@
 # LastError Property
 
 ## Overview
-
-The LastError property is exposed by the G3TAR library object and returns the current state/value associated with this member.
+Gets the description of the last error encountered during a G3TAR operation.
 
 ## Syntax
-
 ```asp
-value = obj.LastError
-obj.LastError = newValue
-`````
+Dim errorMsg
+errorMsg = obj.LastError
+```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- Getter: None.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a `String` detailing the most recent internal operation error.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only.
+- Use this to inspect failures instead of relying solely on Boolean returns.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, value
+Dim obj, errorMsg
 Set obj = Server.CreateObject("G3TAR")
-value = obj.LastError
-Response.Write CStr(value)
+If Not obj.Open("C:\temp\missing.tar") Then
+    errorMsg = obj.LastError
+    Response.Write errorMsg
+End If
 Set obj = Nothing
 %>
-`````
+```
 

@@ -1,45 +1,32 @@
-﻿# Axurldecode Method
+# Decode URL String
 
 ## Overview
 
-Decodes URL-encoded text using standard query-style decoding.
+Decodes a URL-encoded string, standardizing query string formats.
 
 ## Syntax
 
-```asp
-result = obj.Axurldecode(...)
+```vbscript
+strDecoded = obj.axurldecode(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The URL-encoded string to decode.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The decoded string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Conversely to raw URL decoding, this function handles standard query string encoded inputs properly.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axurldecode()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strDecode
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strDecode = obj.axurldecode("Hello%20World")
+Response.Write strDecode ' Outputs: Hello World
 ```
-
-

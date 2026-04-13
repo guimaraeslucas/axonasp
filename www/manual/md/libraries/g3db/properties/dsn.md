@@ -1,40 +1,28 @@
 # DSN Property
 
 ## Overview
-
-The DSN property is exposed by the G3DB library object and returns the current state/value associated with this member.
+Returns the Data Source Name (connection string) used to open the current database connection.
 
 ## Syntax
-
 ```asp
-value = obj.DSN
-obj.DSN = newValue
+dsnString = db.DSN
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the active DSN. If the connection is not open, it returns an empty string.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+The DSN contains the driver-specific parameters such as host, port, and database name. For security reasons, sensitive information like passwords may be masked depending on the underlying database driver's implementation.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3DB")
-value = obj.DSN
-Response.Write CStr(value)
-Set obj = Nothing
+Dim db
+Set db = Server.CreateObject("G3DB")
+If db.Open("sqlite", "data.db") Then
+    Response.Write "Active DSN: " & db.DSN
+    db.Close
+End If
+Set db = Nothing
 %>
 ```

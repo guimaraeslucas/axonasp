@@ -1,45 +1,45 @@
-﻿# Axfiltervalidateemail Method
+# axfiltervalidateemail
 
 ## Overview
 
-Validates whether a string is a syntactically valid email address.
+The `axfiltervalidateemail` method validates whether a given string follows a valid email address format.
 
 ## Syntax
 
 ```asp
-result = obj.Axfiltervalidateemail(...)
+result = obj.axfiltervalidateemail(emailAddress)
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **emailAddress** (String): The string to validate as an email address.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a Boolean indicating whether the string is a syntactically valid email address. Returns `True` if valid, otherwise `False`.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- Validation is based on standard email syntax rules.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axfiltervalidateemail()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim ax, email
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+email = "user@example.com"
+
+If ax.axfiltervalidateemail(email) Then
+    Response.Write "Email is valid."
 Else
-    Response.Write CStr(result)
+    Response.Write "Email is invalid."
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
-
-

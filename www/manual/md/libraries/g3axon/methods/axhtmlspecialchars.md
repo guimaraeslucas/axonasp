@@ -1,45 +1,32 @@
-﻿# Axhtmlspecialchars Method
+# Escape HTML Special Characters
 
 ## Overview
 
-Escapes special HTML characters in a string.
+Escapes special characters in a string to their corresponding HTML entities.
 
 ## Syntax
 
-```asp
-result = obj.Axhtmlspecialchars(...)
+```vbscript
+strEscaped = obj.axhtmlspecialchars(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The string to escape.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The HTML escaped string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Critical for preventing Cross-Site Scripting (XSS) vulnerabilities when rendering user input directly in an HTML page.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axhtmlspecialchars()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strHTML
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strHTML = obj.axhtmlspecialchars("<script>alert(1);</script>")
+Response.Write strHTML
 ```
-
-

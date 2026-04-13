@@ -1,40 +1,33 @@
 # Username Property
 
 ## Overview
-
-The Username property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **Username** property gets or sets the authentication username for the SMTP server for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.Username
-obj.Username = newValue
+value = mail.Username
+mail.Username = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): The username or email address for SMTP authentication.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the current username.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- If not set, the library attempts to use the `SMTP_USER` environment variable.
+- This property can also be accessed using the aliases **User** or **AuthUsername**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.Username
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Username = "webmaster@example.com"
+Response.Write "Auth User: " & mail.Username
+
+Set mail = Nothing
 %>
 ```

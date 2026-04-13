@@ -1,40 +1,14 @@
 # AllowedExtensions Property
 
 ## Overview
-
-The AllowedExtensions property is exposed by the G3FILEUPLOADER library object and returns the current state/value associated with this member.
+A readonly property that returns an array of explicitly permitted file extensions currently loaded into memory.
 
 ## Syntax
-
 ```asp
-value = obj.AllowedExtensions
-obj.AllowedExtensions = newValue
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Dim list
+list = uploader.AllowedExtensions
 ```
-
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
-
-## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-value = obj.AllowedExtensions
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-```
+Returns a VBScript array containing strings of all allowed file extensions.

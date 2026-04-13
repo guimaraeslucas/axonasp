@@ -1,45 +1,32 @@
-﻿# Axrawurldecode Method
+# Decode Raw URL String
 
 ## Overview
 
-Decodes URL-encoded text after converting plus signs to spaces.
+Decodes a URL-encoded string by treating `+` as spaces before applying RFC 3986 unescaping.
 
 ## Syntax
 
-```asp
-result = obj.Axrawurldecode(...)
+```vbscript
+strDecoded = obj.axrawurldecode(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The raw URL-encoded string to decode.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The decoded string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+This format is slightly different from standard query strings, enforcing a specific handling of `+` symbols as spaces.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axrawurldecode()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strDecode
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strDecode = obj.axrawurldecode("Hello+World")
+Response.Write strDecode ' Outputs: Hello World
 ```
-
-

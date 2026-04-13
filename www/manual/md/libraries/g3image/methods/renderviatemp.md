@@ -1,47 +1,36 @@
 # RenderViaTemp Method
 
 ## Overview
-
-Renders Via Temp from the current operation context.
+Renders the current context into a temporary file and returns the binary content in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.RenderViaTemp(...)
+result = obj.RenderViaTemp(format, quality)
 ```
 
-## Parameters and Arguments
-
-- tempPath (String, Optional): Temporary file path or directory.
-- contentType (String, Optional): Output mime type hint for response integration.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **format** (String): The target format, such as "png" or "jpg".
+- **quality** (Integer): The quality level (1-100), primarily for JPEG output.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a VBArray containing binary bytes. This array is compatible with Response.BinaryWrite.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is useful for streaming the generated image directly to the client browser.
+- It handles the creation and cleanup of temporary storage automatically.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.RenderViaTemp()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img, bytes
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(100, 100) Then
+    img.SetHexColor("#FF0000")
+    img.Clear()
+    bytes = img.RenderViaTemp("png", 0)
+    Response.ContentType = "image/png"
+    Response.BinaryWrite bytes
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

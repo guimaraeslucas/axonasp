@@ -1,35 +1,34 @@
-﻿# Methods
+# G3CRYPTO Methods
 
 ## Overview
-
-This page lists methods exposed by G3CRYPTO.
+This page provides a summary of the methods available in the **G3CRYPTO** library. Each method is designed for high-performance cryptographic operations within the AxonASP environment.
 
 ## Method List
-- Blake2b256: Computes a cryptographic result using the Blake2b256 operation.
-- Blake2b512: Computes a cryptographic result using the Blake2b512 operation.
-- ComputeHash: Computes a cryptographic result using the ComputeHash operation.
-- GetBCryptCost: Gets B Crypt Cost from the G3CRYPTO library.
-- HashPassword: Computes a cryptographic result using the HashPassword operation.
-- HmacSHA256: Computes a cryptographic result using the HmacSHA256 operation.
-- HmacSHA512: Computes a cryptographic result using the HmacSHA512 operation.
-- Initialize: Executes the Initialize operation provided by the G3CRYPTO library.
-- MD5: Computes a cryptographic result using the MD5 operation.
-- PBKDF2SHA256: Computes a cryptographic result using the PBKDF2SHA256 operation.
-- RandomBase64: Generates random output using the RandomBase64 operation.
-- RandomBytes: Generates random output using the RandomBytes operation.
-- RandomHex: Generates random output using the RandomHex operation.
-- SetBCryptCost: Sets B Crypt Cost for the G3CRYPTO library.
-- SHA1: Computes a cryptographic result using the SHA1 operation.
-- SHA256: Computes a cryptographic result using the SHA256 operation.
-- SHA3_256: Computes a cryptographic result using the SHA3_256 operation.
-- SHA3_512: Computes a cryptographic result using the SHA3_512 operation.
-- SHA384: Computes a cryptographic result using the SHA384 operation.
-- SHA512: Computes a cryptographic result using the SHA512 operation.
-- UUID: Generates random output using the UUID operation.
-- VerifyPassword: Verifies Password against expected validation rules.
+
+- **Blake2b256**: Computes a 256-bit BLAKE2b hash for high-speed data integrity.
+- **Blake2b512**: Computes a 512-bit BLAKE2b hash for high-speed data integrity.
+- **ComputeHash**: Computes a hash using a specified algorithm name.
+- **GetBCryptCost**: Returns the current work factor for bcrypt hashing.
+- **HashPassword**: Generates a secure bcrypt hash for password storage.
+- **HmacSHA256**: Computes an HMAC using SHA-256 for message authentication.
+- **HmacSHA512**: Computes an HMAC using SHA-512 for message authentication.
+- **Initialize**: Resets the object state and clears the internal hash buffers.
+- **MD5**: Computes a 128-bit MD5 message digest.
+- **PBKDF2SHA256**: Derives a cryptographic key using the PBKDF2-HMAC-SHA256 algorithm.
+- **RandomBase64**: Generates cryptographically secure random bytes in Base64 format.
+- **RandomBytes**: Generates cryptographically secure random bytes as a VBScript array.
+- **RandomHex**: Generates cryptographically secure random bytes in hexadecimal format.
+- **SetBCryptCost**: Configures the work factor for the bcrypt hashing algorithm.
+- **SHA1**: Computes a 160-bit SHA-1 message digest.
+- **SHA256**: Computes a 256-bit SHA-256 message digest.
+- **SHA3_256**: Computes a 256-bit SHA-3 (Keccak) message digest.
+- **SHA3_512**: Computes a 512-bit SHA-3 (Keccak) message digest.
+- **SHA384**: Computes a 384-bit SHA-2 message digest.
+- **SHA512**: Computes a 512-bit SHA-2 message digest.
+- **UUID**: Generates a version 4 Universally Unique Identifier.
+- **VerifyPassword**: Validates a password against a previously generated bcrypt hash.
 
 ## Remarks
-
 - Method names are case-insensitive.
-- Validate input types and return values in production code.
-- Use Set when assigning object return values.
+- All hashing methods update the internal **Hash** and **HashSize** properties.
+- Password-related methods (HashPassword/VerifyPassword) use the industry-standard bcrypt algorithm.

@@ -1,47 +1,37 @@
 # AddAddress Method
 
 ## Overview
-
-Adds Address to the current operation context.
+The **AddAddress** method appends a recipient email address to the primary destination list (To) of the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-result = obj.AddAddress(...)
+result = mail.AddAddress(email)
 ```
 
 ## Parameters and Arguments
-
-- email (String, Required): Recipient email address.
-- displayName (String, Optional): Recipient display name.
-- Argument validation: invalid count or type raises runtime errors.
+- **email** (String, Required): The recipient's email address (e.g., "user@example.com").
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value (True).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- You can call this method multiple times to add multiple recipients to the **To** list.
+- Invalid email formats are not validated by this method; validation occurs during the **Send** operation.
+- The method is case-insensitive and can also be called as **AddRecipient** or **AddTo**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Mail")
-result = obj.AddAddress()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+' Add multiple recipients
+mail.AddAddress "admin@example.com"
+mail.AddAddress "support@example.com"
+
+' Alternatively using the property
+mail.To = "user1@example.com, user2@example.com"
+
+Set mail = Nothing
 %>
 ```
-
-
-

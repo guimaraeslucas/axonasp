@@ -2,48 +2,36 @@
 
 ## Overview
 
-Computes a cryptographic result using the HashPassword operation.
+Hashes a password string using the bcrypt algorithm and the configured computational cost with the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.HashPassword(...)
-`````
+hashedPassword = obj.HashPassword(password)
+```
 
-## Parameters and Arguments
+## Parameters
 
-- plainText (String, Required): Password to hash.
-- cost (Integer, Optional): Override bcrypt cost for this call.
-- Argument validation: invalid count or type raises runtime errors.
+- **password** (String): The plain-text password to be hashed.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the bcrypt-hashed password (including the algorithm identifier, cost, and salt).
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- The `BCryptCost` property determines the computational difficulty of the hash.
+- Use the `VerifyPassword` method to check a plain-text password against a hashed value.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.HashPassword()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, hashedPassword
+Set crypto = Server.CreateObject("G3CRYPTO")
+hashedPassword = crypto.HashPassword("mySecretPassword")
+Response.Write "Secure password hash: " & hashedPassword
+Set crypto = Nothing
 %>
-`````
-
-
-
-
-
+```

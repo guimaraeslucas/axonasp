@@ -1,4 +1,4 @@
-# Axchangemode Method
+# Axchangemode
 
 ## Overview
 
@@ -17,7 +17,8 @@ result = obj.Axchangemode(path, mode)
 
 ## Return Values
 
-- Boolean: True when the operation succeeds; otherwise False.
+- Returns a Boolean.
+
 
 ## Code Example
 
@@ -25,7 +26,7 @@ result = obj.Axchangemode(path, mode)
 <%
 Option Explicit
 Dim obj, ok
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 ok = obj.Axchangemode("C:\\temp\\sample.txt", "0644")
 Response.Write CStr(ok)
 Set obj = Nothing

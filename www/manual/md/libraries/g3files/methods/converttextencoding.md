@@ -1,48 +1,33 @@
 # ConvertTextEncoding Method
 
 ## Overview
-
-Converts Text Encoding between supported formats.
+Returns a string that has been converted from one text encoding to another.
 
 ## Syntax
-
 ```asp
-result = obj.ConvertTextEncoding(...)
+convertedText = files.ConvertTextEncoding(text, fromEnc, toEnc)
 ```
 
 ## Parameters and Arguments
-
-- text (String, Required): Input text.
-- sourceEncoding (String, Required): Source encoding label.
-- targetEncoding (String, Required): Target encoding label.
-- Argument validation: invalid count or type raises runtime errors.
+- **text** (String, Required): The source text to be converted.
+- **fromEnc** (String, Required): The current encoding of the text.
+- **toEnc** (String, Required): The target encoding for the result.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** containing the converted text.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is performed in memory and does not affect any files on disk.
+- It is useful for processing data received from external sources with different encoding requirements.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.ConvertTextEncoding()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim files, sourceText, targetText
+Set files = Server.CreateObject("G3FILES")
+sourceText = "Special characters: é à ö"
+targetText = files.ConvertTextEncoding(sourceText, "iso-8859-1", "utf-8")
+Response.Write "Converted text: " & targetText
+Set files = Nothing
 %>
 ```
-
-
-

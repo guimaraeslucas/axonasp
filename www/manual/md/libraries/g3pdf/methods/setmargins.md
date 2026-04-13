@@ -1,50 +1,39 @@
-# SetMargins Method
+# SetMargins
 
 ## Overview
 
-Sets Margins for the G3PDF library.
+Defines the left, top, and right margins. By default, they equal 1 cm.
 
 ## Syntax
 
 ```asp
-result = obj.SetMargins(...)
-`````
+obj.SetMargins left, top, [right]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- left (Number, Required): Left margin.
-- top (Number, Required): Top margin.
-- right (Number, Optional): Right margin.
-- Argument validation: invalid count or type raises runtime errors.
+- `left` (Double): Left margin.
+- `top` (Double): Top margin.
+- `right` (Double, Optional): Right margin. Default to the value of the left margin.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetMargins()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

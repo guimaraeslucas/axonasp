@@ -1,11 +1,8 @@
-﻿# Properties
+# G3JSON Properties
 
 ## Overview
-
-This page lists properties exposed by G3JSON.
-
-## Property List
+The **G3JSON** library is primarily method-driven and does not expose specific public properties at this time. All operations are performed using its core methods.
 
 ## Remarks
-
-Read-only properties reject assignment and raise runtime errors when not writable.
+- All functionality is accessed via methods like **Parse** and **Stringify**.
+- Use the **methods.md** page for a full reference of available functions.

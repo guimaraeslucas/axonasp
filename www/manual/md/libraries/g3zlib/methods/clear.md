@@ -1,43 +1,38 @@
-# Clear Method
+# Clear G3ZLIB State
 
 ## Overview
 
-Clears the current operation context.
+Clears the current operation context, resetting the internal state and errors of the G3ZLIB object.
 
 ## Syntax
 
 ```asp
-result = obj.Clear(...)
+Call obj.Clear()
 ```
 
 ## Parameters and Arguments
 
-- none: clears internal buffers/state.
-- Argument validation: invalid count or type raises runtime errors.
+This method takes no arguments.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+This method does not return a value.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Use this method to reset the `LastError` property and internal buffers before initiating a new independent operation on the same object.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.Clear()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+
+Call obj.Clear()
+
 Set obj = Nothing
 %>
 ```

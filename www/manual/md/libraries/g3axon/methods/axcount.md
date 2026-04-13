@@ -1,45 +1,27 @@
-﻿# Axcount Method
+# Count Elements in an Array
 
-## Overview
+Counts all elements in an array or object.
 
-Returns the element count of a VB array value.
+## Prerequisites
+The `G3AXON.FUNCTIONS` object must be instantiated to use this method.
+This feature is available in the G3Pix AxonASP environment.
 
 ## Syntax
-
-```asp
-result = obj.Axcount(...)
+```vbscript
+Number (Integer) = obj.AxCount(variable)
 ```
 
-## Parameters and Arguments
+## Return Value
+Returns a Number (Integer).
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
-
-## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
+## Example
+```vbscript
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axcount()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+result = obj.AxCount(variable)
+
+Response.Write result
+
 Set obj = Nothing
-%>
 ```
-
-

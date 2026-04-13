@@ -2,48 +2,45 @@
 
 ## Overview
 
-Decompresses Text back to original content.
+Decompresses a Zstandard (zstd) compressed payload (string or byte array) and returns the original data as a UTF-8 string.
 
 ## Syntax
 
 ```asp
-result = obj.DecompressText(...)
-`````
+resultString = obj.DecompressText(input)
+```
 
 ## Parameters and Arguments
 
-- input (String, Required): Compressed text payload.
-- encoding (String, Optional): Output text encoding.
-- Argument validation: invalid count or type raises runtime errors.
+- **input**: A String or a VBArray of bytes containing the Zstandard compressed data.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the decompressed UTF-8 text. If an error occurs, it returns an empty string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method is an alias for `DecompressString`.
+- It expects the original uncompressed data to be a valid UTF-8 string.
+- If decompression fails or the data is not valid UTF-8, it returns an empty string and logs the error to the `LastError` property.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZSTD")
-result = obj.DecompressText()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim objZstd, compressedData, originalText
+' Assuming compressedData is obtained from a source or previous operation
+Set objZstd = Server.CreateObject("G3ZSTD")
+
+originalText = objZstd.DecompressText(compressedData)
+
+If originalText <> "" Then
+    Response.Write "Restored text: " & originalText
 Else
-    Response.Write CStr(result)
+    Response.Write "Decompression failed or returned empty text."
 End If
-Set obj = Nothing
+
+Set objZstd = Nothing
 %>
-`````
-
-
-
-
-
+```

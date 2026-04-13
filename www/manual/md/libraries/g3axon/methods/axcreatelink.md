@@ -1,4 +1,4 @@
-# Axcreatelink Method
+# Axcreatelink
 
 ## Overview
 
@@ -17,7 +17,8 @@ result = obj.Axcreatelink(sourcePath, linkPath)
 
 ## Return Values
 
-- Boolean: True when the operation succeeds; otherwise False.
+- Returns a Boolean.
+
 
 ## Remarks
 
@@ -29,7 +30,7 @@ result = obj.Axcreatelink(sourcePath, linkPath)
 <%
 Option Explicit
 Dim obj, ok
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 ok = obj.Axcreatelink("C:\\temp\\sample.txt", "C:\\temp\\sample.link")
 Response.Write CStr(ok)
 Set obj = Nothing

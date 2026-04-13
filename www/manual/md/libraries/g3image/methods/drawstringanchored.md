@@ -1,50 +1,38 @@
 # DrawStringAnchored Method
 
 ## Overview
-
-Draws String Anchored onto the current image canvas.
+Draws a string of text with specified anchor points for alignment in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.DrawStringAnchored(...)
+obj.DrawStringAnchored(s, x, y, ax, ay)
 ```
 
-## Parameters and Arguments
-
-- text (String, Required): Text to draw.
-- x (Number, Required): Anchor X.
-- y (Number, Required): Anchor Y.
-- anchor (String, Optional): Alignment anchor (for example, center).
-- fontSize (Number, Optional): Font size.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **s** (String): The text to be drawn.
+- **x** (Double): The x-coordinate for the anchor position.
+- **y** (Double): The y-coordinate for the anchor position.
+- **ax** (Double): The horizontal anchor point (0.0 for left, 0.5 for center, 1.0 for right).
+- **ay** (Double): The vertical anchor point (0.0 for top, 0.5 for middle, 1.0 for bottom).
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method allows for precise alignment of text relative to a point.
+- Use LoadFontFace to set the font and size before drawing.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.DrawStringAnchored()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(400, 200) Then
+    img.LoadFontFace "C:\Windows\Fonts\arial.ttf", 24
+    img.SetHexColor("#000000")
+    ' Draw centered text
+    img.DrawStringAnchored "Centered Text", 200, 100, 0.5, 0.5
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

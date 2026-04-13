@@ -1,40 +1,44 @@
-# LastError Property
+# Get the LastError Property
 
 ## Overview
 
-The LastError property is exposed by the G3ZLIB library object and returns the current state/value associated with this member.
+The LastError property is exposed by the G3ZLIB library object and returns the last error message recorded during compression or decompression operations.
 
 ## Syntax
 
 ```asp
-value = obj.LastError
-obj.LastError = newValue
+Dim errorMessage
+errorMessage = obj.LastError
 ```
 
 ## Parameters and Arguments
 
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- Getter: Does not take arguments.
+- Setter: This property is read-only.
 
 ## Return Values
 
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a String containing the description of the last error that occurred. If no error occurred, it returns an empty string.
 
 ## Remarks
 
 - Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only and rejects assignments.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, value
+Dim obj, errorMessage
 Set obj = Server.CreateObject("G3ZLIB")
-value = obj.LastError
-Response.Write CStr(value)
+
+' Attempt to decompress invalid data
+Call obj.DecompressText("invalid data")
+
+errorMessage = obj.LastError
+Response.Write "Last Error: " & errorMessage
+
 Set obj = Nothing
 %>
 ```

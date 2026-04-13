@@ -2,45 +2,40 @@
 
 ## Overview
 
-Gets Error from the G3DB library.
+The **GetError** method retrieves the most recent error message resulting from database operations in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.GetError(...)
+result = obj.GetError()
 ```
 
 ## Parameters and Arguments
 
-- none: returns details about the last database error.
-- Argument validation: invalid count or type raises runtime errors.
+None. This method is also accessible through the alias **GetLastError**.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** containing the error description of the last failed operation. If no error has occurred, it returns an empty string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method should be called immediately after a database operation returns **False** or an **Empty** value to determine the root cause of the failure.
+- Typical errors returned include connection timeouts, SQL syntax errors, authentication failures, and driver-specific issues.
+- The same error information can also be accessed directly via the **LastError** property.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.GetError()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db, res
+Set db = Server.CreateObject("G3DB")
+
+' Attempt to open with invalid parameters
+If Not db.Open("mysql", "invalid_host:3306") Then
+    Response.Write "Database Error: " & db.GetError()
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
 ```
-
-
-

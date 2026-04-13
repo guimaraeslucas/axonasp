@@ -1,44 +1,46 @@
-# DecompressMany Method
+# Decompress Multiple Files Using G3ZLIB
 
 ## Overview
 
-Decompresses Many back to original content.
+Decompresses a bundled ZLIB archive back into multiple files in a specified destination directory.
 
 ## Syntax
 
 ```asp
-result = obj.DecompressMany(...)
+Dim success
+success = obj.DecompressMany(inputPath, outputFolder)
 ```
 
 ## Parameters and Arguments
 
-- inputPath (String, Required): Compressed bundle path.
-- outputFolder (String, Required): Destination directory.
-- Argument validation: invalid count or type raises runtime errors.
+- inputPath (String, Required): The path to the compressed bundle file.
+- outputFolder (String, Required): The directory where the decompressed files will be saved.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean value. Returns True if all files were decompressed and saved successfully; otherwise, returns False and updates the LastError property.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Ensure that the output folder exists and that the web server has write permissions to it.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, success
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.DecompressMany()
-If IsObject(result) Then
-    Response.Write "Object returned"
+
+success = obj.DecompressMany(Server.MapPath("archive.zlib"), Server.MapPath("output_folder\"))
+
+If success Then
+    Response.Write "Archive decompressed successfully."
 Else
-    Response.Write CStr(result)
+    Response.Write "Error: " & obj.LastError
 End If
+
 Set obj = Nothing
 %>
 ```

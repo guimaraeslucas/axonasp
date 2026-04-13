@@ -1,47 +1,34 @@
-# AddBCC Method
+# AddBcc Method
 
 ## Overview
-
-Adds BCC to the current operation context.
+The **AddBcc** method appends a recipient email address to the blind carbon copy (BCC) list of the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-result = obj.AddBCC(...)
+result = mail.AddBcc(email)
 ```
 
 ## Parameters and Arguments
-
-- email (String, Required): BCC recipient email address.
-- displayName (String, Optional): Recipient display name.
-- Argument validation: invalid count or type raises runtime errors.
+- **email** (String, Required): The recipient's email address to be BCC'd.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value (True).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Recipients added via this method are not visible to other recipients of the email.
+- Use this method for privacy when sending to multiple recipients who should not see each other's addresses.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Mail")
-result = obj.AddBCC()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Subject = "Newsletter"
+mail.AddAddress "subscriber@example.com"
+mail.AddBcc "archive@example.com"
+mail.AddBcc "compliance@example.com"
+
+Set mail = Nothing
 %>
 ```
-
-
-

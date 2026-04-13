@@ -1,31 +1,33 @@
-# Use G3FileUploader in AxonASP
+# G3FILEUPLOADER Library
 
 ## Overview
-File upload processing library.
+The `G3FILEUPLOADER` object provides a high-performance system for securely processing and managing HTTP multipart file uploads in the AxonASP environment. You can control validation logic, restrict extensions, limit file sizes, and retrieve deep metadata describing individual files or the entire upload batch.
 
 ## Syntax
 ```asp
-Set obj = Server.CreateObject("G3FileUploader")
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+```
 
-## Parameters and Arguments
-- ProgID (String, Required): Use one of the supported ProgID forms for this object family.
-- Member access (Optional): Use documented method/property members from the library reference pages.
+## Properties and Methods
+The object exposes specific methods to parse forms and properties to refine the validation logic. View the properties and methods listing pages for details.
 
 ## Return Values
-Returns a native object handle for this object family.
+Returns a native AxonASP object handle referencing the file uploader instance.
 
-## Remarks
-- Member names are case-insensitive.
-- Runtime validation is enforced by object dispatch logic.
-- See the central library methods/properties pages for member-level coverage.
-
-## Code Example
+## Example
 ```asp
 <%
-Dim obj
-Set obj = Server.CreateObject("G3FileUploader")
-Response.Write TypeName(obj)
-%>
-`````
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.MaxFileSize = 5242880 ' 5 MB
+uploader.BlockExtension "exe"
 
+Dim result
+Set result = uploader.Process("myFile", "/uploads/docs", "newdocument.pdf")
+If result("IsSuccess") Then
+    Response.Write "File saved at: " & result("RelativePath")
+Else
+    Response.Write "Error: " & result("ErrorMessage")
+End If
+%>
+```

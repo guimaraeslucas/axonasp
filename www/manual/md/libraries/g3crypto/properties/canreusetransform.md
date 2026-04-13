@@ -1,41 +1,27 @@
 # CanReuseTransform Property
 
 ## Overview
-
-The CanReuseTransform property is exposed by the G3Crypto library object and returns the current state/value associated with this member.
+Indicates whether the current cryptographic transform object can be reused for multiple operations.
 
 ## Syntax
-
 ```asp
-value = obj.CanReuseTransform
-obj.CanReuseTransform = newValue
-`````
-
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+isReusable = crypto.CanReuseTransform
+```
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **Boolean** value. This property always returns **True** in the G3CRYPTO implementation.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+This property is provided for compatibility with standard cryptographic object patterns. In AxonASP, the G3CRYPTO library is designed to handle multiple sequential hashing operations without requiring manual reset or re-instantiation.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Crypto")
-value = obj.CanReuseTransform
-Response.Write CStr(value)
-Set obj = Nothing
+Dim crypto
+Set crypto = Server.CreateObject("G3CRYPTO")
+If crypto.CanReuseTransform Then
+    Response.Write "Transform is reusable"
+End If
+Set crypto = Nothing
 %>
-`````
-
+```

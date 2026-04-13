@@ -1,40 +1,34 @@
 # From Property
 
 ## Overview
-
-The From property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **From** property gets or sets the sender's email address for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.From
-obj.From = newValue
+value = mail.From
+mail.From = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): The email address of the sender.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the sender's email address.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is required for sending emails unless the `SMTP_FROM` environment variable is set.
+- To set a display name (e.g., "Company Name <sender@example.com>"), use the **FromName** property.
+- This property can also be accessed using the alias **FromAddress**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.From
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.From = "no-reply@example.com"
+Response.Write "Sender: " & mail.From
+
+Set mail = Nothing
 %>
 ```

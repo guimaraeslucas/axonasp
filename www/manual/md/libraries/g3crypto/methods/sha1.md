@@ -1,46 +1,37 @@
-# SHA1 Method
+# Sha1 Method
 
 ## Overview
 
-Computes a cryptographic result using the SHA1 operation.
+Computes a SHA-1 (Secure Hash Algorithm 1) hash from the provided input string or byte array using the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.SHA1(...)
+result = obj.Sha1(input)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- input (String, Required): Text or binary-safe string to hash.
-- Argument validation: invalid count or type raises runtime errors.
+- **input** (String or Array): The data to be hashed.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the 160-bit hash result encoded as a lowercase hexadecimal string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- SHA-1 was widely used for integrity checks and digital signatures.
+- **Security Note:** SHA-1 is no longer considered secure against well-funded attackers; it is recommended to use SHA-256 or higher for security-sensitive applications.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.SHA1()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, hash
+Set crypto = Server.CreateObject("G3CRYPTO")
+hash = crypto.Sha1("Hello World")
+Response.Write "SHA-1 Hash: " & hash
+Set crypto = Nothing
 %>
 ```
-
-
-

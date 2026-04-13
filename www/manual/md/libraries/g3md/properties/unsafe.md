@@ -1,41 +1,39 @@
 # Unsafe Property
 
 ## Overview
-
-The Unsafe property is exposed by the G3MD library object and returns the current state/value associated with this member.
+Gets or sets a Boolean value that determines whether the G3Pix AxonASP G3MD library renders raw HTML and potentially dangerous URLs in the Markdown source.
 
 ## Syntax
-
 ```asp
-value = obj.Unsafe
-obj.Unsafe = newValue
-`````
+' Get the current value
+isUnsafe = md.Unsafe
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+' Set a new value
+md.Unsafe = True
+```
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **Boolean**. The default value is **False**.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- When set to **False** (default), the processor sanitizes the output, omitting raw HTML tags and dangerous link protocols (like `javascript:`) to protect against cross-site scripting (XSS).
+- When set to **True**, the processor renders the Markdown exactly as provided, including any embedded HTML.
+- Use **Unsafe = True** only when processing content from a trusted source or when your application requires specific HTML embedding.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3MD")
-value = obj.Unsafe
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-`````
+Dim md, content, html
+Set md = Server.CreateObject("G3MD")
 
+' Securely render user-provided content
+md.Unsafe = False
+
+content = "Click [here](javascript:alert('XSS')) or <script>doBad()</script>"
+html = md.Process(content)
+
+' The dangerous script and link will be neutralized in the output
+Response.Write html
+Set md = Nothing
+%>
+```

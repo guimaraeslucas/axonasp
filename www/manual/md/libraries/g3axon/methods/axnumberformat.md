@@ -1,45 +1,27 @@
-﻿# Axnumberformat Method
+# Format a Number
 
-## Overview
+Formats a number with grouped thousands and a specified decimal point.
 
-Formats a numeric value with configurable decimal places, decimal point, and thousands separator.
+## Prerequisites
+The `G3AXON.FUNCTIONS` object must be instantiated to use this method.
+This feature is available in the G3Pix AxonASP environment.
 
 ## Syntax
-
-```asp
-result = obj.Axnumberformat(...)
+```vbscript
+String = obj.AxNumberFormat(value, decimals, decPoint, thousandsSep)
 ```
 
-## Parameters and Arguments
+## Return Value
+Returns a String.
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
-
-## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
+## Example
+```vbscript
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axnumberformat()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+result = obj.AxNumberFormat(value, decimals, decPoint, thousandsSep)
+
+Response.Write result
+
 Set obj = Nothing
-%>
 ```
-
-

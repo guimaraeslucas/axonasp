@@ -1,24 +1,21 @@
 ﻿# Methods
 
 ## Overview
-
-This page lists methods exposed by G3TAR.
+This page lists methods exposed by the G3TAR library.
 
 ## Method List
-- AddFile: Adds File to the current operation context.
-- AddFiles: Adds Files to the current operation context.
-- AddFolder: Adds Folder to the current operation context.
-- AddText: Adds Text to the current operation context.
-- Close: Closes the current resource and releases handles.
-- Create: Creates a new resource for subsequent operations.
-- ExtractAll: Extracts All from an archive into output paths.
-- ExtractFile: Extracts File from an archive into output paths.
-- GetInfo: Gets Info from the G3TAR library.
-- List: Returns structured runtime information for the current context.
-- Open: Opens a resource for subsequent operations.
+- Create: Initializes a new TAR archive on disk.
+- Open: Opens an existing TAR archive for reading or extracting.
+- AddFile: Appends a single file from the disk to a newly created archive.
+- AddFiles: Appends multiple files from a list or dictionary to the archive.
+- AddFolder: Recursively appends an entire directory to the archive.
+- AddText: Directly appends raw string content as a named file in the archive.
+- ExtractAll: Unpacks the entire archive to a specific disk location.
+- ExtractFile: Unpacks a single named entry from the archive to a specific local path.
+- List: Generates an array containing the names of all entries inside the archive.
+- GetInfo: Retrieves a Scripting.Dictionary of metadata describing a specific entry in the archive.
+- Close: Flushes operations and releases any file handles locked by the archive context.
 
 ## Remarks
-
 - Method names are case-insensitive.
-- Validate input types and return values in production code.
-- Use Set when assigning object return values.
+- Standard read/write methods return Boolean values indicating the success or failure of the requested operation.

@@ -1,40 +1,33 @@
 # To Property
 
 ## Overview
-
-The To property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **To** property gets or sets the primary recipient list for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.To
-obj.To = newValue
+value = mail.To
+mail.To = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): A comma-separated or semicolon-separated list of email addresses.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the current primary recipients, separated by commas.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- At least one recipient must be specified (either here or via **AddAddress**) before calling **Send**.
+- Setting this property replaces any existing primary recipients. Use the **AddAddress** method to append to the list instead.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.To
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.To = "customer1@example.com, customer2@example.com"
+Response.Write "Recipients: " & mail.To
+
+Set mail = Nothing
 %>
 ```

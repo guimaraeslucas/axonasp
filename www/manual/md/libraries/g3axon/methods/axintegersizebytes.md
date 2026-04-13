@@ -1,45 +1,32 @@
-﻿# Axintegersizebytes Method
+# axintegersizebytes
 
 ## Overview
-
-Returns the native integer size in bytes for the current platform.
+Retrieves the size in bytes of an integer on the current G3Pix AxonASP platform.
 
 ## Syntax
-
 ```asp
-result = obj.Axintegersizebytes(...)
+result = obj.axintegersizebytes()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Integer representing the number of bytes used to store an integer (typically 4 or 8).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+The result depends on whether the process is running on a 32-bit or 64-bit architecture.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axintegersizebytes()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, intSize
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+intSize = obj.axintegersizebytes()
+Response.Write "Integer size on this platform: " & intSize & " bytes"
+
 Set obj = Nothing
 %>
 ```
-
-

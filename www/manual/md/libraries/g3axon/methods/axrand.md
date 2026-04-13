@@ -1,45 +1,27 @@
-﻿# Axrand Method
+# Generate a Random Number
 
-## Overview
+Generates a random number between the specified minimum and maximum values.
 
-Returns a random integer (single bound or range, depending on arguments).
+## Prerequisites
+The `G3AXON.FUNCTIONS` object must be instantiated to use this method.
+This feature is available in the G3Pix AxonASP environment.
 
 ## Syntax
-
-```asp
-result = obj.Axrand(...)
+```vbscript
+Number (Double) = obj.AxRand(min, max)
 ```
 
-## Parameters and Arguments
+## Return Value
+Returns a Number (Double).
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
-
-## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
+## Example
+```vbscript
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axrand()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+result = obj.AxRand(min, max)
+
+Response.Write result
+
 Set obj = Nothing
-%>
 ```
-
-

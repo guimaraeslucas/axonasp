@@ -1,44 +1,45 @@
-# Compress Method
+# Compress Data Using G3ZLIB
 
 ## Overview
 
-Compresses data into a compact representation.
+Compresses text or binary data into a ZLIB compressed format.
 
 ## Syntax
 
 ```asp
-result = obj.Compress(...)
+Dim compressedData
+compressedData = obj.Compress(input, level)
 ```
 
 ## Parameters and Arguments
 
-- input (String, Required): Text or binary-safe input.
-- level (Integer, Optional): Compression level.
-- Argument validation: invalid count or type raises runtime errors.
+- input (Variant, Required): The string or byte array to compress.
+- level (Integer, Optional): The compression level from 1 (fastest) to 9 (best compression). If omitted, it uses the default compression level.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a byte array (Variant array of bytes) containing the compressed data. If the compression fails, it returns Empty and updates the LastError property.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Always check if the returned value is Empty to verify if the operation succeeded.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, compressedData
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.Compress()
-If IsObject(result) Then
-    Response.Write "Object returned"
+compressedData = obj.Compress("This is a sample text to compress.", 9)
+
+If IsEmpty(compressedData) Then
+    Response.Write "Compression failed: " & obj.LastError
 Else
-    Response.Write CStr(result)
+    Response.Write "Compression succeeded."
 End If
+
 Set obj = Nothing
 %>
 ```

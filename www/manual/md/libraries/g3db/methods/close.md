@@ -2,47 +2,45 @@
 
 ## Overview
 
-Closes the current resource and releases handles.
+The **Close** method shuts down the database connection and releases the underlying connection pool in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.Close(...)
-`````
+result = obj.Close()
+```
 
 ## Parameters and Arguments
 
-- none: closes current connection/pool handle.
-- Argument validation: invalid count or type raises runtime errors.
+None.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value. It returns **True** if the connection was successfully closed or if no connection was currently open, and **False** if an error occurred during the closing process.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method should be called when database operations are complete to ensure system resources are properly released.
+- After calling **Close**, the **IsOpen** property will return **False**.
+- Re-opening a closed connection requires a new call to the **Open** or **OpenFromEnv** method.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.Close()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db, isConnected
+Set db = Server.CreateObject("G3DB")
+
+If db.Open("sqlite", "local_data.db") Then
+    ' Database operations...
+    
+    If db.Close() Then
+        Response.Write "Connection closed successfully."
+    Else
+        Response.Write "Error closing connection: " & db.LastError
+    End If
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
-`````
-
-
-
-
-
+```

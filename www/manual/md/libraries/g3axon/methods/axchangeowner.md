@@ -1,4 +1,4 @@
-# Axchangeowner Method
+# Axchangeowner
 
 ## Overview
 
@@ -18,7 +18,8 @@ result = obj.Axchangeowner(path, uid, gid)
 
 ## Return Values
 
-- Boolean: True when the operation succeeds; otherwise False.
+- Returns a Boolean.
+
 
 ## Remarks
 
@@ -30,7 +31,7 @@ result = obj.Axchangeowner(path, uid, gid)
 <%
 Option Explicit
 Dim obj, ok
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 ok = obj.Axchangeowner("/tmp/sample.txt", 0, 0)
 Response.Write CStr(ok)
 Set obj = Nothing

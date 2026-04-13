@@ -1,48 +1,17 @@
 # Form Method
 
 ## Overview
-
-Reads parsed form fields from the current upload/request context.
+Equivalent to `Request.Form("key")` but safely integrated with multipart form data upload flows. Given that normal request processing may be trapped by stream bodies, this extracts standard form field items alongside file uploads. The alias `FormValue` is also supported.
 
 ## Syntax
-
 ```asp
-result = obj.Form(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Dim description
+description = uploader.Form("fileDescription")
+```
 
 ## Parameters and Arguments
-
-- key (String, Required): Form field key to read.
-- Argument validation: invalid count or type raises runtime errors.
+- `FieldName` (String, Required): The HTML element `name` variable of the standard form field.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.Form()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns a string representing the extracted value, or `Empty` if not found or if form analysis fails completely.

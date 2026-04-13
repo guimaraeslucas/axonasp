@@ -1,48 +1,34 @@
 # DrawCircle Method
 
 ## Overview
-
-Draws Circle onto the current image canvas.
+Adds a circle to the current path in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.DrawCircle(...)
+obj.DrawCircle(x, y, r)
 ```
 
-## Parameters and Arguments
-
-- centerX (Number, Required): Center X.
-- centerY (Number, Required): Center Y.
-- radius (Number, Required): Circle radius.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **x** (Double): The x-coordinate of the center of the circle.
+- **y** (Double): The y-coordinate of the center of the circle.
+- **r** (Double): The radius of the circle.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method adds the circle to the current path. You must call Stroke or Fill to actually render the circle on the canvas.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.DrawCircle()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(200, 200) Then
+    img.SetHexColor("#FF0000")
+    img.DrawCircle 100, 100, 50
+    img.Stroke()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

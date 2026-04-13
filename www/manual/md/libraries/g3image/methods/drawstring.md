@@ -1,49 +1,35 @@
 # DrawString Method
 
 ## Overview
-
-Draws String onto the current image canvas.
+Draws a string of text at the specified coordinates in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.DrawString(...)
+obj.DrawString(s, x, y)
 ```
 
-## Parameters and Arguments
-
-- text (String, Required): Text to draw.
-- x (Number, Required): Anchor X.
-- y (Number, Required): Anchor Y.
-- fontSize (Number, Optional): Font size in px/pt as implemented.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **s** (String): The text to be drawn.
+- **x** (Double): The x-coordinate for the text position.
+- **y** (Double): The y-coordinate for the text position.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Use LoadFontFace to set the font and size before drawing strings.
+- The coordinates typically refer to the baseline of the text.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.DrawString()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(400, 200) Then
+    img.LoadFontFace "C:\Windows\Fonts\arial.ttf", 24
+    img.SetHexColor("#000000")
+    img.DrawString "Hello AxonASP", 50, 100
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

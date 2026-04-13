@@ -1,4 +1,4 @@
-﻿# Axgetconfigkeys Method
+# Axgetconfigkeys
 
 ## Overview
 
@@ -17,8 +17,8 @@ result = obj.Axgetconfigkeys(...)
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+- Returns an Array or a String.
+
 
 ## Remarks
 
@@ -31,7 +31,7 @@ result = obj.Axgetconfigkeys(...)
 <%
 Option Explicit
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 result = obj.Axgetconfigkeys()
 If IsObject(result) Then
     Response.Write "Object returned"

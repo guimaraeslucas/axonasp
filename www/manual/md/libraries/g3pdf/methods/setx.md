@@ -1,48 +1,37 @@
-# SetX Method
+# SetX
 
 ## Overview
 
-Sets X for the G3PDF library.
+Defines the abscissa of the current position.
 
 ## Syntax
 
 ```asp
-result = obj.SetX(...)
-`````
+obj.SetX x
+```
 
-## Parameters and Arguments
+## Parameters
 
-- x (Number, Required): Current X position.
-- Argument validation: invalid count or type raises runtime errors.
+- `x` (Double): The value of the abscissa.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetX()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

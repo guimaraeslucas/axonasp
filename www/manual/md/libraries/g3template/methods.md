@@ -1,14 +1,13 @@
-﻿# Methods
+# G3TEMPLATE Methods
 
 ## Overview
-
-This page lists methods exposed by G3TEMPLATE.
+This page provides a summary of the methods available in the **G3TEMPLATE** library for rendering templates in AxonASP.
 
 ## Method List
-- Render: Renders output from the current operation context.
+
+- **Render**: Parses an external template file and returns a string of the rendered output using an optional data object.
 
 ## Remarks
-
 - Method names are case-insensitive.
-- Validate input types and return values in production code.
-- Use Set when assigning object return values.
+- The **Render** method automatically handles file system paths through the AxonASP host environment.
+- Use the **methods.md** page (this page) for a full reference of available functions.

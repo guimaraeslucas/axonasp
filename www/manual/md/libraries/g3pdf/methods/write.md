@@ -1,50 +1,39 @@
-# Write Method
+# Write
 
 ## Overview
 
-Writes content to the active output target.
+Prints text from the current position. When the right margin is reached (or the newline character is met), a line break occurs and text continues from the left margin.
 
 ## Syntax
 
 ```asp
-result = obj.Write(...)
-`````
+obj.Write h, txt, [link]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- lineHeight (Number, Required): Text line height.
-- text (String, Required): Text to write.
-- link (String, Optional): Optional link target.
-- Argument validation: invalid count or type raises runtime errors.
+- `h` (Double): Line height.
+- `txt` (String): String to print.
+- `link` (Variant, Optional): URL or identifier.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.Write()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

@@ -1,48 +1,33 @@
 # Move Method
 
 ## Overview
-
-Moves resources to a new destination.
+Renames or moves a file or directory to a new location in the file system.
 
 ## Syntax
-
 ```asp
-result = obj.Move(...)
+success = files.Move(source, dest)
 ```
 
 ## Parameters and Arguments
-
-- sourcePath (String, Required): Source file/folder path.
-- destinationPath (String, Required): Destination path.
-- overwrite (Boolean, Optional): Overwrite destination if supported.
-- Argument validation: invalid count or type raises runtime errors.
+- **source** (String, Required): The path to the file or directory to be moved.
+- **dest** (String, Required): The target path for the move or rename.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the move or rename operation was successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- If the destination already exists, the move operation will fail.
+- This method is also accessible via the **Rename** alias.
+- Path resolution is relative to the AxonASP sandbox root.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Move()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim files
+Set files = Server.CreateObject("G3FILES")
+If files.Move("/temp/data.csv", "/data/processed/data.csv") Then
+    Response.Write "File moved."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

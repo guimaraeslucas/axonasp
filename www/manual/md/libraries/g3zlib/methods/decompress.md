@@ -1,43 +1,40 @@
-# Decompress Method
+# Decompress Data Using G3ZLIB
 
 ## Overview
 
-Decompresses content back to its original representation.
+Decompresses a ZLIB-compressed byte array back to its original binary representation.
 
 ## Syntax
 
 ```asp
-result = obj.Decompress(...)
+Dim originalData
+originalData = obj.Decompress(input)
 ```
 
 ## Parameters and Arguments
 
-- input (String, Required): Compressed binary-safe input.
-- Argument validation: invalid count or type raises runtime errors.
+- input (Variant, Required): The compressed byte array to decompress.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a byte array (Variant array of bytes) containing the decompressed data. If the decompression fails, it returns Empty and updates the LastError property.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Use this method when you expect binary data output. For string output, use DecompressText instead.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, compressedData, originalData
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.Decompress()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+
+' Assume compressedData is a valid byte array obtained from Compress()
+' originalData = obj.Decompress(compressedData)
+
 Set obj = Nothing
 %>
 ```

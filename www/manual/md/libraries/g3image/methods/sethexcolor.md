@@ -1,46 +1,34 @@
 # SetHexColor Method
 
 ## Overview
-
-Sets Hex Color for the G3IMAGE library.
+Sets the active color for drawing and filling operations using a hexadecimal string in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.SetHexColor(...)
+obj.SetHexColor(hex_string)
 ```
 
-## Parameters and Arguments
-
-- colorHex (String, Required): Hex RGB/RGBA color string.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **hex_string** (String): A hexadecimal color string (e.g., "#FF0000" or "00FF00"). The "#" prefix is optional.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Supports 3, 4, 6, and 8 digit hex codes.
+- 4 and 8 digit codes include an alpha (transparency) channel.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.SetHexColor()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(100, 100) Then
+    ' Set to blue
+    img.SetHexColor "#0000FF"
+    img.DrawRectangle 10, 10, 80, 80
+    img.Stroke()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

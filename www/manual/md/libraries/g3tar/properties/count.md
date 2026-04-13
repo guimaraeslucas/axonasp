@@ -1,41 +1,36 @@
 # Count Property
 
 ## Overview
-
-The Count property is exposed by the G3TAR library object and returns the current state/value associated with this member.
+Gets the total number of entries within the active G3TAR archive.
 
 ## Syntax
-
 ```asp
-value = obj.Count
-obj.Count = newValue
-`````
+Dim entryCount
+entryCount = obj.Count
+```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- Getter: None.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an `Integer` representing the total files and folders tracked.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only.
+- Returns zero if no archive is open.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, value
+Dim obj, entryCount
 Set obj = Server.CreateObject("G3TAR")
-value = obj.Count
-Response.Write CStr(value)
+If obj.Open("C:\temp\archive.tar") Then
+    entryCount = obj.Count
+    Response.Write entryCount
+End If
+obj.Close()
 Set obj = Nothing
 %>
-`````
+```
 

@@ -1,45 +1,47 @@
-# CompressFile Method
+# Compress a File Using G3ZLIB
 
 ## Overview
 
-Compresses File into a compact representation.
+Compresses a single source file into an output file.
 
 ## Syntax
 
 ```asp
-result = obj.CompressFile(...)
+Dim success
+success = obj.CompressFile(inputPath, outputPath, level)
 ```
 
 ## Parameters and Arguments
 
-- inputPath (String, Required): Source file path.
-- outputPath (String, Required): Compressed output path.
-- level (Integer, Optional): Compression level.
-- Argument validation: invalid count or type raises runtime errors.
+- inputPath (String, Required): The full path to the source file to compress.
+- outputPath (String, Required): The destination path for the compressed file.
+- level (Integer, Optional): The compression level from 1 (fastest) to 9 (best compression).
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean value. Returns True if the file was compressed and saved successfully; otherwise, returns False and updates the LastError property.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The web server must have read permissions for the input file and write permissions for the output path.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, success
 Set obj = Server.CreateObject("G3ZLIB")
-result = obj.CompressFile()
-If IsObject(result) Then
-    Response.Write "Object returned"
+
+success = obj.CompressFile(Server.MapPath("document.txt"), Server.MapPath("document.zlib"), 9)
+
+If success Then
+    Response.Write "File compressed successfully."
 Else
-    Response.Write CStr(result)
+    Response.Write "Error: " & obj.LastError
 End If
+
 Set obj = Nothing
 %>
 ```

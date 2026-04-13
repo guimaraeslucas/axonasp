@@ -1,45 +1,32 @@
-﻿# Axbase64encode Method
+# Encode String to Base64
 
 ## Overview
 
-Encodes a string into Base64.
+Encodes a string into Base64 format.
 
 ## Syntax
 
-```asp
-result = obj.Axbase64encode(...)
+```vbscript
+strEncoded = obj.axbase64encode(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The string to encode.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The Base64 encoded representation of the input string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Base64 encoding is commonly used to safely transmit binary or text data over text-based protocols.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axbase64encode()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strEncode
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strEncode = obj.axbase64encode("Hello World")
+Response.Write strEncode ' Outputs: SGVsbG8gV29ybGQ=
 ```
-
-

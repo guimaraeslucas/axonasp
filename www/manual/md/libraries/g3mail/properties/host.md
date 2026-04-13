@@ -1,40 +1,33 @@
 # Host Property
 
 ## Overview
-
-The Host property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **Host** property gets or sets the SMTP server hostname or IP address for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.Host
-obj.Host = newValue
+value = mail.Host
+mail.Host = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (String): The address of the SMTP server (e.g., "smtp.gmail.com").
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String** containing the current SMTP host.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- If not set, the library attempts to use the `SMTP_HOST` environment variable.
+- This property can also be accessed using the aliases **MailHost** or **SMTPServer**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.Host
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Host = "smtp.office365.com"
+Response.Write "Current Host: " & mail.Host
+
+Set mail = Nothing
 %>
 ```

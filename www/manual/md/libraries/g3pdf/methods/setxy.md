@@ -1,49 +1,38 @@
-# SetXY Method
+# SetXY
 
 ## Overview
 
-Sets XY for the G3PDF library.
+Defines the abscissa and ordinate of the current position.
 
 ## Syntax
 
 ```asp
-result = obj.SetXY(...)
-`````
+obj.SetXY x, y
+```
 
-## Parameters and Arguments
+## Parameters
 
-- x (Number, Required): Current X position.
-- y (Number, Required): Current Y position.
-- Argument validation: invalid count or type raises runtime errors.
+- `x` (Double): The value of the abscissa.
+- `y` (Double): The value of the ordinate.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetXY()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

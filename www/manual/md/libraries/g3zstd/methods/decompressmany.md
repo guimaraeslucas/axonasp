@@ -2,48 +2,46 @@
 
 ## Overview
 
-Decompresses Many back to original content.
+Decompresses an array of Zstandard (zstd) compressed payloads (strings or byte arrays). This G3Pix AxonASP method allows for efficient batch decompression of multiple datasets.
 
 ## Syntax
 
 ```asp
-result = obj.DecompressMany(...)
-`````
+resultArray = obj.DecompressMany(inputArray)
+```
 
 ## Parameters and Arguments
 
-- inputPath (String, Required): Compressed bundle path.
-- outputFolder (String, Required): Destination directory.
-- Argument validation: invalid count or type raises runtime errors.
+- **inputArray**: A VBArray containing one or more elements. Each element must be a String or a VBArray of bytes containing a Zstandard compressed frame.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a VBArray containing several VBArrays of bytes, where each sub-array corresponds to the decompressed data of the input items.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Each item in the input array must be a valid Zstandard frame.
+- The method processes items in sequence and returns an array of the same length as the input.
+- If any item fails decompression, the overall operation may result in an empty array or raise a runtime error.
+- Errors during batch processing are logged to the `LastError` property.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZSTD")
-result = obj.DecompressMany()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim objZstd, compressedItems, decompressedItems, i
+' Assuming compressedItems is an array of compressed data
+
+Set objZstd = Server.CreateObject("G3ZSTD")
+
+' Batch decompress
+decompressedItems = objZstd.DecompressMany(compressedItems)
+
+For i = 0 To UBound(decompressedItems)
+    Response.Write "Item " & i & " decompressed size: " & UBound(decompressedItems(i)) + 1 & " bytes.<br>"
+Next
+
+Set objZstd = Nothing
 %>
-`````
-
-
-
-
-
+```

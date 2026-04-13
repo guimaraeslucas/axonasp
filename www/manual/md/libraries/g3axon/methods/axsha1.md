@@ -1,45 +1,32 @@
-﻿# Axsha1 Method
+# Compute SHA-1 Hash
 
 ## Overview
 
-Returns the SHA-1 hash of a string as lowercase hexadecimal.
+Computes the SHA-1 hash of a given string.
 
 ## Syntax
 
-```asp
-result = obj.Axsha1(...)
+```vbscript
+strHash = obj.axsha1(str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **str** (String): The string to hash.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The hexadecimal SHA-1 hash of the string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+SHA-1 produces a 160-bit hash value, commonly used for checksums.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axsha1()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strHash
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strHash = obj.axsha1("test")
+Response.Write strHash ' Outputs: a94a8fe5ccb19ba61c4c0873d391e987982fbbd3
 ```
-
-

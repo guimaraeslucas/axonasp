@@ -1,40 +1,33 @@
 # Port Property
 
 ## Overview
-
-The Port property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **Port** property gets or sets the port number for the SMTP server for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.Port
-obj.Port = newValue
+value = mail.Port
+mail.Port = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (Integer): The port number (typically 25, 465, or 587).
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns an **Integer** representing the current port number.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- If not set, the library attempts to use the `SMTP_PORT` environment variable.
+- This property can also be accessed using the alias **SMTPServerPort**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.Port
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Port = 587
+Response.Write "SMTP Port: " & mail.Port
+
+Set mail = Nothing
 %>
 ```

@@ -1,40 +1,32 @@
 # Mode Property
 
 ## Overview
-
-The Mode property is exposed by the G3ZIP library object and returns the current state/value associated with this member.
+Indicates the current operating mode of the G3Pix AxonASP G3ZIP library instance.
 
 ## Syntax
-
 ```asp
-value = obj.Mode
-obj.Mode = newValue
+currentMode = zip.Mode
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **String**:
+- **"r"**: The object is in **Read** mode (opened an existing archive).
+- **"w"**: The object is in **Write** mode (created a new archive).
+- **""** (Empty String): The object is currently closed.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only.
+- The mode is automatically set by the **Open** and **Create** methods.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3ZIP")
-value = obj.Mode
-Response.Write CStr(value)
-Set obj = Nothing
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+zip.Create "/temp/test.zip"
+If zip.Mode = "w" Then
+    Response.Write "Ready to add files."
+End If
+Set zip = Nothing
 %>
 ```

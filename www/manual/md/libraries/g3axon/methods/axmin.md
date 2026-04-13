@@ -1,45 +1,33 @@
-﻿# Axmin Method
+# axmin
 
 ## Overview
-
-Returns the smallest numeric value from the provided arguments.
+Returns the smallest numeric value from the provided arguments in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axmin(...)
+result = obj.axmin(n1, n2, ..., nN)
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **n1, n2, ..., nN** (Numeric): A variable number of numeric values to be compared.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a Double representing the minimum value found among all arguments. If no arguments are provided, it returns 0.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+The function automatically converts non-numeric values to their numeric equivalent before comparison.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axmin()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, minVal
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+' Returns -5.2
+minVal = obj.axmin(10, 45, 32, -5.2)
+Response.Write "Min value: " & minVal
+
 Set obj = Nothing
 %>
 ```
-
-

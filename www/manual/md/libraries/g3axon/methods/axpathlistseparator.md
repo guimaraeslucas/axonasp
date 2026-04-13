@@ -1,45 +1,32 @@
-﻿# Axpathlistseparator Method
+# axpathlistseparator
 
 ## Overview
-
-Returns the OS path-list separator character used in PATH-like variables.
+Retrieves the operating system's path list separator character in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axpathlistseparator(...)
+result = obj.axpathlistseparator()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the character used by the operating system to separate multiple paths in a list (e.g., in the PATH environment variable).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Typically returns ";" on Windows systems and ":" on Unix-like systems.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axpathlistseparator()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, listSeparator
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+listSeparator = obj.axpathlistseparator()
+Response.Write "System Path List Separator: " & listSeparator
+
 Set obj = Nothing
 %>
 ```
-
-

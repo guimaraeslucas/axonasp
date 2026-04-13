@@ -1,50 +1,39 @@
-# SetFont Method
+# SetFont
 
 ## Overview
 
-Sets Font for the G3PDF library.
+Sets the font used to print character strings.
 
 ## Syntax
 
 ```asp
-result = obj.SetFont(...)
-`````
+obj.SetFont family, [style], [size]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- family (String, Required): Font family name.
-- style (String, Optional): Style flags (B, I, U).
-- size (Number, Required): Font size.
-- Argument validation: invalid count or type raises runtime errors.
+- `family` (String): Family font. It can be a standard TrueType/Type1 font.
+- `style` (String, Optional): Font style. Possible values are empty string (regular), `B` (bold), `I` (italic), `U` (underline), or any combination.
+- `size` (Double, Optional): Font size in points.
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.SetFont()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

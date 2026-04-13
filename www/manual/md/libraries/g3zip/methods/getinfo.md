@@ -1,46 +1,43 @@
 # GetInfo Method
 
 ## Overview
-
-Gets Info from the G3ZIP library.
+Retrieves detailed technical metadata for a specific file within the archive in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-result = obj.GetInfo(...)
+Set info = zip.GetInfo(fileName)
 ```
 
 ## Parameters and Arguments
-
-- archiveName (String, Optional): Specific entry to inspect; omit for global archive metadata.
-- Argument validation: invalid count or type raises runtime errors.
+- **fileName** (String, Required): The name of the file inside the ZIP archive.
 
 ## Return Values
+Returns a **Scripting.Dictionary** object containing the following keys:
+- **Name** (String): The name of the file.
+- **Size** (Integer): The uncompressed size in bytes.
+- **PackedSize** (Integer): The compressed size in bytes.
+- **Modified** (String): The last modification timestamp in RFC3339 format.
+- **IsDir** (Boolean): Indicates if the entry is a directory.
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns **Empty** if the file is not found or the object is not in Read mode.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The object must be in **Read** mode.
+- The `fileName` matching is case-insensitive.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZIP")
-result = obj.GetInfo()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim zip, info
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Open("/temp/data.zip") Then
+    Set info = zip.GetInfo("report.csv")
+    If Not IsEmpty(info) Then
+        Response.Write "File: " & info("Name") & "<br>"
+        Response.Write "Uncompressed Size: " & info("Size") & " bytes"
+    End If
+    zip.Close
 End If
-Set obj = Nothing
+Set zip = Nothing
 %>
 ```
-
-
-

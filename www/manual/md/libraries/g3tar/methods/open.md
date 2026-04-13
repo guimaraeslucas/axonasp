@@ -1,48 +1,35 @@
 # Open Method
 
 ## Overview
-
-Opens a resource for subsequent operations.
+Accesses an established TAR archive on the server to read or extract its contents.
 
 ## Syntax
-
 ```asp
-result = obj.Open(...)
-`````
+Dim success
+success = obj.Open(archivePath)
+```
 
 ## Parameters and Arguments
-
-- archivePath (String, Required): Existing TAR path to open.
-- Argument validation: invalid count or type raises runtime errors.
+- archivePath (String, Required): Exact system location indicating the existing TAR file on the filesystem.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a `Boolean` representing whether the operation locked the file properly. Returns True if successfully mounted.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Must be combined with a paired extraction routine or metadata gathering phase followed immediately by a manual invocation of Close.
+- Do not use this method on archives concurrently accessed through other means on the local disk.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, success
 Set obj = Server.CreateObject("G3TAR")
-result = obj.Open()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+success = obj.Open("C:\data\packages\archive.tar")
+If success Then
+    Response.Write "Successfully connected."
+    obj.Close()
 End If
 Set obj = Nothing
 %>
-`````
-
-
-
-
-
+```

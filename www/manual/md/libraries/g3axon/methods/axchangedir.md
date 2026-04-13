@@ -1,45 +1,37 @@
-﻿# Axchangedir Method
+# axchangedir
 
 ## Overview
-
-Changes the current process working directory and returns success as Boolean.
+Changes the current working directory of the process in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axchangedir(...)
+result = obj.axchangedir(path)
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **path** (String): The absolute or relative path to the new working directory.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a Boolean indicating whether the directory change was successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+Changing the working directory affects the entire process. In a web server environment, this should be used with caution as it may affect other concurrent requests.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axchangedir()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+result = obj.axchangedir("C:\Windows\Temp")
+
+If result Then
+    Response.Write "Successfully changed directory to: " & obj.axcurrentdir()
 Else
-    Response.Write CStr(result)
+    Response.Write "Failed to change directory."
 End If
+
 Set obj = Nothing
 %>
 ```
-
-

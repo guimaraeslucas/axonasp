@@ -1,4 +1,4 @@
-# Axruntimeinfo Method
+# Axruntimeinfo
 
 ## Overview
 
@@ -12,7 +12,8 @@ result = obj.Axruntimeinfo()
 
 ## Return Values
 
-- String: Multi-line diagnostic report.
+- Returns a String.
+
 
 ## Remarks
 
@@ -25,7 +26,7 @@ result = obj.Axruntimeinfo()
 <%
 Option Explicit
 Dim obj, report
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 report = obj.Axruntimeinfo()
 Response.Write "<pre>" & Server.HTMLEncode(report) & "</pre>"
 Set obj = Nothing

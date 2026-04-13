@@ -2,46 +2,37 @@
 
 ## Overview
 
-Executes the Initialize operation provided by the G3CRYPTO library.
+Resets the internal state of the G3Pix AxonASP G3CRYPTO object, clearing any cached hash results and configuration.
 
 ## Syntax
 
 ```asp
-result = obj.Initialize(...)
+obj.Initialize()
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- algorithm (String, Optional): Preferred algorithm context or preset.
-- options (String, Optional): Additional provider-specific initialization options.
-- Argument validation: invalid count or type raises runtime errors.
+This method accepts no parameters.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns an Empty value (VT_EMPTY).
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- Calling this method clears the `Hash` and `HashSize` properties by removing the reference to the last computed hash.
+- This is useful for ensuring no sensitive data remains in memory between different cryptographic operations using the same object instance.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.Initialize()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto
+Set crypto = Server.CreateObject("G3CRYPTO")
+crypto.ComputeHash("Some data", "sha256")
+' Clear memory and internal state
+crypto.Initialize()
+Set crypto = Nothing
 %>
 ```
-
-
-

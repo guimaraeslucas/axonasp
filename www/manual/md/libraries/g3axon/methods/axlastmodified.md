@@ -1,45 +1,45 @@
-﻿# Axlastmodified Method
+# axlastmodified
 
 ## Overview
 
-Returns the Unix timestamp of the mapped script path last modification time.
+The `axlastmodified` method returns the Unix timestamp representing the last modification time of the current ASP page.
 
 ## Syntax
 
 ```asp
-result = obj.Axlastmodified(...)
+result = obj.axlastmodified()
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+This method does not accept any parameters.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Integer representing the Unix timestamp of the current file's last modification. Returns `0` if the modification time cannot be determined.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- It is useful for implementing caching headers or displaying "Last Updated" information on a page.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axlastmodified()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim ax, ts
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+ts = ax.axlastmodified()
+
+If ts > 0 Then
+    Response.Write "Page last modified on: " & ax.axdate("Y-m-d H:i:s", ts)
 Else
-    Response.Write CStr(result)
+    Response.Write "Could not determine modification time."
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
-
-

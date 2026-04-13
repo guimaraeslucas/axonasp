@@ -1,4 +1,4 @@
-# Axispathseparator Method
+# Axispathseparator
 
 ## Overview
 
@@ -16,7 +16,8 @@ result = obj.Axispathseparator(character)
 
 ## Return Values
 
-- Boolean: True when the character is a path separator; otherwise False.
+- Returns a Boolean.
+
 
 ## Code Example
 
@@ -24,7 +25,7 @@ result = obj.Axispathseparator(character)
 <%
 Option Explicit
 Dim obj
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 Response.Write CStr(obj.Axispathseparator("/")) & "<br>"
 Response.Write CStr(obj.Axispathseparator("a"))
 Set obj = Nothing

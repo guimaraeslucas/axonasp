@@ -1,48 +1,39 @@
-# Reset Method
+# Reset
 
 ## Overview
 
-Resets the current state to defaults.
+Resets the PDF engine, clearing all content, settings, and pages. It optionally allows setting the new defaults for the document.
 
 ## Syntax
 
 ```asp
-result = obj.Reset(...)
-`````
+obj.Reset [orientation], [unit], [size]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- none: clears current document state and starts a fresh document context.
-- Argument validation: invalid count or type raises runtime errors.
+- `orientation` (String, Optional): Default page orientation (`P` or `L`).
+- `unit` (String, Optional): User unit of measure (e.g., `pt`, `mm`, `cm`, `in`).
+- `size` (String, Optional): Default page format (e.g., `A4`, `Letter`).
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.Reset()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

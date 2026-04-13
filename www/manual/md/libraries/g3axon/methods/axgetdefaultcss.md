@@ -1,45 +1,43 @@
-﻿# Axgetdefaultcss Method
+# axgetdefaultcss
 
 ## Overview
 
-Reads and returns the configured default CSS file content.
+The `axgetdefaultcss` method retrieves the text content of the CSS file specified in the `axfunctions.ax_default_css_path` configuration setting of the `axonasp.toml` file.
 
 ## Syntax
 
 ```asp
-result = obj.Axgetdefaultcss(...)
+result = obj.axgetdefaultcss()
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+This method does not accept any parameters.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the raw CSS content from the configured file. Returns an empty string if no path is configured or if the file cannot be read.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- It allows ASP pages to dynamically include or inline the default system stylesheet without hardcoding file paths.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axgetdefaultcss()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim ax, css
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+css = ax.axgetdefaultcss()
+
+If css <> "" Then
+    Response.Write "<style>" & vbCrLf & css & vbCrLf & "</style>"
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
-
-

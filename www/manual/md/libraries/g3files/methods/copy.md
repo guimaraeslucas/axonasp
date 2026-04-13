@@ -1,48 +1,32 @@
 # Copy Method
 
 ## Overview
-
-Copies resources to a new destination.
+Copies a file from a source path to a destination path.
 
 ## Syntax
-
 ```asp
-result = obj.Copy(...)
+success = files.Copy(source, dest)
 ```
 
 ## Parameters and Arguments
-
-- sourcePath (String, Required): Source file/folder path.
-- destinationPath (String, Required): Destination path.
-- overwrite (Boolean, Optional): Overwrite destination if present.
-- Argument validation: invalid count or type raises runtime errors.
+- **source** (String, Required): The path to the file to be copied.
+- **dest** (String, Required): The target path for the copy.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the copy operation was successful.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- If the destination file already exists, it will be overwritten.
+- Both paths are relative to the AxonASP sandbox root.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Copy()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim files
+Set files = Server.CreateObject("G3FILES")
+If files.Copy("/data/source.txt", "/backups/copy.txt") Then
+    Response.Write "File copied."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

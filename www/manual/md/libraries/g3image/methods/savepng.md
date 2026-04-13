@@ -1,46 +1,33 @@
 # SavePNG Method
 
 ## Overview
-
-Saves PNG from the current operation context.
+Saves the current context as a PNG file to the specified path in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.SavePNG(...)
+result = obj.SavePNG(path)
 ```
 
-## Parameters and Arguments
-
-- outputPath (String, Required): Destination PNG file path.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **path** (String): The file path where the PNG will be saved.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a Boolean indicating whether the file was successfully saved.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Ensure that the application has write permissions for the target directory.
+- The path is resolved relative to the web root if possible.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.SavePNG()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(200, 200) Then
+    img.DrawRectangle 0, 0, 200, 200
+    img.Fill()
+    img.SavePNG "output.png"
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

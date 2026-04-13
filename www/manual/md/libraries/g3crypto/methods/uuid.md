@@ -1,46 +1,26 @@
 # UUID Method
 
 ## Overview
-
-Generates random output using the UUID operation.
+Generates a cryptographically secure, version 4 Universally Unique Identifier (UUID).
 
 ## Syntax
-
 ```asp
-result = obj.UUID(...)
+result = crypto.UUID()
 ```
-
-## Parameters and Arguments
-
-- none: generates a new UUID value.
-- Argument validation: invalid count or type raises runtime errors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** containing a randomly generated UUID in the standard 8-4-4-4-12 format (e.g., `550e8400-e29b-41d4-a716-446655440000`).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+The UUID method uses a cryptographically secure random number generator (CSPRNG) to ensure high entropy and prevent collisions. It is ideal for unique identifiers, session keys, and database primary keys.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.UUID()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, newID
+Set crypto = Server.CreateObject("G3CRYPTO")
+newID = crypto.UUID()
+Response.Write "New UUID: " & newID
+Set crypto = Nothing
 %>
 ```
-
-
-

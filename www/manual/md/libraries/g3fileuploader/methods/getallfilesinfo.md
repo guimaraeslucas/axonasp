@@ -1,48 +1,14 @@
 # GetAllFilesInfo Method
 
 ## Overview
-
-Gets All Files Info from the G3FILEUPLOADER library.
+Performs an architectural scan against the intercepted HTTP payload, surfacing comprehensive data dictionaries representing every uploaded item, bypassing persistence entirely. 
 
 ## Syntax
-
 ```asp
-result = obj.GetAllFilesInfo(...)
-`````
-
-## Parameters and Arguments
-
-- none: returns metadata for all processed files.
-- Argument validation: invalid count or type raises runtime errors.
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Dim fileArray
+fileArray = uploader.GetAllFilesInfo()
+```
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.GetAllFilesInfo()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns a VBScript array filled with Dictionary objects. Each Dictionary contains attributes analogous to `GetFileInfo`. If no multipart form data exists, returns an empty VBScript array.

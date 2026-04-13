@@ -1,45 +1,39 @@
-﻿# Axsysteminfo Method
+# axsysteminfo
 
 ## Overview
-
-Returns system information (full string or selected mode such as OS, hostname, runtime version, or architecture).
+Retrieves various system and runtime environment information in G3Pix AxonASP.
 
 ## Syntax
-
 ```asp
-result = obj.Axsysteminfo(...)
+result = obj.axsysteminfo([mode])
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **mode** (String, Optional): A single character specifying the type of information to return:
+  - "s": Operating system name (e.g., "windows", "linux").
+  - "n": Hostname of the machine.
+  - "v": Go runtime version.
+  - "m": Machine architecture (e.g., "amd64", "arm64").
+  - "a": All available information (default).
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the requested system information. If no mode is provided, it defaults to returning all information in a single string.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If an invalid or empty mode is provided, the function defaults to "a".
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axsysteminfo()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+Response.Write "OS: " & obj.axsysteminfo("s") & "<br>"
+Response.Write "Host: " & obj.axsysteminfo("n") & "<br>"
+Response.Write "Architecture: " & obj.axsysteminfo("m") & "<br>"
+Response.Write "Full Info: " & obj.axsysteminfo("a")
+
 Set obj = Nothing
 %>
 ```
-
-

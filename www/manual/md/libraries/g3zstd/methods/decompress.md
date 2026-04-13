@@ -2,47 +2,45 @@
 
 ## Overview
 
-Decompresses content back to its original representation.
+Decompresses a Zstandard (zstd) compressed payload (string or byte array) and returns the original data as a byte array.
 
 ## Syntax
 
 ```asp
-result = obj.Decompress(...)
-`````
+result = obj.Decompress(input)
+```
 
 ## Parameters and Arguments
 
-- input (String, Required): Compressed binary-safe input.
-- Argument validation: invalid count or type raises runtime errors.
+- **input**: A String or a VBArray of bytes containing the Zstandard compressed data.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a VBArray of bytes containing the decompressed data. If an error occurs, it returns Empty.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The input must be a valid Zstandard frame.
+- This G3Pix AxonASP method handles all data types by normalizing them to a byte stream before decompression.
+- If decompression fails (e.g., due to corrupt data or invalid format), a runtime error is raised.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZSTD")
-result = obj.Decompress()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim objZstd, compressedData, originalData
+' Assuming compressedData is obtained from a source or previous operation
+Set objZstd = Server.CreateObject("G3ZSTD")
+
+originalData = objZstd.Decompress(compressedData)
+
+If Not IsEmpty(originalData) Then
+    Response.Write "Original data size: " & UBound(originalData) + 1 & " bytes."
 Else
-    Response.Write CStr(result)
+    Response.Write "Decompression failed."
 End If
-Set obj = Nothing
+
+Set objZstd = Nothing
 %>
-`````
-
-
-
-
-
+```

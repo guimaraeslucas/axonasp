@@ -1,40 +1,29 @@
 # LastMimeType Property
 
 ## Overview
-
-The LastMimeType property is exposed by the G3IMAGE library object and returns the current state/value associated with this member.
+Returns the MIME type of the last image rendered or loaded in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-value = obj.LastMimeType
-obj.LastMimeType = newValue
+mime = obj.LastMimeType
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a String containing the MIME type (e.g., "image/png" or "image/jpeg").
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property can be used to set the `Response.ContentType` before streaming binary content.
+- It is read-only.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3IMAGE")
-value = obj.LastMimeType
-Response.Write CStr(value)
-Set obj = Nothing
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+img.NewContext 100, 100
+img.RenderViaTemp "png", 0
+Response.ContentType = img.LastMimeType
+Response.BinaryWrite img.LastBytes
+Set img = Nothing
 %>
 ```

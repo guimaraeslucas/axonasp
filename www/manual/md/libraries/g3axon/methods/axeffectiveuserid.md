@@ -1,45 +1,37 @@
-﻿# Axeffectiveuserid Method
+# axeffectiveuserid
 
 ## Overview
-
-Returns the effective user ID on Unix-like systems, or -1 on Windows.
+Retrieves the effective user ID of the current G3Pix AxonASP process.
 
 ## Syntax
-
 ```asp
-result = obj.Axeffectiveuserid(...)
+result = obj.axeffectiveuserid()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Integer representing the effective user ID (euid). On Windows systems, this method always returns -1.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+This method is primarily useful on Unix-like systems where it returns the numeric user ID of the effective user.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axeffectiveuserid()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim obj, euid
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+euid = obj.axeffectiveuserid()
+
+If euid = -1 Then
+    Response.Write "Effective User ID is not applicable on this system (Windows)."
 Else
-    Response.Write CStr(result)
+    Response.Write "Effective User ID: " & euid
 End If
+
 Set obj = Nothing
 %>
 ```
-
-

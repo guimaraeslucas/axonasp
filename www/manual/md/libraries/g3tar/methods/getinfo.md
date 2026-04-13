@@ -1,48 +1,38 @@
 # GetInfo Method
 
 ## Overview
-
-Gets Info from the G3TAR library.
+Compiles and maps extensive metadata fields referring to an individual file path stored within the presently loaded TAR structure.
 
 ## Syntax
-
 ```asp
-result = obj.GetInfo(...)
-`````
+Dim dict
+Set dict = obj.GetInfo(archiveName)
+```
 
 ## Parameters and Arguments
-
-- archiveName (String, Optional): Specific entry to inspect; omit for archive-level metadata.
-- Argument validation: invalid count or type raises runtime errors.
+- archiveName (String, Required): Target relative naming referring to the file entry inside the TAR file.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Yields a `Scripting.Dictionary` native interface holding extracted fields. Should an anomaly manifest or if no such element occurs, an instantiated blank model will emerge.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Necessitates pre-opening via the Open invocation.
+- Valuable to verify sizing specifications alongside creation timing metadata properties inside the internal container sequence before actual unpacking logic begins.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj, fileStats
 Set obj = Server.CreateObject("G3TAR")
-result = obj.GetInfo()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+If obj.Open("C:\data\packages\archive.tar") Then
+    Set fileStats = obj.GetInfo("docs/readme.txt")
+    If fileStats.Count > 0 Then
+        Response.Write "Identified item data bounds correctly."
+    End If
+    Set fileStats = Nothing
+    obj.Close()
 End If
 Set obj = Nothing
 %>
-`````
-
-
-
-
-
+```

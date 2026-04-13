@@ -1,48 +1,16 @@
 # BlockExtensions Method
 
 ## Overview
-
-Blocks Extensions in the current validation rules.
+Submits a comma-separated format string to define multiple blocked file extensions simultaneously.
 
 ## Syntax
-
 ```asp
-result = obj.BlockExtensions(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.BlockExtensions "jsp,asp,exe,dll,bat"
+```
 
 ## Parameters and Arguments
-
-- extensions (Variant, Required): Delimited string or array of blocked extensions.
-- Argument validation: invalid count or type raises runtime errors.
+- `ExtensionsList` (String, Required): A robust comma-separated blocklist of targeted formats.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.BlockExtensions()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns an `Empty` variant.

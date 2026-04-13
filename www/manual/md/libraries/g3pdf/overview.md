@@ -1,31 +1,37 @@
-# Use G3PDF in AxonASP
+# Create PDF documents using G3PDF
 
 ## Overview
-PDF generation library.
+The `G3PDF` object is a high-performance native library for generating PDF documents directly from Classic ASP code. It provides functions to add pages, format text, draw shapes, and manage document layout.
 
 ## Syntax
 ```asp
-Set obj = Server.CreateObject("G3PDF")
-`````
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+```
 
-## Parameters and Arguments
-- ProgID (String, Required): Use one of the supported ProgID forms for this object family.
-- Member access (Optional): Use documented method/property members from the library reference pages.
+## Parameters
+None for instantiation.
 
 ## Return Values
-Returns a native object handle for this object family.
+Returns a native `G3PDF` object that can be used to construct PDF documents.
 
 ## Remarks
-- Member names are case-insensitive.
-- Runtime validation is enforced by object dispatch logic.
-- See the central library methods/properties pages for member-level coverage.
+- Requires `Server.CreateObject("G3PDF")`. No aliases are supported.
+- Powered by `go-pdf/fpdf` optimized for AxonASP.
+- Ensure that memory and binary output streams are managed correctly.
+- Call `Close` when finished applying content to the PDF object.
 
 ## Code Example
 ```asp
 <%
-Dim obj
-Set obj = Server.CreateObject("G3PDF")
-Response.Write TypeName(obj)
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.AddPage "", "", 0
+pdf.SetFont "Arial", "B", 16
+pdf.Cell 40, 10, "Hello World!", 1, 0, "C", False, ""
+
+' Further output code...
 %>
-`````
+```
 

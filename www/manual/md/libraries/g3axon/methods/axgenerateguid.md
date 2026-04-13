@@ -1,45 +1,41 @@
-﻿# Axgenerateguid Method
+# axgenerateguid
 
 ## Overview
 
-Generates a random RFC 4122 version 4 GUID string.
+The `axgenerateguid` method generates a cryptographically secure version 4 Globally Unique Identifier (GUID) string.
 
 ## Syntax
 
 ```asp
-result = obj.Axgenerateguid(...)
+result = obj.axgenerateguid()
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+This method does not accept any parameters.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing a unique 36-character GUID (e.g., `f47ac10b-58cc-4372-a567-0e02b2c3d479`).
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- It uses a cryptographically secure random number generator to ensure uniqueness.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axgenerateguid()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim ax, guid
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+guid = ax.axgenerateguid()
+
+Response.Write "Generated GUID: " & guid
+
+Set ax = Nothing
 %>
 ```
-
-

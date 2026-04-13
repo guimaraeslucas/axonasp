@@ -1,40 +1,33 @@
 # IsOpen Property
 
 ## Overview
-
-The IsOpen property is exposed by the G3DB library object and returns the current state/value associated with this member.
+Indicates whether the database connection pool is currently open and active.
 
 ## Syntax
-
 ```asp
-value = obj.IsOpen
-obj.IsOpen = newValue
+status = db.IsOpen
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **Boolean** value. It returns **True** if the connection pool is open, and **False** if it is closed or has not yet been opened.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+Use this property to verify the state of the database connection before executing queries or commands to avoid runtime errors.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3DB")
-value = obj.IsOpen
-Response.Write CStr(value)
-Set obj = Nothing
+Dim db
+Set db = Server.CreateObject("G3DB")
+db.Open "mysql", "user:pass@tcp(localhost:3306)/db"
+
+If db.IsOpen Then
+    Response.Write "Database is connected"
+Else
+    Response.Write "Database is disconnected"
+End If
+
+db.Close
+Set db = Nothing
 %>
 ```

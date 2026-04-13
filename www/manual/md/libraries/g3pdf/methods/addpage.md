@@ -1,49 +1,38 @@
-# AddPage Method
+# AddPage
 
 ## Overview
 
-Adds Page to the current operation context.
+Adds a new page to the PDF document. Must be called before outputting any content to a page.
 
 ## Syntax
 
 ```asp
-result = obj.AddPage(...)
-`````
+obj.AddPage [orientation], [size]
+```
 
-## Parameters and Arguments
+## Parameters
 
-- orientation (String, Optional): Page orientation (P/L).
-- size (String, Optional): Page size (A4, Letter, etc.).
-- Argument validation: invalid count or type raises runtime errors.
+- `orientation` (String, Optional): Document orientation. Possible values are `P` (Portrait) or `L` (Landscape).
+- `size` (String, Optional): Page format (e.g., `A4`, `Letter`).
 
-## Return Values
+## Return Value
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+**Returns:** Empty
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3PDF")
-result = obj.AddPage()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+
+Dim pdf
+Set pdf = Server.CreateObject("G3PDF")
+
+pdf.Reset "P", "mm", "A4"
+pdf.AddPage
+
+' Perform method operations here
+
+Set pdf = Nothing
 %>
-`````
-
-
-
-
-
+```

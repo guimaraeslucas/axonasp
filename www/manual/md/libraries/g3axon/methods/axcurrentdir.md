@@ -1,45 +1,32 @@
-﻿# Axcurrentdir Method
+# axcurrentdir
 
 ## Overview
-
-Returns the current process working directory path.
+Retrieves the absolute path of the current working directory for the G3Pix AxonASP process.
 
 ## Syntax
-
 ```asp
-result = obj.Axcurrentdir(...)
+result = obj.axcurrentdir()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the absolute path of the current working directory.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If an error occurs while retrieving the directory, an empty string is returned.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axcurrentdir()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, currentDir
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+currentDir = obj.axcurrentdir()
+Response.Write "The current working directory is: " & currentDir
+
 Set obj = Nothing
 %>
 ```
-
-

@@ -1,41 +1,38 @@
 # HardWraps Property
 
 ## Overview
-
-The HardWraps property is exposed by the G3MD library object and returns the current state/value associated with this member.
+Gets or sets a Boolean value that determines how the G3Pix AxonASP G3MD library handles soft line breaks in the Markdown source.
 
 ## Syntax
-
 ```asp
-value = obj.HardWraps
-obj.HardWraps = newValue
-`````
+' Get the current value
+isHardWrap = md.HardWraps
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+' Set a new value
+md.HardWraps = True
+```
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **Boolean**. The default value is **False**.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- When set to **True**, every soft line break (a single newline) in the Markdown source is converted to an HTML `<br>` tag.
+- When set to **False** (default), Markdown follows standard behavior where soft line breaks are treated as spaces unless they are preceded by two spaces or followed by a blank line.
+- This property must be set before calling the **Process** method.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3MD")
-value = obj.HardWraps
-Response.Write CStr(value)
-Set obj = Nothing
-%>
-`````
+Dim md, result
+Set md = Server.CreateObject("G3MD")
 
+' Enable hard wraps for comment-style rendering
+md.HardWraps = True
+
+result = md.Process("Line 1" & vbCrLf & "Line 2")
+' Result will contain "Line 1<br>Line 2"
+
+Response.Write result
+Set md = Nothing
+%>
+```

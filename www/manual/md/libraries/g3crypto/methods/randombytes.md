@@ -2,45 +2,37 @@
 
 ## Overview
 
-Generates random output using the RandomBytes operation.
+Generates cryptographically secure random bytes and returns them as a VBScript byte array using the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.RandomBytes(...)
+result = obj.RandomBytes(size)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- length (Integer, Required): Number of random bytes to generate.
-- Argument validation: invalid count or type raises runtime errors.
+- **size** (Integer, Optional): The number of random bytes to generate. Defaults to 32.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a VBScript Array of Byte values (VT_ARRAY | VT_UI1) containing the generated random data.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- This method is suitable for generating salts, nonces, and secret keys.
+- If an error occurs during random data generation, an empty array is returned.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.RandomBytes()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, randArray
+Set crypto = Server.CreateObject("G3CRYPTO")
+' Generate 16 secure random bytes
+randArray = crypto.RandomBytes(16)
+Response.Write "First random byte: " & randArray(0)
+Set crypto = Nothing
 %>
 ```
-
-
-

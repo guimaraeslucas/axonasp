@@ -789,7 +789,7 @@ func renderClassicASPDebugError(w http.ResponseWriter, statusCode int, stage str
 
 	source := html.EscapeString(strings.TrimSpace(err.Source))
 	if source == "" {
-		source = "Microsoft VBScript runtime"
+		source = "VBScript runtime"
 	}
 	description := html.EscapeString(strings.TrimSpace(err.Description))
 	if description == "" {

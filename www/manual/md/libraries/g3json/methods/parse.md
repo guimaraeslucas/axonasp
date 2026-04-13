@@ -1,46 +1,36 @@
 # Parse Method
 
 ## Overview
-
-Parses input and returns structured values.
+Converts a JSON-formatted string into a native AxonASP structure (Dictionary or Array).
 
 ## Syntax
-
 ```asp
-result = obj.Parse(...)
+result = json.Parse(jsonString)
 ```
 
 ## Parameters and Arguments
-
-- jsonText (String, Required): JSON document to parse.
-- Argument validation: invalid count or type raises runtime errors.
+- **jsonString** (String, Required): The JSON string to be parsed.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Variant** containing the parsed JSON structure. 
+- Returns a **Scripting.Dictionary** object for JSON objects (`{}`).
+- Returns a standard **Array** for JSON arrays (`[]`).
+- Returns **Empty** if the input is invalid or cannot be parsed.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+The **Parse** method supports deep nesting and various JSON data types, including numbers, booleans, strings, and nulls. JSON nulls are converted to VBScript **Null**.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3JSON")
-result = obj.Parse()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim json, data
+Set json = Server.CreateObject("G3JSON")
+Set data = json.Parse("{""id"": 101, ""active"": true}")
+
+If IsObject(data) Then
+    Response.Write "ID: " & data("id")
 End If
-Set obj = Nothing
+
+Set json = Nothing
 %>
 ```
-
-
-

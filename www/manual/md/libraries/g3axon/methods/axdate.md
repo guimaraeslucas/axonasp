@@ -1,45 +1,53 @@
-﻿# Axdate Method
+# axdate
 
 ## Overview
 
-Formats a date/time value using PHP-style format tokens, with optional timestamp argument.
+The `axdate` method formats a Unix timestamp (or the current time if omitted) into a readable string using PHP-like formatting tokens.
 
 ## Syntax
 
 ```asp
-result = obj.Axdate(...)
+result = obj.axdate(format [, timestamp])
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **format** (String): A string representing the desired date/time format. It supports PHP-like tokens (e.g., "Y-m-d H:i:s").
+- **timestamp** (Integer, Optional): The Unix timestamp to format. If omitted, the current system time is used.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the formatted date and time.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- It supports localized month and weekday names based on the VM configuration.
+- Common tokens:
+    - **Y**: 4-digit year.
+    - **m**: Month with leading zeros (01-12).
+    - **d**: Day of the month with leading zeros (01-31).
+    - **H**: 24-hour format of an hour (00-23).
+    - **i**: Minutes with leading zeros (00-59).
+    - **s**: Seconds with leading zeros (00-59).
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axdate()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim ax, formattedDate
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+' Format current date
+formattedDate = ax.axdate("Y-m-d H:i:s")
+Response.Write "Current Date: " & formattedDate & "<br>"
+
+' Format specific timestamp (e.g., 1735689600 for 2025-01-01)
+formattedDate = ax.axdate("l, F j, Y", 1735689600)
+Response.Write "Specific Date: " & formattedDate
+
+Set ax = Nothing
 %>
 ```
-
-

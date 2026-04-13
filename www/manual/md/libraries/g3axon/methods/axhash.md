@@ -1,45 +1,33 @@
-﻿# Axhash Method
+# Compute String Hash by Algorithm
 
 ## Overview
 
-Returns a hash digest for the selected algorithm (sha256, sha1, or md5).
+Computes a hash of a string using the specified cryptographic algorithm.
 
 ## Syntax
 
-```asp
-result = obj.Axhash(...)
+```vbscript
+strHash = obj.axhash(algo, str)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **algo** (String): The hashing algorithm to use. Supported values are `"md5"`, `"sha1"`, and `"sha256"`.
+- **str** (String): The string to hash.
 
-## Return Values
+## Return Value
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+String. The hexadecimal hash of the string.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+If an unsupported algorithm is provided, an empty string is returned.
 
 ## Code Example
 
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axhash()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
+```vbscript
+Dim obj, strHash
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+strHash = obj.axhash("sha256", "securepassword")
+Response.Write strHash
 ```
-
-

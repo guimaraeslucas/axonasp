@@ -1,45 +1,32 @@
-﻿# Axplatformbits Method
+# axplatformbits
 
 ## Overview
-
-Returns the native integer size in bits for the current platform.
+Retrieves the platform architecture bits for the G3Pix AxonASP runtime.
 
 ## Syntax
-
 ```asp
-result = obj.Axplatformbits(...)
+result = obj.axplatformbits()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns an Integer representing the platform architecture (32 or 64).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+This indicates the word size of the current operating system and process architecture.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axplatformbits()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
+Dim obj, bits
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+bits = obj.axplatformbits()
+Response.Write "Platform architecture: " & bits & "-bit"
+
 Set obj = Nothing
 %>
 ```
-
-

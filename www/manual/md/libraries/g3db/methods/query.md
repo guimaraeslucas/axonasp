@@ -2,46 +2,50 @@
 
 ## Overview
 
-Executes a query and returns results.
+The **Query** method executes a SQL query, such as a SELECT statement, and returns a result set object in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.Query(...)
+Set result = obj.Query(sql [, params...])
 ```
 
 ## Parameters and Arguments
 
-- sql (String, Required): Query text.
-- params (Variant, Optional): Positional parameters array/value list.
-- Argument validation: invalid count or type raises runtime errors.
+- **sql** (String, Required): The SQL query statement to be executed.
+- **params** (Variant, Optional): One or more values to be used as parameters in the SQL statement, replacing the `?` placeholders.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **G3DBResultSet** object. This object provides a forward-only cursor to navigate and retrieve the data returned by the database.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The method automatically rewrites the `?` placeholders into the format required by the current database driver (e.g., `$1, $2` for PostgreSQL or `@p1, @p2` for MS SQL Server).
+- Parameterization is highly recommended to protect against SQL injection attacks.
+- If the query fails, the method returns an **Empty** value, and the error description can be retrieved from the **LastError** property.
+- The returned **G3DBResultSet** should be closed using its **Close** method when it is no longer needed.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.Query()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db, rs
+Set db = Server.CreateObject("G3DB")
+
+If db.Open("mysql", "user:pass@tcp(localhost)/dbname") Then
+    ' Simple query with parameters
+    Set rs = db.Query("SELECT username, email FROM users WHERE id = ?", 123)
+
+    If Not rs.EOF Then
+        Response.Write "Username: " & rs("username") & "<br>"
+        Response.Write "Email: " & rs("email")
+    End If
+
+    rs.Close
+    db.Close
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
 ```
-
-
-

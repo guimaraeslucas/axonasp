@@ -1,49 +1,35 @@
 # DrawEllipse Method
 
 ## Overview
-
-Draws Ellipse onto the current image canvas.
+Adds an ellipse to the current path in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.DrawEllipse(...)
+obj.DrawEllipse(x, y, rx, ry)
 ```
 
-## Parameters and Arguments
-
-- centerX (Number, Required): Center X.
-- centerY (Number, Required): Center Y.
-- radiusX (Number, Required): Horizontal radius.
-- radiusY (Number, Required): Vertical radius.
-- Argument validation: invalid count or type raises runtime errors.
+## Parameters
+- **x** (Double): The x-coordinate of the center of the ellipse.
+- **y** (Double): The y-coordinate of the center of the ellipse.
+- **rx** (Double): The horizontal radius of the ellipse.
+- **ry** (Double): The vertical radius of the ellipse.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method adds the ellipse to the current path. You must call Stroke or Fill to actually render it on the canvas.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.DrawEllipse()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(200, 200) Then
+    img.SetHexColor("#00FF00")
+    img.DrawEllipse 100, 100, 80, 40
+    img.Fill()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

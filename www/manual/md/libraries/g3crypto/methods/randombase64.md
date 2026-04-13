@@ -2,45 +2,37 @@
 
 ## Overview
 
-Generates random output using the RandomBase64 operation.
+Generates cryptographically secure random bytes and returns them as a Base64-encoded string using the G3Pix AxonASP G3CRYPTO library.
 
 ## Syntax
 
 ```asp
-result = obj.RandomBase64(...)
+result = obj.RandomBase64(size)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- length (Integer, Required): Number of random bytes before Base64 encoding.
-- Argument validation: invalid count or type raises runtime errors.
+- **size** (Integer, Optional): The number of random bytes to generate. Defaults to 32.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a String containing the random bytes encoded in Base64 format.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Instantiated via `Server.CreateObject("G3CRYPTO")`.
+- This method uses a secure random number generator provided by the underlying operating system.
+- Base64 encoding results in a string that is approximately 33% longer than the raw byte length.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Crypto")
-result = obj.RandomBase64()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim crypto, randStr
+Set crypto = Server.CreateObject("G3CRYPTO")
+' Generate 16 bytes encoded as Base64
+randStr = crypto.RandomBase64(16)
+Response.Write "Secure Random Base64: " & randStr
+Set crypto = Nothing
 %>
 ```
-
-
-

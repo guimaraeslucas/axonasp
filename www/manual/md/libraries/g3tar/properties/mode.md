@@ -1,41 +1,36 @@
 # Mode Property
 
 ## Overview
-
-The Mode property is exposed by the G3TAR library object and returns the current state/value associated with this member.
+Gets the current operation mode of the G3TAR archive.
 
 ## Syntax
-
 ```asp
-value = obj.Mode
-obj.Mode = newValue
-`````
+Dim currentMode
+currentMode = obj.Mode
+```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- Getter: None.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a `String` representing the archive mode.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only.
+- Usually reflects read or write modes depending on initialization.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, value
+Dim obj, currentMode
 Set obj = Server.CreateObject("G3TAR")
-value = obj.Mode
-Response.Write CStr(value)
+If obj.Open("C:\temp\archive.tar") Then
+    currentMode = obj.Mode
+    Response.Write currentMode
+End If
+obj.Close()
 Set obj = Nothing
 %>
-`````
+```
 

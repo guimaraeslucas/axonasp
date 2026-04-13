@@ -1,4 +1,4 @@
-# Axchangetimes Method
+# Axchangetimes
 
 ## Overview
 
@@ -18,7 +18,8 @@ result = obj.Axchangetimes(path, accessTime, modifiedTime)
 
 ## Return Values
 
-- Boolean: True when the operation succeeds; otherwise False.
+- Returns a Boolean.
+
 
 ## Code Example
 
@@ -26,7 +27,7 @@ result = obj.Axchangetimes(path, accessTime, modifiedTime)
 <%
 Option Explicit
 Dim obj, ok
-Set obj = Server.CreateObject("G3AXON.Functions")
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
 ok = obj.Axchangetimes("C:\\temp\\sample.txt", 1700000000, 1700000001)
 Response.Write CStr(ok)
 Set obj = Nothing

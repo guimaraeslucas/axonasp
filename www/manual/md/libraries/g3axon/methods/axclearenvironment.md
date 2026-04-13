@@ -1,45 +1,36 @@
-﻿# Axclearenvironment Method
+# axclearenvironment
 
 ## Overview
-
-Clears all process environment variables and returns True.
+Removes all environment variables from the current G3Pix AxonASP process environment.
 
 ## Syntax
-
 ```asp
-result = obj.Axclearenvironment(...)
+result = obj.axclearenvironment()
 ```
 
 ## Parameters and Arguments
-
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+None.
 
 ## Return Values
-
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a Boolean (True) indicating that the environment has been cleared.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+This operation is destructive and affects the current process only. Use this function with extreme care as it may cause system utilities or other libraries to fail if they depend on specific environment variables.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
 Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axclearenvironment()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
+
+' Caution: This will remove ALL environment variables for the current process
+result = obj.axclearenvironment()
+
+If result Then
+    Response.Write "Environment variables have been cleared."
 End If
+
 Set obj = Nothing
 %>
 ```
-
-

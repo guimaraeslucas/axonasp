@@ -1,45 +1,45 @@
-﻿# Axisint Method
+# axisint
 
 ## Overview
 
-Checks whether the value type is Integer.
+The `axisint` method checks if the internal Virtual Machine (VM) type of a value is an Integer.
 
 ## Syntax
 
 ```asp
-result = obj.Axisint(...)
+result = obj.axisint(value)
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **value** (Variant): The value to check.
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a Boolean indicating whether the internal VM type of the value is `VTInteger`. Returns `True` if it is an Integer, otherwise `False`.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- It checks the native VM type, which may differ from standard VBScript `VarType` in some edge cases.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axisint()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim ax, val
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+val = 100
+
+If ax.axisint(val) Then
+    Response.Write "Value is an Integer."
 Else
-    Response.Write CStr(result)
+    Response.Write "Value is not an Integer."
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
-
-

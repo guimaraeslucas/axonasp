@@ -2,47 +2,43 @@
 
 ## Overview
 
-Sets Max Open Conns for the G3DB library.
+The **SetMaxOpenConns** method sets the maximum number of open database connections in the connection pool in G3Pix AxonASP.
 
 ## Syntax
 
 ```asp
-result = obj.SetMaxOpenConns(...)
-`````
+obj.SetMaxOpenConns(n)
+```
 
 ## Parameters and Arguments
 
-- maxOpen (Integer, Required): Maximum number of open connections.
-- Argument validation: invalid count or type raises runtime errors.
+- **n** (Integer, Required): The maximum number of open connections to the database. Use 0 for no limit.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns **Empty**.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This setting limits the total number of connections to the database from the G3Pix AxonASP server, including both in-use and idle connections.
+- It is crucial for preventing the application from overwhelming the database server with too many concurrent connections.
+- If this limit is reached, any new requests for a connection will wait until another connection is returned to the pool.
 
 ## Code Example
 
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3DB")
-result = obj.SetMaxOpenConns()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim db
+Set db = Server.CreateObject("G3DB")
+
+' Limit to 50 concurrent open connections
+db.SetMaxOpenConns 50
+
+If db.Open("mysql", "user:pass@tcp(localhost)/dbname") Then
+    ' Database operations...
+    db.Close
 End If
-Set obj = Nothing
+
+Set db = Nothing
 %>
-`````
-
-
-
-
-
+```

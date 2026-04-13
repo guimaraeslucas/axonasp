@@ -1,40 +1,34 @@
 # IsHTML Property
 
 ## Overview
-
-The IsHTML property is exposed by the G3Mail library object and returns the current state/value associated with this member.
+The **IsHTML** property gets or sets a value indicating whether the email body should be treated as HTML for the G3Pix AxonASP G3MAIL object.
 
 ## Syntax
-
 ```asp
-value = obj.IsHTML
-obj.IsHTML = newValue
+value = mail.IsHTML
+mail.IsHTML = newValue
 ```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- **newValue** (Boolean): True for HTML content, False for plain text.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a **Boolean** value.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- Setting this property directly affects how the **Body** content is rendered by the recipient's mail client.
+- This property is synchronized with **BodyFormat**.
+- Some aliases like **HtmlBody** set this property to True automatically.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3Mail")
-value = obj.IsHTML
-Response.Write CStr(value)
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+mail.Body = "<h1>Notice</h1><p>System maintenance tonight.</p>"
+mail.IsHTML = True
+
+Set mail = Nothing
 %>
 ```

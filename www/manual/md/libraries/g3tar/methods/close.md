@@ -1,48 +1,34 @@
 # Close Method
 
 ## Overview
-
-Closes the current resource and releases handles.
+Concludes active session streams alongside removing pending blockades on referenced TAR storage items safely.
 
 ## Syntax
-
 ```asp
-result = obj.Close(...)
-`````
+Dim success
+success = obj.Close()
+```
 
 ## Parameters and Arguments
-
-- none: closes active TAR handle.
-- Argument validation: invalid count or type raises runtime errors.
+- Close invocation relies entirely on internal tracking; no parameters required.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Signals operational completion reliably transmitting a `Boolean` equating True indicating termination of locks handled nicely.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Necessary logic assuring background OS file permissions get properly disposed.
+- Abandoned locks could halt consecutive actions targeting similar volumes producing unexpected errors.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, result
+Dim obj
 Set obj = Server.CreateObject("G3TAR")
-result = obj.Close()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+If obj.Open("C:\temp\test.tar") Then
+    ' File lock assumed...
+    obj.Close()
 End If
 Set obj = Nothing
 %>
-`````
-
-
-
-
-
+```

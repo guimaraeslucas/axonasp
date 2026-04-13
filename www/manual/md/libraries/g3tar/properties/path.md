@@ -1,41 +1,35 @@
 # Path Property
 
 ## Overview
-
-The Path property is exposed by the G3TAR library object and returns the current state/value associated with this member.
+Gets the active file path associated with the G3TAR archive.
 
 ## Syntax
-
 ```asp
-value = obj.Path
-obj.Path = newValue
-`````
+Dim filePath
+filePath = obj.Path
+```
 
 ## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
+- Getter: None.
 
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a `String` containing the absolute path of the current archive.
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- This property is read-only.
+- Available only after opening or creating an archive.
 
 ## Code Example
-
 ```asp
 <%
 Option Explicit
-Dim obj, value
+Dim obj, filePath
 Set obj = Server.CreateObject("G3TAR")
-value = obj.Path
-Response.Write CStr(value)
+If obj.Open("C:\temp\archive.tar") Then
+    filePath = obj.Path
+    Response.Write filePath
+End If
+obj.Close()
 Set obj = Nothing
 %>
-`````
-
+```

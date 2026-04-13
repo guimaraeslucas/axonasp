@@ -1,46 +1,45 @@
 # Clear Method
 
 ## Overview
-
-Clears the current operation context.
+The **Clear** method resets all message properties and recipient lists of the G3Pix AxonASP G3MAIL object to their default empty states.
 
 ## Syntax
-
 ```asp
-result = obj.Clear(...)
+result = mail.Clear()
 ```
 
 ## Parameters and Arguments
-
-- none: clears queued recipients and message state as implemented.
-- Argument validation: invalid count or type raises runtime errors.
+This method does not take any arguments.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value (True).
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- This method clears the **To**, **Cc**, and **Bcc** lists, as well as the **Subject**, **Body**, and **IsHTML** status.
+- Use this method when reusing the same G3MAIL object to send multiple different emails in a single script execution.
+- SMTP server settings (Host, Port, Username, Password) are NOT cleared by this method.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3Mail")
-result = obj.Clear()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim mail
+Set mail = Server.CreateObject("G3MAIL")
+
+' First email
+mail.AddAddress "user1@example.com"
+mail.Subject = "First Message"
+mail.Body = "Hello User 1"
+mail.Send()
+
+' Clear for second email
+mail.Clear()
+
+' Second email
+mail.AddAddress "user2@example.com"
+mail.Subject = "Second Message"
+mail.Body = "Hello User 2"
+mail.Send()
+
+Set mail = Nothing
 %>
 ```
-
-
-

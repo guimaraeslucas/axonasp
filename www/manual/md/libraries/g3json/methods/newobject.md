@@ -1,46 +1,27 @@
 # NewObject Method
 
 ## Overview
-
-Creates and returns a new JSON object instance.
+Creates a new, empty **Scripting.Dictionary** object.
 
 ## Syntax
-
 ```asp
-result = obj.NewObject(...)
+Set dict = json.NewObject()
 ```
-
-## Parameters and Arguments
-
-- none: creates a new empty JSON object wrapper.
-- Argument validation: invalid count or type raises runtime errors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Scripting.Dictionary** object handle.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+This method is a helper for creating native dictionary objects that are compatible with the **Stringify** method. It is functionally equivalent to `Server.CreateObject("Scripting.Dictionary")`.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3JSON")
-result = obj.NewObject()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim json, dict
+Set json = Server.CreateObject("G3JSON")
+Set dict = json.NewObject()
+dict.Add "key", "value"
+Response.Write "Dictionary created and populated"
+Set json = Nothing
 %>
 ```
-
-
-

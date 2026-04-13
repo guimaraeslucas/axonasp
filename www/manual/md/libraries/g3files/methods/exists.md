@@ -1,46 +1,33 @@
 # Exists Method
 
 ## Overview
-
-Checks whether a target resource exists.
+Returns a Boolean indicating whether a file or directory exists at the specified path.
 
 ## Syntax
-
 ```asp
-result = obj.Exists(...)
+boolExists = files.Exists(path)
 ```
 
 ## Parameters and Arguments
-
-- path (String, Required): File or folder path.
-- Argument validation: invalid count or type raises runtime errors.
+- **path** (String, Required): The target path to check.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** value. It returns **True** if the file or directory exists, and **False** otherwise.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Path resolution is relative to the AxonASP sandbox root.
+- This method is efficient for validating resources before attempting read or write operations.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILES")
-result = obj.Exists()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim files
+Set files = Server.CreateObject("G3FILES")
+If files.Exists("/web.config") Then
+    Response.Write "Configuration file exists."
 Else
-    Response.Write CStr(result)
+    Response.Write "File not found."
 End If
-Set obj = Nothing
+Set files = Nothing
 %>
 ```
-
-
-

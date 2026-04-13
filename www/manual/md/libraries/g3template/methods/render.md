@@ -1,50 +1,46 @@
 # Render Method
 
 ## Overview
-
-Renders output from the current operation context.
+Parses an external template file and returns a string containing the rendered output using an optional data object in the G3Pix AxonASP G3TEMPLATE library.
 
 ## Syntax
-
 ```asp
-result = obj.Render(...)
-`````
+renderedOutput = obj.Render(templatePath [, data])
+```
 
 ## Parameters and Arguments
-
-- templateTextOrPath (String, Required): Template source text or file path.
-- model (Variant, Optional): Data object/dictionary used by placeholders.
-- options (Variant, Optional): Rendering options map.
-- Argument validation: invalid count or type raises runtime errors.
+- **templatePath** (String, Required): The relative or absolute path to the template file on the server.
+- **data** (Variant, Optional): An object or array containing the data to be bound to the template. This is typically a **Scripting.Dictionary** or a standard **Array**.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **String** containing the fully rendered template output. If an error occurs during parsing or execution (e.g., file not found or invalid template syntax), the method returns a **String** prefixed with "Error: " followed by the error description.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The template engine uses standard Go `html/template` syntax (e.g., `{{ .ValueName }}`).
+- The method automatically resolves relative paths using `Server.MapPath`.
+- Context-aware escaping is automatically applied to prevent XSS.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3TEMPLATE")
-result = obj.Render()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim template, user, output
+Set template = Server.CreateObject("G3TEMPLATE")
+
+' Define a data dictionary
+Set user = Server.CreateObject("Scripting.Dictionary")
+user.Add "Name", "Lucas"
+user.Add "IsAdmin", True
+
+' Render the template
+output = template.Render("/templates/profile.html", user)
+
+' Check for errors and display result
+If Left(output, 6) = "Error:" Then
+    Response.Write "Rendering Failed: " & output
 Else
-    Response.Write CStr(result)
+    Response.Write output
 End If
-Set obj = Nothing
+
+Set template = Nothing
 %>
-`````
-
-
-
-
-
+```

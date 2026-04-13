@@ -1,18 +1,17 @@
-﻿# Methods
+# G3JSON Methods
 
 ## Overview
-
-This page lists methods exposed by G3JSON.
+This page provides a summary of the methods available in the **G3JSON** library for JSON processing within the AxonASP environment.
 
 ## Method List
-- LoadFile: Loads File into the current operation context.
-- NewArray: Creates and returns a new JSON array instance.
-- NewObject: Creates and returns a new JSON object instance.
-- Parse: Parses input and returns structured values.
-- Stringify: Serializes structured values into JSON text.
+
+- **LoadFile**: Reads a JSON file from the disk and parses it into a native object or array.
+- **NewArray**: Creates a new, empty VBScript-compatible array.
+- **NewObject**: Creates a new, empty **Scripting.Dictionary** object.
+- **Parse**: Converts a JSON-formatted string into a native AxonASP structure.
+- **Stringify**: Serializes an AxonASP structure (Dictionary, Array, or primitive) into a JSON string.
 
 ## Remarks
-
 - Method names are case-insensitive.
-- Validate input types and return values in production code.
-- Use Set when assigning object return values.
+- Parsing returns a **Scripting.Dictionary** object for JSON objects and a standard **Array** for JSON arrays.
+- Stringification supports nested objects and arrays.

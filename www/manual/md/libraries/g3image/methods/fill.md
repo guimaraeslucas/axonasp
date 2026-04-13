@@ -1,46 +1,30 @@
 # Fill Method
 
 ## Overview
-
-Executes the Fill operation provided by the G3IMAGE library.
+Fills the current path with the active color in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-result = obj.Fill(...)
+obj.Fill()
 ```
-
-## Parameters and Arguments
-
-- none: fills current path/shape using current fill color.
-- Argument validation: invalid count or type raises runtime errors.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns Empty upon completion.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Use SetColor or SetHexColor to define the fill color before calling this method.
+- The path is cleared after the fill operation. Use FillPreserve if you need to keep the path for further operations.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3IMAGE")
-result = obj.Fill()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+If img.NewContext(200, 200) Then
+    img.SetHexColor("#FFCC00")
+    img.DrawCircle 100, 100, 80
+    img.Fill()
 End If
-Set obj = Nothing
+Set img = Nothing
 %>
 ```
-
-
-

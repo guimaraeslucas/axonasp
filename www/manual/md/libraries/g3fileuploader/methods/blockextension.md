@@ -1,48 +1,16 @@
 # BlockExtension Method
 
 ## Overview
-
-Blocks Extension in the current validation rules.
+Registers a specific file extension to heavily restrict it. The system automatically rejects uploads containing this extension.
 
 ## Syntax
-
 ```asp
-result = obj.BlockExtension(...)
-`````
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.BlockExtension "php"
+```
 
 ## Parameters and Arguments
-
-- extension (String, Required): Single blocked extension.
-- Argument validation: invalid count or type raises runtime errors.
+- `Extension` (String, Required): The prohibited file format extension.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
-
-## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
-
-## Code Example
-
-```asp
-<%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FILEUPLOADER")
-result = obj.BlockExtension()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
-%>
-`````
-
-
-
-
-
+Returns an `Empty` variant.

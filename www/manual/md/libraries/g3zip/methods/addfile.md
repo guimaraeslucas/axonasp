@@ -1,47 +1,35 @@
 # AddFile Method
 
 ## Overview
-
-Adds File to the current operation context.
+Includes a physical file into the current write-mode archive in the G3Pix AxonASP G3ZIP library.
 
 ## Syntax
-
 ```asp
-result = obj.AddFile(...)
+success = zip.AddFile(sourcePath [, nameInZip])
 ```
 
 ## Parameters and Arguments
-
-- filePath (String, Required): Source file path.
-- archiveName (String, Optional): Name/path inside archive.
-- Argument validation: invalid count or type raises runtime errors.
+- **sourcePath** (String, Required): The path to the file on the server to be added.
+- **nameInZip** (String, Optional): The relative path and name the file will have inside the ZIP archive. If omitted, the library uses the base name of the source file.
 
 ## Return Values
-
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+Returns a **Boolean** indicating whether the file was successfully added to the archive.
 
 ## Remarks
-
-- Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- The object must be in **Write** mode (initialized via the **Create** method).
+- Leading slashes in `nameInZip` are automatically removed.
+- Path resolution for `sourcePath` is handled relative to the AxonASP sandbox.
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3ZIP")
-result = obj.AddFile()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim zip
+Set zip = Server.CreateObject("G3ZIP")
+If zip.Create("/temp/archive.zip") Then
+    ' Add a file and rename it within the ZIP
+    zip.AddFile "/images/logo.png", "assets/branding.png"
+    zip.Close
 End If
-Set obj = Nothing
+Set zip = Nothing
 %>
 ```
-
-
-

@@ -1,45 +1,45 @@
-﻿# Axgetremotefile Method
+# axgetremotefile
 
 ## Overview
 
-Fetches a remote HTTP/HTTPS resource and returns the response body text on success.
+The `axgetremotefile` method performs a synchronous HTTP GET request to a specified URL and returns the response body.
 
 ## Syntax
 
 ```asp
-result = obj.Axgetremotefile(...)
+result = obj.axgetremotefile(url)
 ```
 
 ## Parameters and Arguments
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **url** (String): The full URL of the remote file to fetch (must start with `http://` or `https://`).
 
 ## Return Values
 
-- Returns a Variant compatible with Classic ASP/VBScript.
-- Depending on operation, the result can be String, Boolean, Number, Array, or Empty.
+Returns a String containing the response body if the request is successful (HTTP 200 OK). Returns the Boolean `False` if the request fails, times out, or returns a non-200 status code.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- This method is part of the G3Pix AxonASP library.
+- The request has a default timeout of 10 seconds.
+- Method names in G3Pix AxonASP are case-insensitive.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.Functions")
-result = obj.Axgetremotefile()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim ax, content
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+content = ax.axgetremotefile("https://api.example.com/data.json")
+
+If VarType(content) = vbString Then
+    Response.Write "File content received: " & Server.HTMLEncode(content)
 Else
-    Response.Write CStr(result)
+    Response.Write "Failed to fetch the remote file."
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
-
-

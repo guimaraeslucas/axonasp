@@ -1,40 +1,31 @@
 # DefaultFormat Property
 
 ## Overview
-
-The DefaultFormat property is exposed by the G3IMAGE library object and returns the current state/value associated with this member.
+Gets or sets the default image format used for rendering operations in the G3Pix AxonASP G3IMAGE library.
 
 ## Syntax
-
 ```asp
-value = obj.DefaultFormat
-obj.DefaultFormat = newValue
+' Get the current format
+format = obj.DefaultFormat
+
+' Set a new format
+obj.DefaultFormat = "jpg"
 ```
 
-## Parameters and Arguments
-
-- Getter: no arguments.
-- Setter (when supported): one Variant value.
-
 ## Return Values
-
-Returns the current property value as Variant. Read-only members reject assignments.
+Returns a String containing the current default format (e.g., "png" or "jpg").
 
 ## Remarks
-
-- Property names are case-insensitive.
-- Setters are validated by dispatch logic and can raise runtime errors.
-- For object-typed values, assign with Set.
+- The default value is "png".
+- Supported values are "png", "jpg", and "jpeg".
 
 ## Code Example
-
 ```asp
 <%
-Option Explicit
-Dim obj, value
-Set obj = Server.CreateObject("G3IMAGE")
-value = obj.DefaultFormat
-Response.Write CStr(value)
-Set obj = Nothing
+Dim img
+Set img = Server.CreateObject("G3IMAGE")
+img.DefaultFormat = "jpg"
+Response.Write "Default format: " & img.DefaultFormat
+Set img = Nothing
 %>
 ```
