@@ -1,45 +1,67 @@
-# Axgetconfig
+# AxGetConfig
 
 ## Overview
 
-Reads one AxonASP configuration key from axonasp.toml (with env override support when enabled).
+Use `AxGetConfig` to read one key from the active G3Pix AxonASP configuration.
+
+## Prerequisites
+
+- Instantiate the library with `Server.CreateObject("G3AXON.FUNCTIONS")`.
+- Ensure the runtime can load `config/axonasp.toml`.
 
 ## Syntax
 
 ```asp
-result = obj.Axgetconfig(...)
+value = obj.AxGetConfig(key)
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- **key** (String): Fully qualified configuration key, such as `global.golang_memory_limit_mb`.
 
-## Return Values
+## Return Value
 
-- Returns Empty.
-
+- **Empty**: Returned when `key` is omitted.
+- **Empty**: Returned when `key` is blank.
+- **Empty**: Returned when the config file is not loaded.
+- **Empty**: Returned when the key does not exist.
+- **String**: Returned when the resolved config value is textual.
+- **Boolean**: Returned when the resolved config value is true/false.
+- **Integer**: Returned when the resolved config value is an integer type.
+- **Double**: Returned when the resolved config value is a floating-point type.
+- **Array**: Returned when the resolved config value is a list.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- When `global.viper_automatic_env` is enabled, environment variables can override file values.
+- Method names are case-insensitive in VBScript dispatch.
 
-## Code Example
+## Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
-result = obj.Axgetconfig()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
+Dim ax, memLimit, missingKey
+
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+memLimit = ax.AxGetConfig("global.golang_memory_limit_mb")
+missingKey = ax.AxGetConfig("global.this_key_does_not_exist")
+
+Response.Write "Memory limit: " & CStr(memLimit) & "<br>"
+If IsEmpty(missingKey) Then
+    Response.Write "Missing key returned Empty"
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
+
+## API Reference
+
+- **Object**: `G3AXON.FUNCTIONS`
+- **Method**: `AxGetConfig`
+- **Arguments**: `key As String`
+- **Returns**: `Empty`, `String`, `Boolean`, `Integer`, `Double`, or `Array` based on the resolved key state and value type
 
 

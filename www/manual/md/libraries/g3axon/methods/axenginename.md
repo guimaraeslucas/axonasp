@@ -1,45 +1,57 @@
-# Axenginename
+# AxEngineName
 
 ## Overview
 
-Returns the AxonASP engine name string.
+Use `AxEngineName` to identify the runtime engine name exposed by G3Pix AxonASP.
+
+## Prerequisites
+
+- Instantiate the library with `Server.CreateObject("G3AXON.FUNCTIONS")`.
 
 ## Syntax
 
 ```asp
-result = obj.Axenginename(...)
+engineName = obj.AxEngineName()
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- This method does not require parameters.
 
-## Return Values
+## Return Value
 
-- Returns a String.
-
+- **String**: Always returns `AxonASP`.
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- Use this method for runtime identification checks before calling engine-specific routines.
+- Method names are case-insensitive in VBScript dispatch.
 
-## Code Example
+## Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
-result = obj.Axenginename()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim ax, engineName
+
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+engineName = ax.AxEngineName()
+If engineName = "AxonASP" Then
+    Response.Write "Running on G3Pix AxonASP"
 Else
-    Response.Write CStr(result)
+    Response.Write "Unknown engine"
 End If
-Set obj = Nothing
+
+Set ax = Nothing
 %>
 ```
+
+## API Reference
+
+- **Object**: `G3AXON.FUNCTIONS`
+- **Method**: `AxEngineName`
+- **Arguments**: none
+- **Returns**: `String` (`AxonASP`)
 
 

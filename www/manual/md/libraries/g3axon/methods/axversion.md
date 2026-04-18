@@ -1,45 +1,53 @@
-# Axversion
+# AxVersion
 
 ## Overview
 
-Returns the current AxonASP runtime version string.
+Use `AxVersion` to read the active runtime version string of G3Pix AxonASP.
+
+## Prerequisites
+
+- Instantiate the library with `Server.CreateObject("G3AXON.FUNCTIONS")`.
 
 ## Syntax
 
 ```asp
-result = obj.Axversion(...)
+versionText = obj.AxVersion()
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- This method does not require parameters.
 
-## Return Values
+## Return Value
 
-- Returns a String.
-
+- **String**: Returns the current AxonASP runtime version (for example, `1.2.3` or a build-specific version string configured at build time).
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- Use this method for diagnostics, telemetry, and feature gating by runtime version.
+- Method names are case-insensitive in VBScript dispatch.
 
-## Code Example
+## Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
-result = obj.Axversion()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim ax, versionText
+
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+versionText = ax.AxVersion()
+Response.Write "G3Pix AxonASP Version: " & versionText
+
+Set ax = Nothing
 %>
 ```
+
+## API Reference
+
+- **Object**: `G3AXON.FUNCTIONS`
+- **Method**: `AxVersion`
+- **Arguments**: none
+- **Returns**: `String` (current runtime version)
 
 

@@ -24,7 +24,7 @@ We didn't just update Classic ASP. We completely reimagined it for the modern we
 - **Minimal Memory Footprint:** Code is engineered to minimize garbage collection triggers. Scripts complete faster and consume less memory than traditional interpreters.
 
 ### Total Compatibility Meets Innovation
-- **100% Classic ASP Standards Compliance:** Your legacy code drops right in. Full support for VBScript semantics, ADOB, MSXML, FileSystemObject, Dictionary, WScript.Shell, and all intrinsic ASP objects.
+- **Classic ASP Standards Compliance:** Your legacy code drops right in. Full support for VBScript semantics, ADOB, MSXML, FileSystemObject, Dictionary, WScript.Shell, and all intrinsic ASP objects.
 - **60+ Custom Axon Functions:** High-performance native functions for arrays, strings, system operations, and advanced utilities—written in Go, executing at near-native speed.
 - **Enterprise Native Libraries:** G3Java, G3JSON, G3DB, G3HTTP, G3Mail, G3Image, G3Crypto, G3ZIP, G3TAR, G3ZSTD, G3PDF, G3Template, and many more—zero overhead, maximum power.
 

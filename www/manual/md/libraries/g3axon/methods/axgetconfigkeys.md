@@ -1,45 +1,57 @@
-# Axgetconfigkeys
+# AxGetConfigKeys
 
 ## Overview
 
-Returns an array with all available AxonASP configuration keys.
+Use `AxGetConfigKeys` to list every configuration key currently visible to G3Pix AxonASP.
+
+## Prerequisites
+
+- Instantiate the library with `Server.CreateObject("G3AXON.FUNCTIONS")`.
+- Ensure the runtime can load `config/axonasp.toml` when you expect non-empty output.
 
 ## Syntax
 
 ```asp
-result = obj.Axgetconfigkeys(...)
+keys = obj.AxGetConfigKeys()
 ```
 
-## Parameters and Arguments
+## Parameters
 
-- Parameters (Variant, Optional): This method accepts arguments according to runtime dispatch behavior.
-- Validation: argument count and type checks are handled at runtime by AxonASP.
+- This method does not require parameters.
 
-## Return Values
+## Return Value
 
-- Returns an Array or a String.
-
+- **Array**: Zero-based VBArray containing configuration keys as strings.
+- **Array**: Returns an empty zero-length array when no keys are available (for example, when the config file is not loaded).
 
 ## Remarks
 
-- Method names are case-insensitive.
-- For object return values, use Set when assigning the return value.
+- Each element is a full key name (for example, `global.golang_memory_limit_mb`).
+- Method names are case-insensitive in VBScript dispatch.
 
-## Code Example
+## Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3AXON.FUNCTIONS")
-result = obj.Axgetconfigkeys()
-If IsObject(result) Then
-    Response.Write "Object returned"
-Else
-    Response.Write CStr(result)
-End If
-Set obj = Nothing
+Dim ax, keys, i
+
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+keys = ax.AxGetConfigKeys()
+For i = 0 To UBound(keys)
+    Response.Write keys(i) & "<br>"
+Next
+
+Set ax = Nothing
 %>
 ```
+
+## API Reference
+
+- **Object**: `G3AXON.FUNCTIONS`
+- **Method**: `AxGetConfigKeys`
+- **Arguments**: none
+- **Returns**: `Array` of `String` keys (zero-based VBArray)
 
 
