@@ -23,6 +23,12 @@ contents:
     dst: /opt/axonasp/axonasp-mcp
   - src: ./axonasp-testsuite
     dst: /opt/axonasp/axonasp-testsuite
+  - src: ./axonasp-service
+    dst: /opt/axonasp/axonasp-service
+  - src: ./install-service.sh
+    dst: /opt/axonasp/install-service.sh
+  - src: ./uninstall-service.sh
+    dst: /opt/axonasp/uninstall-service.sh
 
   # Standalone files
   - src: ./LICENSE.txt
