@@ -207,7 +207,7 @@ G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
 | **Modernization** | Limited | 60+ extended functions |
 | **Container Ready** | Challenging | Docker-friendly |
 | **Web Server Integration** | IIS only | nginx, Apache, IIS, Caddy, FastCGI |
-| **URL Rewriting** | IIS modules | Built-in web.config support |
+| **URL Rewriting** | IIS modules | Built-in web.config support on proxy server |
 
 ### 🤝 Contributing
 

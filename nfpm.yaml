@@ -1,15 +1,27 @@
 # nfpm.yaml
-name: "axonasp"
+name: "AxonASP"
 arch: "amd64"
 platform: "linux"
 version: "${VERSION}" # Injected by GitHub Actions
 section: "web"
 priority: "extra"
-maintainer: "G3pix Ltda <axonasp@g3pix.com.br>"
+maintainer: "Lucas Guimaraes <axonasp@g3pix.com.br>"
 description: "AxonASP Server - ASP Classic web server written in Go with Proxy, FastCGI, CLI, TestSuite and MCP support. Small, fast and secure alternative to IIS for hosting legacy ASP applications on modern platforms."
-vendor: "G3pix Ltda"
+summary: "AxonASP Server - ASP Classic web server written in Go"
+vendor: "G3pix"
 homepage: "https://g3pix.com.br/axonasp"
 license: "MPL-2.0"
+recommends: 
+  - "net-tools" 
+  - "nginx" 
+
+scripts:
+  postinstall: ./post-install.sh
+
+empty_folders:
+  - /opt/axonasp/temp/
+  - /opt/axonasp/temp/cache/
+  - /opt/axonasp/temp/session/
 
 contents:
   # Binaries
@@ -29,6 +41,8 @@ contents:
     dst: /opt/axonasp/install-service.sh
   - src: ./uninstall-service.sh
     dst: /opt/axonasp/uninstall-service.sh
+  - src: ./post-install.sh
+    dst: /opt/axonasp/post-install.sh
 
   # Standalone files
   - src: ./LICENSE.txt
@@ -46,3 +60,29 @@ contents:
   - src: ./mcp/
     dst: /opt/axonasp/mcp/
     type: tree
+
+  # Symlink for easier access
+  - src: /opt/axonasp/axonasp-http
+    dst: /usr/bin/axonasp-http
+    type: symlink
+
+  - src: /opt/axonasp/axonasp-cli
+    dst: /usr/bin/axonasp-cli
+    type: symlink
+
+  - src: /opt/axonasp/axonasp-fastcgi
+    dst: /usr/bin/axonasp-fastcgi
+    type: symlink
+
+  - src: /opt/axonasp/axonasp-mcp
+    dst: /usr/bin/axonasp-mcp
+    type: symlink
+
+  - src: /opt/axonasp/axonasp-testsuite
+    dst: /usr/bin/axonasp-testsuite
+    type: symlink
+
+  - src: /opt/axonasp/config/axonasp.toml
+    dst: /etc/axonasp/config/axonasp.toml
+    type: symlink
+

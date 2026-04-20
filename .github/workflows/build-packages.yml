@@ -13,7 +13,7 @@ on:
 
 jobs:
   build-packages:
-    name: Build DEB & RPM
+    name: Build DEB, RPM & APK Packages
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required for GitHub Releases
@@ -74,6 +74,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: nfpm package --packager rpm --target .
 
+      - name: Build Alpine package (.apk)
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: nfpm package --packager apk --target .
+
       - name: Upload Linux Packages as Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -81,6 +86,7 @@ jobs:
           path: |
             *.deb
             *.rpm
+            *.apk
 
       - name: Publish to GitHub Releases
         if: startsWith(github.ref, 'refs/tags/v')
@@ -89,3 +95,4 @@ jobs:
           files: |
             *.deb
             *.rpm
+            *.apk
