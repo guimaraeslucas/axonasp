@@ -12,7 +12,6 @@ homepage: "https://g3pix.com.br/axonasp"
 license: "MPL-2.0"
 recommends: 
   - "net-tools" 
-  - "nginx" 
 
 scripts:
   postinstall: ./post-install.sh
@@ -55,31 +54,6 @@ contents:
     dst: /opt/axonasp/mcp/
     type: tree
 
-  # Symlink for easier access
-  - src: /opt/axonasp/axonasp-http
-    dst: /usr/bin/axonasp-http
-    type: symlink
-
-  - src: /opt/axonasp/axonasp-cli
-    dst: /usr/bin/axonasp-cli
-    type: symlink
-
-  - src: /opt/axonasp/axonasp-fastcgi
-    dst: /usr/bin/axonasp-fastcgi
-    type: symlink
-
-  - src: /opt/axonasp/axonasp-mcp
-    dst: /usr/bin/axonasp-mcp
-    type: symlink
-
-  - src: /opt/axonasp/axonasp-testsuite
-    dst: /usr/bin/axonasp-testsuite
-    type: symlink
-
-  - src: /opt/axonasp/config/axonasp.toml
-    dst: /etc/axonasp/config/axonasp.toml
-    type: symlink
-
 # Empty Folders
   - dst: /opt/axonasp/temp/
     type: dir
@@ -87,3 +61,30 @@ contents:
     type: dir
   - dst: /opt/axonasp/temp/session/
     type: dir
+
+  # Symlink for easier access
+  - src: /opt/axonasp/axonasp-http
+    dst: /usr/bin/axonasp-http
+    type: symlink
+  - src: /opt/axonasp/axonasp-cli
+    dst: /usr/bin/axonasp-cli
+    type: symlink
+  - src: /opt/axonasp/axonasp-fastcgi
+    dst: /usr/bin/axonasp-fastcgi
+    type: symlink
+  - src: /opt/axonasp/axonasp-mcp
+    dst: /usr/bin/axonasp-mcp
+    type: symlink
+  - src: /opt/axonasp/axonasp-testsuite
+    dst: /usr/bin/axonasp-testsuite
+    type: symlink
+  - src: /opt/axonasp/config/axonasp.toml
+    dst: /etc/axonasp/config/axonasp.toml
+    type: symlink
+  - src: /opt/axonasp/temp/cache/
+    dst: /var/cache/axonasp/
+    type: symlink
+  - src: /opt/axonasp/temp/session/
+    dst: /var/lib/axonasp/session/
+    type: symlink
+

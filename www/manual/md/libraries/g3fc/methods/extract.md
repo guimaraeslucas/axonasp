@@ -1,46 +1,49 @@
 # Extract Method
 
 ## Overview
-
-Extracts archived content into output paths.
+Extract all entries from a G3FC archive into a target directory.
 
 ## Syntax
 
 ```asp
-result = obj.Extract(...)
-`````
+result = fc.Extract(archivePath, outputFolder [, password])
+```
 
 ## Parameters and Arguments
 
-- outputFolder (String, Required): Destination directory for extraction.
-- Argument validation: invalid count or type raises runtime errors.
+- archivePath (String, Required): Source `.g3fc` file path.
+- outputFolder (String, Required): Destination directory path.
+- password (String, Optional): Archive password used when the archive is encrypted.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+- Returns `True` when extraction completes successfully.
+- Returns `False` when arguments are missing, path resolution fails, or extraction fails.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Runtime extraction failures raise an internal VBScript error and the method still returns `False`.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FC")
-result = obj.Extract()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim fc, ok
+Set fc = Server.CreateObject("G3FC")
+
+ok = fc.Extract("/sandbox/archive.g3fc", "/sandbox/extracted", "AxonPass")
+
+If ok Then
+    Response.Write "Archive extracted successfully."
 Else
-    Response.Write CStr(result)
+    Response.Write "Archive extraction failed."
 End If
-Set obj = Nothing
+
+Set fc = Nothing
 %>
-`````
+```
 
 
 

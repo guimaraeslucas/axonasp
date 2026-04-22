@@ -1,46 +1,49 @@
 # Info Method
 
 ## Overview
-
-Returns structured runtime information for the current context.
+Export archive metadata from a G3FC file into an output file.
 
 ## Syntax
 
 ```asp
-result = obj.Info(...)
-`````
+result = fc.Info(archivePath, outputFilePath [, password])
+```
 
 ## Parameters and Arguments
 
-- entryName (String, Optional): Entry path/name to inspect.
-- Argument validation: invalid count or type raises runtime errors.
+- archivePath (String, Required): Source `.g3fc` file path.
+- outputFilePath (String, Required): Destination file path that receives the exported metadata.
+- password (String, Optional): Archive password for encrypted archives.
 
 ## Return Values
 
-Returns a Variant result. Depending on the operation, this can be String, Boolean, Number, Array, Dictionary/object handle, or Empty.
+- Returns `True` when metadata export succeeds.
+- Returns `False` when required arguments are missing, path resolution fails, or export fails.
 
 ## Remarks
 
 - Method names are case-insensitive.
-- Prefer explicit variable assignment and defensive checks before using returned values.
-- For object values, use Set when assigning the return value.
+- Runtime export failures raise an internal VBScript error and the method still returns `False`.
 
 ## Code Example
 
 ```asp
 <%
 Option Explicit
-Dim obj, result
-Set obj = Server.CreateObject("G3FC")
-result = obj.Info()
-If IsObject(result) Then
-    Response.Write "Object returned"
+Dim fc, ok
+Set fc = Server.CreateObject("G3FC")
+
+ok = fc.Info("/sandbox/archive.g3fc", "/sandbox/archive-info.txt", "AxonPass")
+
+If ok Then
+    Response.Write "Archive info exported."
 Else
-    Response.Write CStr(result)
+    Response.Write "Archive info export failed."
 End If
-Set obj = Nothing
+
+Set fc = Nothing
 %>
-`````
+```
 
 
 

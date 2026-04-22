@@ -10,10 +10,11 @@
     * [web.config Support](md/runtime/webconfig.md)
     * [MyInfo.xml](md/runtime/myinfo-xml.md)
     * [Script Caching](md/runtime/script-caching.md)
-    * [Locale Support and Language Formatting](md/runtime/locales.md)
+    * [Locale Support](md/runtime/locales.md)
     * [FastCGI Setup](md/runtime/fastcgi-setup.md)
     * [Reverse Proxy Setup](md/runtime/reverse-proxy.md)
     * [Running as a Linux Service](md/runtime/linux-service.md)
+    * [Installing from Linux Packages](md/runtime/linux-packages.md)
     * [Service Wrapper](md/runtime/service-wrapper.md)
     * [MCP Server and VS Code](md/runtime/mcp-vscode.md)
     * [System Pages and Error Pages](md/runtime/system-pages.md)
@@ -652,7 +653,7 @@
             * [Charset](md/libraries/adodb-stream/properties/charset.md)
             * [LineSeparator](md/libraries/adodb-stream/properties/lineseparator.md)
             * [EOS](md/libraries/adodb-stream/properties/eos.md)
-    * Scripting.Dictionary
+    * SCRIPTING.DICTIONARY
         * [Overview](md/libraries/scripting-dictionary/overview.md)
         * [Methods](md/libraries/scripting-dictionary/methods.md)
         * [Properties](md/libraries/scripting-dictionary/properties.md)
@@ -669,7 +670,7 @@
         * Properties Detail
             * [Comparemode](md/libraries/scripting-dictionary/properties/comparemode.md)
             * [Count](md/libraries/scripting-dictionary/properties/count.md)
-    * Scripting.FileSystemObject
+    * SCRIPTING.FILESYSTEMOBJECT
         * [Overview](md/libraries/scripting-filesystemobject/overview.md)
         * [Methods](md/libraries/scripting-filesystemobject/methods.md)
         * [Properties](md/libraries/scripting-filesystemobject/properties.md)

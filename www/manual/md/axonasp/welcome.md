@@ -59,7 +59,7 @@ We didn't just update Classic ASP. We completely reimagined it for the modern we
 This manual is organized to help you understand AxonASP from the ground up:
 
 ### Section: Runtime
-Covers deployment modes, internal architecture, script caching, locale support, global.asa lifecycle, web.config directives, FastCGI setup, reverse proxy configuration, running as a Linux service, the service wrapper, system and error pages, and MCP Server integration with VS Code.
+Covers deployment modes, internal architecture, script caching, locale support, global.asa lifecycle, web.config directives, FastCGI setup, reverse proxy configuration, running as a Linux service, installing from pre-built Linux packages (DEB, RPM, APK), the service wrapper, system and error pages, and MCP Server integration with VS Code.
 
 ### Section: Configuration
 Documents the `axonasp.toml` configuration file: all available keys, default values, and explanations for each setting that controls the engine, server, sessions, caching, and logging.
@@ -90,7 +90,7 @@ Guidelines for writing manual pages and for programming Classic ASP with LLMs. R
 ## Key Capabilities at a Glance
 
 **Server-Side Power:**
-- Classic ASP page execution with 100% Microsoft compatibility
+- Classic ASP page execution with 99% Microsoft compatibility
 - VBScript with all standard functions and operators
 - Full intrinsic object support (Request, Response, Server, Session, Application)
 - Advanced error handling with line-level debugging

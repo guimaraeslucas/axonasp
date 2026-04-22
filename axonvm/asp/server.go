@@ -270,7 +270,7 @@ func (s *Server) CreateObject(progID string) (ApplicationValue, error) {
 		return NewApplicationEmpty(), err
 	}
 
-	err := fmt.Errorf("ActiveX cannot create object: %s", trimmed)
+	err := fmt.Errorf("AxonASP cannot create object: %s", trimmed)
 	s.SetLastError(NewVBScriptASPError(vbscript.ActiveXCannotCreateObject, "Server.CreateObject", "ASP", err.Error(), "", 0, 0))
 	return NewApplicationEmpty(), err
 }

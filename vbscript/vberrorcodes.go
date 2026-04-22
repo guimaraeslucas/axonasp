@@ -210,7 +210,7 @@ var VBScriptErrorMessages = map[VBSyntaxErrorCode]string{
 	InvalidUseOfNull:                             "Invalid use of Null",
 	CouldNotCreateTheRequiredTemporaryFile:       "Could not create the required temporary file",
 	CouldNotFindTargetObject:                     "Could not find target object",
-	ActiveXCannotCreateObject:                    "ActiveX cannot create object",
+	ActiveXCannotCreateObject:                    "AxonASP cannot create object",
 	ClassDoesNotSupportAutomation:                "Class does not support Automation",
 	FileNameOrClassNameNotFound:                  "File name or class name not found during Automation operation",
 	ObjectDoesntSupportThisPropertyOrMethod:      "Object doesn’t support this property or method",
