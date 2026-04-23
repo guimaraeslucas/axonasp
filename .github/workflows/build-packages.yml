@@ -3,17 +3,16 @@ name: Build OS Packages
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
-  pull_request:
-    branches:
-      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-packages:
-    name: Build DEB, RPM & APK Packages
+    name: Build DEB, RPM & APK Packages + Windows Zip
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required for GitHub Releases
@@ -42,7 +41,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Build Go binaries
+      - name: Install dependencies
+        run: |
+          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+
+      - name: Build Linux binaries
         env:
           FULL_VERSION: ${{ steps.version.outputs.value }}
         run: |
@@ -52,6 +55,22 @@ jobs:
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-mcp ./mcp
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-service ./service
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-testsuite ./testsuite
+
+      - name: Generate Windows Resources
+        run: |
+          export PATH=$PATH:$(go env GOPATH)/bin
+          go generate ./...
+
+      - name: Build Windows binaries
+        env:
+          FULL_VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-http.exe ./server
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-fastcgi.exe ./fastcgi
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-cli.exe ./cli
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-mcp.exe ./mcp
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-service.exe ./service
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-testsuite.exe ./testsuite
 
       - name: Remove test directory from www
         run: |
@@ -79,14 +98,25 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: nfpm package --packager apk --target .
 
-      - name: Upload Linux Packages as Artifacts
+      - name: Create Windows Portable Zip
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p axonasp-windows
+          cp *.exe axonasp-windows/
+          cp -r www config mcp LICENSE.txt global.asa axonasp-windows/
+          zip -r "axonasp-windows-${VERSION}-amd64.zip" axonasp-windows/
+
+      - name: Upload Packages as Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: axonasp-linux-packages
+          name: axonasp-packages
           path: |
             *.deb
             *.rpm
             *.apk
+            *.zip
+
 
       - name: Publish to GitHub Releases
         if: startsWith(github.ref, 'refs/tags/v')
@@ -96,3 +126,4 @@ jobs:
             *.deb
             *.rpm
             *.apk
+            *.zip

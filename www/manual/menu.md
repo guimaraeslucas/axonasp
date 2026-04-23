@@ -18,6 +18,7 @@
     * [Service Wrapper](md/runtime/service-wrapper.md)
     * [MCP Server and VS Code](md/runtime/mcp-vscode.md)
     * [System Pages and Error Pages](md/runtime/system-pages.md)
+    * [AxonASP and VBScript Error Code Reference](md/runtime/axonasp-error-codes.md)
 * Configuration
     * [axonasp.toml](md/config/axonasp-toml.md)
 * ASP Foundations

@@ -15,6 +15,9 @@ coverage.*
 *.coverprofile
 profile.cov
 
+#Ignore pandoc
+pandoc.exe
+
 # Git and IDE
 .vscode/
 .DS_Store

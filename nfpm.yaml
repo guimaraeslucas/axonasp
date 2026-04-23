@@ -1,11 +1,11 @@
 # nfpm.yaml
-name: "AxonASP"
+name: "axonasp"
 arch: "amd64"
 platform: "linux"
 version: "${VERSION}" # Injected by GitHub Actions
 section: "web"
 priority: "extra"
-maintainer: "Lucas Guimaraes <axonasp@g3pix.com.br>"
+maintainer: "Lucas Guimarães - G3pix <axonasp@g3pix.com.br>"
 description: "AxonASP Server - ASP Classic web server written in Go with Proxy, FastCGI, CLI, TestSuite and MCP support. Small, fast and secure alternative to IIS for hosting legacy ASP applications on modern platforms."
 vendor: "G3pix"
 homepage: "https://g3pix.com.br/axonasp"
