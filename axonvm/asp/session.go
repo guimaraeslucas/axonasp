@@ -68,6 +68,12 @@ type sessionDiskPayload struct {
 	LastAccessed  time.Time                   `json:"last_accessed"`
 }
 
+// sessionDiskExpiryPayload stores only fields needed to evaluate disk session expiration.
+type sessionDiskExpiryPayload struct {
+	Timeout      int       `json:"timeout"`
+	LastAccessed time.Time `json:"last_accessed"`
+}
+
 const (
 	defaultSessionTimeoutMinutes = 20
 	defaultSessionLCID           = 1033
@@ -642,16 +648,30 @@ func StopSessionAutoFlush() {
 func FlushRegisteredSessions(force bool) error {
 	sessionRegistryMu.RLock()
 	sessions := make([]*Session, 0, len(sessionRegistry))
+	registeredIDs := make(map[string]struct{}, len(sessionRegistry))
 	for _, session := range sessionRegistry {
 		sessions = append(sessions, session)
+		if session != nil {
+			registeredIDs[session.ID] = struct{}{}
+		}
 	}
 	sessionRegistryMu.RUnlock()
 
 	var firstErr error
+	now := time.Now()
 	for _, session := range sessions {
 		if session == nil {
 			continue
 		}
+
+		if session.IsAbandoned() || session.isExpiredAt(now) {
+			err := session.Delete()
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+
 		var err error
 		if force {
 			err = session.Save()
@@ -663,7 +683,92 @@ func FlushRegisteredSessions(force bool) error {
 		}
 	}
 
+	if err := cleanupExpiredSessionFilesOnDisk(now, registeredIDs); err != nil && firstErr == nil {
+		firstErr = err
+	}
+
 	return firstErr
+}
+
+// cleanupExpiredSessionFilesOnDisk removes expired persisted sessions that are not registered in memory.
+func cleanupExpiredSessionFilesOnDisk(now time.Time, registeredIDs map[string]struct{}) error {
+	entries, err := os.ReadDir(sessionStorageDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var firstErr error
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+
+		sessionID := strings.TrimSuffix(name, ".json")
+		if _, ok := registeredIDs[sessionID]; ok {
+			continue
+		}
+
+		path := filepath.Join(sessionStorageDir, name)
+		expired, checkErr := persistedSessionFileExpired(path, now)
+		if checkErr != nil {
+			if firstErr == nil {
+				firstErr = checkErr
+			}
+			continue
+		}
+		if !expired {
+			continue
+		}
+
+		if removeErr := os.Remove(path); removeErr != nil && !os.IsNotExist(removeErr) {
+			if firstErr == nil {
+				firstErr = removeErr
+			}
+		}
+	}
+
+	return firstErr
+}
+
+// persistedSessionFileExpired checks expiration using only timeout and last access fields from disk JSON.
+func persistedSessionFileExpired(path string, now time.Time) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer file.Close()
+
+	var payload sessionDiskExpiryPayload
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&payload); err != nil {
+		return false, err
+	}
+
+	timeoutMinutes := payload.Timeout
+	if timeoutMinutes <= 0 {
+		timeoutMinutes = defaultSessionTimeoutMinutes
+	}
+	if payload.LastAccessed.IsZero() {
+		if info, infoErr := os.Stat(path); infoErr == nil {
+			payload.LastAccessed = info.ModTime()
+		} else if os.IsNotExist(infoErr) {
+			return false, nil
+		} else {
+			return false, infoErr
+		}
+	}
+
+	return now.Sub(payload.LastAccessed) > time.Duration(timeoutMinutes)*time.Minute, nil
 }
 
 // SetSessionStorageDir changes session persistence directory for tests and tooling.
@@ -740,4 +845,16 @@ func (s *Session) markDirtyLocked() {
 	s.touchLocked()
 	s.dirty = true
 	s.version++
+}
+
+// isExpiredAt reports whether timeout elapsed using a provided timestamp.
+func (s *Session) isExpiredAt(now time.Time) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	timeout := s.Timeout
+	if timeout <= 0 {
+		timeout = defaultSessionTimeoutMinutes
+	}
+	return now.Sub(s.LastAccessed) > time.Duration(timeout)*time.Minute
 }

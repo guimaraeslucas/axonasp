@@ -85,7 +85,9 @@ End Function
         -->
     <head>
         <meta charset="UTF-8" />
-        <title>AxonASP Documentation Library</title>
+        <title>
+            AxonASP Documentation Library -<%= page %>
+        </title>
         <style>
             :root {
                 --win-blue-dark: #003399;
@@ -694,7 +696,7 @@ End Function
                 // Expand the current category based on URL
                 const currentPage = (
                     new URLSearchParams(window.location.search).get("page") ||
-                    "intro/welcome"
+                    "axonasp/welcome"
                 ).toLowerCase();
                 const links = document.querySelectorAll(".treeview a");
                 links.forEach((link) => {

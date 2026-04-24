@@ -80,7 +80,7 @@ golang_memory_limit_mb = 128
 # Interval in seconds used to asynchronously flush dirty in-memory sessions to disk.
 # A value greater than 0 keeps session writes off the request hot path while still
 # guaranteeing a safe flush on process shutdown.
-session_flush_interval_seconds = 15
+session_flush_interval_seconds = 120
 
 # The architecture of the platform for which the ADODB library is called from (just for Access Database and in Windows). This is important for compatibility with the database drivers used by your ASP applications. If you are running a 64-bit operating system, you should set this to "amd64". If you are running a 32-bit operating system, you should set this to "386". You can use the 386 ADODB on your 64-bit Windows server, but you need to install the 32-bit version. You can also set it to "auto" to let the server automatically detect the architecture of the platform it is running on. 
 adodb_platform_architecture = "auto"

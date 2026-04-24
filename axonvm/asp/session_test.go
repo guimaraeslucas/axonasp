@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // TestSessionCaseInsensitiveContents verifies case-insensitive Session storage semantics.
@@ -276,5 +277,81 @@ func TestFlushRegisteredSessions(t *testing.T) {
 	}
 	if session.IsDirty() {
 		t.Fatalf("expected session clean after forced flush")
+	}
+}
+
+// TestFlushRegisteredSessionsRemovesExpiredRegistered verifies expired registered sessions are deleted from disk and registry.
+func TestFlushRegisteredSessionsRemovesExpiredRegistered(t *testing.T) {
+	tempDir := t.TempDir()
+	SetSessionStorageDir(filepath.Join(tempDir, "session"))
+	t.Cleanup(func() { SetSessionStorageDir("") })
+
+	sessionRegistryMu.Lock()
+	sessionRegistry = make(map[string]*Session)
+	sessionRegistryMu.Unlock()
+
+	session := NewSessionWithID("expired-registered")
+	session.SetTimeout(1)
+	session.mu.Lock()
+	session.LastAccessed = time.Now().Add(-2 * time.Minute)
+	session.dirty = false
+	session.mu.Unlock()
+
+	if err := session.Save(); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+	registerSession(session)
+
+	if err := FlushRegisteredSessions(false); err != nil {
+		t.Fatalf("FlushRegisteredSessions returned error: %v", err)
+	}
+
+	if _, err := os.Stat(sessionFilePath(session.ID)); !os.IsNotExist(err) {
+		t.Fatalf("expected expired registered session file to be deleted, got err=%v", err)
+	}
+	if existing := getRegisteredSession(session.ID); existing != nil {
+		t.Fatalf("expected expired registered session to be unregistered")
+	}
+}
+
+// TestFlushRegisteredSessionsRemovesExpiredOrphanedDiskSession verifies orphaned expired files are cleaned during flush cycle.
+func TestFlushRegisteredSessionsRemovesExpiredOrphanedDiskSession(t *testing.T) {
+	tempDir := t.TempDir()
+	SetSessionStorageDir(filepath.Join(tempDir, "session"))
+	t.Cleanup(func() { SetSessionStorageDir("") })
+
+	sessionRegistryMu.Lock()
+	sessionRegistry = make(map[string]*Session)
+	sessionRegistryMu.Unlock()
+
+	expired := NewSessionWithID("orphan-expired")
+	expired.SetTimeout(1)
+	expired.mu.Lock()
+	expired.LastAccessed = time.Now().Add(-2 * time.Minute)
+	expired.dirty = false
+	expired.mu.Unlock()
+	if err := expired.Save(); err != nil {
+		t.Fatalf("Save expired returned error: %v", err)
+	}
+
+	active := NewSessionWithID("orphan-active")
+	active.SetTimeout(20)
+	active.mu.Lock()
+	active.LastAccessed = time.Now()
+	active.dirty = false
+	active.mu.Unlock()
+	if err := active.Save(); err != nil {
+		t.Fatalf("Save active returned error: %v", err)
+	}
+
+	if err := FlushRegisteredSessions(false); err != nil {
+		t.Fatalf("FlushRegisteredSessions returned error: %v", err)
+	}
+
+	if _, err := os.Stat(sessionFilePath(expired.ID)); !os.IsNotExist(err) {
+		t.Fatalf("expected expired orphaned session file to be deleted, got err=%v", err)
+	}
+	if _, err := os.Stat(sessionFilePath(active.ID)); err != nil {
+		t.Fatalf("expected active orphaned session file to remain, got err=%v", err)
 	}
 }
