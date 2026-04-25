@@ -48,6 +48,7 @@ This page lists every method exposed by the `G3AXON.FUNCTIONS` library. Methods 
 | `AxGetConfigKeys()` | Array | All available configuration key names. |
 | `AxGetDefaultCss()` | String | Raw content of the CSS file configured at `axfunctions.ax_default_css_path`. |
 | `AxGetLogo()` | String | Configured logo as a Base64 data URI. |
+| `AxPoweredByImage()` | String | Built-in "Powered by AxonASP" image as a Base64 data URI. |
 
 ---
 

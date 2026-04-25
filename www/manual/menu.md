@@ -128,6 +128,7 @@
             * [Axgetremotefile](md/libraries/g3axon/methods/axgetremotefile.md)
             * [Axgenerateguid](md/libraries/g3axon/methods/axgenerateguid.md)
             * [Axgetdefaultcss](md/libraries/g3axon/methods/axgetdefaultcss.md)
+            * [Axpoweredbyimage](md/libraries/g3axon/methods/axpoweredbyimage.md)
     * G3CRYPTO
         * [Overview](md/libraries/g3crypto/overview.md)
         * [Methods](md/libraries/g3crypto/methods.md)

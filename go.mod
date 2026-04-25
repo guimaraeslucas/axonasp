@@ -11,6 +11,7 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.1
 	github.com/gdamore/tcell/v2 v2.13.9
 	github.com/go-ole/go-ole v1.3.0
+	github.com/go-sourcemap/sourcemap v2.1.4+incompatible
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/goodsign/monday v1.0.2
 	github.com/google/uuid v1.6.0
@@ -20,7 +21,7 @@ require (
 	github.com/klauspost/compress v1.18.5
 	github.com/klauspost/reedsolomon v1.13.3
 	github.com/lib/pq v1.12.3
-	github.com/mark3labs/mcp-go v0.48.0
+	github.com/mark3labs/mcp-go v0.49.0
 	github.com/ricochet2200/go-disk-usage/du v0.0.0-20210707232629-ac9918953285
 	github.com/rivo/tview v0.42.0
 	github.com/sahilm/fuzzy v0.1.1
@@ -64,7 +65,7 @@ require (
 	golang.org/x/term v0.42.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
-	modernc.org/libc v1.72.0 // indirect
+	modernc.org/libc v1.72.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
