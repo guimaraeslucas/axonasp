@@ -45,14 +45,15 @@ const (
 	nativeObjectApplication
 	nativeObjectObjectContext
 	nativeObjectErr
+	nativeObjectConsole // global console object (slot 7)
 )
 
 // objectContextCommitHandlerIdx and objectContextAbortHandlerIdx are pre-reserved global
 // indices for OnTransactionCommit and OnTransactionAbort event handler subs.
-// They follow immediately after the seven intrinsic object slots (indices 0–6).
+// They follow immediately after the eight intrinsic object slots (indices 0–7).
 const (
-	objectContextCommitHandlerIdx = 7
-	objectContextAbortHandlerIdx  = 8
+	objectContextCommitHandlerIdx = 8
+	objectContextAbortHandlerIdx  = 9
 )
 
 const (
@@ -517,8 +518,8 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		terminateCursor:    -1,
 	}
 
-	// 1. Inject ASP Native Objects (Indices 0-6)
-	if globalCount >= 7 {
+	// 1. Inject ASP Native Objects (Indices 0-7)
+	if globalCount >= 8 {
 		vm.Globals[0] = Value{Type: VTNativeObject, Num: 0}                                // Response
 		vm.Globals[1] = Value{Type: VTNativeObject, Num: 1}                                // Request
 		vm.Globals[2] = Value{Type: VTNativeObject, Num: 2}                                // Server
@@ -526,8 +527,9 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		vm.Globals[4] = Value{Type: VTNativeObject, Num: 4}                                // Application
 		vm.Globals[5] = Value{Type: VTNativeObject, Num: int64(nativeObjectObjectContext)} // ObjectContext
 		vm.Globals[6] = Value{Type: VTNativeObject, Num: int64(nativeObjectErr)}           // Err
+		vm.Globals[7] = Value{Type: VTNativeObject, Num: int64(nativeObjectConsole)}       // console
 	}
-	// Indices 7 and 8 are reserved for OnTransactionCommit and OnTransactionAbort subs.
+	// Indices 8 and 9 are reserved for OnTransactionCommit and OnTransactionAbort subs.
 	// They default to VTEmpty and are set by the compiler if the user defines those subs.
 
 	// 2. Inject Built-in Functions
@@ -541,7 +543,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 	// To keep it simple, I'll rely on the fact that SymbolTable was populated
 	// with Intrinsics FIRST, then Builtins.
 
-	startIdx := 9 // 7 intrinsics + 2 event handler slots
+	startIdx := 10 // 8 intrinsics + 2 event handler slots
 	for i := 0; i < len(BuiltinRegistry); i++ {
 		if startIdx+i < globalCount {
 			vm.Globals[startIdx+i] = Value{Type: VTBuiltin, Num: int64(i)}
@@ -3116,6 +3118,11 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	}
 
+	// Route console.log / console.info / console.error / console.warn calls.
+	if objID == nativeObjectConsole {
+		return consoleDispatch(vm, member, args)
+	}
+
 	switch objID {
 	case nativeObjectResponse: // Response
 		response := vm.host.Response()
@@ -4269,6 +4276,11 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 
 	if target.Num == nativeObjectErr {
 		return vm.errPropertyValue(member)
+	}
+
+	// The console object exposes no settable properties; method access returns Empty.
+	if target.Num == nativeObjectConsole {
+		return Value{Type: VTEmpty}
 	}
 
 	switch target.Num {

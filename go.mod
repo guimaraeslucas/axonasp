@@ -34,7 +34,7 @@ require (
 	golang.org/x/sys v0.43.0
 	golang.org/x/text v0.36.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
-	modernc.org/sqlite v1.49.1
+	modernc.org/sqlite v1.50.0
 )
 
 require (

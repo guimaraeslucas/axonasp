@@ -130,11 +130,11 @@ func resolveErrorLogFileEnabled() bool {
 		v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 		v.AutomaticEnv()
 
-		internalErrorConfigured = v.GetBool("global.enable_error_log_file")
-		if envValue := strings.TrimSpace(os.Getenv("GLOBAL_ENABLE_ERROR_LOG_FILE")); envValue != "" {
+		internalErrorConfigured = v.GetBool("global.enable_log_files")
+		if envValue := strings.TrimSpace(os.Getenv("GLOBAL_ENABLE_LOG_FILES")); envValue != "" {
 			internalErrorConfigured = strings.EqualFold(envValue, "true") || envValue == "1"
 		}
-		if envValue := strings.TrimSpace(os.Getenv("ENABLE_ERROR_LOG_FILE")); envValue != "" {
+		if envValue := strings.TrimSpace(os.Getenv("ENABLE_LOG_FILES")); envValue != "" {
 			internalErrorConfigured = strings.EqualFold(envValue, "true") || envValue == "1"
 		}
 	})
@@ -283,6 +283,37 @@ func writeInternalErrorLog(message string) {
 
 	logger := log.New(file, "", log.LstdFlags)
 	logger.Print(message)
+}
+
+// writeConsoleLogToFile appends a plain (symbol-free) log entry to the specified file under
+// the temp directory. The logFileName must be a simple file name (e.g. "console.log" or
+// "error.log") — no path separators. The timestamp is provided by the caller so that the
+// stream output and the file entry share an identical timestamp.
+// Writes are guarded by internalErrorLogEnabled and the shared file mutex.
+func writeConsoleLogToFile(logFileName string, level string, message string, timestamp string) {
+	if !internalErrorLogEnabled.Load() {
+		return
+	}
+
+	logFilePath := filepath.Join(currentInternalErrorLogRootPath(), "temp", logFileName)
+
+	internalErrorLogFileMu.Lock()
+	defer internalErrorLogFileMu.Unlock()
+
+	if err := os.MkdirAll(filepath.Dir(logFilePath), 0o755); err != nil {
+		return
+	}
+
+	file, err := os.OpenFile(logFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	// Write without log.Logger prefix so we control the exact format.
+	// Format: "2006/01/02 15:04:05 [LEVEL] message\n"
+	entry := strings.Join([]string{timestamp, " [", level, "] ", message, "\n"}, "")
+	_, _ = file.WriteString(entry)
 }
 
 // resolveRuntimeRootPath resolves the runtime root used for config and temp/error.log placement.

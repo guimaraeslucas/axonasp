@@ -205,8 +205,8 @@ func TestVBScriptConstantCatalogInjectedIntoVM(t *testing.T) {
 
 	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
 	expected := expectedVBSConstantCatalog()
-	// Global layout: 7 intrinsic objects (0-6, including Err) + 2 transaction event handler slots (7-8) + builtins + constants
-	constStart := 9 + len(BuiltinRegistry)
+	// Global layout: 8 intrinsic objects (0-7, including Err and console) + 2 transaction event handler slots (8-9) + builtins + constants
+	constStart := 10 + len(BuiltinRegistry)
 
 	for index := range expected {
 		slot := constStart + index

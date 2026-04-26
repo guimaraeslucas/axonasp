@@ -40,7 +40,7 @@ import (
 const (
 	scriptCacheDependencyMapLimit = 1000
 	scriptCacheMagicSize          = 6
-	scriptCacheBinaryVersion      = uint16(5)
+	scriptCacheBinaryVersion      = uint16(6)
 )
 
 var scriptCacheMagic = [scriptCacheMagicSize]byte{'G', '3', 'A', 'X', 'O', 'N'}

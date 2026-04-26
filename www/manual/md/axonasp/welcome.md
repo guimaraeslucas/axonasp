@@ -2,13 +2,13 @@
 
 Supercharge your legacy code. Build blazing-fast modern APIs. Experience Classic ASP like never before.
 
-Welcome to **AxonASP 2.0**, the definitive, high-performance runtime for executing Classic ASP and VBScript in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
+Welcome to **AxonASP 2.0**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JScript in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
 
 ---
 
 ## What Is AxonASP?
 
-AxonASP is a high-performance execution engine that processes Classic ASP pages, compiles VBScript into optimized bytecode, and executes code through an advanced stack-based virtual machine. The engine provides complete compatibility with Microsoft Classic ASP standards while introducing powerful modern innovations that make ASP development faster, safer, and more scalable than ever before.
+AxonASP is a high-performance execution engine that processes Classic ASP pages, compiles VBScript into optimized bytecode, and executes code through an advanced stack-based virtual machine. The engine also supports JScript execution for ASP pages using the JScript language directive. The runtime provides compatibility with classic ASP behavior while introducing powerful modern innovations that make ASP development faster, safer, and more scalable than ever before.
 
 Unlike traditional ASP interpreters, AxonASP runs on **any operating system**—Windows, Linux, macOS, and beyond—using the same codebase. Deploy anywhere Go is supported. No more constraint to Windows and IIS.
 
@@ -65,7 +65,7 @@ Covers deployment modes, internal architecture, script caching, locale support, 
 Documents the `axonasp.toml` configuration file: all available keys, default values, and explanations for each setting that controls the engine, server, sessions, caching, and logging.
 
 ### Section: ASP Foundations
-A complete reference for Classic ASP and VBScript fundamentals: the `#include` directive, variables, procedures, conditionals, looping, syntax overview, quick reference, forms, cookies, and the five intrinsic ASP objects (Request, Response, Server, Session, Application), plus ASPError and Scripting.Dictionary.
+A complete reference for Classic ASP fundamentals with VBScript and JScript guidance: the `#include` directive, variables, procedures, conditionals, looping, syntax overview, quick reference, forms, cookies, intrinsic ASP objects (Request, Response, Server, Session, Application), ASPError, Scripting.Dictionary, JScript page directives, and global `console` diagnostics.
 
 ### Section: Libraries
 Full API reference for every built-in native library and compatibility object:
@@ -90,8 +90,9 @@ Guidelines for writing manual pages and for programming Classic ASP with LLMs. R
 ## Key Capabilities at a Glance
 
 **Server-Side Power:**
-- Classic ASP page execution with 99% Microsoft compatibility
-- VBScript with all standard functions and operators
+- Classic ASP page execution with high compatibility for legacy behavior
+- VBScript with standard functions and operators
+- JScript support for ASP pages using `<%@ Language=JScript %>`
 - Full intrinsic object support (Request, Response, Server, Session, Application)
 - Advanced error handling with line-level debugging
 

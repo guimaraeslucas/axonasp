@@ -172,17 +172,24 @@ When enabled, the HTTP/FastCGI server provides detailed error messages, stack tr
 enable_asp_debugging = true  # Development only!
 ```
 
-### enable_error_log_file
+### enable_log_files
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_ERROR_LOG_FILE`
+**Environment Variable:** `ENABLE_LOG_FILES`
 
-When enabled, creates an `error.log` file in `./temp/` directory containing error details and stack traces. Useful for troubleshooting production issues.
+When enabled, AxonASP writes runtime diagnostic files in `./temp/`:
+- `error.log` for processed ASP/VBScript/runtime errors, plus `console.error` and `console.warn` output
+- `console.log` for `console.log` and `console.info` output
+
+Use this setting during development and incident diagnostics. In production, monitor file size and use rotation policies to prevent unbounded disk growth.
+
+**Migration Note:**
+The previous setting name was `enable_error_log_file`. The active configuration key is now `enable_log_files` in `config/axonasp.toml`. Existing deployments that still have `enable_error_log_file` should migrate to `enable_log_files` to keep configuration explicit and future-proof.
 
 **Example:**
 ```toml
-enable_error_log_file = true
+enable_log_files = true
 ```
 
 ### dump_preprocessed_source
@@ -1056,7 +1063,7 @@ default_charset = "UTF-8"
 default_mslcid = 1033
 default_script_timeout = 300
 enable_asp_debugging = true
-enable_error_log_file = true
+enable_log_files = true
 dump_preprocessed_source = false
 clean_sessions_on_startup = false
 bytecode_caching_enabled = "enabled"
@@ -1078,7 +1085,7 @@ default_charset = "UTF-8"
 default_mslcid = 1033
 default_script_timeout = 60
 enable_asp_debugging = false
-enable_error_log_file = true
+enable_log_files = true
 dump_preprocessed_source = false
 clean_sessions_on_startup = false
 bytecode_caching_enabled = "enabled"
@@ -1144,7 +1151,7 @@ cache_max_size_mb = 256
 vm_pool_size = 150
 golang_memory_limit_mb = 512
 enable_asp_debugging = false
-enable_error_log_file = true
+enable_log_files = true
 
 enable_webconfig = true
 ```

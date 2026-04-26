@@ -271,6 +271,10 @@ func (vm *VM) lookupJSGlobalIndex(name string) (int, bool) {
 		if len(vm.Globals) > 6 {
 			return 6, true
 		}
+	case "console":
+		if len(vm.Globals) > 7 {
+			return 7, true
+		}
 	}
 
 	for i := 0; i < len(vm.globalNames); i++ {
@@ -286,7 +290,7 @@ func (vm *VM) lookupJSGlobalIndex(name string) (int, bool) {
 	// (globalNames/globalNameIndex). In that case, expose builtins by their
 	// canonical fixed slots to keep JScript global lookup consistent.
 	if builtinIdx, ok := BuiltinIndex[lowerName]; ok {
-		globalIdx := 9 + builtinIdx // 7 intrinsics + 2 transaction handlers
+		globalIdx := 10 + builtinIdx // 8 intrinsics + 2 transaction handlers
 		if globalIdx >= 0 && globalIdx < len(vm.Globals) && vm.Globals[globalIdx].Type == VTBuiltin {
 			return globalIdx, true
 		}

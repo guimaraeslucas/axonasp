@@ -406,13 +406,13 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 	c.activeVBSConstants = append(c.activeVBSConstants, VBSConstants...)
 
 	// Pre-inject ASP Intrinsic Objects as "declared"
-	intrinsics := []string{"Response", "Request", "Server", "Session", "Application", "ObjectContext", "Err"}
+	intrinsics := []string{"Response", "Request", "Server", "Session", "Application", "ObjectContext", "Err", "console"}
 	for _, name := range intrinsics {
 		c.Globals.Add(name)
 		c.declaredGlobals[strings.ToLower(name)] = true
 	}
 
-	// Pre-declare ObjectContext transaction event handler sub names at fixed global indices 7 and 8.
+	// Pre-declare ObjectContext transaction event handler sub names at fixed global indices 8 and 9.
 	// If the script defines Sub OnTransactionCommit / Sub OnTransactionAbort, the compiler will
 	// assign the UserSub value to these known slots. The VM reads them after script execution.
 	eventHandlers := []string{"OnTransactionCommit", "OnTransactionAbort"}
