@@ -29,9 +29,13 @@ import (
 )
 
 type vmProgramPool struct {
-	pool    sync.Pool
-	program CachedProgram
+	mu          sync.Mutex
+	items       []*VM
+	maxRetained int
+	program     CachedProgram
 }
+
+const vmProgramPoolDefaultRetained = 128
 
 var cachedProgramPools sync.Map
 var vmPoolLimitMu sync.RWMutex
@@ -74,7 +78,7 @@ func releaseVMPoolSlot(slot chan struct{}) {
 func AcquireVMFromCachedProgram(program CachedProgram) *VM {
 	slot := acquireVMPoolSlot()
 	pool := getProgramPool(program)
-	vm, _ := pool.pool.Get().(*VM)
+	vm := pool.get()
 	if vm == nil {
 		vm = newPooledVMFromCachedProgram(pool, pool.program)
 	}
@@ -102,7 +106,7 @@ func (vm *VM) Release() {
 	slot := vm.pooledSlot
 	vm.resetForReuse()
 	if pool != nil {
-		pool.pool.Put(vm)
+		pool.put(vm)
 	}
 	releaseVMPoolSlot(slot)
 }
@@ -113,12 +117,54 @@ func getProgramPool(program CachedProgram) *vmProgramPool {
 		return existing.(*vmProgramPool)
 	}
 
-	entry := &vmProgramPool{program: immutableCachedProgramView(program)}
-	entry.pool.New = func() any {
-		return newPooledVMFromCachedProgram(entry, entry.program)
+	entry := &vmProgramPool{
+		items:       make([]*VM, 0, vmProgramPoolRetainLimit()),
+		maxRetained: vmProgramPoolRetainLimit(),
+		program:     immutableCachedProgramView(program),
 	}
 	actual, _ := cachedProgramPools.LoadOrStore(key, entry)
 	return actual.(*vmProgramPool)
+}
+
+func (p *vmProgramPool) get() *VM {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	count := len(p.items)
+	if count == 0 {
+		return nil
+	}
+	vm := p.items[count-1]
+	p.items[count-1] = nil
+	p.items = p.items[:count-1]
+	return vm
+}
+
+func (p *vmProgramPool) put(vm *VM) {
+	if p == nil || vm == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.maxRetained > 0 && len(p.items) >= p.maxRetained {
+		return
+	}
+	p.items = append(p.items, vm)
+}
+
+func vmProgramPoolRetainLimit() int {
+	vmPoolLimitMu.RLock()
+	limiter := vmPoolLimiter
+	vmPoolLimitMu.RUnlock()
+	if limiter != nil {
+		limit := cap(limiter)
+		if limit > 0 {
+			return limit
+		}
+	}
+	return vmProgramPoolDefaultRetained
 }
 
 func newPooledVMFromCachedProgram(pool *vmProgramPool, program CachedProgram) *VM {

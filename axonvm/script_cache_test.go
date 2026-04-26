@@ -26,6 +26,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 // TestScriptCacheSerializeDeserializeRoundTrip validates custom binary payload roundtrip.
@@ -235,5 +237,74 @@ func TestScriptCacheDiskMissesWhenIncludeMetadataMissing(t *testing.T) {
 	scriptCacheProcessBinaryModUnix = func() int64 { return 0 }
 	if _, found := cache.loadDiskProgram(sourcePath, sourceInfo); found {
 		t.Fatalf("expected disk cache miss when include metadata is missing")
+	}
+}
+
+func TestScriptCacheAddWatchRecursiveTrackedDeduplicatesDirectories(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	root := t.TempDir()
+	nestedA := filepath.Join(root, "a")
+	nestedB := filepath.Join(nestedA, "b")
+	if err := os.MkdirAll(nestedB, 0o755); err != nil {
+		t.Fatalf("mkdir nested directories: %v", err)
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatalf("create watcher: %v", err)
+	}
+	defer watcher.Close()
+
+	if err := cache.addWatchRecursiveTracked(watcher, root); err != nil {
+		t.Fatalf("add recursive watch first pass: %v", err)
+	}
+	countFirst := len(cache.watchedDirs)
+	if countFirst != 3 {
+		t.Fatalf("expected 3 watched directories after first pass, got %d", countFirst)
+	}
+
+	if err := cache.addWatchRecursiveTracked(watcher, root); err != nil {
+		t.Fatalf("add recursive watch second pass: %v", err)
+	}
+	countSecond := len(cache.watchedDirs)
+	if countSecond != countFirst {
+		t.Fatalf("expected deduplicated watch count to remain %d, got %d", countFirst, countSecond)
+	}
+}
+
+func TestScriptCachePruneStaleWatchesRemovesDeletedDirectories(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	root := t.TempDir()
+	nestedA := filepath.Join(root, "nested")
+	if err := os.MkdirAll(nestedA, 0o755); err != nil {
+		t.Fatalf("mkdir nested directory: %v", err)
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatalf("create watcher: %v", err)
+	}
+	defer watcher.Close()
+
+	if err := cache.addWatchRecursiveTracked(watcher, root); err != nil {
+		t.Fatalf("add recursive watch: %v", err)
+	}
+
+	normalizedNestedA, err := cache.normalizeAbsolutePath(nestedA)
+	if err != nil {
+		t.Fatalf("normalize nested directory: %v", err)
+	}
+	if _, exists := cache.watchedDirs[normalizedNestedA]; !exists {
+		t.Fatalf("expected nested directory to be tracked before deletion")
+	}
+
+	if err := os.RemoveAll(nestedA); err != nil {
+		t.Fatalf("remove nested directory: %v", err)
+	}
+
+	cache.pruneStaleWatches(watcher)
+
+	if _, exists := cache.watchedDirs[normalizedNestedA]; exists {
+		t.Fatalf("expected deleted nested directory watch to be pruned")
 	}
 }

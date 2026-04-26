@@ -56,4 +56,10 @@ func TestG3Image(t *testing.T) {
 	if hasCtx.Type != VTBool || hasCtx.Num != 0 {
 		t.Error("expected HasContext false")
 	}
+	if _, exists := vm.g3imageItems[imgLib.Num]; exists {
+		t.Fatal("expected image object to be detached from VM map after Close")
+	}
+	if obj.dc != nil || obj.lastLoaded != nil || obj.lastBytes != nil || obj.lastFontFace != nil {
+		t.Fatal("expected Close to clear all image resource pointers")
+	}
 }

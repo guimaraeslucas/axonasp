@@ -181,3 +181,23 @@ func TestJScriptConcurrentPooledRunsNoStackUnderflow(t *testing.T) {
 		}
 	}
 }
+
+// TestCleanupRequestResourcesReleasesG3Image verifies pooled request cleanup drops image references.
+func TestCleanupRequestResourcesReleasesG3Image(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+	imageValue := vm.newG3ImageObject()
+	imageObject := vm.g3imageItems[imageValue.Num]
+	if imageObject == nil {
+		t.Fatalf("expected g3image object to be allocated")
+	}
+	imageObject.DispatchMethod("new", []Value{NewInteger(32), NewInteger(32)})
+
+	vm.CleanupRequestResources()
+
+	if len(vm.g3imageItems) != 0 {
+		t.Fatalf("expected g3image map to be cleared on request cleanup")
+	}
+	if imageObject.dc != nil || imageObject.lastLoaded != nil || imageObject.lastBytes != nil || imageObject.lastFontFace != nil {
+		t.Fatalf("expected request cleanup to clear all g3image resource pointers")
+	}
+}

@@ -381,6 +381,7 @@ type ScriptCache struct {
 	dependencyOrder    []string
 	watcher            *fsnotify.Watcher
 	watchRoots         []string
+	watchedDirs        map[string]struct{}
 	watchStop          chan struct{}
 	watcherActive      bool
 	watcherErrorCount  uint32
@@ -403,6 +404,7 @@ func NewScriptCache(mode BytecodeCacheMode, cacheDir string, maxSizeMB int) *Scr
 		dependencyMap:      make(map[string][]string),
 		scriptDependencies: make(map[string][]string),
 		dependencyOrder:    make([]string, 0, 256),
+		watchedDirs:        make(map[string]struct{}),
 		maxBytes:           int64(maxSizeMB) * 1024 * 1024,
 	}
 }
@@ -487,13 +489,19 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 		return errors.New("no valid root directories to watch")
 	}
 
-	addedDirs := 0
+	c.mu.Lock()
+	if c.watchedDirs == nil {
+		c.watchedDirs = make(map[string]struct{}, 256)
+	} else {
+		clear(c.watchedDirs)
+	}
+	c.mu.Unlock()
+
 	for _, rootDir := range resolvedRoots {
-		if err := addWatchRecursive(watcher, rootDir); err != nil {
+		if err := c.addWatchRecursiveTracked(watcher, rootDir); err != nil {
 			_ = watcher.Close()
 			return fmt.Errorf("failed to add watch on %q: %w", rootDir, err)
 		}
-		addedDirs++
 	}
 
 	c.mu.Lock()
@@ -511,6 +519,8 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 	c.mu.Unlock()
 
 	go func() {
+		pruneTicker := time.NewTicker(45 * time.Second)
+		defer pruneTicker.Stop()
 		defer func() {
 			c.mu.Lock()
 			c.watcherActive = false
@@ -531,13 +541,18 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 				if event.Op&fsnotify.Create != 0 {
 					info, statErr := os.Stat(event.Name)
 					if statErr == nil && info.IsDir() {
-						_ = addWatchRecursive(watcher, event.Name)
+						_ = c.addWatchRecursiveTracked(watcher, event.Name)
 					}
+				}
+				if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+					c.removeWatchPathTracked(watcher, event.Name, true)
 				}
 				if !shouldInvalidatePath(event.Name) {
 					continue
 				}
 				c.Invalidate(event.Name)
+			case <-pruneTicker.C:
+				c.pruneStaleWatches(watcher)
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					return
@@ -567,6 +582,9 @@ func (c *ScriptCache) StopInvalidator() {
 	watcher := c.watcher
 	c.watcher = nil
 	c.watchRoots = nil
+	if c.watchedDirs != nil {
+		clear(c.watchedDirs)
+	}
 	c.mu.Unlock()
 	if watcher != nil {
 		_ = watcher.Close()
@@ -980,8 +998,8 @@ func (c *ScriptCache) removeProgramNoLock(scriptPath string) {
 	}
 }
 
-func addWatchRecursive(watcher *fsnotify.Watcher, rootDir string) error {
-	if watcher == nil {
+func (c *ScriptCache) addWatchRecursiveTracked(watcher *fsnotify.Watcher, rootDir string) error {
+	if c == nil || watcher == nil {
 		return nil
 	}
 	info, err := os.Stat(rootDir)
@@ -1001,8 +1019,113 @@ func addWatchRecursive(watcher *fsnotify.Watcher, rootDir string) error {
 		if strings.EqualFold(dirEntry.Name(), "node_modules") || strings.EqualFold(dirEntry.Name(), ".git") {
 			return filepath.SkipDir
 		}
-		return watcher.Add(path)
+		return c.addWatchPathTracked(watcher, path)
 	})
+}
+
+func (c *ScriptCache) addWatchPathTracked(watcher *fsnotify.Watcher, path string) error {
+	if c == nil || watcher == nil {
+		return nil
+	}
+	normalized, err := c.normalizeAbsolutePath(path)
+	if err != nil {
+		return err
+	}
+
+	c.mu.RLock()
+	_, exists := c.watchedDirs[normalized]
+	c.mu.RUnlock()
+	if exists {
+		return nil
+	}
+
+	if err := watcher.Add(normalized); err != nil {
+		if !isAlreadyWatchedError(err) {
+			return err
+		}
+	}
+
+	c.mu.Lock()
+	if c.watchedDirs == nil {
+		c.watchedDirs = make(map[string]struct{}, 256)
+	}
+	c.watchedDirs[normalized] = struct{}{}
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *ScriptCache) removeWatchPathTracked(watcher *fsnotify.Watcher, path string, includeChildren bool) {
+	if c == nil || watcher == nil {
+		return
+	}
+	normalized, err := c.normalizeAbsolutePath(path)
+	if err != nil {
+		return
+	}
+
+	removals := make([]string, 0, 8)
+	c.mu.RLock()
+	for watchedPath := range c.watchedDirs {
+		if strings.EqualFold(watchedPath, normalized) || (includeChildren && pathHasPrefixFold(watchedPath, normalized)) {
+			removals = append(removals, watchedPath)
+		}
+	}
+	c.mu.RUnlock()
+
+	for _, watchedPath := range removals {
+		_ = watcher.Remove(watchedPath)
+		c.mu.Lock()
+		delete(c.watchedDirs, watchedPath)
+		c.mu.Unlock()
+	}
+}
+
+func (c *ScriptCache) pruneStaleWatches(watcher *fsnotify.Watcher) {
+	if c == nil || watcher == nil {
+		return
+	}
+	stale := make([]string, 0, 16)
+	c.mu.RLock()
+	for watchedPath := range c.watchedDirs {
+		info, err := os.Stat(watchedPath)
+		if err != nil || !info.IsDir() {
+			stale = append(stale, watchedPath)
+		}
+	}
+	c.mu.RUnlock()
+
+	for _, watchedPath := range stale {
+		_ = watcher.Remove(watchedPath)
+		c.mu.Lock()
+		delete(c.watchedDirs, watchedPath)
+		c.mu.Unlock()
+	}
+}
+
+func isAlreadyWatchedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	if message == "" {
+		return false
+	}
+	return strings.Contains(message, "already exists") || strings.Contains(message, "already being watched")
+}
+
+func pathHasPrefixFold(path string, prefix string) bool {
+	if strings.EqualFold(path, prefix) {
+		return false
+	}
+	pathLower := strings.ToLower(filepath.Clean(path))
+	prefixLower := strings.ToLower(filepath.Clean(prefix))
+	if prefixLower == "" || pathLower == "" {
+		return false
+	}
+	if !strings.HasSuffix(prefixLower, string(filepath.Separator)) {
+		prefixLower += string(filepath.Separator)
+	}
+	return strings.HasPrefix(pathLower, prefixLower)
 }
 
 func shouldInvalidatePath(path string) bool {

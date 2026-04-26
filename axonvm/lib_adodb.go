@@ -516,6 +516,8 @@ func (vm *VM) CleanupRequestResources() {
 		return
 	}
 
+	vm.cleanupG3ImageResources()
+
 	// Close recordsets first so any provider cursors are released before connection shutdown.
 	for _, rs := range vm.adodbRecordsetItems {
 		if rs != nil {
@@ -529,18 +531,18 @@ func (vm *VM) CleanupRequestResources() {
 		}
 	}
 
-	// Clear dynamic native-object maps to release references promptly.
-	vm.adodbRecordsetItems = make(map[int64]*adodbRecordset)
-	vm.adodbConnectionItems = make(map[int64]*adodbConnection)
-	vm.adodbCommandItems = make(map[int64]*adodbCommand)
-	vm.adodbParameterItems = make(map[int64]*adodbParameter)
-	vm.adodbErrorsCollectionItems = make(map[int64]*adodbConnection)
-	vm.adodbErrorItems = make(map[int64]*adodbError)
-	vm.adodbFieldsCollectionItems = make(map[int64]*adodbRecordset)
-	vm.adodbParametersCollectionItems = make(map[int64]*adodbCommand)
-	vm.adodbFieldItems = make(map[int64]*adodbFieldProxy)
+	// Clear dynamic native-object maps to release references promptly while reusing backing capacity.
+	clear(vm.adodbRecordsetItems)
+	clear(vm.adodbConnectionItems)
+	clear(vm.adodbCommandItems)
+	clear(vm.adodbParameterItems)
+	clear(vm.adodbErrorsCollectionItems)
+	clear(vm.adodbErrorItems)
+	clear(vm.adodbFieldsCollectionItems)
+	clear(vm.adodbParametersCollectionItems)
+	clear(vm.adodbFieldItems)
 	// Clear the generic native-object proxy map to prevent cross-request leaks.
-	vm.nativeObjectProxies = make(map[int64]nativeObjectProxy)
+	clear(vm.nativeObjectProxies)
 	vm.nextDynamicNativeID = 20000
 	vm.releaseCOMRequestThread()
 }

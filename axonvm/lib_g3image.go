@@ -38,6 +38,7 @@ import (
 
 type G3Image struct {
 	vm            *VM
+	objectID      int64
 	dc            *gg.Context
 	lastErr       string
 	lastBytes     []byte
@@ -58,6 +59,7 @@ func (vm *VM) newG3ImageObject() Value {
 	}
 	id := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
+	obj.objectID = id
 	vm.g3imageItems[id] = obj
 	return Value{Type: VTNativeObject, Num: id}
 }
@@ -155,8 +157,7 @@ func (g *G3Image) DispatchMethod(methodName string, args []Value) Value {
 
 	switch method {
 	case "close", "dispose", "release", "destroy", "reset", "clearcontext", "clearimage":
-		g.releaseResources(true)
-		g.clearError()
+		g.closeAndDetach()
 		return NewBool(true)
 
 	case "new", "newcontext", "create", "createcontext", "init":
@@ -425,6 +426,32 @@ func (g *G3Image) DispatchMethod(methodName string, args []Value) Value {
 	return NewEmpty()
 }
 
+// closeAndDetach releases all image buffers and unregisters this object from VM maps.
+func (g *G3Image) closeAndDetach() {
+	if g == nil {
+		return
+	}
+	g.releaseResources(true)
+	if g.vm == nil {
+		g.objectID = 0
+		return
+	}
+	if g.objectID != 0 {
+		delete(g.vm.g3imageItems, g.objectID)
+		delete(g.vm.nativeObjectProxies, g.objectID)
+		g.objectID = 0
+		return
+	}
+	for id, item := range g.vm.g3imageItems {
+		if item != g {
+			continue
+		}
+		delete(g.vm.g3imageItems, id)
+		delete(g.vm.nativeObjectProxies, id)
+		break
+	}
+}
+
 func (g *G3Image) releaseResources(clearError bool) {
 	g.dc = nil
 	g.lastBytes = nil
@@ -434,6 +461,22 @@ func (g *G3Image) releaseResources(clearError bool) {
 	g.lastFontFace = nil
 	if clearError {
 		g.lastErr = ""
+	}
+
+}
+
+// cleanupG3ImageResources releases all image contexts owned by one VM request.
+func (vm *VM) cleanupG3ImageResources() {
+	if vm == nil || len(vm.g3imageItems) == 0 {
+		return
+	}
+	for id, item := range vm.g3imageItems {
+		if item != nil {
+			item.releaseResources(false)
+			item.objectID = 0
+		}
+		delete(vm.g3imageItems, id)
+		delete(vm.nativeObjectProxies, id)
 	}
 }
 
