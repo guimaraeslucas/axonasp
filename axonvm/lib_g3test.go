@@ -59,11 +59,12 @@ type G3Test struct {
 	passed       int64
 	failed       int64
 	failures     []G3TestFailure
+	vars         map[string]Value
 }
 
 // newG3TestObject allocates and registers one G3Test object in the VM native-object table.
 func (vm *VM) newG3TestObject() Value {
-	obj := &G3Test{vm: vm, failures: make([]G3TestFailure, 0, 8)}
+	obj := &G3Test{vm: vm, failures: make([]G3TestFailure, 0, 8), vars: make(map[string]Value, 8)}
 	id := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
 	vm.g3testItems[id] = obj
@@ -75,7 +76,11 @@ func (g *G3Test) DispatchMethod(methodName string, args []Value) Value {
 	switch strings.ToLower(strings.TrimSpace(methodName)) {
 	case "assertequal":
 		return g.methodAssertEqual(args)
+	case "assertequals":
+		return g.methodAssertEqual(args)
 	case "assertnotequal":
+		return g.methodAssertNotEqual(args)
+	case "assertnotequals":
 		return g.methodAssertNotEqual(args)
 	case "asserttrue":
 		return g.methodAssertTrue(args)
@@ -97,6 +102,16 @@ func (g *G3Test) DispatchMethod(methodName string, args []Value) Value {
 		return g.methodFail(args)
 	case "describe":
 		return g.methodDescribe(args)
+	case "begintest":
+		return g.methodBeginTest(args)
+	case "endtest":
+		return g.methodEndTest(args)
+	case "setvar":
+		return g.methodSetVar(args)
+	case "getvar":
+		return g.methodGetVar(args)
+	case "summary":
+		return g.methodSummary(args)
 	}
 	return NewEmpty()
 }
@@ -188,6 +203,68 @@ func (g *G3Test) methodDescribe(args []Value) Value {
 		return NewEmpty()
 	}
 	g.currentSuite = strings.TrimSpace(args[0].String())
+	return NewEmpty()
+}
+
+// methodBeginTest keeps compatibility with legacy G3TestSuite.BeginTest(name).
+func (g *G3Test) methodBeginTest(args []Value) Value {
+	if len(args) == 0 {
+		g.currentSuite = ""
+		return NewEmpty()
+	}
+	g.currentSuite = strings.TrimSpace(args[0].String())
+	return NewEmpty()
+}
+
+// methodEndTest keeps compatibility with legacy G3TestSuite.EndTest().
+func (g *G3Test) methodEndTest(args []Value) Value {
+	_ = args
+	return NewEmpty()
+}
+
+// methodSetVar stores one value in a suite-local case-insensitive map.
+func (g *G3Test) methodSetVar(args []Value) Value {
+	if len(args) < 2 {
+		return g.recordFailure("SetVar requires name and value")
+	}
+	if g.vars == nil {
+		g.vars = make(map[string]Value, 8)
+	}
+	name := strings.ToLower(strings.TrimSpace(args[0].String()))
+	if name == "" {
+		return g.recordFailure("SetVar requires a non-empty name")
+	}
+	g.vars[name] = resolveCallable(g.vm, args[1])
+	return NewEmpty()
+}
+
+// methodGetVar retrieves one value from the suite-local map.
+func (g *G3Test) methodGetVar(args []Value) Value {
+	if len(args) == 0 || g.vars == nil {
+		return NewEmpty()
+	}
+	name := strings.ToLower(strings.TrimSpace(args[0].String()))
+	if name == "" {
+		return NewEmpty()
+	}
+	v, ok := g.vars[name]
+	if !ok {
+		return NewEmpty()
+	}
+	return v
+}
+
+// methodSummary writes one concise report line and optional failures to Response output.
+func (g *G3Test) methodSummary(args []Value) Value {
+	_ = args
+	if g.vm == nil || g.vm.host == nil || g.vm.host.Response() == nil {
+		return NewEmpty()
+	}
+	line := "G3Test Summary: total=" + g.intToString(int(g.total)) + ", passed=" + g.intToString(int(g.passed)) + ", failed=" + g.intToString(int(g.failed))
+	g.vm.host.Response().Write(line + "\n")
+	for i := 0; i < len(g.failures); i++ {
+		g.vm.host.Response().Write("FAIL: " + g.failures[i].Message + "\n")
+	}
 	return NewEmpty()
 }
 

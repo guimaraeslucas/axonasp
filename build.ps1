@@ -111,7 +111,8 @@ function Build-Binary {
 
     $Extension = if ($TargetOS -eq "windows") { ".exe" } else { "" }
     $OutputFile = "${OutputName}${Extension}"
-    $LdFlags = "-s -w -X main.Version=$FullVersion"
+    # Linker flags: -s (strip symbol table), -w (omit DWARF), -X main.Version=... (embed version)
+    $LdFlags = "-X main.Version=$FullVersion"
 
     Write-Info "Building $Label ($TargetOS/$TargetArch) -> $OutputFile ..."
 

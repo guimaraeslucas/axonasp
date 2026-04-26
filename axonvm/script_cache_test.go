@@ -33,8 +33,17 @@ func TestScriptCacheSerializeDeserializeRoundTrip(t *testing.T) {
 	payload := cachedProgramBinaryPayload{
 		ModTime: 1735689600,
 		Program: CachedProgram{
-			Bytecode:            []byte{1, 2, 3, 4, 5},
-			Constants:           []Value{NewInteger(42), NewString("hello"), NewUserSub(12, 2, 4, true, 3, []string{"a", "b"}), NewEmpty(), NewNull(), Value{Type: VTObject, Num: 0}},
+			Bytecode: []byte{1, 2, 3, 4, 5},
+			Constants: []Value{
+				NewInteger(42),
+				NewString("hello"),
+				NewUserSub(12, 2, 4, true, 3, []string{"a", "b"}),
+				NewEmpty(),
+				NewNull(),
+				Value{Type: VTObject, Num: 0},
+				Value{Type: VTJSFunctionTemplate, Num: 33, Flt: 77, Str: "outer", Names: []string{"p1", "p2"}},
+				Value{Type: VTJSUndefined},
+			},
 			GlobalCount:         7,
 			OptionCompare:       1,
 			OptionExplicit:      true,
@@ -80,6 +89,18 @@ func TestScriptCacheSerializeDeserializeRoundTrip(t *testing.T) {
 	}
 	if decoded.Program.Constants[5].Type != VTObject || decoded.Program.Constants[5].Num != 0 {
 		t.Fatalf("expected VTObject Nothing constant in slot 5, got %#v", decoded.Program.Constants[5])
+	}
+	if decoded.Program.Constants[6].Type != VTJSFunctionTemplate {
+		t.Fatalf("expected VTJSFunctionTemplate in slot 6, got %#v", decoded.Program.Constants[6])
+	}
+	if decoded.Program.Constants[6].Str != "outer" || decoded.Program.Constants[6].Num != 33 || decoded.Program.Constants[6].Flt != 77 {
+		t.Fatalf("unexpected VTJSFunctionTemplate payload in slot 6: %#v", decoded.Program.Constants[6])
+	}
+	if len(decoded.Program.Constants[6].Names) != 2 || decoded.Program.Constants[6].Names[0] != "p1" || decoded.Program.Constants[6].Names[1] != "p2" {
+		t.Fatalf("unexpected VTJSFunctionTemplate names in slot 6: %#v", decoded.Program.Constants[6].Names)
+	}
+	if decoded.Program.Constants[7].Type != VTJSUndefined {
+		t.Fatalf("expected VTJSUndefined in slot 7, got %#v", decoded.Program.Constants[7])
 	}
 	if len(decoded.Program.IncludeDependencies) != 1 || decoded.Program.IncludeDependencies[0] != payload.Program.IncludeDependencies[0] {
 		t.Fatalf("include dependency mismatch: got %#v want %#v", decoded.Program.IncludeDependencies, payload.Program.IncludeDependencies)

@@ -618,6 +618,19 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.regExpSubMatchValueItems)
 	clear(vm.dictionaryItems)
 	clear(vm.nativeObjectProxies)
+	clear(vm.jsObjectItems)
+	clear(vm.jsFunctionItems)
+	clear(vm.jsForInItems)
+	clear(vm.jsEnvItems)
+	clear(vm.jsCallStack)
+	vm.jsCallStack = vm.jsCallStack[:0]
+	clear(vm.jsTryStack)
+	vm.jsTryStack = vm.jsTryStack[:0]
+	clear(vm.jsErrStack)
+	vm.jsErrStack = vm.jsErrStack[:0]
+	vm.jsActiveEnvID = 0
+	vm.jsThisValue = Value{Type: VTJSUndefined}
+	vm.jsStringWorkBytes = 0
 }
 
 func immutableBytecodeView(bytecode []byte) []byte {

@@ -41,6 +41,14 @@ const (
 	VTNativeObject
 	VTBuiltin
 	VTUserSub
+	// VTJSUndefined represents the JavaScript undefined primitive.
+	VTJSUndefined
+	// VTJSObject points to one dynamic JS object ID in VM jsObjectItems.
+	VTJSObject
+	// VTJSFunction points to one dynamic JS closure ID in VM jsFunctionItems.
+	VTJSFunction
+	// VTJSFunctionTemplate is a compile-time constant describing one JS function body.
+	VTJSFunctionTemplate
 	// VTArgRef is a synthetic value type emitted only at call sites to carry a ByRef
 	// slot reference alongside the argument value for post-call write-back.
 	VTArgRef
@@ -88,6 +96,14 @@ func (v Value) String() string {
 		return time.Unix(0, v.Num).UTC().Format(time.RFC3339)
 	case VTUserSub:
 		return "[UserSub]"
+	case VTJSUndefined:
+		return "undefined"
+	case VTJSObject:
+		return fmt.Sprintf("[JSObject:%d]", v.Num)
+	case VTJSFunction:
+		return fmt.Sprintf("[JSFunction:%d]", v.Num)
+	case VTJSFunctionTemplate:
+		return fmt.Sprintf("[JSFunctionTemplate:%d]", v.Num)
 	case VTArgRef:
 		return "[ArgRef]"
 	default:

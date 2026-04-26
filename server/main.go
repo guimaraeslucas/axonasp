@@ -297,8 +297,13 @@ func cleanupCacheFiles() {
 
 // main starts the HTTP server and handles graceful shutdown.
 func main() {
-	runtime.SetBlockProfileRate(1)
-	runtime.SetMutexProfileFraction(5)
+	if DebugASP {
+		runtime.SetBlockProfileRate(1)
+		runtime.SetMutexProfileFraction(5)
+	} else {
+		runtime.SetBlockProfileRate(0)
+		runtime.SetMutexProfileFraction(0)
+	}
 
 	if CleanupSessions {
 		cleanupSessionFiles()
@@ -345,7 +350,9 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	registerPprofHandlers(mux)
+	if DebugASP {
+		registerPprofHandlers(mux)
+	}
 	mux.HandleFunc("/", handleRequest)
 
 	httpServer := &http.Server{

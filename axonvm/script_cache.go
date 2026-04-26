@@ -1108,17 +1108,18 @@ func writeSerializedValue(writer io.Writer, value Value) error {
 	}
 
 	switch value.Type {
-	case VTString, VTUserSub:
+	case VTString, VTUserSub, VTJSFunctionTemplate:
 		if err := writeString(writer, value.Str); err != nil {
 			return err
 		}
-	case VTEmpty, VTNull, VTBool, VTInteger, VTDouble, VTDate, VTObject, VTNativeObject, VTBuiltin:
+	case VTEmpty, VTNull, VTBool, VTInteger, VTDouble, VTDate, VTObject, VTNativeObject, VTBuiltin,
+		VTJSUndefined, VTJSObject, VTJSFunction:
 		// Type, Num and Flt are sufficient for deterministic reconstruction.
 	default:
 		return NewAxonASPError(ErrInvalidCacheFile, nil, ErrInvalidCacheFile.String(), "", 0)
 	}
 
-	if value.Type == VTUserSub {
+	if value.Type == VTUserSub || value.Type == VTJSFunctionTemplate {
 		if err := writeStringSlice(writer, value.Names); err != nil {
 			return err
 		}
@@ -1142,19 +1143,20 @@ func readSerializedValue(reader io.Reader) (Value, error) {
 	}
 
 	switch valueType {
-	case VTString, VTUserSub:
+	case VTString, VTUserSub, VTJSFunctionTemplate:
 		stringValue, err := readString(reader)
 		if err != nil {
 			return Value{}, err
 		}
 		value.Str = stringValue
-	case VTEmpty, VTNull, VTBool, VTInteger, VTDouble, VTDate, VTObject, VTNativeObject, VTBuiltin:
+	case VTEmpty, VTNull, VTBool, VTInteger, VTDouble, VTDate, VTObject, VTNativeObject, VTBuiltin,
+		VTJSUndefined, VTJSObject, VTJSFunction:
 		// Scalar content already read.
 	default:
 		return Value{}, NewAxonASPError(ErrInvalidCacheFile, nil, ErrInvalidCacheFile.String(), "", 0)
 	}
 
-	if valueType == VTUserSub {
+	if valueType == VTUserSub || valueType == VTJSFunctionTemplate {
 		names, err := readStringSlice(reader)
 		if err != nil {
 			return Value{}, err

@@ -33,6 +33,7 @@ import (
 )
 
 const StackSize = 4096
+const jsBackJumpLimit = 50000
 
 const staticObjectProgIDPrefix = "__AXON_STATIC_OBJECT_PROGID__:"
 
@@ -322,6 +323,10 @@ type VM struct {
 	regExpSubMatchValueItems       map[int64]*regExpSubMatchValue
 	dictionaryItems                map[int64]*scriptingDictionary
 	nativeObjectProxies            map[int64]nativeObjectProxy
+	jsObjectItems                  map[int64]map[string]Value
+	jsFunctionItems                map[int64]*jsFunctionObject
+	jsForInItems                   map[int]*jsForInEnumerator
+	jsEnvItems                     map[int64]*jsEnvFrame
 	errObject                      *asp.ASPError
 	errASPCodeRaw                  string
 	errASPCodeRawSet               bool
@@ -334,14 +339,19 @@ type VM struct {
 	terminatePrepared   bool
 	suppressTerminate   bool
 
-	stack     []Value
-	sp        int
-	ip        int
-	fp        int
-	callStack []CallFrame
+	stack       []Value
+	sp          int
+	ip          int
+	fp          int
+	callStack   []CallFrame
+	jsCallStack []jsCallFrame
 	// withStack holds the subject object for each active With...End With block.
 	// OpWithEnter appends, OpWithLeave shrinks, OpWithLoad peeks at the top.
-	withStack []Value
+	withStack     []Value
+	jsTryStack    []int
+	jsErrStack    []Value
+	jsActiveEnvID int64
+	jsThisValue   Value
 
 	onResumeNext bool
 	// executeGlobalResumeGuard preserves caller Resume Next semantics for top-level
@@ -373,6 +383,7 @@ type VM struct {
 	constGlobals         map[string]bool // Global Const protection state for dynamic compilation.
 	sourceName           string          // Source file path used for dynamic execution error reporting.
 	dynamicProgramStarts map[uint64]int  // Per-VM start offsets for already-appended cached dynamic fragments.
+	jsStringWorkBytes    int64           // Per-run cumulative bytes produced by JScript string operations.
 
 	baseBytecode            []byte
 	baseConstants           []Value
@@ -489,12 +500,20 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		regExpSubMatchValueItems:       make(map[int64]*regExpSubMatchValue),
 		dictionaryItems:                make(map[int64]*scriptingDictionary),
 		nativeObjectProxies:            make(map[int64]nativeObjectProxy),
+		jsObjectItems:                  make(map[int64]map[string]Value),
+		jsFunctionItems:                make(map[int64]*jsFunctionObject),
+		jsForInItems:                   make(map[int]*jsForInEnumerator),
+		jsEnvItems:                     make(map[int64]*jsEnvFrame),
 		errObject:                      asp.NewASPError(),
 
 		runtimeClasses:     make(map[string]RuntimeClassDef),
 		runtimeClassItems:  make(map[int64]*RuntimeClassInstance),
 		classInstanceOrder: make([]int64, 0, 16),
 		callStack:          make([]CallFrame, 0, 16),
+		jsCallStack:        make([]jsCallFrame, 0, 16),
+		jsTryStack:         make([]int, 0, 8),
+		jsErrStack:         make([]Value, 0, 4),
+		jsThisValue:        Value{Type: VTJSUndefined},
 		terminateCursor:    -1,
 	}
 
@@ -748,19 +767,29 @@ func opcodeOperandSize(op OpCode) int {
 		OpGetGlobal, OpSetGlobal, OpEraseGlobal, OpGetLocal, OpSetLocal, OpEraseLocal,
 		OpArgGlobalRef, OpArgLocalRef,
 		OpLetGlobal, OpLetLocal,
-		OpCall:
+		OpCall,
+		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSMemberGet, OpJSMemberSet,
+		OpJSCreateClosure, OpJSCall, OpJSNewArray, OpJSDelete,
+		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
+		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
+		OpJSMemberIndexGet, OpJSMemberIndexSet:
 		return 2
-	// 4-byte operands
-	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel:
+	// 4-byte operands (for jump targets)
+	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
+		OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,
+		OpJSCase, OpJSDefault, OpJSBreak, OpJSContinue, OpJSForInCleanup:
 		return 4
 	// 4-byte operands
-	case OpLine, OpCallMember, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption:
+	case OpLine, OpCallMember, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember:
 		return 4
 	// 6-byte operands: classNameIdx(2) + fieldNameIdx(2) + isPublic(2)
 	case OpRegisterClassField:
 		return 6
 	// 6-byte operands: classNameIdx(2) + fieldNameIdx(2) + dimCount(2); dim values are on stack
 	case OpInitClassArrayField:
+		return 6
+	// 6-byte operands for OpJSForIn: EnumVarIdx(2) + LoopStartTarget(4)
+	case OpJSForIn:
 		return 6
 	// 8-byte operands: classNameIdx(2) + methodNameIdx(2) + userSubIdx(2) + isPublic(2)
 	case OpRegisterClassMethod:
@@ -781,11 +810,15 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 		op := OpCode(bytecode[ip])
 		ip++
 		switch op {
-		case OpConstant, OpWriteStatic, OpGetClassMember, OpSetClassMember, OpEraseClassMember, OpMemberSet, OpMemberSetSet, OpNewClass, OpLetClassMember, OpArgClassMemberRef:
+		case OpConstant, OpWriteStatic, OpGetClassMember, OpSetClassMember, OpEraseClassMember, OpMemberSet, OpMemberSetSet, OpNewClass, OpLetClassMember, OpArgClassMemberRef,
+			OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSMemberGet, OpJSMemberSet, OpJSCreateClosure, OpJSDelete,
+			OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
+			OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
+			OpJSMemberIndexGet, OpJSMemberIndexSet:
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
 			ip += 2
-		case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel:
+		case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel, OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter, OpJSCase, OpJSDefault, OpJSBreak, OpJSContinue, OpJSForInCleanup:
 			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
 			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
 			ip += 4
@@ -796,9 +829,17 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			valueIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(valueIdx))
 			ip += 2
-		case OpCallMember, OpArraySet:
+		case OpCallMember, OpArraySet, OpJSCallMember:
 			memberIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(memberIdx))
+			ip += 4
+		case OpJSForIn:
+			// EnumVarIdx(2) + LoopStartTarget(4)
+			enumVarIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(enumVarIdx))
+			ip += 2
+			loopStartTarget := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
+			binary.BigEndian.PutUint32(bytecode[ip:], uint32(loopStartTarget))
 			ip += 4
 		case OpRegisterClass:
 			classIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
@@ -1098,6 +1139,8 @@ func (vm *VM) Run() (err error) {
 		}
 	}()
 	operationCount := 0
+	jsBackJumpCount := 0
+	vm.jsStringWorkBytes = 0
 
 aspExecLoop:
 	for vm.ip < len(vm.bytecode) {
@@ -1994,6 +2037,581 @@ aspExecLoop:
 				}
 			}
 
+		case OpJSDeclareName:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			vm.jsDeclareName(vm.constants[nameIdx].Str)
+
+		case OpJSGetName:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			vm.push(vm.jsGetName(vm.constants[nameIdx].Str))
+
+		case OpJSSetName:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			value := vm.pop()
+			vm.jsSetName(vm.constants[nameIdx].Str, value)
+
+		case OpJSMemberGet:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			target := vm.pop()
+			vm.push(vm.jsMemberGet(target, vm.constants[nameIdx].Str))
+
+		case OpJSMemberSet:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			value := vm.pop()
+			target := vm.pop()
+			vm.jsMemberSet(target, vm.constants[nameIdx].Str, value)
+
+		case OpJSCall:
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			callee := vm.pop()
+			result := vm.jsCall(callee, Value{Type: VTJSUndefined}, args)
+			if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+				vm.push(result)
+			}
+
+		case OpJSCallMember:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			target := vm.pop()
+			member := vm.constants[nameIdx].Str
+			if result, handled := vm.jsCallMember(target, member, args); handled {
+				if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+					vm.push(result)
+				}
+				continue
+			}
+			switch target.Type {
+			case VTNativeObject:
+				vm.push(vm.dispatchNativeCall(target.Num, member, args))
+			case VTJSFunction:
+				switch {
+				case strings.EqualFold(member, "call"):
+					callThis := Value{Type: VTJSUndefined}
+					callArgs := args[:0]
+					if len(args) > 0 {
+						callThis = args[0]
+						callArgs = args[1:]
+					}
+					result := vm.jsCall(target, callThis, callArgs)
+					if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+						vm.push(result)
+					}
+				case strings.EqualFold(member, "apply"):
+					applyThis := Value{Type: VTJSUndefined}
+					var applyArgs []Value
+					if len(args) > 0 {
+						applyThis = args[0]
+					}
+					if len(args) > 1 {
+						applyArgs = vm.jsExtractApplyArgs(args[1])
+					}
+					result := vm.jsCall(target, applyThis, applyArgs)
+					if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+						vm.push(result)
+					}
+				default:
+					vm.push(Value{Type: VTJSUndefined})
+				}
+			case VTJSObject:
+				callee := vm.jsMemberGet(target, member)
+				result := vm.jsCall(callee, target, args)
+				if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+					vm.push(result)
+				}
+			default:
+				vm.push(Value{Type: VTJSUndefined})
+			}
+
+		case OpJSCreateClosure:
+			templateIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			vm.push(vm.jsCreateClosure(vm.constants[templateIdx]))
+
+		case OpJSAdd:
+			b, a := vm.pop(), vm.pop()
+			vm.push(vm.jsAddValues(a, b))
+
+		case OpJSStrictEq:
+			b, a := vm.pop(), vm.pop()
+			vm.push(NewBool(vm.jsStrictEquals(a, b)))
+
+		case OpJSStrictNeq:
+			b, a := vm.pop(), vm.pop()
+			vm.push(NewBool(!vm.jsStrictEquals(a, b)))
+
+		case OpJSTryEnter:
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+			vm.jsTryStack = append(vm.jsTryStack, target)
+
+		case OpJSTryLeave:
+			if len(vm.jsTryStack) > 0 {
+				vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
+			}
+
+		case OpJSThrow:
+			vm.jsThrow(vm.pop())
+
+		case OpJSNewObject:
+			objID := vm.allocJSID()
+			vm.jsObjectItems[objID] = make(map[string]Value, 8)
+			vm.push(Value{Type: VTJSObject, Num: objID})
+
+		case OpJSNewArray:
+			count := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			values := make([]Value, count)
+			for i := count - 1; i >= 0; i-- {
+				values[i] = vm.pop()
+			}
+			vm.push(ValueFromVBArray(NewVBArrayFromValues(0, values)))
+
+		case OpJSTypeof:
+			vm.push(NewString(vm.jsTypeOf(vm.pop())))
+
+		case OpJSInstanceOf:
+			right := vm.pop()
+			left := vm.pop()
+			vm.push(NewBool(left.Type == VTJSObject && right.Type == VTJSFunction))
+
+		case OpJSIn:
+			right := vm.pop()
+			left := vm.pop()
+			if right.Type == VTJSObject {
+				key := vm.valueToString(left)
+				if obj, ok := vm.jsObjectItems[right.Num]; ok {
+					_, exists := obj[key]
+					vm.push(NewBool(exists))
+				} else {
+					vm.push(NewBool(false))
+				}
+			} else {
+				vm.push(NewBool(false))
+			}
+
+		case OpJSDelete:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			target := vm.pop()
+			if target.Type == VTJSObject {
+				if obj, ok := vm.jsObjectItems[target.Num]; ok {
+					delete(obj, vm.constants[nameIdx].Str)
+				}
+			}
+			vm.push(NewBool(true))
+
+		case OpJSReturn:
+			vm.jsReturn(vm.pop())
+
+		case OpJSLoadUndefined:
+			vm.push(Value{Type: VTJSUndefined})
+
+		case OpJSLoadThis:
+			vm.push(vm.jsThisValue)
+
+		case OpJSDup:
+			v := vm.pop()
+			vm.push(v)
+			vm.push(v)
+
+		case OpJSPop:
+			vm.pop()
+
+		case OpJSJump:
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			if target < vm.ip {
+				jsBackJumpCount++
+				if jsBackJumpCount > jsBackJumpLimit {
+					return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+				}
+			}
+			vm.ip = target
+
+		case OpJSJumpIfFalse:
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+			if !vm.jsTruthy(vm.pop()) {
+				if target < vm.ip {
+					jsBackJumpCount++
+					if jsBackJumpCount > jsBackJumpLimit {
+						return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+					}
+				}
+				vm.ip = target
+			}
+
+		case OpJSJumpIfTrue:
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+			if vm.jsTruthy(vm.pop()) {
+				if target < vm.ip {
+					jsBackJumpCount++
+					if jsBackJumpCount > jsBackJumpLimit {
+						return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+					}
+				}
+				vm.ip = target
+			}
+
+		case OpJSLoadCatchError:
+			if len(vm.jsErrStack) == 0 {
+				vm.push(Value{Type: VTJSUndefined})
+				continue
+			}
+			vm.push(vm.jsErrStack[len(vm.jsErrStack)-1])
+
+		case OpJSStoreCatchError:
+			v := vm.pop()
+			vm.jsErrStack = append(vm.jsErrStack, v)
+
+		// Control flow opcodes for loops and switches
+		case OpJSBreak:
+			// Break statement - jump target was patched by compiler
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip = target
+
+		case OpJSContinue:
+			// Continue statement - jump target was patched by compiler
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip = target
+
+		case OpJSForInCleanup:
+			forInPos := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+			delete(vm.jsForInItems, forInPos)
+			if vm.sp >= 0 {
+				vm.pop()
+			}
+
+		case OpJSForIn:
+			enumNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			exitTarget := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+
+			opPos := vm.ip - 7
+			enumState := vm.jsForInItems[opPos]
+			if enumState == nil {
+				if vm.sp < 0 {
+					vm.ip = exitTarget
+					continue
+				}
+				source := vm.stack[vm.sp]
+				keys := vm.jsEnumerateForInKeys(source)
+				enumState = &jsForInEnumerator{keys: keys, index: 0}
+				vm.jsForInItems[opPos] = enumState
+			}
+
+			if enumState.index >= len(enumState.keys) {
+				delete(vm.jsForInItems, opPos)
+				if vm.sp >= 0 {
+					vm.pop()
+				}
+				vm.ip = exitTarget
+				continue
+			}
+
+			vm.jsSetName(vm.constants[enumNameIdx].Str, NewString(enumState.keys[enumState.index]))
+			enumState.index++
+
+		case OpJSSwitch:
+			// Switch statement - discriminant value on stack, cases follow
+			// Placeholder for now
+			vm.pop()
+
+		case OpJSCase:
+			// Case label - test value matches, fall through or jump
+			vm.ip += 4 // Skip jump target
+
+		case OpJSDefault:
+			// Default label - unconditional jump target
+			vm.ip += 4 // Skip jump target
+
+		// Arithmetic operators for JScript (type coercion)
+		case OpJSSubtract:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsSubtract(left, right)
+			vm.push(result)
+
+		case OpJSMultiply:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsMultiply(left, right)
+			vm.push(result)
+
+		case OpJSDivide:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsDivide(left, right)
+			vm.push(result)
+
+		case OpJSModulo:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsModulo(left, right)
+			vm.push(result)
+
+		case OpJSNegate:
+			val := vm.pop()
+			result := vm.jsNegate(val)
+			vm.push(result)
+
+		// Bitwise operators
+		case OpJSBitwiseAnd:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsBitwiseAnd(left, right)
+			vm.push(result)
+
+		case OpJSBitwiseOr:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsBitwiseOr(left, right)
+			vm.push(result)
+
+		case OpJSBitwiseXor:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsBitwiseXor(left, right)
+			vm.push(result)
+
+		case OpJSBitwiseNot:
+			val := vm.pop()
+			result := vm.jsBitwiseNot(val)
+			vm.push(result)
+
+		case OpJSLeftShift:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLeftShift(left, right)
+			vm.push(result)
+
+		case OpJSRightShift:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsRightShift(left, right)
+			vm.push(result)
+
+		case OpJSUnsignedRightShift:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsUnsignedRightShift(left, right)
+			vm.push(result)
+
+		// Comparison operators
+		case OpJSLess:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLess(left, right)
+			vm.push(result)
+
+		case OpJSGreater:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsGreater(left, right)
+			vm.push(result)
+
+		case OpJSLessEqual:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLessEqual(left, right)
+			vm.push(result)
+
+		case OpJSGreaterEqual:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsGreaterEqual(left, right)
+			vm.push(result)
+
+		case OpJSLooseEqual:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLooseEqual(left, right)
+			vm.push(result)
+
+		case OpJSLooseNotEqual:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLooseNotEqual(left, right)
+			vm.push(result)
+
+		// Logical operators
+		case OpJSLogicalAnd:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLogicalAnd(left, right)
+			vm.push(result)
+
+		case OpJSLogicalOr:
+			right := vm.pop()
+			left := vm.pop()
+			result := vm.jsLogicalOr(left, right)
+			vm.push(result)
+
+		case OpJSLogicalNot:
+			val := vm.pop()
+			result := vm.jsLogicalNot(val)
+			vm.push(result)
+
+		// Pre/Post increment/decrement operators
+		case OpJSPostIncrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			oldVal := vm.jsGetName(nameStr)
+			newVal := vm.jsToNumber(oldVal)
+			newVal.Flt++
+			vm.jsSetName(nameStr, newVal)
+			vm.push(oldVal)
+
+		case OpJSPostDecrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			oldVal := vm.jsGetName(nameStr)
+			newVal := vm.jsToNumber(oldVal)
+			newVal.Flt--
+			vm.jsSetName(nameStr, newVal)
+			vm.push(oldVal)
+
+		case OpJSPreIncrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			oldVal := vm.jsGetName(nameStr)
+			newVal := vm.jsToNumber(oldVal)
+			newVal.Flt++
+			vm.jsSetName(nameStr, newVal)
+			vm.push(newVal)
+
+		case OpJSPreDecrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			oldVal := vm.jsGetName(nameStr)
+			newVal := vm.jsToNumber(oldVal)
+			newVal.Flt--
+			vm.jsSetName(nameStr, newVal)
+			vm.push(newVal)
+
+		// Compound assignment operators
+		case OpJSAddAssign:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			right := vm.pop()
+			left := vm.jsGetName(nameStr)
+			result := vm.jsAdd(left, right)
+			vm.jsSetName(nameStr, result)
+			vm.push(result)
+
+		case OpJSSubtractAssign:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			right := vm.pop()
+			left := vm.jsGetName(nameStr)
+			result := vm.jsSubtract(left, right)
+			vm.jsSetName(nameStr, result)
+			vm.push(result)
+
+		case OpJSMultiplyAssign:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			right := vm.pop()
+			left := vm.jsGetName(nameStr)
+			result := vm.jsMultiply(left, right)
+			vm.jsSetName(nameStr, result)
+			vm.push(result)
+
+		case OpJSDivideAssign:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			right := vm.pop()
+			left := vm.jsGetName(nameStr)
+			result := vm.jsDivide(left, right)
+			vm.jsSetName(nameStr, result)
+			vm.push(result)
+
+		case OpJSModuloAssign:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			right := vm.pop()
+			left := vm.jsGetName(nameStr)
+			result := vm.jsModulo(left, right)
+			vm.jsSetName(nameStr, result)
+			vm.push(result)
+
+		case OpJSMemberIndexGet:
+			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			indexVal := vm.pop()
+			objVal := vm.pop()
+			result := vm.jsMemberIndexGet(objVal, indexVal, vm.constants[memberIdx].Str)
+			vm.push(result)
+
+		case OpJSMemberIndexSet:
+			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			indexVal := vm.pop()
+			objVal := vm.pop()
+			value := vm.pop()
+			vm.jsMemberIndexSet(objVal, indexVal, value, vm.constants[memberIdx].Str)
+
+		case OpJSComma:
+			// Comma operator: evaluate left, discard, evaluate right, keep on stack
+			vm.pop() // Discard left
+
+		case OpJSNew:
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			constructor := vm.pop()
+			result := vm.jsNew(constructor, args)
+			vm.push(result)
+
+		case OpJSMemberDelete:
+			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			obj := vm.pop()
+			success := vm.jsMemberDelete(obj, vm.constants[memberIdx].Str)
+			vm.push(NewBool(success))
+
+		case OpJSIndexGet:
+			indexVal := vm.pop()
+			arrVal := vm.pop()
+			result := vm.jsIndexGet(arrVal, indexVal)
+			vm.push(result)
+
+		case OpJSIndexSet:
+			indexVal := vm.pop()
+			arrVal := vm.pop()
+			value := vm.pop()
+			vm.jsIndexSet(arrVal, indexVal, value)
+
 		case OpRet:
 			retVal := vm.pop()
 			if len(vm.callStack) == 0 {
@@ -2059,6 +2677,10 @@ aspExecLoop:
 
 	if !vm.suppressTerminate && vm.prepareClassTerminateCall() {
 		goto aspExecLoop
+	}
+
+	if vm.host != nil && vm.host.Response() != nil {
+		vm.host.Response().Flush()
 	}
 
 	return nil

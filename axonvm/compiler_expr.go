@@ -997,6 +997,30 @@ func (c *Compiler) Compile() (err error) {
 	}
 
 	compiledDefinitionBounds := c.compileDefinitionPreBindingPass()
+	jscriptPageMode := c.lexerMode == vbscript.ModeASP && isASPDefaultJScriptSource(c.sourceCode)
+	var jscriptProgram strings.Builder
+	appendJScriptProgram := func(segment string) {
+		if segment == "" {
+			return
+		}
+		jscriptProgram.WriteString(segment)
+		if !strings.HasSuffix(segment, "\n") {
+			jscriptProgram.WriteByte('\n')
+		}
+	}
+	appendJScriptHTMLWrite := func(content string) {
+		if content == "" {
+			return
+		}
+		appendJScriptProgram("Response.Write(" + fmt.Sprintf("%q", content) + ");")
+	}
+	flushJScriptProgram := func() {
+		if jscriptProgram.Len() == 0 {
+			return
+		}
+		c.compileJScriptBlock(jscriptProgram.String())
+		jscriptProgram.Reset()
+	}
 
 	c.resetTokenStream()
 	skipDefinitionStarts := make(map[int]int, len(compiledDefinitionBounds))
@@ -1012,31 +1036,106 @@ func (c *Compiler) Compile() (err error) {
 
 		switch t := c.next.(type) {
 		case *vbscript.HTMLToken:
+			if jscriptPageMode {
+				appendJScriptHTMLWrite(t.Content)
+				c.move()
+				continue
+			}
 			idx := c.addConstant(NewString(t.Content))
 			c.emit(OpWriteStatic, idx)
 			c.move()
 		case *vbscript.ASPExpressionStartToken:
+			if jscriptPageMode {
+				flushJScriptProgram()
+			}
 			c.move()
 			c.emitCurrentDebugLocation()
 			c.parseExpression(PrecNone)
 			c.emit(OpWrite)
 		case *vbscript.ASPDirectiveStartToken:
+			if jscriptPageMode {
+				flushJScriptProgram()
+			}
 			c.move()
 			c.compileASPDirective()
 		case *vbscript.ASPIncludeToken:
 			c.move()
 		case *vbscript.ASPObjectToken:
+			if jscriptPageMode {
+				flushJScriptProgram()
+			}
 			c.move()
 			c.compileASPObjectDeclaration(t)
+		case *vbscript.ASPJScriptBlockToken:
+			if jscriptPageMode {
+				appendJScriptProgram(t.Content)
+				c.move()
+				continue
+			}
+			c.move()
+			c.compileJScriptBlock(t.Content)
 		case *vbscript.ASPCodeStartToken, *vbscript.ASPCodeEndToken:
 			c.move()
 		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
 			c.move()
 		default:
+			if jscriptPageMode {
+				flushJScriptProgram()
+			}
 			c.emitCurrentDebugLocation()
 			c.parseStatement()
 		}
 	}
+	if jscriptPageMode {
+		flushJScriptProgram()
+	}
 	c.emit(OpHalt)
 	return nil
+}
+
+func isASPDefaultJScriptSource(source string) bool {
+	trimmed := strings.TrimLeft(source, " \t\r\n\uFEFF")
+	if !strings.HasPrefix(trimmed, "<%") {
+		return false
+	}
+	probe := strings.TrimSpace(trimmed[2:])
+	if probe == "" || probe[0] != '@' {
+		return false
+	}
+	endIdx := strings.Index(trimmed, "%>")
+	if endIdx == -1 {
+		return false
+	}
+	directiveBody := trimmed[2:endIdx]
+	lower := strings.ToLower(directiveBody)
+	idx := strings.Index(lower, "language")
+	if idx == -1 {
+		return false
+	}
+	rest := strings.TrimSpace(directiveBody[idx+len("language"):])
+	if !strings.HasPrefix(rest, "=") {
+		return false
+	}
+	rest = strings.TrimSpace(rest[1:])
+	if rest == "" {
+		return false
+	}
+	value := ""
+	if rest[0] == '\'' || rest[0] == '"' {
+		quote := rest[0]
+		end := strings.IndexByte(rest[1:], quote)
+		if end == -1 {
+			return false
+		}
+		value = rest[1 : 1+end]
+	} else {
+		end := strings.IndexAny(rest, " \t\r\n>")
+		if end == -1 {
+			value = rest
+		} else {
+			value = rest[:end]
+		}
+	}
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	return normalized == "jscript" || normalized == "javascript"
 }

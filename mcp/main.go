@@ -234,7 +234,7 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	matches := fuzzy.Find(query, searchList)
 
 	if len(matches) == 0 {
-		return mcp.NewToolResultText(fmt.Sprintf("No documentation found for: '%s'. Try different keywords.", query)), nil
+		return mcp.NewToolResultText(fmt.Sprintf("No documentation found for: '%s'. Try different keywords. You should ensure your query is short using the least number os keywords. Eg.: g3db select", query)), nil
 	}
 
 	// Build the response in Markdown format
@@ -413,8 +413,8 @@ func main() {
 	// 2. Create the Tool Definition (English for token optimization)
 	tool := mcp.NewTool(
 		"search_axonasp_docs",
-		mcp.WithDescription("Search for AxonASP built-in functions, custom objects, and libraries to be used in the Classic ASP implementation of G3Pix AxonASSP. Always use this tool before creating complex code to get the correct syntax and avoid hallucinating or unnecessary manual implementations. Use keywords like function names (e.g., G3JSON), actions (e.g., parse json, database, session, upload), or general topics (e.g., file handling, error handling). Use get_asp_coding_style tool to get the official coding style guide for Classic ASP and VBScript used by AxonASP. You must use english keywords."), // The description is intentionally verbose to guide the user towards effective queries and to optimize token usage by providing clear instructions on how to search for documentation.
-		mcp.WithString("query", mcp.Required(), mcp.Description("Search term, module name, or action (e.g., G3JSON, parse json, database, md files, upload). You must use english keywords.")),
+		mcp.WithDescription("Search for AxonASP built-in functions, custom objects, and libraries to be used in the Classic ASP implementation of AxonASP. Always use this tool before creating complex code to get the correct syntax and avoid hallucinating or unnecessary manual implementations. Use keywords like function names (e.g., G3JSON), actions (e.g., parse json, database, session, upload), or general topics (e.g., file handling, error handling). Don't use more than 3 keywords. Use get_asp_coding_style tool to get the official coding style guide for Classic ASP and VBScript. You must use english keywords."), // The description is intentionally verbose to guide the user towards effective queries and to optimize token usage by providing clear instructions on how to search for documentation.
+		mcp.WithString("query", mcp.Required(), mcp.Description("Search term, module name, or action (e.g., G3JSON, parse json, database). Max of 3 keywords. You must use english keywords.")),
 	)
 
 	// 3. Register the tool

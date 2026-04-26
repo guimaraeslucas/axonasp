@@ -38,6 +38,7 @@ func TestASPDirectiveCodePage(t *testing.T) {
 	host := NewMockHost()
 	var output bytes.Buffer
 	host.SetOutput(&output)
+	host.Response().SetBuffer(false)
 	vm.SetHost(host)
 
 	if err := vm.Run(); err != nil {
@@ -49,6 +50,29 @@ func TestASPDirectiveCodePage(t *testing.T) {
 	}
 	if host.Response().GetCodePage() != 65001 {
 		t.Fatalf("unexpected response code page: %d", host.Response().GetCodePage())
+	}
+}
+
+// TestASPDirectiveLanguageJScript verifies that Language="JScript" is accepted and executes server-side JScript.
+func TestASPDirectiveLanguageJScript(t *testing.T) {
+	source := `<%@ Language="JScript" %><%= "ok" %>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+
+	if output.String() != "ok" {
+		t.Fatalf("unexpected JScript directive output: %q", output.String())
 	}
 }
 

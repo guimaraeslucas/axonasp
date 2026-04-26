@@ -165,7 +165,7 @@ default_timezone = "America/New_York"
 
 When enabled, the HTTP/FastCGI server provides detailed error messages, stack traces, and debugging information. Helpful during development but exposes sensitive information.
 
-**⚠️ Security Warning:** Disable in production environments!
+**⚠️ Security Warning:** *ALWAYS* disable in production environments! This will also enable go pprof endpoints on the proxy server version, which can be accessed at /debug/pprof and can provide detailed information about the server's performance and resource usage, but it can also pose a security risk if exposed to unauthorized users. If for any reason you need to enable ASP debugging in production, make sure to secure the pprof endpoints properly.
 
 **Example:**
 ```toml

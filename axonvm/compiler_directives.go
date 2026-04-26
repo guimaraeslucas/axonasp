@@ -127,7 +127,8 @@ func (c *Compiler) readDirectiveValue() string {
 func (c *Compiler) validateASPDirective(name string, value string) {
 	switch strings.ToLower(name) {
 	case "language":
-		if !strings.EqualFold(strings.TrimSpace(value), "vbscript") {
+		normalizedLanguage := strings.ToLower(strings.TrimSpace(value))
+		if normalizedLanguage != "vbscript" && normalizedLanguage != "jscript" && normalizedLanguage != "javascript" {
 			panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("unsupported ASP language directive: %s", value)))
 		}
 	case "codepage":

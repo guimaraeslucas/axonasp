@@ -21,6 +21,7 @@
 package axonvm
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -124,5 +125,41 @@ func TestG3TestDispatchAndSummary(t *testing.T) {
 	}
 	if !strings.Contains(summary.Failures[1].Message, "forced failure") {
 		t.Fatalf("expected explicit failure message, got %q", summary.Failures[1].Message)
+	}
+}
+
+// TestG3TestLegacySuiteMethods verifies G3TestSuite compatibility methods used by legacy ASP fixtures.
+func TestG3TestLegacySuiteMethods(t *testing.T) {
+	vm := NewVM(nil, nil, 16)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Response().SetBuffer(false)
+	vm.host = host
+
+	obj := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("G3TestSuite")})
+	if obj.Type != VTNativeObject {
+		t.Fatalf("expected VTNativeObject, got %#v", obj)
+	}
+
+	vm.dispatchNativeCall(obj.Num, "BeginTest", []Value{NewString("legacy loop suite")})
+	vm.dispatchNativeCall(obj.Num, "SetVar", []Value{NewString("whileResult"), NewString("0,1,2,")})
+	got := vm.dispatchNativeCall(obj.Num, "GetVar", []Value{NewString("whileResult")})
+	if got.String() != "0,1,2," {
+		t.Fatalf("unexpected SetVar/GetVar roundtrip: %q", got.String())
+	}
+
+	if res := vm.dispatchNativeCall(obj.Num, "AssertEquals", []Value{NewString("0,1,2,"), got, NewString("legacy while output")}); !vm.asBool(res) {
+		t.Fatalf("expected assertion pass, got %#v", res)
+	}
+	if res := vm.dispatchNativeCall(obj.Num, "AssertNotEquals", []Value{NewString("0,1,2,3,"), got, NewString("legacy mismatch alias")}); !vm.asBool(res) {
+		t.Fatalf("expected inequality alias to pass, got %#v", res)
+	}
+	vm.dispatchNativeCall(obj.Num, "EndTest", nil)
+	vm.dispatchNativeCall(obj.Num, "Summary", nil)
+
+	text := output.String()
+	if !strings.Contains(text, "G3Test Summary: total=2, passed=2, failed=0") {
+		t.Fatalf("expected summary output, got %q", text)
 	}
 }

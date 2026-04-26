@@ -30,8 +30,9 @@ import (
 func (vm *VM) applyDirective(name string, value string) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "language":
-		if !strings.EqualFold(strings.TrimSpace(value), "vbscript") {
-			vm.raise(vbscript.InternalError, "Only VBScript is supported in ASP directives")
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		if normalized != "vbscript" && normalized != "jscript" && normalized != "javascript" {
+			vm.raise(vbscript.InternalError, "Only VBScript or JScript is supported in ASP directives")
 		}
 	case "codepage":
 		vm.host.Response().SetCodePage(vm.asInt(NewString(value)))

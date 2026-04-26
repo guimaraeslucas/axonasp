@@ -20,7 +20,12 @@
  */
 package axonvm
 
-import "testing"
+import (
+	"bytes"
+	"fmt"
+	"sync"
+	"testing"
+)
 
 // TestAcquireVMFromCachedProgramResetsState verifies pooled VMs restore immutable program state
 // and clear request-scoped data before being reused by another execution.
@@ -79,6 +84,100 @@ func TestAcquireVMFromCachedProgramResetsState(t *testing.T) {
 		}
 		if reused.Globals[4].Type != VTNativeObject || reused.Globals[4].Num != 4 {
 			t.Fatalf("expected Application intrinsic to be restored")
+		}
+	}
+}
+
+// TestAcquireVMFromCachedProgramResetsJScriptState verifies pooled VM reuse clears
+// JScript runtime state that can otherwise trigger stack underflow on expression pop.
+func TestAcquireVMFromCachedProgramResetsJScriptState(t *testing.T) {
+	compiler := NewASPCompiler(`<script runat="server" language="JScript">foo();</script>`)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	program := cachedProgramFromCompiler(compiler)
+	vm := AcquireVMFromCachedProgram(program)
+
+	vm.jsCallStack = append(vm.jsCallStack, jsCallFrame{returnIP: 1, savedSP: 3})
+	vm.jsTryStack = append(vm.jsTryStack, 10)
+	vm.jsErrStack = append(vm.jsErrStack, NewString("dirty"))
+	vm.jsActiveEnvID = 99999
+	vm.jsThisValue = NewString("dirty-this")
+	vm.jsObjectItems[20001] = map[string]Value{"x": NewInteger(1)}
+	vm.jsFunctionItems[20002] = &jsFunctionObject{name: "dirtyFn"}
+	vm.jsForInItems[1] = &jsForInEnumerator{keys: []string{"k"}, index: 0}
+	vm.jsEnvItems[20003] = &jsEnvFrame{parentID: 0, bindings: map[string]Value{"x": NewInteger(1)}}
+
+	vm.Release()
+
+	reused := AcquireVMFromCachedProgram(program)
+	defer reused.Release()
+
+	if len(reused.jsCallStack) != 0 {
+		t.Fatalf("expected jsCallStack to be reset")
+	}
+	if len(reused.jsTryStack) != 0 || len(reused.jsErrStack) != 0 {
+		t.Fatalf("expected JScript try/error stacks to be reset")
+	}
+	if reused.jsActiveEnvID != 0 {
+		t.Fatalf("expected jsActiveEnvID to be reset")
+	}
+	if reused.jsThisValue.Type != VTJSUndefined {
+		t.Fatalf("expected jsThisValue to be undefined after reuse")
+	}
+	if len(reused.jsObjectItems) != 0 || len(reused.jsFunctionItems) != 0 || len(reused.jsForInItems) != 0 || len(reused.jsEnvItems) != 0 {
+		t.Fatalf("expected JScript dynamic maps to be cleared")
+	}
+
+	host := NewMockHost()
+	reused.SetHost(host)
+	if err := reused.Run(); err != nil {
+		t.Fatalf("expected reused VM run without stack underflow, got: %v", err)
+	}
+}
+
+func TestJScriptConcurrentPooledRunsNoStackUnderflow(t *testing.T) {
+	compiler := NewASPCompiler(`<script runat="server" language="JScript">function id(v){return v;} var out=""; for (var i=0; i<10; i++) { out += id(i); } Response.Write(out);</script>`)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	program := cachedProgramFromCompiler(compiler)
+	const workers = 24
+
+	errCh := make(chan error, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			vm := AcquireVMFromCachedProgram(program)
+			defer vm.Release()
+
+			host := NewMockHost()
+			var output bytes.Buffer
+			host.SetOutput(&output)
+			host.Response().SetBuffer(false)
+			vm.SetHost(host)
+
+			if err := vm.Run(); err != nil {
+				errCh <- err
+				return
+			}
+			if output.String() != "0123456789" {
+				errCh <- fmt.Errorf("unexpected JScript pooled output: %q", output.String())
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent pooled run failed: %v", err)
 		}
 	}
 }

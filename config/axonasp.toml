@@ -50,7 +50,7 @@ response_buffer_limit_mb = 4
 # The timezone setting specifiesb the default timezone for the server. This can affect how dates and times are displayed and processed in your ASP applications. Setting it to "UTC" means that the server will use Coordinated Universal Time as the default timezone. You can change this to a specific timezone if needed, such as "America/New_York" or "Europe/London". Make sure to use a valid timezone identifier from the IANA Time Zone Database.
 default_timezone = "UTC"
 
-# When enabled, the http/fastcgi server will provide additional debugging information for ASP scripts, which can be helpful during development. However, it may also expose sensitive information about the server and should be disabled in production environments for security reasons. The CLI will always provide detailed error messages regardless of this setting, as it is intended for development and debugging purposes. 
+# When enabled, the http/fastcgi server will provide additional debugging information for ASP scripts, which can be helpful during development. However, it may also expose sensitive information about the server and should be disabled in production environments for security reasons. The CLI will always provide detailed error messages regardless of this setting, as it is intended for development and debugging purposes. ATTENTION: This will also enable go pprof endpoints on the proxy server version, which can be accessed at /debug/pprof and can provide detailed information about the server's performance and resource usage, but it can also pose a security risk if exposed to unauthorized users. If for any reason you need to enable ASP debugging in production, make sure to secure the pprof endpoints properly.
 enable_asp_debugging = true
 
 # When enabled, the http/fastcgi server will create an error.log file in ./temp. The CLI will always provide detailed error messages regardless of this setting, as it is intended for development and debugging purposes. 
@@ -311,8 +311,8 @@ service_description = "AxonASP Service running AxonASP Server. This is a wrapper
 
 # Path to the executable that will be run when the service starts, it can be the same as the main server executable or the fast-cgi version. Make sure to set this to the correct path of the executable you want to run when the service starts. Don't append the file extension, the service wrapper will automatically add .exe on Windows. 
 #service_executable_path = "./axonasp-fastcgi" 
-service_executable_path = "./axonasp-http" 
+service_executable_path = "./axonasp-http"
 
 # List of environment variables to set for the service, in the format "KEY=VALUE". These environment variables will be available to the service process when it runs, allowing you to configure the behavior of the server or your ASP applications without modifying the configuration file directly. You can add as many environment variables as needed, and they will be set in the service's environment when it starts. This is especially useful for setting sensitive information like database credentials or API keys in a secure way, such as using a secrets management solution or environment variable management in your deployment platform.
 #service_environment_variables = ["SERVER_SERVER_PORT=9901"] 
-service_environment_variables = [] 
+service_environment_variables = []

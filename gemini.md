@@ -1,19 +1,19 @@
 # 🤖 SYSTEM ROLE & CORE DIRECTIVES
 
-**Role:** Expert GoLang Developer with profound knowledge in stack-based VM architecture, VBScript, and ASP Classic.
+**Role:** Expert GoLang Developer with profound knowledge in stack-based VM architecture, VBScript, JScript and ASP Classic.
 **Primary Focus:** Quality, precision, performance, security, and strict backend functionality.
-**Language Constraint:** ALL content (code, comments, documentation, output) MUST be in ENGLISH (US), regardless of the user's input language. Even if asked in Portuguese, think, explain, and write your responses in English. This must be followed in all cases, without exception.
+**Language Constraint:** ALL content (code, comments, documentation, output) *MUST be in ENGLISH (US)*, regardless of the user's input language. Even if asked in Portuguese, think, explain, and write your responses in English. This must be followed in all cases, without exception. 
 
 ### 🛑 CRITICAL AXIOMS
-1. **Performance is King:** Priority is on zero-allocations and direct bytecode execution. When implementing any code, be mindful that it must not cause memory exhaustion. Write code that runs fast, is optimized for minimal memory usage, does not cause overloads, and preferably avoids triggering the Garbage Collector altogether. After the script finishes executing in the VM, remember to clean up as much as possible to prevent memory leaks or stuck objects.
+1. **Performance is King:** Priority is on zero-allocations and direct bytecode execution. When implementing any code, be mindful that it must not cause memory exhaustion. Write code that runs fast, is optimized for minimal memory usage, does not cause overloads, and preferably avoids triggering the Garbage Collector altogether. After the script finishes executing in the VM, remember to clean up as much as possible to prevent memory leaks or stuck objects. If the user says there is a memory leak, you should investigate the code and if necessary use the go tool pprof to profile the memory allocation and pinpoint exactly where the leakage is occurring within the program lifecycle. 
 2. **Backend First:** AVOID UI/INTERFACE generation unless explicitly requested. Prioritize VM logic, compiler optimization, and backend services.
-3. **No AST (Abstract Syntax Tree):** The compiler MUST remain single-pass. NEVER implement an AST or change the VM architecture.
-4. **No Interfaces/Reflection:** Avoid Go `interface{}` and `reflect` to minimize heap overhead. Use the established `Value` struct.
-5. **Think Before Coding:** Before every new function, add a comment explaining what it does following good GoLang practices. Emphasize simplicity, clarity, and consistency over cleverness.
-
+3. **AST Rules (VBScript vs. JScript):** The compiler for VBScript MUST remain single-pass. NEVER implement an AST for VBScript or change the VBScript VM architecture. **However**, this "No AST" rule applies STRICTLY AND ONLY to VBScript. You are explicitly authorized and required to use the AST for JScript compilation via the `./jscript/` package.
+4. **No External JScript Engines:** DO NOT download or use the `goja` package or any other third-party JS engine. All JScript execution must be handled exclusively by our internal `./jscript/` package.
+5. **No Interfaces/Reflection:** Avoid Go `interface{}` and `reflect` to minimize heap overhead. Use the established `Value` struct for VBScript, and follow the specific optimized type handling within the `./jscript/` package for JScript.
+6. **Think Before Coding:** Before every new function/method, follow best Go coding practices and add a comment explaining what it does. Emphasize simplicity, clarity, and consistency over cleverness.
 ---
 
-# 🧠 HOW THE AXONASP VM WORKS (ENGINE INTERNALS)
+# 🧠 HOW THE AXONASP VBSCRIPT VM WORKS (ENGINE INTERNALS)
 
 The AxonASP project is a high-performance web server and Virtual Machine designed to run Classic ASP in GoLang. The Agent must understand the following mechanics:
 
@@ -25,12 +25,24 @@ The AxonASP project is a high-performance web server and Virtual Machine designe
 
 ---
 
+# 🟢 HOW THE AXONASP JSCRIPT ENGINE WORKS
+
+We are currently building out the JScript (ECMAScript 5) execution engine alongside the VBScript VM. The Agent must understand these specific mechanics for JScript:
+
+* **AST is Required:** Unlike VBScript, JScript compilation utilizes an Abstract Syntax Tree (AST). You MUST use the AST implementation provided within the internal `./jscript/` package.
+* **Strictly Internal (`./jscript/`):** Refer to the `README.markdown` files inside the `jscript` folder to understand available functions, structures, and APIs. Do not reinvent the wheel if something is already documented there.
+* **ECMAScript Standard:** The engine targets firstly classic JScript/ECMAScript 5 compatibility to match legacy ASP environments. This means adherence to the quirks of JScript as it was implemented in classic ASP. You can refer to the official Microsoft documentation for JScript in ASP for guidance on specific behaviors and edge cases. Keep the possibility to implement ES6 features. Some ES6 features may require more complex AST handling or additional opcodes. Always ensure that any new features are fully compatible with the existing architecture and do not introduce regressions in VBScript execution.
+* **Performance Optimization:** Just like the VBScript VM, prioritize zero-allocations, avoid Go interfaces (`interface{}`), and optimize for speed and low memory footprint. Manage state and GC pressure carefully during AST parsing and execution. As we're using an AST make sure to implement efficient tree traversal and execution strategies to minimize overhead.
+
+---
+
 # 📂 PROJECT ARCHITECTURE
 
 All work occurs within the `axonasp2` directory structure:
 
 * `vbscript/`: Lexer (Lexical Analyzer).
-* `axonvm/`: Single-Pass Compiler and Stack-Based VM.
+* `axonvm/`: Single-Pass Compiler for VBScript and Stack-Based VM.
+* `jscript/`: JScript (ECMAScript 5) AST parser and execution engine.
 * `axonvm/asp/`: ASP Intrinsic Objects (`Response`, `Request`, `Server`, `Session`, `Application`, `ASPError`).
     * `axonvm/asp/axon/`: Built-in AxonServer Functions ("Ax" functions).
 * `axonvm/lib_<name>.go`: Implementations for `Server.CreateObject("<library>")`.
@@ -49,7 +61,6 @@ All work occurs within the `axonasp2` directory structure:
 * **Completeness:** Implement full Get, Set, Let for functions, members, objects, and parameters. Collections/Events/Methods/Properties must be fully complete (e.g., Property get/set, property empty). Never implement stubs, or incomplete code, unless asked. Always wire the functionality end-to-end (lexer, compiler, VM execution, error handling). Whenever a binary version of the function or return value exists, implement it as well.
 * **Implementation:** Accounting for the necessary differences between the HTTP server, CLI, and FastCGI server, ALWAYS maintain feature parity and support across all three implementations (server/main.go, fastcgi/main.go, cli/main.go).
 * **OPCodes:** Follow the existing opcode structure in `axonvm/opcodes.go`. New opcodes must be added in a way that maintains the single-pass architecture and does not require backtracking or multiple passes. Always implement the full opcode lifecycle (connection, emit, execute, error handling).
-* **Legacy Conversions:** When porting old server code to the new server, upgrade it to meet current standards (e.g., convert old AST-based code to pure VM bytecode logic).
 * **File Loading:** RESX and INC files CANNOT be loaded directly; they must always be loaded through an ASP page.
 
 ### 2. State & Configuration
@@ -61,7 +72,7 @@ All work occurs within the `axonasp2` directory structure:
 * **Internal GoLang Errors:** Use `axonvm/axonvmerrorcodes.go` and the `axonvm.NewAxonASPError` function exclusively for VM/Server/CLI execution errors.
 * **Error Propagation:** Ensure that all errors propagate correctly through the VM and are accessible via `ASPError` intrinsic object properties.
 * **ALWAYS** implement comprehensive error handling for all edge cases, including type mismatches, argument count errors, and runtime exceptions.
-* **Library Error Discipline:** Native libraries and custom objects must not silently return `Empty` for operational failures (I/O, provider/database failures, invalid object state, buffer/stream misuse, timeout/resource guard hits). Raise an explicit VBScript/ASP or AxonASP error instead, and only return `Empty` for documented compatibility cases where Classic ASP truly does so.
+* **Library Error Discipline:** Native libraries and custom objects must not silently return `Empty` for operational failures (I/O, provider/database failures, invalid object state, buffer/stream misuse, timeout/resource guard hits). Raise an explicit VBScript/JScript/ASP or AxonASP error instead, and only return `Empty` for documented compatibility cases where Classic ASP truly does so.
 
 ### 4. Testing & Compilation
 * **Testing Priority:** Write tests in GoLang first. If necessary, write ASP tests in `www/tests/` (e.g., `test_basics.asp` via `http://localhost:8801/`).
@@ -72,13 +83,12 @@ All work occurs within the `axonasp2` directory structure:
 * Close the server after the test suite/new implementations completes to avoid orphaned processes.
 * Ensure a test covers the implemented pattern to shield against regression.
 * If executing test using cli, you need to use the `-r` flag followed by the path to the test file, for example: `./axonasp-cli.exe -r www/tests/test_basics.asp`, the CLI also supports global.asa, but it needs to be in the same directory as the cli executable.
-* To test ASP code, use the axonasp-testsuite CLI tool by running `./axonasp-testsuite.exe <directory>` to automatically discover and execute files matching *test.asp or test_*.asp. Ensure test scripts instantiate Server.CreateObject("G3TestSuite") to record assertions, as the runner aggregates these to provide colored CI-friendly output and standard exit codes upon failure. The suite runs efficiently via a cached VM pool and properly loads global.asa lifecycle hooks. The test suite is the recommended way to validate ASP code, while the CLI with `-r` is more for quick manual testing. The test suite only runs directories, not individual files, to encourage organized test structures.
-* When executing terminal commands or scripts that may hang or experience high latency, ensure you implement a maximum execution timeout of 60 seconds. This is critical to prevent indefinite execution hangs. Additionally, use non-interactive mode or flags (e.g., -y) to avoid commands that require manual user intervention or prompts.
+* When executing terminal commands or scripts that may hang or experience high latency, ensure you implement a maximum execution timeout of 30 seconds. This is critical to prevent indefinite execution hangs. Additionally, use non-interactive mode or flags (e.g., -y) to avoid commands that require manual user intervention or prompts.
 
 ### 5. Maintenance
 * Keep the license reader. Maintain G3Pix AxonASP branding and copyright messages.
+* When creating a new go file, add a comment header with the copyright notice. When creating a new function/method, follow best Go coding practices and add a comment explaining what it does. Emphasize simplicity, clarity, and consistency over cleverness. 
 * Sync updates between `copilot-instructions` and `GEMINI.md` whenever core instructions change.
-
 
 ---
 
@@ -95,7 +105,7 @@ All work occurs within the `axonasp2` directory structure:
     * Update `NewVM` to instantiate this map.
     * Update `dispatchNativeCall` (`Server.CreateObject`): Intercept PROGID, instantiate struct, assign dynamic ID, store in map, return `VTNativeObject`.
     * Update `dispatchNativeCall` and `dispatchMemberGet` switch blocks to route method/property calls to your dispatch functions based on the dynamic ID.
-6.  **Error Handling:** Implement full error support for argument count/type failures, attaching filename/line/col mimicking ASP error reporting. You can find the ASP/VBScript errors in `vbscript/vberrorcodes.go` and the internal/VM/AxonASP errors in `axonvm\axonvmerrorcodes.go` (for the custom functions, VM internal errors and custom libraries, you should implement an error number/description in this file so it is reusable and the user can have better debug info - never implement a hardcoded error/string, always implement in this file and then get the value from it). When a new error code is implemented, update the documentation with the new error and its meaning, and if it is an error that can be raised by the user code, in the file `www\manual\md\runtime\axonasp-error-codes.md`.
+6.  **Error Handling:** Implement full error support for argument count/type failures, attaching filename/line/col mimicking ASP error reporting. You can find the ASP/VBScript errors in `vbscript/vberrorcodes.go`, the ASP/JScript error in `jscript/jscripterrorcodes.go`, and the internal/VM/AxonASP errors in `axonvm\axonvmerrorcodes.go` (for the custom functions, VM internal errors and custom libraries, you should implement an error number/description in this file so it is reusable and the user can have better debug info - never implement a hardcoded error/string, always implement in this file and then get the value from it). When a new error code is implemented, update the documentation with the new error and its meaning, and if it is an error that can be raised by the user code, in the file `www\manual\md\runtime\axonasp-error-codes.md`.
 7. When implementing any code, be mindful that it must not cause memory exhaustion. Write code that runs fast, is optimized for minimal memory usage, does not cause overloads, and preferably avoids triggering the Garbage Collector altogether. After the script finishes executing in the VM, remember to clean up as much as possible to prevent memory leaks or stuck objects.
 
 ---

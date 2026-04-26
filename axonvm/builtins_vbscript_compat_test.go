@@ -104,9 +104,10 @@ func TestBuiltinDefaultLocaleUsesConfiguredLCID(t *testing.T) {
 	host := NewMockHost()
 	vm.SetHost(host)
 
+	expected := int64(loadBuiltinDefaults().mslcid)
 	configured := callBuiltin(t, vm, "GetLocale")
-	if configured.Type != VTInteger || configured.Num != 1046 {
-		t.Fatalf("expected configured default LCID 1046, got %#v", configured)
+	if configured.Type != VTInteger || configured.Num != expected {
+		t.Fatalf("expected configured default LCID %d, got %#v", expected, configured)
 	}
 }
 
@@ -128,8 +129,9 @@ func TestBuiltinFormatDateTimeUsesPortugueseLocale(t *testing.T) {
 	if shortDate.Type != VTString || shortDate.Str != "09/04/2026" {
 		t.Fatalf("expected Brazilian short date 09/04/2026, got %#v", shortDate)
 	}
-	if longTime.Type != VTString || longTime.Str != "13:05:07" {
-		t.Fatalf("expected 24-hour long time in server timezone, got %#v", longTime)
+	expectedLongTime := valueToTimeInLocale(vm, dateVal).In(builtinCurrentLocation(vm)).Format("15:04:05")
+	if longTime.Type != VTString || longTime.Str != expectedLongTime {
+		t.Fatalf("expected 24-hour long time in server timezone %q, got %#v", expectedLongTime, longTime)
 	}
 }
 

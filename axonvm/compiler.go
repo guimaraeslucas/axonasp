@@ -132,6 +132,8 @@ type Compiler struct {
 	// code compiled by Eval/Execute/ExecuteGlobal while keeping global assignment semantics.
 	dynamicMemberResolution bool
 	loopContexts            []loopContext
+	jsLoopContexts          []*jsLoopContext // Loop contexts for JScript
+	jsBreakContexts         []*jsBreakContext
 	// withDepth tracks nesting level of With...End With blocks at compile time.
 	// A value > 0 enables the leading-dot '.' statement and expression syntax.
 	withDepth          int
@@ -146,6 +148,17 @@ type Compiler struct {
 type loopContext struct {
 	kind      string
 	exitJumps []int
+}
+
+// jsLoopContext tracks break and continue targets for JScript loops.
+type jsLoopContext struct {
+	continueTargets []int // Jump positions that need patching to the loop continuation
+	loopStart       int   // Bytecode position of loop start
+}
+
+// jsBreakContext tracks break targets for breakable JScript constructs.
+type jsBreakContext struct {
+	breakTargets []int
 }
 
 type definitionTokenBound struct {
@@ -1184,6 +1197,8 @@ func (c *Compiler) emit(op OpCode, operands ...int) int {
 func usesWideJumpOperand(op OpCode) bool {
 	switch op {
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel:
+		fallthrough
+	case OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter, OpJSBreak, OpJSContinue, OpJSForInCleanup:
 		return true
 	default:
 		return false

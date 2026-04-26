@@ -233,6 +233,7 @@ type HTMLToken struct {
 // ASPCodeStartToken represents <%
 type ASPCodeStartToken struct {
 	BaseToken
+	Language string
 }
 
 // ASPExpressionStartToken represents <%=
@@ -248,6 +249,13 @@ type ASPDirectiveStartToken struct {
 // ASPCodeEndToken represents %>
 type ASPCodeEndToken struct {
 	BaseToken
+}
+
+// ASPJScriptBlockToken represents one <script runat="server" language="jscript">...</script> block.
+// Content stores only the inner script body without the surrounding tags.
+type ASPJScriptBlockToken struct {
+	BaseToken
+	Content string
 }
 
 // ASPIncludeToken represents <!--#include ...-->

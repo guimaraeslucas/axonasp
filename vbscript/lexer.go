@@ -72,18 +72,20 @@ const (
 
 // Lexer represents a VBScript lexical analyzer
 type Lexer struct {
-	Code              string
-	Index             int
-	CurrentLine       int
-	CurrentLineStart  int
-	Length            int
-	sb                strings.Builder
-	runes             []rune
-	asciiOnly         bool
-	Mode              LexerMode
-	InASPBlock        bool
-	BlockType         ASPBlockType
-	skipHTMLLeadingNL bool
+	Code                                string
+	Index                               int
+	CurrentLine                         int
+	CurrentLineStart                    int
+	Length                              int
+	sb                                  strings.Builder
+	runes                               []rune
+	asciiOnly                           bool
+	Mode                                LexerMode
+	InASPBlock                          bool
+	BlockType                           ASPBlockType
+	defaultASPLanguage                  string
+	skipHTMLLeadingNL                   bool
+	preserveFormattingBeforeServerBlock bool
 }
 
 func isASCIIString(value string) bool {
@@ -100,30 +102,90 @@ func NewLexer(code string) *Lexer {
 	asciiOnly := isASCIIString(code)
 	var r []rune
 	length := len(code)
+	defaultLanguage := detectDefaultASPLanguage(code)
 	if !asciiOnly {
 		r = []rune(code)
 		length = len(r)
 	}
 	if code == "" {
 		return &Lexer{
-			Code:             code,
-			Index:            0,
-			CurrentLine:      0,
-			CurrentLineStart: 0,
-			Length:           0,
-			runes:            r,
-			asciiOnly:        asciiOnly,
+			Code:               code,
+			Index:              0,
+			CurrentLine:        0,
+			CurrentLineStart:   0,
+			Length:             0,
+			runes:              r,
+			asciiOnly:          asciiOnly,
+			defaultASPLanguage: defaultLanguage,
 		}
 	}
 	return &Lexer{
-		Code:             code,
-		Index:            0,
-		CurrentLine:      1,
-		CurrentLineStart: 0,
-		Length:           length,
-		runes:            r,
-		asciiOnly:        asciiOnly,
+		Code:               code,
+		Index:              0,
+		CurrentLine:        1,
+		CurrentLineStart:   0,
+		Length:             length,
+		runes:              r,
+		asciiOnly:          asciiOnly,
+		defaultASPLanguage: defaultLanguage,
 	}
+}
+
+func detectDefaultASPLanguage(code string) string {
+	defaultLanguage := "vbscript"
+	trimmed := strings.TrimLeft(code, " \t\r\n\uFEFF")
+	if !strings.HasPrefix(trimmed, "<%") {
+		return defaultLanguage
+	}
+
+	probe := strings.TrimSpace(trimmed[2:])
+	if probe == "" || probe[0] != '@' {
+		return defaultLanguage
+	}
+
+	endIdx := strings.Index(trimmed, "%>")
+	if endIdx == -1 {
+		return defaultLanguage
+	}
+
+	directiveBody := trimmed[2:endIdx]
+	if languageValue, ok := extractDirectiveLanguageValue(directiveBody); ok {
+		normalized := strings.ToLower(strings.TrimSpace(languageValue))
+		if normalized == "jscript" || normalized == "javascript" {
+			return "jscript"
+		}
+	}
+
+	return defaultLanguage
+}
+
+func extractDirectiveLanguageValue(attr string) (string, bool) {
+	lower := strings.ToLower(attr)
+	idx := strings.Index(lower, "language")
+	if idx == -1 {
+		return "", false
+	}
+	rest := strings.TrimSpace(attr[idx+len("language"):])
+	if !strings.HasPrefix(rest, "=") {
+		return "", false
+	}
+	rest = strings.TrimSpace(rest[1:])
+	if rest == "" {
+		return "", false
+	}
+	if rest[0] == '\'' || rest[0] == '"' {
+		quote := rest[0]
+		end := strings.IndexByte(rest[1:], quote)
+		if end == -1 {
+			return "", false
+		}
+		return rest[1 : 1+end], true
+	}
+	end := strings.IndexAny(rest, " \t\r\n>")
+	if end == -1 {
+		return rest, true
+	}
+	return rest[:end], true
 }
 
 // LineIndex returns the column position in the current line
@@ -963,13 +1025,13 @@ func (l *Lexer) hasCodeBeforeCurrentToken() bool {
 	return false
 }
 
-func (l *Lexer) isScriptServerStart() (int, bool) {
+func (l *Lexer) isScriptServerStart() (int, bool, string) {
 	if l.getChar(l.Index) != '<' {
-		return 0, false
+		return 0, false, ""
 	}
 	s := l.sliceString(l.Index, l.Index+7)
 	if !strings.EqualFold(s, "<script") {
-		return 0, false
+		return 0, false, ""
 	}
 
 	// Find the end of the opening tag >
@@ -983,14 +1045,97 @@ func (l *Lexer) isScriptServerStart() (int, bool) {
 			if !strings.Contains(attrLower, "runat=\"server\"") &&
 				!strings.Contains(attrLower, "runat=server") &&
 				!strings.Contains(attrLower, "runat='server'") {
-				return 0, false
+				return 0, false, ""
 			}
 
-			// Optional language="vbscript" check (can be skipped as we assume VBScript in this engine)
-			return i - l.Index + 1, true
+			language := "vbscript"
+			if languageValue, ok := extractScriptLanguageValue(attr); ok {
+				language = strings.ToLower(strings.TrimSpace(languageValue))
+			}
+
+			return i - l.Index + 1, true, language
 		}
 	}
-	return 0, false
+	return 0, false, ""
+}
+
+// extractScriptLanguageValue parses a language attribute from one <script ...> opening tag attribute string.
+func extractScriptLanguageValue(attr string) (string, bool) {
+	lower := strings.ToLower(attr)
+	idx := strings.Index(lower, "language")
+	if idx == -1 {
+		return "", false
+	}
+	rest := strings.TrimSpace(attr[idx+len("language"):])
+	if !strings.HasPrefix(rest, "=") {
+		return "", false
+	}
+	rest = strings.TrimSpace(rest[1:])
+	if rest == "" {
+		return "", false
+	}
+	if rest[0] == '\'' || rest[0] == '"' {
+		quote := rest[0]
+		end := strings.IndexByte(rest[1:], quote)
+		if end == -1 {
+			return "", false
+		}
+		return rest[1 : 1+end], true
+	}
+	end := strings.IndexAny(rest, " \t\r\n>")
+	if end == -1 {
+		return rest, true
+	}
+	return rest[:end], true
+}
+
+// findScriptEndFrom finds the end index immediately after the corresponding </script> tag.
+func (l *Lexer) findScriptEndFrom(openTagEnd int) (int, int, bool) {
+	for i := openTagEnd; i < l.Length; i++ {
+		if l.getChar(i) != '<' || l.getChar(i+1) != '/' {
+			continue
+		}
+		closeTag := l.sliceString(i, i+9)
+		if strings.EqualFold(closeTag, "</script>") {
+			return i, i + 9, true
+		}
+	}
+	return 0, 0, false
+}
+
+func (l *Lexer) findASPPercentEndFrom(start int) (int, int, bool) {
+	for i := start; i < l.Length; i++ {
+		if l.getChar(i) == '%' && l.getChar(i+1) == '>' {
+			return i, i + 2, true
+		}
+	}
+	return 0, 0, false
+}
+
+// advanceIndexWithLineTracking moves the lexer index forward while keeping line metadata consistent.
+func (l *Lexer) advanceIndexWithLineTracking(target int) {
+	if target <= l.Index {
+		return
+	}
+	if target > l.Length {
+		target = l.Length
+	}
+	for l.Index < target {
+		ch := l.getChar(l.Index)
+		l.Index++
+		if ch == '\r' {
+			if l.getChar(l.Index) == '\n' {
+				l.Index++
+			}
+			l.CurrentLine++
+			l.CurrentLineStart = l.Index
+			continue
+		}
+		if ch == '\n' {
+			l.CurrentLine++
+			l.CurrentLineStart = l.Index
+		}
+	}
 }
 
 func (l *Lexer) isObjectStart() (int, bool, map[string]string) {
@@ -1191,7 +1336,7 @@ func (l *Lexer) startsServerDelimiterAt(pos int) bool {
 	}
 	prev := l.Index
 	l.Index = pos
-	_, isScript := l.isScriptServerStart()
+	_, isScript, _ := l.isScriptServerStart()
 	if isScript {
 		l.Index = prev
 		return true
@@ -1242,10 +1387,23 @@ func (l *Lexer) nextHTML() Token {
 		if c == '<' && l.getChar(l.Index+1) == '%' {
 			if l.Index > start {
 				if l.shouldSuppressFormattingHTMLBeforeServerBlock(start, l.Index) {
+					if l.preserveFormattingBeforeServerBlock {
+						l.preserveFormattingBeforeServerBlock = false
+						return &HTMLToken{
+							BaseToken: BaseToken{
+								Start:      start,
+								End:        l.Index,
+								LineNumber: line,
+								LineStart:  lineStart,
+							},
+							Content: l.sliceString(start, l.Index),
+						}
+					}
 					start = l.Index
 					line = l.CurrentLine
 					lineStart = l.CurrentLineStart
 				} else {
+					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
 						BaseToken: BaseToken{
 							Start:      start,
@@ -1280,6 +1438,32 @@ func (l *Lexer) nextHTML() Token {
 
 			next := l.getChar(probe)
 			if next == '=' {
+				if strings.EqualFold(l.defaultASPLanguage, "jscript") || strings.EqualFold(l.defaultASPLanguage, "javascript") {
+					innerStart := probe + 1
+					innerEnd, blockEnd, foundEnd := l.findASPPercentEndFrom(innerStart)
+					if !foundEnd {
+						innerEnd = l.Length
+						blockEnd = l.Length
+					}
+					expr := strings.TrimSpace(l.sliceString(innerStart, innerEnd))
+					content := "Response.Write(\"\");"
+					if expr != "" {
+						content = "Response.Write(" + expr + ");"
+					}
+					l.InASPBlock = false
+					l.BlockType = BlockTypeNone
+					l.advanceIndexWithLineTracking(blockEnd)
+					l.skipHTMLLeadingNL = true
+					return &ASPJScriptBlockToken{
+						BaseToken: BaseToken{
+							Start:      aspStart,
+							End:        l.Index,
+							LineNumber: aspLine,
+							LineStart:  aspLineStart,
+						},
+						Content: content,
+					}
+				}
 				l.Index = probe + 1
 				return &ASPExpressionStartToken{
 					BaseToken: BaseToken{
@@ -1290,6 +1474,19 @@ func (l *Lexer) nextHTML() Token {
 					},
 				}
 			} else if next == '@' {
+				innerStart := probe + 1
+				innerEnd, _, foundEnd := l.findASPPercentEndFrom(innerStart)
+				if foundEnd {
+					directiveBody := l.sliceString(innerStart, innerEnd)
+					if languageValue, ok := extractDirectiveLanguageValue(directiveBody); ok {
+						normalized := strings.ToLower(strings.TrimSpace(languageValue))
+						if normalized == "jscript" || normalized == "javascript" {
+							l.defaultASPLanguage = "jscript"
+						} else if normalized == "vbscript" {
+							l.defaultASPLanguage = "vbscript"
+						}
+					}
+				}
 				l.Index = probe + 1
 				return &ASPDirectiveStartToken{
 					BaseToken: BaseToken{
@@ -1300,6 +1497,30 @@ func (l *Lexer) nextHTML() Token {
 					},
 				}
 			}
+
+			if strings.EqualFold(l.defaultASPLanguage, "jscript") || strings.EqualFold(l.defaultASPLanguage, "javascript") {
+				innerStart := l.Index
+				innerEnd, blockEnd, foundEnd := l.findASPPercentEndFrom(innerStart)
+				if !foundEnd {
+					innerEnd = l.Length
+					blockEnd = l.Length
+				}
+				content := l.sliceString(innerStart, innerEnd)
+				l.InASPBlock = false
+				l.BlockType = BlockTypeNone
+				l.advanceIndexWithLineTracking(blockEnd)
+				l.skipHTMLLeadingNL = true
+				return &ASPJScriptBlockToken{
+					BaseToken: BaseToken{
+						Start:      aspStart,
+						End:        l.Index,
+						LineNumber: aspLine,
+						LineStart:  aspLineStart,
+					},
+					Content: content,
+				}
+			}
+
 			return &ASPCodeStartToken{
 				BaseToken: BaseToken{
 					Start:      aspStart,
@@ -1311,13 +1532,26 @@ func (l *Lexer) nextHTML() Token {
 		}
 
 		// Check for <script runat=server>
-		if length, ok := l.isScriptServerStart(); ok {
+		if length, ok, language := l.isScriptServerStart(); ok {
 			if l.Index > start {
 				if l.shouldSuppressFormattingHTMLBeforeServerBlock(start, l.Index) {
+					if l.preserveFormattingBeforeServerBlock {
+						l.preserveFormattingBeforeServerBlock = false
+						return &HTMLToken{
+							BaseToken: BaseToken{
+								Start:      start,
+								End:        l.Index,
+								LineNumber: line,
+								LineStart:  lineStart,
+							},
+							Content: l.sliceString(start, l.Index),
+						}
+					}
 					start = l.Index
 					line = l.CurrentLine
 					lineStart = l.CurrentLineStart
 				} else {
+					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
 						BaseToken: BaseToken{
 							Start:      start,
@@ -1333,6 +1567,26 @@ func (l *Lexer) nextHTML() Token {
 			aspStart := l.Index
 			aspLine := l.CurrentLine
 			aspLineStart := l.CurrentLineStart
+			if strings.EqualFold(language, "jscript") || strings.EqualFold(language, "javascript") {
+				innerStart := l.Index + length
+				innerEnd, blockEnd, foundEnd := l.findScriptEndFrom(innerStart)
+				if !foundEnd {
+					innerEnd = l.Length
+					blockEnd = l.Length
+				}
+				content := l.sliceString(innerStart, innerEnd)
+				l.advanceIndexWithLineTracking(blockEnd)
+				l.skipHTMLLeadingNL = true
+				return &ASPJScriptBlockToken{
+					BaseToken: BaseToken{
+						Start:      aspStart,
+						End:        l.Index,
+						LineNumber: aspLine,
+						LineStart:  aspLineStart,
+					},
+					Content: content,
+				}
+			}
 			l.Index += length
 			l.InASPBlock = true
 			l.BlockType = BlockTypeScript
@@ -1343,6 +1597,7 @@ func (l *Lexer) nextHTML() Token {
 					LineNumber: aspLine,
 					LineStart:  aspLineStart,
 				},
+				Language: language,
 			}
 		}
 
@@ -1350,10 +1605,23 @@ func (l *Lexer) nextHTML() Token {
 		if length, ok, path, virtual := l.isIncludeStart(); ok {
 			if l.Index > start {
 				if l.shouldSuppressFormattingHTMLBeforeServerBlock(start, l.Index) {
+					if l.preserveFormattingBeforeServerBlock {
+						l.preserveFormattingBeforeServerBlock = false
+						return &HTMLToken{
+							BaseToken: BaseToken{
+								Start:      start,
+								End:        l.Index,
+								LineNumber: line,
+								LineStart:  lineStart,
+							},
+							Content: l.sliceString(start, l.Index),
+						}
+					}
 					start = l.Index
 					line = l.CurrentLine
 					lineStart = l.CurrentLineStart
 				} else {
+					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
 						BaseToken: BaseToken{
 							Start:      start,
@@ -1387,10 +1655,23 @@ func (l *Lexer) nextHTML() Token {
 		if length, ok, attrs := l.isObjectStart(); ok {
 			if l.Index > start {
 				if l.shouldSuppressFormattingHTMLBeforeServerBlock(start, l.Index) {
+					if l.preserveFormattingBeforeServerBlock {
+						l.preserveFormattingBeforeServerBlock = false
+						return &HTMLToken{
+							BaseToken: BaseToken{
+								Start:      start,
+								End:        l.Index,
+								LineNumber: line,
+								LineStart:  lineStart,
+							},
+							Content: l.sliceString(start, l.Index),
+						}
+					}
 					start = l.Index
 					line = l.CurrentLine
 					lineStart = l.CurrentLineStart
 				} else {
+					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
 						BaseToken: BaseToken{
 							Start:      start,
@@ -1407,6 +1688,7 @@ func (l *Lexer) nextHTML() Token {
 			aspLine := l.CurrentLine
 			aspLineStart := l.CurrentLineStart
 			l.Index += length
+			l.preserveFormattingBeforeServerBlock = true
 			return &ASPObjectToken{
 				BaseToken: BaseToken{
 					Start:      aspStart,
