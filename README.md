@@ -1,4 +1,4 @@
-# 🚀 AxonASP 2.0: The Ultimate Classic ASP Engine for the Modern Web
+# 🚀 AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript (JScript support)
 
 <p align="center">
   <img src="www/axonasp.svg" alt="G3Pix AxonASP Logo" width="400"/>
@@ -282,4 +282,4 @@ Special thanks to:
 Third-Party Trademarks and Affiliations
 AxonASP is an independent software project developed by G3pix Ltda and is **not affiliated with, endorsed by, or sponsored by Microsoft Corporation** in any way. 
 
-The names "Microsoft," "Active Server Pages," "ASP," and "VBScript,", "Windows", "Office", "Access", "ActiveX" as well as any related names, marks, emblems, and images relative to ASP, are registered trademarks of Microsoft Corporation. The use of these trademarks within this project is purely for descriptive, identification, and reference purposes to indicate technical compatibility, and does not imply any association with the trademark holder.
+The names "Microsoft," "Active Server Pages," "ASP," and "VBScript,", "Windows", "Office", "Access", "ActiveX", "JScript" as well as any related names, marks, emblems, and images relative to ASP, are registered trademarks of Microsoft Corporation. The use of these trademarks within this project is purely for descriptive, identification, and reference purposes to indicate technical compatibility, and does not imply any association with the trademark holder.
