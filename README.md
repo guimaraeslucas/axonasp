@@ -11,17 +11,17 @@
 </p>
 
 <p align="center">
-    <img src="https://img.shields.io/badge/version-2.0-blue.svg" alt="Version 2.0"/>
+    <img src="https://img.shields.io/badge/version-2.1-blue.svg" alt="Version 2.0"/>
   <img src="https://img.shields.io/badge/Go-1.26+-00ADD8.svg" alt="Go Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MPL-green.svg" alt="License"/>
 </p>
 
 
-Welcome to **AxonASP 2.0**, the definitive, high-performance runtime for executing Microsoft Classic ASP and VBScript in GoLang. We didn't just update the engine; we completely reinvented it. 
+Welcome to **AxonASP 2.1**, the definitive, high-performance runtime for executing Microsoft Classic ASP and VBScript in GoLang. We didn't just update the engine; we completely reinvented it. 
 
 > [!NOTE]
-> **⚠️ Important Notice:** _AxonASP Version 1.0_ is completely **deprecated** and is not compatible with Version 2.0. 
+> **⚠️ Important Notice:** _AxonASP Version 1.0_ is completely **deprecated** and is not compatible with Version 2.0 or later. 
 > The architectural leaps we've made mean a clean break from the past to deliver the future of ASP.
 
 If you thought Classic ASP was dead, think again. AxonASP breathes raw power, modern infrastructure compatibility, and incredible new features into the language you know and love. It's time to realize the true potential of your applications!
