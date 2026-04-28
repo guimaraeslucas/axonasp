@@ -640,6 +640,37 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 		c.emit(OpJSIndexGet)
 	case *jsast.ObjectLiteral:
 		c.emit(OpJSNewObject)
+		for i := 0; i < len(node.Value); i++ {
+			switch prop := node.Value[i].(type) {
+			case *jsast.PropertyShort:
+				key := prop.Name.Name.String()
+				c.emit(OpJSDup)
+				if prop.Initializer != nil {
+					c.compileJScriptExpression(prop.Initializer)
+				} else {
+					c.emit(OpJSGetName, c.addConstant(NewString(key)))
+				}
+				c.emit(OpJSMemberSet, c.addConstant(NewString(key)))
+			case *jsast.PropertyKeyed:
+				if prop.Computed {
+					continue
+				}
+				key, ok := jsObjectPropertyKeyName(prop.Key)
+				if !ok {
+					continue
+				}
+				c.emit(OpJSDup)
+				c.compileJScriptExpression(prop.Value)
+				switch prop.Kind {
+				case jsast.PropertyKindGet:
+					c.emit(OpJSMemberSet, c.addConstant(NewString(jsAccessorGetterPrefix+key)))
+				case jsast.PropertyKindSet:
+					c.emit(OpJSMemberSet, c.addConstant(NewString(jsAccessorSetterPrefix+key)))
+				default:
+					c.emit(OpJSMemberSet, c.addConstant(NewString(key)))
+				}
+			}
+		}
 	case *jsast.ArrayLiteral:
 		for i := range node.Value {
 			if node.Value[i] == nil {
@@ -704,6 +735,26 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 		c.patchJSJump(jumpEnd)
 	default:
 		c.emit(OpJSLoadUndefined)
+	}
+}
+
+func jsObjectPropertyKeyName(key jsast.Expression) (string, bool) {
+	switch k := key.(type) {
+	case *jsast.Identifier:
+		return k.Name.String(), true
+	case *jsast.StringLiteral:
+		return k.Value.String(), true
+	case *jsast.NumberLiteral:
+		return k.Literal, true
+	case *jsast.BooleanLiteral:
+		if k.Value {
+			return "true", true
+		}
+		return "false", true
+	case *jsast.NullLiteral:
+		return "null", true
+	default:
+		return "", false
 	}
 }
 
@@ -826,30 +877,65 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 }
 
 func (c *Compiler) compileJScriptUpdateExpression(node *jsast.UnaryExpression) bool {
-	id, ok := node.Operand.(*jsast.Identifier)
-	if !ok {
-		return false
-	}
-
-	nameIdx := c.addConstant(NewString(id.Name.String()))
-	switch node.Operator {
-	case jstoken.INCREMENT:
-		if node.Postfix {
-			c.emit(OpJSPostIncrement, nameIdx)
-		} else {
-			c.emit(OpJSPreIncrement, nameIdx)
+	switch operand := node.Operand.(type) {
+	case *jsast.Identifier:
+		nameIdx := c.addConstant(NewString(operand.Name.String()))
+		switch node.Operator {
+		case jstoken.INCREMENT:
+			if node.Postfix {
+				c.emit(OpJSPostIncrement, nameIdx)
+			} else {
+				c.emit(OpJSPreIncrement, nameIdx)
+			}
+			return true
+		case jstoken.DECREMENT:
+			if node.Postfix {
+				c.emit(OpJSPostDecrement, nameIdx)
+			} else {
+				c.emit(OpJSPreDecrement, nameIdx)
+			}
+			return true
 		}
-		return true
-	case jstoken.DECREMENT:
-		if node.Postfix {
-			c.emit(OpJSPostDecrement, nameIdx)
-		} else {
-			c.emit(OpJSPreDecrement, nameIdx)
+	case *jsast.DotExpression:
+		c.compileJScriptExpression(operand.Left)
+		nameIdx := c.addConstant(NewString(operand.Identifier.Name.String()))
+		switch node.Operator {
+		case jstoken.INCREMENT:
+			if node.Postfix {
+				c.emit(OpJSPostMemberIncrement, nameIdx)
+			} else {
+				c.emit(OpJSPreMemberIncrement, nameIdx)
+			}
+			return true
+		case jstoken.DECREMENT:
+			if node.Postfix {
+				c.emit(OpJSPostMemberDecrement, nameIdx)
+			} else {
+				c.emit(OpJSPreMemberDecrement, nameIdx)
+			}
+			return true
 		}
-		return true
-	default:
-		return false
+	case *jsast.BracketExpression:
+		c.compileJScriptExpression(operand.Left)
+		c.compileJScriptExpression(operand.Member)
+		switch node.Operator {
+		case jstoken.INCREMENT:
+			if node.Postfix {
+				c.emit(OpJSPostIndexIncrement)
+			} else {
+				c.emit(OpJSPreIndexIncrement)
+			}
+			return true
+		case jstoken.DECREMENT:
+			if node.Postfix {
+				c.emit(OpJSPostIndexDecrement)
+			} else {
+				c.emit(OpJSPreIndexDecrement)
+			}
+			return true
+		}
 	}
+	return false
 }
 
 func jsBindingIdentifierName(target jsast.BindingTarget) (string, bool) {

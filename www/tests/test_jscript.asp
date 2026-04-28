@@ -443,7 +443,7 @@
             <script runat="server" language="JScript">
                 var x = 10;
                 var operacao = "x * 5";
-                var resultado = Eval(operacao);
+                var resultado = eval(operacao);
 
                 Response.Write(resultado);
 
@@ -453,6 +453,8 @@
         </div>
 
         <div class="box">
+            
+            
             <h2>6) Quick Access URLs</h2>
             <p>
                 Main page:

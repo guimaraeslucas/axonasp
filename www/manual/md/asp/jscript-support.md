@@ -1,52 +1,64 @@
-# Use JScript in Classic ASP Pages
+# Use JScript in AxonASP Pages
 
 ## Overview
-This page explains how to run **JScript** in G3Pix AxonASP pages, how to declare the JScript language directive, how to call ASP intrinsic objects, and how to write runtime diagnostics with the global `console` object.
+AxonASP provides a high-performance JScript execution engine that allows you to write server-side logic using ECMAScript 5 (ES5) standards. This page covers how to enable JScript, use ASP intrinsic objects, and leverage modern JavaScript features within your ASP applications.
 
 ## Syntax
+To set JScript as the default language for an entire page, use the language directive at the very first line of your file:
+
 ```asp
-<%@ Language=JScript %>
-<%
-// JScript server-side code
-Response.Write("Hello from JScript");
-%>
+<%@ Language="JScript" %>
+```
+
+Alternatively, you can use JScript within specific script blocks:
+
+```html
+<script runat="server" language="JScript">
+    // JScript code here
+</script>
 ```
 
 ## Parameters and Arguments
-- **Language directive value** (required): must be `JScript` for the page block you want to execute as JScript.
-- **ASP intrinsic object names** (optional in code, required for object access): `Request`, `Response`, `Server`, `Session`, `Application`, `Err`, and `ObjectContext`.
-- **console methods** (optional): `console.log(value)`, `console.info(value)`, `console.warn(value)`, `console.error(value)`.
-- **console method argument** (required): at least one argument. If the argument is an array or object, AxonASP serializes it to JSON before printing.
+- **Language Directive** (Required for page-level): The value must be `"JScript"` or `"Javascript"`.
+- **runat="server"** (Required for script tags): Ensures the code executes on the server rather than the client browser.
+- **ASP Intrinsic Objects**: Native access to **Request**, **Response**, **Server**, **Session**, **Application**, and **Err**. Note that in JScript, these object names and their members are **case-sensitive**.
 
 ## Return Values
-- The language directive returns no runtime value.
-- ASP intrinsic object method calls return the value documented by each object member.
-- `console.log`, `console.info`, `console.warn`, and `console.error` return no page output value. They write to console streams and optional log files.
+The JScript engine returns standard JavaScript values (String, Number, Boolean, Object, Array, null, undefined). When communicating with the AxonASP VM or VBScript components:
+- JavaScript objects are automatically converted to their closest AxonASP **Value** equivalent.
+- **undefined** and **null** map to **Empty** in the VM context.
 
 ## Remarks
-- Use `Language=JScript` at the top of the ASP page to ensure server-side parsing as JScript.
-- JScript can call ASP intrinsic objects directly, for example `Response.Write(...)` and `Request.QueryString("id")`.
-- The global `console` object is available without object instantiation.
-- `console.log` and `console.info` write to standard output.
-- `console.warn` and `console.error` write to standard error.
-- If `global.enable_log_files = true`, AxonASP appends `console.log` and `console.info` entries to `./temp/console.log`, and appends `console.warn` and `console.error` entries to `./temp/error.log`.
-- The log files store timestamp, level, and message text. Decorative console symbols are not persisted in file output.
+- **ECMAScript 5 Support**: AxonASP's JScript engine supports ES5 features, including JSON support (`JSON.parse`, `JSON.stringify`), and standard Array methods (`map`, `filter`, `reduce`).
+- **Case Sensitivity**: Unlike VBScript, JScript is strictly case-sensitive. You must use `Response.Write`, not `response.write`.
+- **Engine Architecture**: JScript execution in AxonASP utilizes a sophisticated Abstract Syntax Tree (AST) parser and interpreter, providing optimized performance for complex logic.
+- **Global Console**: The engine includes a built-in **console** object (`console.log`, `console.warn`, `console.error`) for server-side debugging and diagnostics. Output is directed to the system console or log files depending on your `axonasp.toml` configuration.
+- **Interoperability**: You can mix VBScript and JScript in the same application by using separate `<script runat="server">` blocks, though global variable sharing follows standard ASP scoping rules.
 
 ## Code Example
+The following example demonstrates using ES5 features and ASP objects within a JScript page:
+
 ```asp
-<%@ Language=JScript %>
+<%@ Language="JScript" %>
 <%
-var userId;
-userId = Request.QueryString("id");
 
-if (!userId || userId === "") {
-    userId = "anonymous";
-}
+// Using ES5 Array methods
+var data = [1, 2, 3, 4, 5];
+var doubled = data.map(function(n) {
+    return n * 2;
+});
 
-Response.Write("User: " + userId + "<br>");
+// Using the JSON object
+var responseData = {
+    status: "success",
+    processed: doubled,
+    timestamp: new Date().toISOString()
+};
 
-console.info("JScript request started");
-console.log({ user: userId, source: "jscript-page" });
-console.warn("Sample warning from JScript page");
+Response.ContentType = "application/json";
+Response.Write(JSON.stringify(responseData));
+
+// Server-side logging
+console.log("JSON response sent for timestamp: " + responseData.timestamp);
 %>
 ```

@@ -325,6 +325,8 @@ type VM struct {
 	dictionaryItems                map[int64]*scriptingDictionary
 	nativeObjectProxies            map[int64]nativeObjectProxy
 	jsObjectItems                  map[int64]map[string]Value
+	jsObjectStateItems             map[int64]jsObjectState
+	jsPropertyItems                map[int64]map[string]jsPropertyDescriptor
 	jsFunctionItems                map[int64]*jsFunctionObject
 	jsForInItems                   map[int]*jsForInEnumerator
 	jsEnvItems                     map[int64]*jsEnvFrame
@@ -502,6 +504,8 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		dictionaryItems:                make(map[int64]*scriptingDictionary),
 		nativeObjectProxies:            make(map[int64]nativeObjectProxy),
 		jsObjectItems:                  make(map[int64]map[string]Value),
+		jsObjectStateItems:             make(map[int64]jsObjectState),
+		jsPropertyItems:                make(map[int64]map[string]jsPropertyDescriptor),
 		jsFunctionItems:                make(map[int64]*jsFunctionObject),
 		jsForInItems:                   make(map[int]*jsForInEnumerator),
 		jsEnvItems:                     make(map[int64]*jsEnvFrame),
@@ -774,7 +778,8 @@ func opcodeOperandSize(op OpCode) int {
 		OpJSCreateClosure, OpJSCall, OpJSNewArray, OpJSDelete,
 		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
-		OpJSMemberIndexGet, OpJSMemberIndexSet:
+		OpJSMemberIndexGet, OpJSMemberIndexSet,
+		OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement:
 		return 2
 	// 4-byte operands (for jump targets)
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
@@ -816,7 +821,8 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSMemberGet, OpJSMemberSet, OpJSCreateClosure, OpJSDelete,
 			OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 			OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
-			OpJSMemberIndexGet, OpJSMemberIndexSet:
+			OpJSMemberIndexGet, OpJSMemberIndexSet,
+			OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement:
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
 			ip += 2
@@ -1078,6 +1084,12 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.regExpSubMatchValueItems = child.regExpSubMatchValueItems
 	vm.dictionaryItems = child.dictionaryItems
 	vm.nativeObjectProxies = child.nativeObjectProxies
+	vm.jsObjectItems = child.jsObjectItems
+	vm.jsObjectStateItems = child.jsObjectStateItems
+	vm.jsPropertyItems = child.jsPropertyItems
+	vm.jsFunctionItems = child.jsFunctionItems
+	vm.jsForInItems = child.jsForInItems
+	vm.jsEnvItems = child.jsEnvItems
 }
 
 // syncExecuteLocalState propagates stack and frame state back after Execute/Eval.
@@ -2059,7 +2071,9 @@ aspExecLoop:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			target := vm.pop()
-			vm.push(vm.jsMemberGet(target, vm.constants[nameIdx].Str))
+			if value, deferred := vm.jsMemberGet(target, vm.constants[nameIdx].Str); !deferred {
+				vm.push(value)
+			}
 
 		case OpJSMemberSet:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -2127,11 +2141,29 @@ aspExecLoop:
 					if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
 						vm.push(result)
 					}
+				case strings.EqualFold(member, "bind"):
+					bindThis := Value{Type: VTJSUndefined}
+					bindArgs := args[:0]
+					if len(args) > 0 {
+						bindThis = args[0]
+						bindArgs = args[1:]
+					}
+					vm.push(vm.jsBindFunction(target, bindThis, bindArgs))
 				default:
-					vm.push(Value{Type: VTJSUndefined})
+					callee, deferred := vm.jsMemberGet(target, member)
+					if deferred {
+						continue
+					}
+					result := vm.jsCall(callee, target, args)
+					if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+						vm.push(result)
+					}
 				}
-			case VTJSObject:
-				callee := vm.jsMemberGet(target, member)
+			case VTJSObject, VTArray, VTString, VTDate:
+				callee, deferred := vm.jsMemberGet(target, member)
+				if deferred {
+					continue
+				}
 				result := vm.jsCall(callee, target, args)
 				if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
 					vm.push(result)
@@ -2173,6 +2205,7 @@ aspExecLoop:
 		case OpJSNewObject:
 			objID := vm.allocJSID()
 			vm.jsObjectItems[objID] = make(map[string]Value, 8)
+			vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
 			vm.push(Value{Type: VTJSObject, Num: objID})
 
 		case OpJSNewArray:
@@ -2513,6 +2546,50 @@ aspExecLoop:
 			vm.jsSetName(nameStr, newVal)
 			vm.push(newVal)
 
+		case OpJSPostMemberIncrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			target := vm.pop()
+			vm.push(vm.jsUpdateMember(target, vm.constants[nameIdx].Str, 1, true))
+
+		case OpJSPostMemberDecrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			target := vm.pop()
+			vm.push(vm.jsUpdateMember(target, vm.constants[nameIdx].Str, -1, true))
+
+		case OpJSPreMemberIncrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			target := vm.pop()
+			vm.push(vm.jsUpdateMember(target, vm.constants[nameIdx].Str, 1, false))
+
+		case OpJSPreMemberDecrement:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			target := vm.pop()
+			vm.push(vm.jsUpdateMember(target, vm.constants[nameIdx].Str, -1, false))
+
+		case OpJSPostIndexIncrement:
+			indexVal := vm.pop()
+			target := vm.pop()
+			vm.push(vm.jsUpdateIndex(target, indexVal, 1, true))
+
+		case OpJSPostIndexDecrement:
+			indexVal := vm.pop()
+			target := vm.pop()
+			vm.push(vm.jsUpdateIndex(target, indexVal, -1, true))
+
+		case OpJSPreIndexIncrement:
+			indexVal := vm.pop()
+			target := vm.pop()
+			vm.push(vm.jsUpdateIndex(target, indexVal, 1, false))
+
+		case OpJSPreIndexDecrement:
+			indexVal := vm.pop()
+			target := vm.pop()
+			vm.push(vm.jsUpdateIndex(target, indexVal, -1, false))
+
 		// Compound assignment operators
 		case OpJSAddAssign:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -2593,7 +2670,9 @@ aspExecLoop:
 			}
 			constructor := vm.pop()
 			result := vm.jsNew(constructor, args)
-			vm.push(result)
+			if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+				vm.push(result)
+			}
 
 		case OpJSMemberDelete:
 			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])

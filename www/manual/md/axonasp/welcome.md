@@ -129,8 +129,3 @@ This manual contains everything you need to understand, configure, and deploy Ax
 
 Your Classic ASP applications—and your team—are about to experience what the platform can truly do.
 
----
-
-## Offline Access
-
-If you are reading this on the AxonASP website, you can download the [PDF version](manual.pdf) of the manual for offline reading.

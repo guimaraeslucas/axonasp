@@ -38,6 +38,7 @@ We threw out the rulebook to achieve extreme performance improvements that will 
 *   **Run ASP Anywhere:** Web server, FastCGI, or the command line! The brand new **CLI with TUI (Text User Interface)** allows you to execute ASP code directly from your terminal. This opens incredible possibilities: run scheduled ASP scripts as background jobs, cron tasks, and powerful system administration tools!
 *   **AI-Ready with MCP:** AxonASP includes a built-in Model Context Protocol (MCP) server. AI agents can now connect directly to your runtime, understand your specific environment, and autonomously author complete ASP pages utilizing all available native functions.
 *   **Test-Driven ASP:** Say goodbye to broken scripts and regressions. The new `axonasp-testsuite` executable allows you to write and run automated test suites directly against your ASP files natively!
+*   **High-Performance JScript (ES5):** AxonASP now includes a dedicated, AST-based JScript engine. Mostly compliant with ECMAScript 5, it supports JavaScript features like `JSON`, `Array.map/filter`, and strict mode, allowing you to modernize your logic while keeping the ASP infrastructure.
 
 ---
 

@@ -63,14 +63,34 @@ func consoleDispatch(vm *VM, method string, args []Value) Value {
 
 	msg := consoleSerializeArg(vm, args[0])
 	timestamp := time.Now().Format("2006/01/02 15:04:05")
+	writer, lineEnding := resolveConsoleOutputTarget(vm, format)
 
 	// Write decorated output to the target stream (stdout or stderr).
-	fmt.Fprintf(format.writer, "%s [%s] %s %s\n", timestamp, format.level, format.symbol, msg)
+	fmt.Fprintf(writer, "%s [%s] %s %s%s", timestamp, format.level, format.symbol, msg, lineEnding)
 
 	// Write a plain (symbol-free) entry to the configured log file.
 	writeConsoleLogToFile(format.logFile, format.level, msg, timestamp)
 
 	return Value{Type: VTEmpty}
+}
+
+// resolveConsoleOutputTarget selects where console output should be written.
+// In CLI TUI mode we write to the host output buffer and avoid a trailing newline
+// so the TUI output box remains stable. Other runtimes keep the default stream+newline behavior.
+func resolveConsoleOutputTarget(vm *VM, format consoleOutputFormat) (io.Writer, string) {
+	if vm == nil || vm.host == nil || vm.host.Request() == nil {
+		return format.writer, "\n"
+	}
+
+	if vm.host.Request().ServerVars.Get("AXONASP_CLI_TUI") != "1" {
+		return format.writer, "\n"
+	}
+
+	if vm.host.Response() != nil && vm.host.Response().Output != nil {
+		return vm.host.Response().Output, ""
+	}
+
+	return vm.host, ""
 }
 
 // consoleSerializeArg converts a single VM Value to a printable string.

@@ -233,7 +233,7 @@ func main() {
 	if err := axonvm.GetGlobalASA().LoadAndCompile(workingDir, sharedCLIApplication); err != nil {
 		fmt.Printf("Warning: Failed to load global.asa: %v\n", err)
 	} else if axonvm.GetGlobalASA().IsLoaded() {
-		dummyHost := newCLIHost(new(bytes.Buffer), "/")
+		dummyHost := newCLIHost(new(bytes.Buffer), "/", false)
 		_ = axonvm.GetGlobalASA().ExecuteApplicationOnStart(dummyHost)
 		axonvm.GetGlobalASA().PopulateSessionStaticObjects(sharedCLISession)
 		_ = axonvm.GetGlobalASA().ExecuteSessionOnStart(dummyHost)
@@ -241,7 +241,7 @@ func main() {
 
 	defer func() {
 		if axonvm.GetGlobalASA().IsLoaded() {
-			dummyHost := newCLIHost(new(bytes.Buffer), "/")
+			dummyHost := newCLIHost(new(bytes.Buffer), "/", false)
 			_ = axonvm.GetGlobalASA().ExecuteSessionOnEnd(dummyHost)
 			_ = axonvm.GetGlobalASA().ExecuteApplicationOnEnd(dummyHost)
 		}
@@ -579,7 +579,7 @@ func runTUIFile(path string, outputArea *tview.TextView) {
 	}
 
 	virtualPath := scriptPathToVirtualPath(resolvedPath)
-	result := executeCLIFile(resolvedPath, virtualPath)
+	result := executeCLIFile(resolvedPath, virtualPath, true)
 
 	if result.compileErr != nil {
 		fmt.Fprintf(outputArea, "[red]%s: %v[white]\n", axonvm.ErrCompileError.String(), result.compileErr)
@@ -608,7 +608,7 @@ func runCode(code string, outputArea *tview.TextView) {
 		source = "<%\n" + source + "\n%>"
 	}
 
-	result := executeCLICode(source, "/cli.asp")
+	result := executeCLICode(source, "/cli.asp", true)
 
 	if result.compileErr != nil {
 		fmt.Fprintf(outputArea, "[red]%s: %v[white]\n", axonvm.ErrCompileError.String(), result.compileErr)
@@ -698,7 +698,7 @@ type cliExecutionResult struct {
 }
 
 // executeCLICode compiles and executes ASP source code with the provided virtual path.
-func executeCLICode(code string, virtualPath string) cliExecutionResult {
+func executeCLICode(code string, virtualPath string, tuiMode bool) cliExecutionResult {
 	result := cliExecutionResult{}
 
 	compiler := axonvm.NewASPCompiler(code)
@@ -715,7 +715,7 @@ func executeCLICode(code string, virtualPath string) cliExecutionResult {
 	vm := axonvm.AcquireVMFromCompiler(compiler)
 
 	var outBuf bytes.Buffer
-	host := newCLIHost(&outBuf, virtualPath)
+	host := newCLIHost(&outBuf, virtualPath, tuiMode)
 	vm.SetHost(host)
 	defer vm.Release()
 	wireCLIObjectAliases(vm, compiler)
@@ -729,7 +729,7 @@ func executeCLICode(code string, virtualPath string) cliExecutionResult {
 }
 
 // executeCLIFile executes one ASP file using the shared bytecode cache flow.
-func executeCLIFile(filePath string, virtualPath string) cliExecutionResult {
+func executeCLIFile(filePath string, virtualPath string, tuiMode bool) cliExecutionResult {
 	result := cliExecutionResult{}
 	if scriptCache == nil {
 		scriptCache = axonvm.NewScriptCache(axonvm.BytecodeCacheDisabled, filepath.Join("temp", "cache"), 1)
@@ -744,7 +744,7 @@ func executeCLIFile(filePath string, virtualPath string) cliExecutionResult {
 	vm := axonvm.AcquireVMFromCachedProgram(program)
 
 	var outBuf bytes.Buffer
-	host := newCLIHost(&outBuf, virtualPath)
+	host := newCLIHost(&outBuf, virtualPath, tuiMode)
 	vm.SetHost(host)
 	defer vm.Release()
 
@@ -766,7 +766,7 @@ func executeCLIFile(filePath string, virtualPath string) cliExecutionResult {
 }
 
 // newCLIHost creates a fresh ASP host with CLI-friendly Server and Request context.
-func newCLIHost(out *bytes.Buffer, requestPath string) *axonvm.MockHost {
+func newCLIHost(out *bytes.Buffer, requestPath string, tuiMode bool) *axonvm.MockHost {
 	host := axonvm.NewMockHost()
 	host.SetOutput(out)
 	host.Response().SetMaxBufferBytes(ResponseBufferLimitBytes)
@@ -790,6 +790,9 @@ func newCLIHost(out *bytes.Buffer, requestPath string) *axonvm.MockHost {
 	host.Request().ServerVars.Add("REQUEST_METHOD", "CLI")
 	host.Request().ServerVars.Add("URL", requestPath)
 	host.Request().ServerVars.Add("PATH_TRANSLATED", filepath.Join(serverRootDir, filepath.FromSlash(strings.TrimPrefix(requestPath, "/"))))
+	if tuiMode {
+		host.Request().ServerVars.Add("AXONASP_CLI_TUI", "1")
+	}
 
 	return host
 }
@@ -839,7 +842,7 @@ func runDirectFile(path string) {
 	}
 
 	virtualPath := scriptPathToVirtualPath(resolvedPath)
-	result := executeCLIFile(resolvedPath, virtualPath)
+	result := executeCLIFile(resolvedPath, virtualPath, false)
 
 	if result.compileErr != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", axonvm.ErrCompileError.String(), result.compileErr)

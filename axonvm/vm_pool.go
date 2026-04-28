@@ -607,6 +607,24 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.nativeObjectProxies == nil {
 		vm.nativeObjectProxies = make(map[int64]nativeObjectProxy)
 	}
+	if vm.jsObjectItems == nil {
+		vm.jsObjectItems = make(map[int64]map[string]Value)
+	}
+	if vm.jsObjectStateItems == nil {
+		vm.jsObjectStateItems = make(map[int64]jsObjectState)
+	}
+	if vm.jsPropertyItems == nil {
+		vm.jsPropertyItems = make(map[int64]map[string]jsPropertyDescriptor)
+	}
+	if vm.jsFunctionItems == nil {
+		vm.jsFunctionItems = make(map[int64]*jsFunctionObject)
+	}
+	if vm.jsForInItems == nil {
+		vm.jsForInItems = make(map[int]*jsForInEnumerator)
+	}
+	if vm.jsEnvItems == nil {
+		vm.jsEnvItems = make(map[int64]*jsEnvFrame)
+	}
 }
 
 func (vm *VM) resetDynamicMaps() {
@@ -665,6 +683,8 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.dictionaryItems)
 	clear(vm.nativeObjectProxies)
 	clear(vm.jsObjectItems)
+	clear(vm.jsObjectStateItems)
+	clear(vm.jsPropertyItems)
 	clear(vm.jsFunctionItems)
 	clear(vm.jsForInItems)
 	clear(vm.jsEnvItems)

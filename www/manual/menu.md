@@ -39,7 +39,7 @@
     * [Application](md/asp/application.md)
     * [ASPError](md/asp/asperror.md)
     * [ASP Dictionary](md/asp/dictionary.md)
-    * [Use JScript in ASP Pages](md/asp/jscript-support.md)
+    * [Use JScript in AxonASP Pages](md/asp/jscript-support.md)
     * [Global Console Object](md/asp/console-object.md)
 * Libraries
     * [Object Overview](md/libraries/overview.md)
