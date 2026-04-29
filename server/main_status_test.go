@@ -25,7 +25,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"g3pix.com.br/axonasp/axonvm"
 )
 
 // TestHandleRequestServesStaticPNG verifies non-ASP image requests are served
@@ -159,5 +162,79 @@ func TestWithServerHeaderSetsAxonASPValue(t *testing.T) {
 
 	if got := rec.Header().Get("Server"); got != "AxonASP" {
 		t.Fatalf("expected Server header AxonASP, got %q", got)
+	}
+}
+
+// TestHandleRequestJScriptCompileErrorRendersJScriptHeader verifies broken JScript ASP pages
+// surface JScript compilation metadata in debug output without VBScript header fallback.
+func TestHandleRequestJScriptCompileErrorRendersJScriptHeader(t *testing.T) {
+	root := t.TempDir()
+	testDir := filepath.Join(root, "tests")
+	if err := os.MkdirAll(testDir, 0o755); err != nil {
+		t.Fatalf("create tests dir: %v", err)
+	}
+
+	brokenPage := filepath.Join(testDir, "test_jscript_compile_error_debug.asp")
+	content := `<%@ Language="VBScript" %>
+<script language="JScript" runat="server">
+function BrokenCompileBlock() {
+    var x = ;
+}
+</script>`
+	if err := os.WriteFile(brokenPage, []byte(content), 0o644); err != nil {
+		t.Fatalf("write broken page: %v", err)
+	}
+
+	originalRootDir := RootDir
+	originalDebugASP := DebugASP
+	originalDefaultPages := DefaultPages
+	originalExecuteAsASP := ExecuteAsASPExtensions
+	originalBlockedExtensions := BlockedExtensions
+	originalBlockedFiles := BlockedFiles
+	originalBlockedDirs := BlockedDirs
+	originalBlockedPrefixes := blockedDirPrefixes
+	originalWebConfig := activeWebConfig
+	originalDirectoryListing := directoryListingRenderer
+	originalCache := scriptCache
+	defer func() {
+		RootDir = originalRootDir
+		DebugASP = originalDebugASP
+		DefaultPages = originalDefaultPages
+		ExecuteAsASPExtensions = originalExecuteAsASP
+		BlockedExtensions = originalBlockedExtensions
+		BlockedFiles = originalBlockedFiles
+		BlockedDirs = originalBlockedDirs
+		blockedDirPrefixes = originalBlockedPrefixes
+		activeWebConfig = originalWebConfig
+		directoryListingRenderer = originalDirectoryListing
+		scriptCache = originalCache
+	}()
+
+	RootDir = root
+	DebugASP = true
+	DefaultPages = []string{"default.asp"}
+	ExecuteAsASPExtensions = []string{".asp"}
+	BlockedExtensions = nil
+	BlockedFiles = nil
+	BlockedDirs = nil
+	blockedDirPrefixes = nil
+	activeWebConfig = nil
+	directoryListingRenderer = nil
+	scriptCache = axonvm.NewScriptCache(axonvm.BytecodeCacheDisabled, filepath.Join(root, "cache"), 1)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://example.local/tests/test_jscript_compile_error_debug.asp", nil)
+
+	handleRequest(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "JScript compilation error") {
+		t.Fatalf("expected JScript compilation header in debug output, got %q", body)
+	}
+	if strings.Contains(body, "VBScript compilation error") {
+		t.Fatalf("unexpected VBScript compilation header in JScript debug output: %q", body)
 	}
 }

@@ -24,6 +24,7 @@ import (
 	"errors"
 
 	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/jscript"
 	"g3pix.com.br/axonasp/vbscript"
 )
 
@@ -31,6 +32,12 @@ import (
 func CompilerErrorToASPError(err error, file string) *asp.ASPError {
 	if err == nil {
 		return asp.NewASPError()
+	}
+
+	var jsSyntaxErr *jscript.JSSyntaxError
+	if errors.As(err, &jsSyntaxErr) {
+		jsSyntaxErr.WithFile(file)
+		return asp.NewASPErrorFromJSSyntaxError(jsSyntaxErr)
 	}
 
 	var syntaxErr *vbscript.VBSyntaxError

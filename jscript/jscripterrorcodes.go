@@ -70,6 +70,7 @@ const (
 	ObjectNotSafeForInitializing          JSSyntaxErrorCode = 503
 	ObjectNotSafeForCreating              JSSyntaxErrorCode = 504
 	ExceptionOccurred                     JSSyntaxErrorCode = 507
+	SyntaxError                           JSSyntaxErrorCode = 1002
 
 	// JScript-specific 5000+ series errors
 	CannotAssignToThis                      JSSyntaxErrorCode = 5000
@@ -152,6 +153,7 @@ var JSErrorMessages = map[JSSyntaxErrorCode]string{
 	ObjectNotSafeForInitializing:            "Object not safe for initializing",
 	ObjectNotSafeForCreating:                "Object not safe for creating",
 	ExceptionOccurred:                       "An exception occurred",
+	SyntaxError:                             "Syntax error",
 	CannotAssignToThis:                      "Cannot assign to 'this'",
 	NumberExpected:                          "Number expected",
 	FunctionExpected:                        "Function expected",

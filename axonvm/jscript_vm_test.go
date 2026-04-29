@@ -22,10 +22,14 @@ package axonvm
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"g3pix.com.br/axonasp/jscript"
+	"g3pix.com.br/axonasp/vbscript"
 )
 
 func runASPSourceForTest(t *testing.T, source string) string {
@@ -77,6 +81,96 @@ func runASPSourceForTestWithErr(t *testing.T, source string) (string, error) {
 	vm.SetHost(host)
 	err := vm.Run()
 	return output.String(), err
+}
+
+func TestJScriptCompileErrorsUseJScriptMetadata(t *testing.T) {
+	compiler := NewASPCompiler(`<script runat="server" language="JScript">var x = ;</script>`)
+	compiler.SetSourceName("/tests/jscript_compile_error.asp")
+
+	err := compiler.Compile()
+	if err == nil {
+		t.Fatalf("expected compile error")
+	}
+
+	var syntaxErr *jscript.JSSyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("expected JScript syntax error, got %T", err)
+	}
+
+	if syntaxErr.Code != jscript.SyntaxError {
+		t.Fatalf("unexpected code: got %d want %d", syntaxErr.Code, jscript.SyntaxError)
+	}
+	if syntaxErr.File != "/tests/jscript_compile_error.asp" {
+		t.Fatalf("unexpected file: %q", syntaxErr.File)
+	}
+	if syntaxErr.Category != "JScript compilation" {
+		t.Fatalf("unexpected category: %q", syntaxErr.Category)
+	}
+	if syntaxErr.Source != "JScript compilation error" {
+		t.Fatalf("unexpected source: %q", syntaxErr.Source)
+	}
+	if syntaxErr.Description != jscript.SyntaxError.String() {
+		t.Fatalf("unexpected description: %q", syntaxErr.Description)
+	}
+	if syntaxErr.ASPDescription == "" {
+		t.Fatalf("expected ASP description detail")
+	}
+	if syntaxErr.Number != jscript.HRESULTFromJScriptCode(jscript.SyntaxError) {
+		t.Fatalf("unexpected number: got %d want %d", syntaxErr.Number, jscript.HRESULTFromJScriptCode(jscript.SyntaxError))
+	}
+
+	aspErr := CompilerErrorToASPError(err, "/tests/jscript_compile_error.asp")
+	if aspErr.ASPCode != int(jscript.SyntaxError) {
+		t.Fatalf("unexpected asp code: got %d want %d", aspErr.ASPCode, jscript.SyntaxError)
+	}
+	if aspErr.Number != jscript.HRESULTFromJScriptCode(jscript.SyntaxError) {
+		t.Fatalf("unexpected asp number: got %d want %d", aspErr.Number, jscript.HRESULTFromJScriptCode(jscript.SyntaxError))
+	}
+	if aspErr.Source != "JScript compilation error" {
+		t.Fatalf("unexpected asp source: %q", aspErr.Source)
+	}
+	if aspErr.Category != "JScript compilation" {
+		t.Fatalf("unexpected asp category: %q", aspErr.Category)
+	}
+	if strings.Contains(aspErr.Source, "VBScript") {
+		t.Fatalf("asp source should not fallback to VBScript: %q", aspErr.Source)
+	}
+}
+
+func TestVBScriptCompileErrorsRemainUnchangedWithJScriptIsolation(t *testing.T) {
+	compiler := NewASPCompiler(`<%= * %>`)
+	compiler.SetSourceName("/tests/vbscript_compile_error.asp")
+
+	err := compiler.Compile()
+	if err == nil {
+		t.Fatalf("expected compile error")
+	}
+
+	var syntaxErr *vbscript.VBSyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("expected VBScript syntax error, got %T", err)
+	}
+
+	if syntaxErr.Code != vbscript.SyntaxError {
+		t.Fatalf("unexpected code: got %d want %d", syntaxErr.Code, vbscript.SyntaxError)
+	}
+	if syntaxErr.Source != "VBScript compilation error" {
+		t.Fatalf("unexpected source: %q", syntaxErr.Source)
+	}
+	if syntaxErr.Category != "VBScript compilation" {
+		t.Fatalf("unexpected category: %q", syntaxErr.Category)
+	}
+
+	aspErr := CompilerErrorToASPError(err, "/tests/vbscript_compile_error.asp")
+	if aspErr.ASPCode != int(vbscript.SyntaxError) {
+		t.Fatalf("unexpected asp code: got %d want %d", aspErr.ASPCode, vbscript.SyntaxError)
+	}
+	if aspErr.Source != "VBScript compilation error" {
+		t.Fatalf("unexpected asp source: %q", aspErr.Source)
+	}
+	if aspErr.Category != "VBScript compilation" {
+		t.Fatalf("unexpected asp category: %q", aspErr.Category)
+	}
 }
 
 func TestJScriptResponseWriteFromScriptTag(t *testing.T) {

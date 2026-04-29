@@ -24,11 +24,12 @@ import (
 	"encoding/binary"
 	"fmt"
 	"regexp"
+	"strings"
 
+	"g3pix.com.br/axonasp/jscript"
 	jsast "g3pix.com.br/axonasp/jscript/ast"
 	jsparser "g3pix.com.br/axonasp/jscript/parser"
 	jstoken "g3pix.com.br/axonasp/jscript/token"
-	"g3pix.com.br/axonasp/vbscript"
 )
 
 var jscriptCallAssignmentPattern = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\s*\(([^\)]*)\)\s*=\s*([^;\r\n]+);`)
@@ -42,24 +43,7 @@ func (c *Compiler) compileJScriptBlock(source string) {
 
 	program, err := jsparser.ParseFile(nil, c.sourceName, source, 0)
 	if err != nil {
-		detail := err.Error()
-		line, col := 0, 0
-		if parserErr, ok := err.(*jsparser.Error); ok {
-			line = parserErr.Position.Line
-			col = parserErr.Position.Column
-			detail = parserErr.Message
-		} else if parserList, ok := err.(jsparser.ErrorList); ok && len(parserList) > 0 {
-			line = parserList[0].Position.Line
-			col = parserList[0].Position.Column
-			detail = parserList[0].Message
-		}
-
-		vbErr := vbscript.NewVBSyntaxError(vbscript.SyntaxError, line, col, "", "")
-		vbErr.WithASPDescription("jscript parse error: " + detail)
-		if c.sourceName != "" {
-			vbErr.WithFile(c.sourceName)
-		}
-		panic(vbErr)
+		panic(c.newJScriptCompileErrorFromParse(err, "jscript parse error"))
 	}
 	for i := range program.Body {
 		c.compileJScriptStatement(program.Body[i])
@@ -73,7 +57,7 @@ func (c *Compiler) compileJScriptEvalSnippet(source string) {
 
 	program, err := jsparser.ParseFile(nil, c.sourceName, source, 0)
 	if err != nil {
-		panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("jscript eval parse error: %v", err)))
+		panic(c.newJScriptCompileErrorFromParse(err, "jscript eval parse error"))
 	}
 
 	if len(program.Body) == 0 {
@@ -96,6 +80,32 @@ func (c *Compiler) compileJScriptEvalSnippet(source string) {
 	}
 
 	c.emit(OpHalt)
+}
+
+// newJScriptCompileErrorFromParse converts parser failures into a JScript syntax error.
+func (c *Compiler) newJScriptCompileErrorFromParse(parseErr error, detailPrefix string) *jscript.JSSyntaxError {
+	detail := strings.TrimSpace(parseErr.Error())
+	line, col := 0, 0
+	if parserErr, ok := parseErr.(*jsparser.Error); ok {
+		line = parserErr.Position.Line
+		col = parserErr.Position.Column
+		detail = strings.TrimSpace(parserErr.Message)
+	} else if parserList, ok := parseErr.(jsparser.ErrorList); ok && len(parserList) > 0 {
+		line = parserList[0].Position.Line
+		col = parserList[0].Position.Column
+		detail = strings.TrimSpace(parserList[0].Message)
+	}
+
+	jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, line, col)
+	if detail == "" {
+		jsErr.WithASPDescription(detailPrefix)
+	} else {
+		jsErr.WithASPDescription(detailPrefix + ": " + detail)
+	}
+	if c.sourceName != "" {
+		jsErr.WithFile(c.sourceName)
+	}
+	return jsErr
 }
 
 // pushJSLoopContext adds a new loop context to the stack.

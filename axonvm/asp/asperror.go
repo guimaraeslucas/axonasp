@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"strings"
 
+	"g3pix.com.br/axonasp/jscript"
 	"g3pix.com.br/axonasp/vbscript"
 )
 
@@ -158,6 +159,25 @@ func NewVBScriptASPError(code vbscript.VBSyntaxErrorCode, source string, categor
 
 // NewASPErrorFromVBSyntaxError converts a compiler syntax error into the ASPError object model.
 func NewASPErrorFromVBSyntaxError(err *vbscript.VBSyntaxError) *ASPError {
+	if err == nil {
+		return NewASPError()
+	}
+
+	return (&ASPError{
+		ASPCode:        err.ASPCode,
+		ASPDescription: err.ASPDescription,
+		Number:         err.Number,
+		Source:         err.Source,
+		Description:    err.Description,
+		File:           err.File,
+		Line:           err.Line,
+		Column:         err.Column,
+		Category:       err.Category,
+	}).Normalize()
+}
+
+// NewASPErrorFromJSSyntaxError converts a JScript syntax error into the ASPError object model.
+func NewASPErrorFromJSSyntaxError(err *jscript.JSSyntaxError) *ASPError {
 	if err == nil {
 		return NewASPError()
 	}

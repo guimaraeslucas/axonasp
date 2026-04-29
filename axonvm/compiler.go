@@ -31,6 +31,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"g3pix.com.br/axonasp/jscript"
 	"g3pix.com.br/axonasp/vbscript"
 )
 
@@ -1289,6 +1290,29 @@ func (c *Compiler) vbCompileError(code vbscript.VBSyntaxErrorCode, detail string
 func (c *Compiler) normalizeCompileError(err error) error {
 	if err == nil {
 		return nil
+	}
+
+	var jsSyntaxErr *jscript.JSSyntaxError
+	if errors.As(err, &jsSyntaxErr) {
+		mapped := false
+		if c != nil && jsSyntaxErr != nil {
+			line := jsSyntaxErr.Line
+			if line > 0 && line <= len(c.lineMap) {
+				ref := c.lineMap[line-1]
+				if ref.File != "" {
+					jsSyntaxErr.WithFile(ref.File)
+					mapped = true
+				}
+				if ref.Line > 0 {
+					jsSyntaxErr.Line = ref.Line
+					mapped = true
+				}
+			}
+		}
+		if !mapped && c.sourceName != "" {
+			jsSyntaxErr.WithFile(c.sourceName)
+		}
+		return jsSyntaxErr
 	}
 
 	var syntaxErr *vbscript.VBSyntaxError
