@@ -6,7 +6,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <meta name="description" content="G3Pix AxonASP 2.0 - High-Performance Classic ASP Runtime Engine">
         <meta name="keywords"
-            content="ASP, Classic ASP, VBScript, GoLang, FastCGI, ADODB, MSXML2, Access, Active Server Pages, Legacy application, Cross-Platform">
+            content="ASP, Classic ASP, VBScript, JScript, JavaScript, GoLang, FastCGI, ADODB, MSXML2, Access, Active Server Pages, Legacy application, Cross-Platform">
         <title>G3Pix AxonASP 2.0 - The Ultimate Classic ASP Engine</title>
         <link rel="canonical" href="https://g3pix.com.br/axonasp/">
         <meta name="theme-color" content="#003399">
@@ -25,6 +25,7 @@
         <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
         <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
         <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+        <link rel="icon" sizes="16x16" href="favicon.ico">
         <link rel="manifest" href="manifest.json">
         <meta name="msapplication-TileColor" content="#003399">
         <meta name="msapplication-TileImage" content="ms-icon-144x144.png">
@@ -32,7 +33,7 @@
         <meta property="og:url" content="https://g3pix.com.br/axonasp">
         <meta property="og:title" content="G3Pix AxonASP - Classic ASP at Modern Speed">
         <meta property="og:description"
-            content="Run Classic ASP on Windows, Linux, and macOS with modern performance. Setup in minutes with Go-powered execution.">
+            content="Run Classic ASP with VBScript and JavaScript on Windows, Linux, and macOS with modern performance. Setup in minutes.">
         <meta property="og:image" content="https://g3pix.com.br/axonasp/opengraph-image.png">
         <meta property="og:image:alt" content="G3Pix AxonASP Interface and Logo">
         <meta property="og:locale" content="en_US">
@@ -49,7 +50,7 @@
                 "price": "0",
                 "priceCurrency": "USD"
               },
-              "description": "High-Performance Classic ASP Runtime Engine with full COM support, FastCGI, and G3 libraries.",
+              "description": "High-Performance Classic ASP Runtime Engine with full VBScript and JavaScript support. Open source and cross-platform.",
               "author": {
                   "@type": "Organization",
                   "name": "G3Pix",
@@ -142,14 +143,21 @@
                     keep Classic ASP productive in current cloud and on-prem environments. </p>
                 <div class="grid-3">
                     <div class="card card-top-blue">
+                        <h3>Dual-language engine</h3>
+                        <p>Run VBScript and JavaScript (ECMAScript 5.0) concomitantly. Leverage the best of both worlds in a single, unified runtime.</p>
+                    </div>
+                    <div class="card card-top-blue">
                         <h3>Direct bytecode runtime</h3>
-                        <p>The single-pass compiler emits bytecode directly for a stack-based VM designed to minimize
-                            overhead and maximize throughput.</p>
+                        <p>The single-pass compiler (VBScript) and AST-based compiler (JavaScript) emit bytecode directly for a high-performance stack VM.</p>
                     </div>
                     <div class="card card-top-blue">
                         <h3>IIS-style VM lifecycle</h3>
                         <p>Built-in VM pooling, script caching, and eval caching provide stable performance under high
                             request concurrency.</p>
+                    </div>
+                    <div class="card card-top-blue">
+                        <h3>Modern Developer Experience</h3>
+                        <p>Modernize your ASP with <code>console.log</code> for debugging and the <code>AxonASP TestSuite</code> for continuous integration.</p>
                     </div>
                     <div class="card card-top-blue">
                         <h3>Smarter default networking</h3>
@@ -222,7 +230,7 @@
                         sponsored by Microsoft Corporationin any way.<br>
 
                         The names "Microsoft," "Active Server Pages," "ASP," and "VBScript,", "Windows", "Office",
-                        "Access", "ActiveX" as well
+                        "Access", "ActiveX", "JScript" as well
                         as any related names, marks, emblems, and images relative to ASP, are registered trademarks of
                         Microsoft Corporation.<br>
                         The use of these trademarks within this project is purely for descriptive, identification, and

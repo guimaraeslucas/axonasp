@@ -53,6 +53,12 @@ axonasp2/
 │   ├── token.go               # Token definitions
 │   └── vberrorcodes.go        # VBScript error numbers/messages
 │
+├── jscript/                   # Lexical analyzer and JScript parser
+│   ├── ast/ast.go             # Abstract syntax tree definitions
+│   ├── parser/parser.go       # ASP parsing and validation
+│   ├── token/token.go         # Token definitions
+│   └── jserrorcodes.go        # JScript error numbers/messages
+│
 ├── server/                    # HTTP web server runtime
 │   ├── main.go                # HTTP listener and request handler
 │   ├── web_host.go            # ASP execution and routing

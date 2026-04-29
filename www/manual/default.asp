@@ -22,7 +22,9 @@ mdPath = Server.MapPath(page & ".md")
 If fso.FileExists(mdPath) Then
     mdContent = ReadFile(mdPath)
 Else
-    mdContent = "# 404 - Page Not Found" & vbCrLf & "The requested documentation page '" & page & "' was not found."
+    Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+
+    mdContent = "# 404 - Page Not Found" & vbCrLf & "The requested documentation page '" & ax.AxStripTags(page) & "' was not found."
 End If
 
 ' 3. Render Markdown
@@ -514,7 +516,7 @@ End Function
 
         <div id="status-bar">
             Page:
-            <%= page %>.md
+            <%= ax.AxStripTags(page) %>.md
         </div>
 
         <script>
