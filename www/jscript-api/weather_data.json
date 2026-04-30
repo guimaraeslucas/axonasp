@@ -1,0 +1,48 @@
+{
+  "locations": [
+    {
+      "id": "sao_paulo",
+      "name": "São Paulo",
+      "country": "Brazil",
+      "forecast": {
+        "temperature": 25,
+        "condition": "Sunny",
+        "humidity": 60,
+        "wind": 10
+      }
+    },
+    {
+      "id": "new_york",
+      "name": "New York",
+      "country": "USA",
+      "forecast": {
+        "temperature": 15,
+        "condition": "Cloudy",
+        "humidity": 50,
+        "wind": 15
+      }
+    },
+    {
+      "id": "london",
+      "name": "London",
+      "country": "UK",
+      "forecast": {
+        "temperature": 12,
+        "condition": "Rainy",
+        "humidity": 80,
+        "wind": 20
+      }
+    },
+    {
+      "id": "tokyo",
+      "name": "Tokyo",
+      "country": "Japan",
+      "forecast": {
+        "temperature": 18,
+        "condition": "Clear",
+        "humidity": 45,
+        "wind": 12
+      }
+    }
+  ]
+}

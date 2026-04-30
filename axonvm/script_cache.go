@@ -138,7 +138,7 @@ func (p *cachedProgramBinaryPayload) Serialize(writer io.Writer) error {
 		return err
 	}
 
-	if len(p.Program.Bytecode) > int(^uint32(0)) {
+	if uint64(len(p.Program.Bytecode)) > uint64(^uint32(0)) {
 		return errors.New("bytecode too large")
 	}
 	if err := binary.Write(buffered, binary.LittleEndian, uint32(len(p.Program.Bytecode))); err != nil {
@@ -150,7 +150,7 @@ func (p *cachedProgramBinaryPayload) Serialize(writer io.Writer) error {
 		}
 	}
 
-	if len(p.Program.Constants) > int(^uint32(0)) {
+	if uint64(len(p.Program.Constants)) > uint64(^uint32(0)) {
 		return errors.New("constants too large")
 	}
 	if err := binary.Write(buffered, binary.LittleEndian, uint32(len(p.Program.Constants))); err != nil {
@@ -704,9 +704,21 @@ func (c *ScriptCache) Invalidate(filePath string) {
 
 // LoadOrCompile applies memory, disk, and compiler fallback flow for one ASP file.
 func (c *ScriptCache) LoadOrCompile(filePath string) (CachedProgram, error) {
+	return c.LoadOrCompileWithMode(filePath, ExecutionModeServer)
+}
+
+// LoadOrCompileWithMode compiles and caches an ASP script, optionally bypassing cache for
+// interactive execution modes (CLI, TUI, eval) to prevent stalls. In interactive modes,
+// neither memory nor disk caches are consulted or updated, ensuring fresh compilation.
+func (c *ScriptCache) LoadOrCompileWithMode(filePath string, mode ExecutionMode) (CachedProgram, error) {
 	normalized, err := c.normalizeAbsolutePath(filePath)
 	if err != nil {
 		return CachedProgram{}, err
+	}
+
+	// If in interactive mode, bypass cache entirely to prevent stalls
+	if mode != ExecutionModeServer {
+		return c.compileOnly(normalized)
 	}
 
 	if c != nil && c.mode.HasMemoryTier() {
@@ -754,6 +766,26 @@ func (c *ScriptCache) LoadOrCompile(filePath string) (CachedProgram, error) {
 		c.Put(normalized, program, program.IncludeDependencies)
 	}
 	return program, nil
+}
+
+// compileOnly compiles a script without using any cache layer.
+// Used for interactive execution modes (CLI, TUI, eval) to prevent stalls.
+func (c *ScriptCache) compileOnly(filePath string) (CachedProgram, error) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return CachedProgram{}, err
+	}
+
+	// Strip UTF-8 BOM if present to prevent parsing errors
+	content = stripUTF8BOM(content)
+
+	compiler := NewASPCompiler(string(content))
+	compiler.SetSourceName(filePath)
+	if err := compiler.Compile(); err != nil {
+		return CachedProgram{}, err
+	}
+
+	return buildCachedProgramFromCompiler(compiler), nil
 }
 
 // loadDiskProgram reads one cached payload from .aspb when source and cache are fresh.
@@ -1157,7 +1189,7 @@ func filterOutFold(values []string, target string) []string {
 }
 
 func writeString(writer io.Writer, value string) error {
-	if len(value) > int(^uint32(0)) {
+	if uint64(len(value)) > uint64(^uint32(0)) {
 		return errors.New("string too large")
 	}
 	if err := binary.Write(writer, binary.LittleEndian, uint32(len(value))); err != nil {
@@ -1186,7 +1218,7 @@ func readString(reader io.Reader) (string, error) {
 }
 
 func writeStringSlice(writer io.Writer, values []string) error {
-	if len(values) > int(^uint32(0)) {
+	if uint64(len(values)) > uint64(^uint32(0)) {
 		return errors.New("slice too large")
 	}
 	if err := binary.Write(writer, binary.LittleEndian, uint32(len(values))); err != nil {

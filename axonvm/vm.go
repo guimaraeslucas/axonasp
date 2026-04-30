@@ -37,6 +37,17 @@ const jsBackJumpLimit = 50000
 
 const staticObjectProgIDPrefix = "__AXON_STATIC_OBJECT_PROGID__:"
 
+// ExecutionMode indicates the context in which ASP code is executing.
+// Used to control caching behavior - interactive modes bypass cache to prevent stalls.
+type ExecutionMode uint8
+
+const (
+	ExecutionModeServer ExecutionMode = iota // Normal HTTP/FastCGI server execution - uses cache
+	ExecutionModeCLI                         // Interactive CLI REPL execution - bypasses cache
+	ExecutionModeTUI                         // Interactive TUI execution - bypasses cache
+	ExecutionModeEval                        // Dynamic eval() execution - bypasses cache
+)
+
 const (
 	nativeObjectResponse int64 = iota
 	nativeObjectRequest
@@ -330,6 +341,13 @@ type VM struct {
 	jsFunctionItems                map[int64]*jsFunctionObject
 	jsForInItems                   map[int]*jsForInEnumerator
 	jsEnvItems                     map[int64]*jsEnvFrame
+	jsArgumentsItems               map[int64]*jsArgumentsBinding
+	jsStrictMode                   bool                  // Current strict mode state
+	jsFunctionStrictModes          map[int64]bool        // Maps function IDs to strict mode status
+	jsBlockScopes                  []map[string]Value    // Stack of block-scoped (let/const) variable values
+	jsBlockScopeConst              []map[string]struct{} // Per block scope: which names are declared const
+	jsBlockScopeTDZ                []map[string]struct{} // Per block scope: which names are in TDZ (const before init)
+	jsBlockScopeDepth              int                   // Current block scope depth
 	errObject                      *asp.ASPError
 	errASPCodeRaw                  string
 	errASPCodeRawSet               bool
@@ -374,6 +392,10 @@ type VM struct {
 	// transactionState tracks ObjectContext transaction disposition.
 	// 0 = no transaction active, 1 = SetComplete called, 2 = SetAbort called.
 	transactionState int
+
+	// executionMode tracks whether this VM is running in an interactive context (CLI/TUI/eval)
+	// where caching should be bypassed to prevent stalls. Server mode uses cache normally.
+	executionMode ExecutionMode
 
 	// Runtime Options
 	optionCompare        int             // 0: Binary, 1: Text
@@ -509,6 +531,13 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsFunctionItems:                make(map[int64]*jsFunctionObject),
 		jsForInItems:                   make(map[int]*jsForInEnumerator),
 		jsEnvItems:                     make(map[int64]*jsEnvFrame),
+		jsArgumentsItems:               make(map[int64]*jsArgumentsBinding),
+		jsFunctionStrictModes:          make(map[int64]bool),
+		jsBlockScopes:                  make([]map[string]Value, 0, 32),
+		jsBlockScopeConst:              make([]map[string]struct{}, 0, 32),
+		jsBlockScopeTDZ:                make([]map[string]struct{}, 0, 32),
+		jsBlockScopeDepth:              0,
+		jsStrictMode:                   false,
 		errObject:                      asp.NewASPError(),
 
 		runtimeClasses:     make(map[string]RuntimeClassDef),
@@ -779,7 +808,8 @@ func opcodeOperandSize(op OpCode) int {
 		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 		OpJSMemberIndexGet, OpJSMemberIndexSet,
-		OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement:
+		OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
+		OpJSLetDeclare, OpJSConstDeclare, OpJSConstInitialize:
 		return 2
 	// 4-byte operands (for jump targets)
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
@@ -822,7 +852,8 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 			OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 			OpJSMemberIndexGet, OpJSMemberIndexSet,
-			OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement:
+			OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
+			OpJSLetDeclare, OpJSConstDeclare, OpJSConstInitialize:
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
 			ip += 2
@@ -890,6 +921,18 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			ip += 6
 		case OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal, OpLabel, OpArgGlobalRef, OpArgLocalRef, OpLetGlobal, OpLetLocal, OpCall:
 			ip += 2
+		case OpJSForIterEnter, OpJSForIterExit:
+			// Variable-length: [numVars(2), nameIdx1(2), nameIdx2(2), ...]
+			if ip+2 > len(bytecode) {
+				break
+			}
+			numVars := int(binary.BigEndian.Uint16(bytecode[ip:]))
+			ip += 2
+			for j := 0; j < numVars && ip+2 <= len(bytecode); j++ {
+				varIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(varIdx))
+				ip += 2
+			}
 		case OpSetOption:
 			ip += 2
 		case OpLine:
@@ -1090,6 +1133,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.jsFunctionItems = child.jsFunctionItems
 	vm.jsForInItems = child.jsForInItems
 	vm.jsEnvItems = child.jsEnvItems
+	vm.jsArgumentsItems = child.jsArgumentsItems
 }
 
 // syncExecuteLocalState propagates stack and frame state back after Execute/Eval.
@@ -1111,6 +1155,32 @@ func (vm *VM) SetHost(h ASPHostEnvironment) {
 // SetOutput sets the output writer for the VM.
 func (vm *VM) SetOutput(w io.Writer) {
 	vm.output = w
+}
+
+// SetExecutionMode sets the execution context for this VM instance.
+// Interactive modes (CLI, TUI, Eval) bypass caching to prevent stalls.
+func (vm *VM) SetExecutionMode(mode ExecutionMode) {
+	if vm != nil {
+		vm.executionMode = mode
+	}
+}
+
+// GetExecutionMode returns the current execution mode.
+func (vm *VM) GetExecutionMode() ExecutionMode {
+	if vm != nil {
+		return vm.executionMode
+	}
+	return ExecutionModeServer
+}
+
+// IsInteractiveMode reports whether this VM is in an interactive execution context.
+func (vm *VM) IsInteractiveMode() bool {
+	if vm == nil {
+		return false
+	}
+	return vm.executionMode == ExecutionModeCLI ||
+		vm.executionMode == ExecutionModeTUI ||
+		vm.executionMode == ExecutionModeEval
 }
 
 // Run executes the loaded bytecode.
@@ -2692,6 +2762,118 @@ aspExecLoop:
 			arrVal := vm.pop()
 			value := vm.pop()
 			vm.jsIndexSet(arrVal, indexVal, value)
+
+		case OpJSStrictModeEnter:
+			vm.jsStrictMode = true
+
+		case OpJSStrictModeExit:
+			vm.jsStrictMode = false
+
+		case OpJSBlockScopeEnter:
+			// Push a new block scope for let/const declarations
+			vm.jsBlockScopes = append(vm.jsBlockScopes, make(map[string]Value, 4))
+			vm.jsBlockScopeConst = append(vm.jsBlockScopeConst, make(map[string]struct{}, 2))
+			vm.jsBlockScopeTDZ = append(vm.jsBlockScopeTDZ, make(map[string]struct{}, 2))
+			vm.jsBlockScopeDepth++
+
+		case OpJSBlockScopeExit:
+			// Pop the current block scope
+			if vm.jsBlockScopeDepth > 0 {
+				vm.jsBlockScopes = vm.jsBlockScopes[:len(vm.jsBlockScopes)-1]
+				vm.jsBlockScopeConst = vm.jsBlockScopeConst[:len(vm.jsBlockScopeConst)-1]
+				vm.jsBlockScopeTDZ = vm.jsBlockScopeTDZ[:len(vm.jsBlockScopeTDZ)-1]
+				vm.jsBlockScopeDepth--
+			}
+
+		case OpJSLetDeclare:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			name := vm.constants[nameIdx].Str
+			// Declare in the current block scope, initialized to undefined (no TDZ for let)
+			if vm.jsBlockScopeDepth > 0 && len(vm.jsBlockScopes) > 0 {
+				vm.jsBlockScopes[len(vm.jsBlockScopes)-1][name] = Value{Type: VTJSUndefined}
+			}
+
+		case OpJSConstDeclare:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			name := vm.constants[nameIdx].Str
+			// Declare in the current block scope with TDZ and const marker
+			if vm.jsBlockScopeDepth > 0 && len(vm.jsBlockScopes) > 0 {
+				vm.jsBlockScopes[len(vm.jsBlockScopes)-1][name] = Value{Type: VTJSUndefined}
+				vm.jsBlockScopeConst[len(vm.jsBlockScopeConst)-1][name] = struct{}{}
+				vm.jsBlockScopeTDZ[len(vm.jsBlockScopeTDZ)-1][name] = struct{}{}
+			}
+
+		case OpJSConstInitialize:
+			// Pop value from stack, set const variable and clear its TDZ marker
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			name := vm.constants[nameIdx].Str
+			val := vm.pop()
+			// Find the innermost block scope that has this const name and is still in TDZ
+			for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
+				if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
+					vm.jsBlockScopes[i][name] = val
+					delete(vm.jsBlockScopeTDZ[i], name)
+					break
+				}
+				if _, exists := vm.jsBlockScopes[i][name]; exists {
+					vm.jsBlockScopes[i][name] = val
+					break
+				}
+			}
+
+		case OpJSForIterEnter:
+			// Create a child env frame with per-iteration copies of the loop variable for closure capture.
+			// Each iteration gets its own env frame so that closures created in the body capture
+			// the iteration-specific value rather than a shared mutable slot.
+			numVars := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			vm.ensureJSRootEnv()
+			parentID := vm.jsActiveEnvID
+			childID := vm.allocJSID()
+			bindings := make(map[string]Value, numVars+2)
+			for j := 0; j < numVars; j++ {
+				nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				vm.ip += 2
+				varName := vm.constants[nameIdx].Str
+				// Read from block scopes first (where let/const vars live), then env chain.
+				if varVal, found := vm.jsGetBlockScopeValue(varName); found {
+					bindings[varName] = varVal
+				} else {
+					bindings[varName] = vm.jsGetNameFromEnv(parentID, varName)
+				}
+			}
+			// Do NOT delete this frame on exit: closures created in the body reference it.
+			vm.jsEnvItems[childID] = &jsEnvFrame{parentID: parentID, bindings: bindings}
+			vm.jsActiveEnvID = childID
+
+		case OpJSForIterExit:
+			// Write the loop variable back from the per-iteration env frame into the block scope,
+			// then restore the outer env frame WITHOUT deleting the per-iteration frame so that
+			// any closures created during this iteration can still read the captured value.
+			numVars := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			vm.ensureJSRootEnv()
+			currentEnv := vm.jsEnvItems[vm.jsActiveEnvID]
+			if currentEnv == nil {
+				vm.ip += numVars * 2
+				break
+			}
+			parentID := currentEnv.parentID
+			for j := 0; j < numVars; j++ {
+				nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				vm.ip += 2
+				varName := vm.constants[nameIdx].Str
+				// Write updated value from the per-iteration frame back to the block scope.
+				if val, ok := currentEnv.bindings[varName]; ok {
+					vm.jsSetBlockScopeValue(varName, val)
+				}
+			}
+			// Restore the outer env without deleting the per-iteration frame: closures hold a
+			// reference to it and must still be able to read the captured loop variable.
+			vm.jsActiveEnvID = parentID
 
 		case OpRet:
 			retVal := vm.pop()

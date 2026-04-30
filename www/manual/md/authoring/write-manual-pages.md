@@ -6,7 +6,7 @@ This document provides the standard procedure and strict rules for creating or u
 **DO NOT write generic or assumed documentation.** Be extremely specific about AxonASP's implementation.
 
 ## Syntax Template
-Every manual page must follow this exact structure:
+Every manual page must follow this structure when authoring content for a specific object, method, or property:
 ```text
 # <Action-Oriented Title>
 
@@ -27,7 +27,7 @@ Every manual page must follow this exact structure:
 - **Remarks (Required):** Include compatibility notes, edge cases, performance details, and AxonASP-specific behaviors.
 - **Code Example (Required):** Complete runnable Classic ASP example following the `llm-classic-asp-coding.md` guidelines.
 
-## STRICT RULES & CONSTRAINTS (DO NOT IGNORE)
+## Rules & Constraints
 Whether you are a human writer or an LLM, you must strictly follow these rules:
 
 1. **Format & Style:**
@@ -73,7 +73,7 @@ Your task is to write the documentation to be precise, professional, and strictl
 **STRICT RULES & CONSTRAINTS (DO NOT IGNORE):**
 
 1. **Format & Style:** Follow the Microsoft Writing Style Guide (action-oriented titles, brief overviews, prerequisites, code examples, extra information on how the code works, and complete API references). Use active voice, simple language, scannable lists, and bold text for emphasis. ABSOLUTELY NO EMOJIS. NO MARKDOWN LINKS inside the content page.
-2. **Template:** Use exactly these headers: `# Title`, `## Overview`, `## Syntax`, `## Parameters and Arguments`, `## Return Values`, `## Remarks`, `## Code Example`. For summary pages (`methods.md` or `properties.md`), use markdown tables. `methods.md` needs `Method | Returns | Description`. `properties.md` needs `Property | Access | Type | Description`.
+2. **Template:** Every manual page must follow this structure when authoring content for a specific object, method, or property - *Use exactly these headers*: `# Title`, `## Overview`, `## Syntax`, `## Parameters and Arguments`, `## Return Values`, `## Remarks`, `## Code Example`. For summary pages (`methods.md` or `properties.md`), use markdown tables. `methods.md` needs `Method | Returns | Description`. `properties.md` needs `Property | Access | Type | Description`.
 3. **Branding:** Use the "G3Pix AxonASP" name. DO NOT use "MSDN" or "Microsoft" names or logos.
 4. **Instantiation Precision (ProgID):** Never describe an object creation using aliases. e.g., use `Set obj = Server.CreateObject("PRIMARY_NAME_ONLY")`.
 5. **Explicit Return Values:** Do NOT use generic catch-all descriptions. Document exactly what THAT SPECIFIC function returns (e.g., "Returns a String containing..."). DON'T BE GENERALIST. BE VERY SPECIFIC.

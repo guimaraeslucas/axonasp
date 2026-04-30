@@ -62,7 +62,7 @@ Response.ContentType = "text/html"
                 </p>
 
                 <h2>Technical Information (for support personnel)</h2>
-                <table>
+                <table style="width: 0">
                     <tbody>
                         <tr>
                             <th>Requested URL</th>

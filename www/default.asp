@@ -53,7 +53,7 @@
                         <a href="/database-convert">Database Conversion Tool</a>
                     </li>
                     <li>
-                        <a href="/asp-code-generator">ASP Code Generator</a>
+                        <a href="/project-builder">ASP Project Builder</a>
                     </li>
                     <li>
                         <a href="https://g3pix.com.br/axonasp" target="_blank"
@@ -78,6 +78,9 @@
                     </li>
                     <li>
                         <a href="mvvm/default.asp">MVVM example</a>
+                    </li>
+                    <li>
+                        <a href="jscript-api/default.asp">JScript API example</a>
                     </li>
                 </ul>
             </div>

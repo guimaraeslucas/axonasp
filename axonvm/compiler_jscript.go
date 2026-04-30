@@ -45,8 +45,22 @@ func (c *Compiler) compileJScriptBlock(source string) {
 	if err != nil {
 		panic(c.newJScriptCompileErrorFromParse(err, "jscript parse error"))
 	}
+
+	// Detect "use strict" directive at the beginning of the program
+	hasStrictMode, _ := c.detectUseStrictDirective(program.Body)
+	if hasStrictMode {
+		c.emit(OpJSStrictModeEnter)
+		prevStrictMode := c.jsStrictMode
+		c.jsStrictMode = true
+		defer func() { c.jsStrictMode = prevStrictMode }()
+	}
+
 	for i := range program.Body {
 		c.compileJScriptStatement(program.Body[i])
+	}
+
+	if hasStrictMode {
+		c.emit(OpJSStrictModeExit)
 	}
 }
 
@@ -66,6 +80,15 @@ func (c *Compiler) compileJScriptEvalSnippet(source string) {
 		return
 	}
 
+	// Detect "use strict" directive at the beginning
+	hasStrictMode, _ := c.detectUseStrictDirective(program.Body)
+	if hasStrictMode {
+		c.emit(OpJSStrictModeEnter)
+		prevStrictMode := c.jsStrictMode
+		c.jsStrictMode = true
+		defer func() { c.jsStrictMode = prevStrictMode }()
+	}
+
 	lastIdx := len(program.Body) - 1
 	for i := 0; i < lastIdx; i++ {
 		c.compileJScriptStatement(program.Body[i])
@@ -77,6 +100,10 @@ func (c *Compiler) compileJScriptEvalSnippet(source string) {
 	} else {
 		c.compileJScriptStatement(last)
 		c.emit(OpJSLoadUndefined)
+	}
+
+	if hasStrictMode {
+		c.emit(OpJSStrictModeExit)
 	}
 
 	c.emit(OpHalt)
@@ -108,11 +135,37 @@ func (c *Compiler) newJScriptCompileErrorFromParse(parseErr error, detailPrefix 
 	return jsErr
 }
 
+// detectUseStrictDirective checks if the first statement(s) contain a "use strict" directive.
+// A directive is a StringLiteral ExpressionStatement before any other statement type.
+// Returns true if strict mode is enabled, and the number of directive statements to skip.
+func (c *Compiler) detectUseStrictDirective(statements []jsast.Statement) (hasStrictMode bool, directiveCount int) {
+	directiveCount = 0
+	for i, stmt := range statements {
+		exprStmt, ok := stmt.(*jsast.ExpressionStatement)
+		if !ok {
+			break
+		}
+		strLit, ok := exprStmt.Expression.(*jsast.StringLiteral)
+		if !ok {
+			break
+		}
+		if strings.EqualFold(strLit.Value.String(), "use strict") {
+			hasStrictMode = true
+			directiveCount = i + 1
+		} else {
+			// Other directive strings are allowed but ignored
+			directiveCount = i + 1
+		}
+	}
+	return
+}
+
 // pushJSLoopContext adds a new loop context to the stack.
 func (c *Compiler) pushJSLoopContext() *jsLoopContext {
 	ctx := &jsLoopContext{
-		continueTargets: make([]int, 0),
-		loopStart:       len(c.bytecode),
+		continueTargets:     make([]int, 0),
+		loopStart:           len(c.bytecode),
+		forIterDepthAtStart: len(c.jsForIterScopes),
 	}
 	if c.jsLoopContexts == nil {
 		c.jsLoopContexts = make([]*jsLoopContext, 0)
@@ -140,7 +193,10 @@ func (c *Compiler) currentJSLoopContext() *jsLoopContext {
 }
 
 func (c *Compiler) pushJSBreakContext() *jsBreakContext {
-	ctx := &jsBreakContext{breakTargets: make([]int, 0)}
+	ctx := &jsBreakContext{
+		breakTargets:        make([]int, 0),
+		forIterDepthAtStart: len(c.jsForIterScopes),
+	}
 	if c.jsBreakContexts == nil {
 		c.jsBreakContexts = make([]*jsBreakContext, 0)
 	}
@@ -182,6 +238,9 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 				c.emit(OpJSSetName, nameIdx)
 			}
 		}
+	case *jsast.LexicalDeclaration:
+		// Handle ES6 let/const declarations with block scoping
+		c.compileJScriptLexicalDeclaration(node)
 	case *jsast.FunctionDeclaration:
 		if node.Function == nil {
 			return
@@ -198,6 +257,7 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		c.compileJScriptFunctionLiteral(node.Function, name)
 		c.emit(OpJSSetName, nameIdx)
 	case *jsast.ReturnStatement:
+		c.emitJSLeaveWithScopes(c.withDepth)
 		if node.Argument != nil {
 			c.compileJScriptExpression(node.Argument)
 		} else {
@@ -205,6 +265,7 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		}
 		c.emit(OpJSReturn)
 	case *jsast.ThrowStatement:
+		c.emitJSLeaveWithScopes(c.withDepth)
 		if node.Argument != nil {
 			c.compileJScriptExpression(node.Argument)
 		} else {
@@ -212,8 +273,16 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		}
 		c.emit(OpJSThrow)
 	case *jsast.BlockStatement:
+		// Check if block contains let/const declarations requiring a block scope
+		hasLexical := jsBlockHasLexicalDeclarations(node.List)
+		if hasLexical {
+			c.emit(OpJSBlockScopeEnter)
+		}
 		for i := range node.List {
 			c.compileJScriptStatement(node.List[i])
+		}
+		if hasLexical {
+			c.emit(OpJSBlockScopeExit)
 		}
 	case *jsast.TryStatement:
 		tryPos := c.emit(OpJSTryEnter, 0)
@@ -252,18 +321,26 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		c.compileJScriptForStatement(node)
 	case *jsast.ForInStatement:
 		c.compileJScriptForInStatement(node)
+	case *jsast.WithStatement:
+		c.compileJScriptWithStatement(node)
 	case *jsast.BranchStatement:
 		// BranchStatement handles both break and continue
 		switch node.Token {
 		case jstoken.BREAK:
 			breakCtx := c.currentJSBreakContext()
 			if breakCtx != nil {
+				c.emitJSLeaveWithScopes(c.withDepth)
+				// Exit any active per-iteration scopes within this break context
+				c.emitJSLeaveForIterScopes(breakCtx.forIterDepthAtStart)
 				jumpPos := c.emitJSJump(OpJSBreak)
 				breakCtx.breakTargets = append(breakCtx.breakTargets, jumpPos)
 			}
 		case jstoken.CONTINUE:
 			loopCtx := c.currentJSLoopContext()
 			if loopCtx != nil {
+				c.emitJSLeaveWithScopes(c.withDepth)
+				// Exit any active per-iteration scopes within this loop context
+				c.emitJSLeaveForIterScopes(loopCtx.forIterDepthAtStart)
 				jumpPos := c.emitJSJump(OpJSContinue)
 				loopCtx.continueTargets = append(loopCtx.continueTargets, jumpPos)
 			}
@@ -271,6 +348,67 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 	case *jsast.SwitchStatement:
 		c.compileJScriptSwitchStatement(node)
 	}
+}
+
+// emitJSLeaveWithScopes emits OpWithLeave for each active JScript with-scope.
+func (c *Compiler) emitJSLeaveWithScopes(count int) {
+	for i := 0; i < count; i++ {
+		c.emit(OpWithLeave)
+	}
+}
+
+// emitJSLeaveForIterScopes emits OpJSForIterExit for all active per-iteration scopes
+// above targetDepth (the depth at the start of the enclosing loop/break context).
+func (c *Compiler) emitJSLeaveForIterScopes(targetDepth int) {
+	for i := len(c.jsForIterScopes) - 1; i >= targetDepth; i-- {
+		c.emitForIterExit(c.jsForIterScopes[i].nameIdxs)
+	}
+}
+
+// emitForIterEnter emits OpJSForIterEnter with the given variable name constant indices.
+func (c *Compiler) emitForIterEnter(nameIdxs []int) {
+	c.bytecode = append(c.bytecode, byte(OpJSForIterEnter))
+	numVars := len(nameIdxs)
+	c.bytecode = append(c.bytecode, byte(numVars>>8), byte(numVars&0xFF))
+	for _, idx := range nameIdxs {
+		c.bytecode = append(c.bytecode, byte(idx>>8), byte(idx&0xFF))
+	}
+}
+
+// emitForIterExit emits OpJSForIterExit with the given variable name constant indices.
+func (c *Compiler) emitForIterExit(nameIdxs []int) {
+	c.bytecode = append(c.bytecode, byte(OpJSForIterExit))
+	numVars := len(nameIdxs)
+	c.bytecode = append(c.bytecode, byte(numVars>>8), byte(numVars&0xFF))
+	for _, idx := range nameIdxs {
+		c.bytecode = append(c.bytecode, byte(idx>>8), byte(idx&0xFF))
+	}
+}
+
+// compileJScriptWithStatement compiles a non-strict ES5 with-statement.
+func (c *Compiler) compileJScriptWithStatement(node *jsast.WithStatement) {
+	if node == nil || node.Object == nil {
+		return
+	}
+
+	// In strict mode, with statements are a syntax error
+	if c.jsStrictMode {
+		jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, 0, 0)
+		jsErr.WithASPDescription("with statements are not allowed in strict mode")
+		if c.sourceName != "" {
+			jsErr.WithFile(c.sourceName)
+		}
+		panic(jsErr)
+	}
+
+	c.compileJScriptExpression(node.Object)
+	c.emit(OpWithEnter)
+	c.withDepth++
+	if node.Body != nil {
+		c.compileJScriptStatement(node.Body)
+	}
+	c.withDepth--
+	c.emit(OpWithLeave)
 }
 
 // compileJScriptWhileStatement compiles: while (condition) statement
@@ -343,6 +481,10 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 	loopCtx := c.pushJSLoopContext()
 	breakCtx := c.pushJSBreakContext()
 
+	// Track whether we have a lexical (let/const) for-loop declaration
+	var forIterNameIdxs []int
+	isLexicalFor := false
+
 	// Compile init expression
 	if node.Initializer != nil {
 		switch init := node.Initializer.(type) {
@@ -363,7 +505,34 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 				}
 			}
 		case *jsast.ForLoopInitializerLexicalDecl:
-			// TODO: Handle lexical declaration (const/let)
+			// ES6 let/const for-loop: create outer block scope for the loop variable
+			lexDecl := init.LexicalDeclaration
+			isLexicalFor = lexDecl.Token == jstoken.LET
+			c.emit(OpJSBlockScopeEnter)
+			c.jsBlockScopeStack = append(c.jsBlockScopeStack, make(map[string]bool))
+			for _, binding := range lexDecl.List {
+				name, ok := jsBindingIdentifierName(binding.Target)
+				if !ok {
+					continue
+				}
+				nameIdx := c.addConstant(NewString(name))
+				if lexDecl.Token == jstoken.CONST {
+					c.emit(OpJSConstDeclare, nameIdx)
+					if binding.Initializer != nil {
+						c.compileJScriptExpression(binding.Initializer)
+						c.emitConstInitialize(nameIdx)
+					}
+				} else {
+					c.emit(OpJSLetDeclare, nameIdx)
+					if binding.Initializer != nil {
+						c.compileJScriptExpression(binding.Initializer)
+						c.emit(OpJSSetName, nameIdx)
+					}
+				}
+				if isLexicalFor {
+					forIterNameIdxs = append(forIterNameIdxs, nameIdx)
+				}
+			}
 		}
 	}
 
@@ -376,12 +545,27 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 		jumpExit = c.emitJSJump(OpJSJumpIfFalse)
 	}
 
+	// For let loops: enter per-iteration scope by copying loop vars into a child env frame
+	if isLexicalFor && len(forIterNameIdxs) > 0 {
+		c.emitForIterEnter(forIterNameIdxs)
+		c.jsForIterScopes = append(c.jsForIterScopes, jsForIterScope{nameIdxs: forIterNameIdxs})
+	}
+
 	// Compile loop body
 	if node.Body != nil {
 		c.compileJScriptStatement(node.Body)
 	}
 
-	// Mark update target (for continue)
+	// For let loops: exit per-iteration scope (write back updated vars to outer block scope).
+	// This must be emitted BEFORE setting updateTarget so that continue statements (which
+	// also emit ForIterExit via emitJSLeaveForIterScopes) jump to AFTER the ForIterExit
+	// rather than triggering a double exit.
+	if isLexicalFor && len(forIterNameIdxs) > 0 {
+		c.jsForIterScopes = c.jsForIterScopes[:len(c.jsForIterScopes)-1]
+		c.emitForIterExit(forIterNameIdxs)
+	}
+
+	// Mark update target: continue statements jump here (after per-iteration scope exit).
 	updateTarget := len(c.bytecode)
 
 	// Compile update expression
@@ -402,13 +586,23 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 	for _, breakPos := range breakCtx.breakTargets {
 		c.patchJSJumpTo(breakPos, len(c.bytecode))
 	}
-	// Patch continue targets to update
+	// Patch continue targets to updateTarget (per-iter exit + update)
 	for _, contPos := range loopCtx.continueTargets {
 		c.patchJSJumpTo(contPos, updateTarget)
 	}
 
 	c.popJSLoopContext()
 	c.popJSBreakContext()
+
+	// Exit outer block scope for lexical for-loop variables
+	if node.Initializer != nil {
+		if _, ok := node.Initializer.(*jsast.ForLoopInitializerLexicalDecl); ok {
+			if len(c.jsBlockScopeStack) > 0 {
+				c.jsBlockScopeStack = c.jsBlockScopeStack[:len(c.jsBlockScopeStack)-1]
+			}
+			c.emit(OpJSBlockScopeExit)
+		}
+	}
 }
 
 // compileJScriptForInStatement compiles: for (var in object) statement
@@ -418,12 +612,24 @@ func (c *Compiler) compileJScriptForInStatement(node *jsast.ForInStatement) {
 
 	varName := ""
 	declareName := false
+	isLexical := false
+	isConst := false
 	switch into := node.Into.(type) {
 	case *jsast.ForIntoVar:
 		if into.Binding != nil {
 			if name, ok := jsBindingIdentifierName(into.Binding.Target); ok {
 				varName = name
 				declareName = true
+			}
+		}
+	case *jsast.ForDeclaration:
+		// ES6 for (let/const k in obj)
+		if target := into.Target; target != nil {
+			if name, ok := jsBindingIdentifierName(target); ok {
+				varName = name
+				declareName = true
+				isLexical = true
+				isConst = into.IsConst
 			}
 		}
 	case *jsast.ForIntoExpression:
@@ -440,8 +646,20 @@ func (c *Compiler) compileJScriptForInStatement(node *jsast.ForInStatement) {
 
 	c.compileJScriptExpression(node.Source)
 	nameIdx := c.addConstant(NewString(varName))
+
+	// Lexical for-in: create outer block scope
+	if isLexical {
+		c.emit(OpJSBlockScopeEnter)
+	}
+
 	if declareName {
-		c.emit(OpJSDeclareName, nameIdx)
+		if isConst {
+			c.emit(OpJSConstDeclare, nameIdx)
+		} else if isLexical {
+			c.emit(OpJSLetDeclare, nameIdx)
+		} else {
+			c.emit(OpJSDeclareName, nameIdx)
+		}
 	}
 
 	loopCtx.loopStart = c.emitJSForIn(nameIdx)
@@ -466,6 +684,11 @@ func (c *Compiler) compileJScriptForInStatement(node *jsast.ForInStatement) {
 
 	c.popJSLoopContext()
 	c.popJSBreakContext()
+
+	// Exit outer block scope for lexical for-in
+	if isLexical {
+		c.emit(OpJSBlockScopeExit)
+	}
 }
 
 // compileJScriptSwitchStatement compiles: switch (expr) { case ... default ... }
@@ -714,6 +937,18 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 			case *jsast.DotExpression:
 				c.compileJScriptExpression(t.Left)
 				c.emit(OpJSDelete, c.addConstant(NewString(t.Identifier.Name.String())))
+			case *jsast.Identifier:
+				// In strict mode, deleting a variable binding is a SyntaxError
+				if c.jsStrictMode {
+					jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
+					jsErr.WithASPDescription(fmt.Sprintf("cannot delete identifier '%s' in strict mode", t.Name.String()))
+					if c.sourceName != "" {
+						jsErr.WithFile(c.sourceName)
+					}
+					panic(jsErr)
+				}
+				// Non-strict mode: delete on an identifier always returns true (variables are not deletable)
+				c.emit(OpConstant, c.addConstant(NewBool(true)))
 			default:
 				c.emit(OpConstant, c.addConstant(NewBool(true)))
 			}
@@ -771,7 +1006,17 @@ func jsObjectPropertyKeyName(key jsast.Expression) (string, bool) {
 func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 	switch left := node.Left.(type) {
 	case *jsast.Identifier:
-		nameIdx := c.addConstant(NewString(left.Name.String()))
+		name := left.Name.String()
+		// In strict mode, assigning to eval or arguments is a SyntaxError
+		if c.jsStrictMode && jsIsRestrictedIdentifier(name) {
+			jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
+			jsErr.WithASPDescription(fmt.Sprintf("cannot assign to '%s' in strict mode", name))
+			if c.sourceName != "" {
+				jsErr.WithFile(c.sourceName)
+			}
+			panic(jsErr)
+		}
+		nameIdx := c.addConstant(NewString(name))
 		c.compileJScriptExpression(node.Right)
 		switch node.Operator {
 		case jstoken.ASSIGN:
@@ -866,12 +1111,35 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 	params := make([]string, 0)
 	if fn.ParameterList != nil {
 		params = make([]string, 0, len(fn.ParameterList.List))
+		paramSeen := make(map[string]struct{}, len(fn.ParameterList.List))
 		for _, b := range fn.ParameterList.List {
 			if b == nil || b.Target == nil {
 				continue
 			}
 			if p, ok := b.Target.(*jsast.Identifier); ok {
-				params = append(params, p.Name.String())
+				paramName := p.Name.String()
+				// In strict mode, eval/arguments as parameter names are SyntaxErrors
+				if c.jsStrictMode && jsIsRestrictedIdentifier(paramName) {
+					jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
+					jsErr.WithASPDescription(fmt.Sprintf("parameter name '%s' is not allowed in strict mode", paramName))
+					if c.sourceName != "" {
+						jsErr.WithFile(c.sourceName)
+					}
+					panic(jsErr)
+				}
+				// In strict mode, duplicate parameter names are SyntaxErrors
+				if c.jsStrictMode {
+					if _, duplicate := paramSeen[paramName]; duplicate {
+						jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, 0, 0)
+						jsErr.WithASPDescription(fmt.Sprintf("duplicate parameter name '%s' not allowed in strict mode", paramName))
+						if c.sourceName != "" {
+							jsErr.WithFile(c.sourceName)
+						}
+						panic(jsErr)
+					}
+					paramSeen[paramName] = struct{}{}
+				}
+				params = append(params, paramName)
 			}
 		}
 	}
@@ -953,6 +1221,65 @@ func jsBindingIdentifierName(target jsast.BindingTarget) (string, bool) {
 		return id.Name.String(), true
 	}
 	return "", false
+}
+
+// jsIsRestrictedIdentifier returns true if name is "eval" or "arguments",
+// which are restricted in strict mode.
+func jsIsRestrictedIdentifier(name string) bool {
+	return strings.EqualFold(name, "eval") || strings.EqualFold(name, "arguments")
+}
+
+// jsBlockHasLexicalDeclarations returns true if the statement list contains any
+// LexicalDeclaration (let or const). Used to decide when to emit block scope opcodes.
+func jsBlockHasLexicalDeclarations(stmts []jsast.Statement) bool {
+	for _, s := range stmts {
+		if _, ok := s.(*jsast.LexicalDeclaration); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// compileJScriptLexicalDeclaration emits block-scoped let/const declarations.
+func (c *Compiler) compileJScriptLexicalDeclaration(node *jsast.LexicalDeclaration) {
+	isConst := node.Token == jstoken.CONST
+	for _, binding := range node.List {
+		name, ok := jsBindingIdentifierName(binding.Target)
+		if !ok {
+			continue
+		}
+		// Restricted identifiers (eval, arguments) are not allowed in strict mode
+		if c.jsStrictMode && jsIsRestrictedIdentifier(name) {
+			jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
+			jsErr.WithASPDescription(fmt.Sprintf("cannot use '%s' as a variable name in strict mode", name))
+			if c.sourceName != "" {
+				jsErr.WithFile(c.sourceName)
+			}
+			panic(jsErr)
+		}
+		nameIdx := c.addConstant(NewString(name))
+		if isConst {
+			c.emit(OpJSConstDeclare, nameIdx)
+			if binding.Initializer != nil {
+				c.compileJScriptExpression(binding.Initializer)
+				c.emitConstInitialize(nameIdx)
+			}
+			// const without initializer is a SyntaxError per spec, but parser may allow it;
+			// if initializer is nil, the const stays in TDZ indefinitely.
+		} else {
+			c.emit(OpJSLetDeclare, nameIdx)
+			if binding.Initializer != nil {
+				c.compileJScriptExpression(binding.Initializer)
+				c.emit(OpJSSetName, nameIdx)
+			}
+		}
+	}
+}
+
+// emitConstInitialize emits the OpJSConstInitialize opcode for the given name index.
+func (c *Compiler) emitConstInitialize(nameIdx int) {
+	c.bytecode = append(c.bytecode, byte(OpJSConstInitialize))
+	c.bytecode = append(c.bytecode, byte(nameIdx>>8), byte(nameIdx&0xFF))
 }
 
 func (c *Compiler) emitJSJump(op OpCode) int {

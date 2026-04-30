@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"g3pix.com.br/axonasp/jscript"
 	"g3pix.com.br/axonasp/vbscript"
@@ -875,6 +876,57 @@ func TestJScriptES5StringTrim(t *testing.T) {
 	}
 }
 
+func TestJScriptStringBracketIndexingBounds(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`var s = "text";` +
+		`Response.Write(s[0] + "|" + s[3] + "|" + (s[4] === undefined ? "u" : "x") + "|" + "á"[0]);` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "t|t|u|á" {
+		t.Fatalf("unexpected string bracket indexing output: %q", out)
+	}
+}
+
+func TestJScriptArgumentsAliasingNonStrict(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`function probe(a, b) { a = 10; var v0 = arguments[0]; arguments[1] = 20; return v0 + "|" + b + "|" + arguments[1]; }` +
+		`Response.Write(probe(1, 2));` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "10|20|20" {
+		t.Fatalf("unexpected arguments aliasing output: %q", out)
+	}
+}
+
+func TestJScriptWithStatementScopeResolution(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`var x = "outer";` +
+		`var obj = { x: "inner", y: 1 };` +
+		`with (obj) { x = x + "-" + y; y = 5; z = 9; }` +
+		`Response.Write(x + "|" + obj.x + "|" + obj.y + "|" + (typeof z));` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "outer|inner-1|5|number" {
+		t.Fatalf("unexpected with statement scope output: %q", out)
+	}
+}
+
+func TestJScriptDefinePropertyRejectsIllegalTransitions(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`var obj = {};` +
+		`Object.defineProperty(obj, "x", { value: 7, writable: false, configurable: false, enumerable: true });` +
+		`Object.defineProperty(obj, "x", { value: 8 });` +
+		`Object.defineProperty(obj, "x", { configurable: true });` +
+		`Object.defineProperty(obj, "x", { get: function() { return 1; } });` +
+		`var d = Object.getOwnPropertyDescriptor(obj, "x");` +
+		`Response.Write(obj.x + "|" + (d.configurable ? "c" : "nc") + "|" + (d.writable ? "w" : "nw") + "|" + (d.get ? "g" : "ng"));` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "7|nc|nw|ng" {
+		t.Fatalf("unexpected defineProperty transition output: %q", out)
+	}
+}
+
 func TestJScriptPrototypeChainResolution(t *testing.T) {
 	source := `<script runat="server" language="JScript">` +
 		`var proto = { base: 7 };` +
@@ -1096,5 +1148,77 @@ func TestJScriptES5ParseIntParseFloatNuances(t *testing.T) {
 	out := runASPSourceForTest(t, source)
 	if out != "8|16|3|NaN|3.14|0.5|0.01|NaN" {
 		t.Fatalf("unexpected parseInt/parseFloat output: %q", out)
+	}
+}
+
+func TestJScriptES5ArrayMethodsGenericOnArguments(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`function probe(a, b, c) {` +
+		`  return arguments.slice(1).join(",");` +
+		`}` +
+		`var list = {0: 1, 1: 2, 2: 3, length: 3};` +
+		`var seen = "";` +
+		`list.forEach(function(v, i) { seen += i + ":" + v + ";"; });` +
+		`var mapped = list.map(function(v) { return v * 2; }).join(",");` +
+		`var filtered = list.filter(function(v) { return v >= 2; }).join(",");` +
+		`Response.Write(probe(1, 2, 3) + "|" + seen + "|" + mapped + "|" + filtered);` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "2,3|0:1;1:2;2:3;|2,4,6|2,3" {
+		t.Fatalf("unexpected generic array-method output: %q", out)
+	}
+}
+
+func TestJScriptES5StringReplaceCallback(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`var regexOut = "abc123def".replace(/\d+/g, function(match, offset, sourceText) { return "[" + match + ":" + offset + ":" + sourceText.length + "]"; });` +
+		`var literalOut = "axa".replace("x", function(match, offset) { return match + offset; });` +
+		`Response.Write(regexOut + "|" + literalOut);` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "abc[123:3:9]def|ax1a" {
+		t.Fatalf("unexpected callback replace output: %q", out)
+	}
+}
+
+func TestJScriptES5ParseIntLeadingZeroStrictDecimal(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`Response.Write(parseInt("010") + "|");` +
+		`Response.Write(parseInt("010", 0) + "|");` +
+		`Response.Write(parseInt("010", 8) + "|");` +
+		`Response.Write(parseInt("0x10") + "|");` +
+		`Response.Write(parseInt("0019"));` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "10|10|8|16|19" {
+		t.Fatalf("unexpected parseInt leading-zero output: %q", out)
+	}
+}
+
+func TestJScriptObjectToStringInternalTags(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+	vm.ensureJSRootEnv()
+
+	arrVal := ValueFromVBArray(NewVBArrayFromValues(0, []Value{NewInteger(1)}))
+	if got := vm.jsObjectToStringTag(arrVal); got != "[object Array]" {
+		t.Fatalf("unexpected array tag: %s", got)
+	}
+
+	dateVal := NewDate(time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC))
+	if got := vm.jsObjectToStringTag(dateVal); got != "[object Date]" {
+		t.Fatalf("unexpected date tag: %s", got)
+	}
+
+	fnID := vm.allocJSID()
+	vm.jsFunctionItems[fnID] = &jsFunctionObject{name: "f"}
+	if got := vm.jsObjectToStringTag(Value{Type: VTJSFunction, Num: fnID}); got != "[object Function]" {
+		t.Fatalf("unexpected function tag: %s", got)
+	}
+
+	objID := vm.allocJSID()
+	vm.jsObjectItems[objID] = map[string]Value{"__js_type": NewString("RegExp")}
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor)
+	if got := vm.jsObjectToStringTag(Value{Type: VTJSObject, Num: objID}); got != "[object RegExp]" {
+		t.Fatalf("unexpected regexp tag: %s", got)
 	}
 }

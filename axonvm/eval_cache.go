@@ -112,6 +112,7 @@ func buildLocalScopeHash(localSub Value) uint64 {
 }
 
 // getOrCompileEvalProgram returns one cached Eval program, compiling and storing on misses.
+// In interactive execution modes (CLI, TUI, eval), the cache is bypassed to prevent stalls.
 func (vm *VM) getOrCompileEvalProgram(expr string, localSub Value) (*evalCachedProgram, error) {
 	if vm == nil {
 		return nil, nil
@@ -123,7 +124,8 @@ func (vm *VM) getOrCompileEvalProgram(expr string, localSub Value) (*evalCachedP
 	globalScopeHash := vm.globalNamesHash
 	cache := getEvalProgramCache()
 
-	if cache != nil {
+	// In interactive mode, bypass the LRU cache to prevent stalls
+	if !vm.IsInteractiveMode() && cache != nil {
 		if cached, ok := cache.Get(key); ok && cached != nil {
 			if cached.keyHash == key &&
 				cached.optionCompare == optionCompare &&
@@ -151,7 +153,8 @@ func (vm *VM) getOrCompileEvalProgram(expr string, localSub Value) (*evalCachedP
 		constants:       append([]Value(nil), compiler.Constants()...),
 		bytecode:        append([]byte(nil), compiler.Bytecode()...),
 	}
-	if cache != nil {
+	// In interactive mode, don't cache to prevent stalls
+	if !vm.IsInteractiveMode() && cache != nil {
 		cache.Add(key, compiled)
 	}
 	return compiled, nil

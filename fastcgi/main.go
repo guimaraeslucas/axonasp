@@ -382,8 +382,10 @@ func main() {
 	defer listener.Close()
 	defer cleanupFastCGIListenerArtifact(ListenNetwork, ListenAddr)
 
-	fmt.Printf("AxonASP FastCGI %s started on %s://%s\n", Version, ListenNetwork, ListenAddr)
-	fmt.Printf("Serving files from: %s\n", RootDir)
+	fmt.Printf("G3pix ❖ AxonASP Server %s\n", Version)
+	fmt.Printf("FastCGI server started on: %s://%s\n", ListenNetwork, ListenAddr)
+	fmt.Printf("Root directory: %s\n", RootDir)
+	fmt.Print("\033]0;G3pix ❖ AxonASP FastCGI\007\033]11;#3b6ea5\007\033[1;37m")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -396,7 +398,7 @@ func main() {
 	}()
 
 	<-stop
-	fmt.Println("\nShutting down FastCGI server...")
+	fmt.Println("\nShutting down server...")
 
 	if axonvm.GetGlobalASA().IsLoaded() {
 		req, _ := http.NewRequest("GET", "http://localhost/", nil)
@@ -806,7 +808,7 @@ func renderClassicASPDebugError(w http.ResponseWriter, statusCode int, stage str
 	fmt.Fprintf(w, "<p>%s</p>", description)
 	fmt.Fprintf(w, "<p><b>File:</b> %s<br><b>Line:</b> %d<br><b>Column:</b> %d</p>", fileName, err.Line, err.Column)
 	fmt.Fprintf(w, "<p><b>Stage:</b> %s</p>", html.EscapeString(stage))
-	fmt.Fprintf(w, "<hr><p><i>AxonASP Debug Mode (global.enable_asp_debugging=true)</i></p></body></html>")
+	fmt.Fprintf(w, "<hr><p><i>❖ AxonASP Debug Mode</i></p></body></html>")
 }
 
 // serveErrorPage serves configured error pages using .asp or .html handlers for a given HTTP status code.

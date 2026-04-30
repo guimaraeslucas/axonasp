@@ -68,21 +68,20 @@ var (
 	sharedCLISession     = asp.NewSession()
 )
 
-const tuiHelpText = `G3pix AxonASP Help
------------------
-
-HOTKEYS:
+const tuiHelpText = `
+ HOTKEYS:
 
   F3:   Run current code in Input Area
   F2:   Open and Run an external ASP file
   F7:   Toggle Auto-Run mode (On/Off)
   F6:   Switch focus between Input and Output
+  F8:   Clear Output Area
   F5:   Toggle Mouse Support
   F1:   Show this help window
   F4:   Exit the application
   Esc:  Close current dialog/window
 
-COMMAND LINE USAGE:
+ COMMAND LINE USAGE:
 
   You can execute ASP scripts directly from your terminal
   or batch files using the -r or --run flags:
@@ -93,19 +92,20 @@ COMMAND LINE USAGE:
   - Local automation and system maintenance tasks.
   - Database cleanup or migration scripts.
   - Batch processing files using G3Zip, G3FC or G3PDF.
-  - Running background jobs or scheduled tasks via Task Scheduler/Cron.
+  - Running background jobs or scheduled tasks via Task 
+    Scheduler/Cron.
 
-ABOUT:
-
-  AxonASP is a high-performance VBScript/ASP 
-  Virtual Machine developed by G3pix in pure GoLang.
+ ABOUT:
+  G3pix ❖ AxonASP
+  is a high-performance, cross-platform Classic ASP engine,
+  with support to VBScript and JScript for Web, FastCGI, 
+  and CLI, bridging legacy compatibility with modern 
+  APIs.
   
   Copyright (C) 2026 G3pix Ltda. All rights reserved.
   Website: https://g3pix.com.br/axonasp
   
   License: MPL 2.0
-
-  
 `
 
 // init loads environment variables and applies TOML-based configuration through Viper.
@@ -285,7 +285,7 @@ func startTUI() {
 	app := tview.NewApplication()
 	app.EnableMouse(mouseEnabled)
 	autoRunEnabled := true
-	app.SetTitle("G3pix AxonASP CLI")
+	app.SetTitle("G3pix ❖ AxonASP CLI")
 
 	// Theme and Colors
 	bgColor := tcell.GetColor("#000080")
@@ -298,7 +298,7 @@ func startTUI() {
 	// Header - Full width white background
 	header := tview.NewTextView().
 		SetDynamicColors(true).
-		SetText("[#010043:white]  G3pix AxonASP CLI >_  ").
+		SetText("[#010043:white]  G3pix ❖ AxonASP ").
 		SetTextAlign(tview.AlignLeft)
 	header.SetBackgroundColor(tcell.ColorWhite)
 
@@ -348,6 +348,10 @@ func startTUI() {
 		AddItem(outputArea, 0, 1, false).
 		AddItem(statusWidget, 3, 1, false)
 
+	clearOutput := func() {
+		outputArea.Clear()
+	}
+
 	mainArea := tview.NewFlex().
 		AddItem(inputArea, 0, 1, true).
 		AddItem(rightPanel, 0, 1, false)
@@ -375,6 +379,9 @@ func startTUI() {
 			} else {
 				app.SetFocus(inputArea)
 			}
+		}), 16, 1, false).
+		AddItem(tview.NewButton("Clear (F8)").SetSelectedFunc(func() {
+			clearOutput()
 		}), 16, 1, false).
 		AddItem(tview.NewButton("Mouse (F5)").SetSelectedFunc(func() {
 			mouseEnabled = !mouseEnabled
@@ -441,6 +448,9 @@ func startTUI() {
 				app.SetFocus(inputArea)
 			}
 			return nil
+		case tcell.KeyF8:
+			clearOutput()
+			return nil
 		case tcell.KeyF1:
 			showHelpModal(app, pages)
 			return nil
@@ -466,7 +476,7 @@ func showHelpModal(app *tview.Application, pages *tview.Pages) {
 		SetTextAlign(tview.AlignLeft).
 		SetWordWrap(true)
 	textView.SetBorder(true).
-		SetTitle(" G3pix AxonASP CLI Help ").
+		SetTitle(" G3pix ❖ AxonASP Help ").
 		SetTitleAlign(tview.AlignLeft)
 	textView.SetBackgroundColor(dialogBg)
 	textView.SetBorderColor(tcell.ColorGray)
@@ -717,6 +727,12 @@ func executeCLICode(code string, virtualPath string, tuiMode bool) cliExecutionR
 	var outBuf bytes.Buffer
 	host := newCLIHost(&outBuf, virtualPath, tuiMode)
 	vm.SetHost(host)
+	// Set execution mode to bypass caching for interactive REPL input
+	if tuiMode {
+		vm.SetExecutionMode(axonvm.ExecutionModeTUI)
+	} else {
+		vm.SetExecutionMode(axonvm.ExecutionModeCLI)
+	}
 	defer vm.Release()
 	wireCLIObjectAliases(vm, compiler)
 
@@ -735,7 +751,13 @@ func executeCLIFile(filePath string, virtualPath string, tuiMode bool) cliExecut
 		scriptCache = axonvm.NewScriptCache(axonvm.BytecodeCacheDisabled, filepath.Join("temp", "cache"), 1)
 	}
 
-	program, err := scriptCache.LoadOrCompile(filePath)
+	// Determine execution mode based on context (TUI or CLI interactive)
+	executionMode := axonvm.ExecutionModeCLI
+	if tuiMode {
+		executionMode = axonvm.ExecutionModeTUI
+	}
+
+	program, err := scriptCache.LoadOrCompileWithMode(filePath, executionMode)
 	if err != nil {
 		result.compileErr = err
 		return result
@@ -746,6 +768,8 @@ func executeCLIFile(filePath string, virtualPath string, tuiMode bool) cliExecut
 	var outBuf bytes.Buffer
 	host := newCLIHost(&outBuf, virtualPath, tuiMode)
 	vm.SetHost(host)
+	// Set execution mode to bypass caching for interactive file execution
+	vm.SetExecutionMode(executionMode)
 	defer vm.Release()
 
 	if len(program.GlobalNames) > 0 {
@@ -810,7 +834,7 @@ func wireCLIObjectAliases(vm *axonvm.VM, compiler *axonvm.Compiler) {
 
 // printHelp shows the usage instructions for the CLI.
 func printHelp() {
-	fmt.Println("\033[1mG3pix AxonASP CLI Usage:\n\033[0m")
+	fmt.Println("\033[1mG3pix ❖ AxonASP CLI Usage:\n\033[0m")
 	fmt.Println(`  axonasp-cli 
     Starts the interactive REPL.
   axonasp-cli -r,--run <file>
@@ -818,13 +842,18 @@ func printHelp() {
   axonasp-cli -h, --help
     Shows this help message.
 	
-  AxonASP is a high-performance VBScript/ASP 
-  Virtual Machine developed by G3pix in pure GoLang.
+ ABOUT:
+  G3pix ❖ AxonASP
+  is a high-performance, cross-platform Classic ASP engine,
+  with support to VBScript and JScript for Web, FastCGI, and CLI, 
+  bridging legacy compatibility with modern APIs.
   
   Copyright (C) 2026 G3pix Ltda. All rights reserved.
   Website: https://g3pix.com.br/axonasp
   
-  License: MPL 2.0`)
+  License: MPL 2.0
+
+  `)
 	fmt.Println("\033[0m")
 }
 

@@ -151,7 +151,7 @@ func (vm *VM) getOrCompileDynamicProgram(source string, localSub Value, kind dyn
 	classVersion := vm.runtimeClassVersion
 	key := buildDynamicExecCacheKey(kind, source, optionCompare, globalScopeHash, localScopeHash, classVersion, activeClassName)
 	cache := getDynamicExecProgramCache()
-	if cache != nil {
+	if !vm.IsInteractiveMode() && cache != nil {
 		if cached, ok := cache.Get(key); ok && cached != nil {
 			if cached.keyHash == key &&
 				cached.kind == kind &&
@@ -198,7 +198,7 @@ func (vm *VM) getOrCompileDynamicProgram(source string, localSub Value, kind dyn
 		compilerDeclared: cloneBoolMap(compiler.declaredGlobals),
 		compilerConst:    cloneBoolMap(compiler.constGlobals),
 	}
-	if cache != nil {
+	if !vm.IsInteractiveMode() && cache != nil {
 		cache.Add(key, compiled)
 	}
 	return compiled, nil

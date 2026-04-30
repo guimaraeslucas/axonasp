@@ -93,6 +93,44 @@ func TestExecuteGlobalCacheHitStableClassMetadata(t *testing.T) {
 	}
 }
 
+// TestExecuteCacheBypassInInteractiveMode verifies interactive CLI/TUI execution never reuses
+// the process-wide Execute cache, ensuring edited input does not stick to stale compiled fragments.
+func TestExecuteCacheBypassInInteractiveMode(t *testing.T) {
+	vm := buildEvalCacheTestVM(t)
+	vm.SetExecutionMode(ExecutionModeTUI)
+	localSub := Value{Type: VTUserSub, Names: []string{"valueProbe"}}
+
+	first, err := vm.getOrCompileDynamicProgram("valueProbe = 1", localSub, dynamicExecKindExecute)
+	if err != nil {
+		t.Fatalf("first interactive compile failed: %v", err)
+	}
+	second, err := vm.getOrCompileDynamicProgram("valueProbe = 1", localSub, dynamicExecKindExecute)
+	if err != nil {
+		t.Fatalf("second interactive compile failed: %v", err)
+	}
+	if first == nil || second == nil {
+		t.Fatalf("expected non-nil interactive execute payloads")
+	}
+	if first == second {
+		t.Fatalf("expected interactive execute path to bypass cache reuse")
+	}
+
+	globalFirst, err := vm.getOrCompileDynamicProgram("Dim g : g = 1", Value{}, dynamicExecKindExecuteGlobal)
+	if err != nil {
+		t.Fatalf("first interactive executeglobal compile failed: %v", err)
+	}
+	globalSecond, err := vm.getOrCompileDynamicProgram("Dim g : g = 1", Value{}, dynamicExecKindExecuteGlobal)
+	if err != nil {
+		t.Fatalf("second interactive executeglobal compile failed: %v", err)
+	}
+	if globalFirst == nil || globalSecond == nil {
+		t.Fatalf("expected non-nil interactive executeglobal payloads")
+	}
+	if globalFirst == globalSecond {
+		t.Fatalf("expected interactive executeglobal path to bypass cache reuse")
+	}
+}
+
 // TestExecuteGlobalCachedFragmentReuseAvoidsBytecodeGrowth verifies repeated ExecuteGlobal calls reuse appended fragments.
 func TestExecuteGlobalCachedFragmentReuseAvoidsBytecodeGrowth(t *testing.T) {
 	vm := buildEvalCacheTestVM(t)

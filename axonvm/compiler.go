@@ -135,6 +135,10 @@ type Compiler struct {
 	loopContexts            []loopContext
 	jsLoopContexts          []*jsLoopContext // Loop contexts for JScript
 	jsBreakContexts         []*jsBreakContext
+	jsStrictMode            bool              // Current JScript strict mode state
+	jsFunctionStrictModes   map[int]bool      // Maps function start IP to strict mode
+	jsBlockScopeStack       []map[string]bool // Stack of declared block-scoped variables (let/const)
+	jsForIterScopes         []jsForIterScope  // Stack of active per-iteration for-let scopes
 	// withDepth tracks nesting level of With...End With blocks at compile time.
 	// A value > 0 enables the leading-dot '.' statement and expression syntax.
 	withDepth          int
@@ -153,13 +157,20 @@ type loopContext struct {
 
 // jsLoopContext tracks break and continue targets for JScript loops.
 type jsLoopContext struct {
-	continueTargets []int // Jump positions that need patching to the loop continuation
-	loopStart       int   // Bytecode position of loop start
+	continueTargets     []int // Jump positions that need patching to the loop continuation
+	loopStart           int   // Bytecode position of loop start
+	forIterDepthAtStart int   // jsForIterDepth at the time this loop was created
 }
 
 // jsBreakContext tracks break targets for breakable JScript constructs.
 type jsBreakContext struct {
-	breakTargets []int
+	breakTargets        []int
+	forIterDepthAtStart int // jsForIterDepth at the time this break context was created
+}
+
+// jsForIterScope records the per-iteration env scope context for a for-let loop.
+type jsForIterScope struct {
+	nameIdxs []int // constant indices for loop variable names
 }
 
 type definitionTokenBound struct {
@@ -375,34 +386,37 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 	}
 
 	c := &Compiler{
-		lexer:               lexer,
-		lexerMode:           mode,
-		sourceCode:          code,
-		tokenIndex:          -1,
-		bytecode:            make([]byte, 0),
-		constants:           make([]Value, 0),
-		Globals:             NewSymbolTable(),
-		locals:              NewSymbolTable(),
-		declaredGlobals:     make(map[string]bool),
-		declaredLocals:      make(map[string]bool),
-		constGlobals:        make(map[string]bool),
-		constLocals:         make(map[string]bool),
-		constLiteralGlobals: make(map[string]Value),
-		isLocal:             false,
-		optionExplicit:      false,
-		optionCompare:       0, // Binary
-		forwardCallPatches:  make(map[string][]int),
-		forwardConstPatches: make(map[string][]int),
-		lastCallTargetPos:   -1,
-		lastCoercePos:       -1,
-		lastDebugLine:       -1,
-		lastDebugColumn:     -1,
-		tempCounter:         0,
-		globalZeroArgFuncs:  make(map[string]bool),
-		classDecls:          make([]CompiledClassDecl, 0),
-		classDeclLookup:     make(map[string]int),
-		loopContexts:        make([]loopContext, 0),
-		activeVBSConstants:  make([]VBSConstant, 0, len(VBSConstants)),
+		lexer:                 lexer,
+		lexerMode:             mode,
+		sourceCode:            code,
+		tokenIndex:            -1,
+		bytecode:              make([]byte, 0),
+		constants:             make([]Value, 0),
+		Globals:               NewSymbolTable(),
+		locals:                NewSymbolTable(),
+		declaredGlobals:       make(map[string]bool),
+		declaredLocals:        make(map[string]bool),
+		constGlobals:          make(map[string]bool),
+		constLocals:           make(map[string]bool),
+		constLiteralGlobals:   make(map[string]Value),
+		isLocal:               false,
+		optionExplicit:        false,
+		optionCompare:         0, // Binary
+		forwardCallPatches:    make(map[string][]int),
+		forwardConstPatches:   make(map[string][]int),
+		lastCallTargetPos:     -1,
+		lastCoercePos:         -1,
+		lastDebugLine:         -1,
+		lastDebugColumn:       -1,
+		tempCounter:           0,
+		globalZeroArgFuncs:    make(map[string]bool),
+		classDecls:            make([]CompiledClassDecl, 0),
+		classDeclLookup:       make(map[string]int),
+		loopContexts:          make([]loopContext, 0),
+		jsStrictMode:          false,
+		jsFunctionStrictModes: make(map[int]bool),
+		jsBlockScopeStack:     make([]map[string]bool, 0, 32),
+		activeVBSConstants:    make([]VBSConstant, 0, len(VBSConstants)),
 	}
 	c.activeVBSConstants = append(c.activeVBSConstants, VBSConstants...)
 

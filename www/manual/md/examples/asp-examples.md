@@ -95,15 +95,38 @@ This example extends the REST example with a more complete RESTful design, inclu
 
 ---
 
+## JScript API — JScript Powered JSON Service
+
+**Path:** `./www/jscript-api/`
+**URL:** `http://localhost:8801/jscript-api/`
+
+This example demonstrates how to use **JScript (ES5)** as the server-side language in AxonASP to build a weather forecast API and a corresponding front-end explorer.
+
+| Path | Description |
+|------|-------------|
+| `jscript-api/default.asp` | UI Explorer using server-side JScript and client-side AJAX |
+| `jscript-api/api.asp` | JScript API endpoint that processes JSON data |
+| `jscript-api/weather_data.json` | JSON data source used by the API |
+
+**How it works:** The `api.asp` script uses the native `G3JSON` object to load and parse a local JSON file via `Server.CreateObject("G3JSON")`. It leverages JScript's native `JSON` object for serialization and `try/catch` for robust error handling.
+
+**Example requests:**
+```
+GET http://localhost:8801/jscript-api/api.asp?location=sao_paulo
+GET http://localhost:8801/jscript-api/api.asp?location=tokyo
+```
+
+---
+
 ## Shared Patterns
 
 All four examples follow these AxonASP Classic ASP conventions:
 
-- `Option Explicit` is declared at the top of each file.
-- Objects use `Set ... = Server.CreateObject(...)` syntax.
-- JSON output uses `G3JSON` (`Server.CreateObject("G3JSON")`).
+- `Option Explicit` is declared at the top of VBScript files.
+- Objects use `Set ... = Server.CreateObject(...)` syntax (VBScript) or `var ... = Server.CreateObject(...)` (JScript).
+- JSON output uses `G3JSON` (`Server.CreateObject("G3JSON")`) or native `JSON.stringify` in JScript.
 - CSS uses `../css/axonasp.css` from the shared stylesheet.
-- No framework dependencies — pure Classic ASP and VBScript.
+- No framework dependencies — pure Classic ASP using VBScript or JScript.
 
 ## Remarks
 

@@ -1,4 +1,4 @@
-# 🚀 AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript (JScript support)
+# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript (JScript support)
 
 <p align="center">
   <img src="www/axonasp.svg" alt="G3Pix AxonASP Logo" width="400"/>
@@ -32,17 +32,17 @@ If you thought Classic ASP was dead, think again. AxonASP breathes raw power, mo
 
 We threw out the rulebook to achieve extreme performance improvements that will blow your mind:
 
-*   **Zero AST, Pure Bytecode:** The new compiler is single-pass and emits bytecode directly to a highly optimized, stack-based Virtual Machine. By eliminating the Abstract Syntax Tree (AST), AxonASP executes scripts with virtually zero-allocation overhead. It is insanely fast and memory optimized.
-*   **IIS-Style VM Pooling & Advanced Caching:** We've implemented an advanced VM pool modeled perfectly after IIS, combined with aggressive script caching and `eval`/`execute`/`executeglobal` compilation caching. Processing times are phenomenally accelerated.
-*   **Standardization meets Innovation:** You get 100% adherence to Classic ASP and VBScript standards, meaning your legacy code drops right in. But we didn't stop there: we added over **60 custom Axon functions**, including advanced array manipulation, to make writing ASP a joy again.
+*   **Zero AST, Pure Bytecode:** The new VBScript compiler is single-pass and emits bytecode directly to a highly optimized, stack-based Virtual Machine. By eliminating the Abstract Syntax Tree (AST), AxonASP executes scripts with virtually zero-allocation overhead. It is insanely fast and memory optimized.
+*   **IIS-Style VM Pooling & Advanced Caching:** We've implemented an advanced VM pool modeled perfectly after IIS, combined with aggressive script caching and `eval`/`execute`/`executeglobal` compilation caching. Processing times are phenomenally accelerated and better than the Windows Server ASP engine in many cases.
+*   **Standardization meets Innovation:** You get 99% adherence to Classic ASP and VBScript standards, meaning your legacy code drops right in. But we didn't stop there: we added over **60 custom Axon functions**, including advanced array manipulation, to make writing ASP a joy again, and full support to JavaScript code, that you can even mix with VBScript seamlessly.
 *   **Run ASP Anywhere:** Web server, FastCGI, or the command line! The brand new **CLI with TUI (Text User Interface)** allows you to execute ASP code directly from your terminal. This opens incredible possibilities: run scheduled ASP scripts as background jobs, cron tasks, and powerful system administration tools!
 *   **AI-Ready with MCP:** AxonASP includes a built-in Model Context Protocol (MCP) server. AI agents can now connect directly to your runtime, understand your specific environment, and autonomously author complete ASP pages utilizing all available native functions.
 *   **Test-Driven ASP:** Say goodbye to broken scripts and regressions. The new `axonasp-testsuite` executable allows you to write and run automated test suites directly against your ASP files natively!
-*   **High-Performance JScript (ES5):** AxonASP now includes a dedicated, AST-based JScript engine. Mostly compliant with ECMAScript 5, it supports JavaScript features like `JSON`, `Array.map/filter`, and strict mode, allowing you to modernize your logic while keeping the ASP infrastructure.
+*   **High-Performance JScript (ES5):** AxonASP now includes a dedicated, AST-based JScript engine, derived from Goja. Mostly compliant with ECMAScript 5, it supports JavaScript features like `JSON`, `Array.map/filter`, and strict mode, allowing you to modernize your logic while keeping the ASP infrastructure.
 
 ---
 
-## 🛠️ What's New in Version 2.0?
+## 🛠️ What's New in Version 2.x?
 
 *   **Smarter Networking:** The default proxy server port has been changed (now 8801) to intelligently avoid common firewall errors and system port conflicts right out of the box.
 *   **Centralized Configuration:** Say hello to `Viper`. Manage your entire server environment from a single, unified `axonasp.toml` configuration file, with simultaneous, drop-in support for `.env` environment variables.
@@ -59,24 +59,24 @@ We threw out the rulebook to achieve extreme performance improvements that will 
 
 AxonASP extends Classic ASP with incredibly fast, zero-allocation native Go libraries. Avoid VBScript execution bottlenecks and use these built-in powerhouses:
 
-*   **G3Axon:** Access over 60 custom system, environment, array manipulation, and engine utility functions.
-*   **G3Crypto:** Generate hashes (MD5, SHA, Blake2), encrypt data, and generate secure random bytes.
+*   **G3AXON.FUNCTIONS:** Access over 60 custom system, environment, array manipulation, and engine utility functions.
+*   **G3CRYPTO:** Generate hashes (MD5, SHA, Blake2), encrypt data, and generate secure random bytes.
 *   **G3JSON:** Parse, build, and stringify JSON data instantly.
 *   **G3DB:** High-performance database connectivity with built-in connection pooling.
 *   **G3HTTP:** Fetch external APIs and resources via a robust HTTP client.
-*   **G3Mail:** Send SMTP emails seamlessly with HTML bodies and file attachments.
-*   **G3Image:** Process, draw, manipulate, and convert images (PNG, JPG) on the fly.
+*   **G3MAIL:** Send SMTP emails seamlessly with HTML bodies and file attachments.
+*   **G3IMAGE:** Process, draw, manipulate, and convert images (PNG, JPG) on the fly.
 *   **G3FILES:** Perform extensive file system operations and encoding conversions safely.
-*   **G3TestSuite:** Integrated framework for writing and running automated ASP assertions.
-*   **G3Template:** Render dynamic text and HTML templates effortlessly.
-*   **G3Zip:** Create, extract, and manage ZIP archives directly from your code.
+*   **G3TESTSUITE:** Integrated framework for writing and running automated ASP assertions.
+*   **G3TEMPLATE:** Render dynamic text and HTML templates effortlessly.
+*   **G3ZIP:** Create, extract, and manage ZIP archives directly from your code.
 *   **G3ZLIB:** Stream fast ZLIB compression and decompression.
 *   **G3TAR:** Create and extract TAR archives seamlessly.
 *   **G3ZSTD:** Utilize ultra-fast Zstandard (ZSTD) compression for maximum performance.
 *   **G3FC:** Quickly find files and extract file metadata across complex directories.
 *   **G3MD:** Convert Markdown text into clean HTML instantly.
 *   **G3PDF:** Generate native PDF documents with text, shapes, and images.
-*   **G3FileUploader:** Securely and easily handle multipart form data and file uploads.
+*   **G3FILEUPLOADER:** Securely and easily handle multipart form data and file uploads.
 
 *(Check out `./www/manual/menu.md` and `./www/manual/md/` for full API details!)*
 
@@ -87,7 +87,7 @@ AxonASP extends Classic ASP with incredibly fast, zero-allocation native Go libr
 AxonASP is designed to be built and deployed in seconds, getting your applications online faster than ever.
 
 ### Prerequisites
-*   GoLang 1.26+ (to build the system binaries)
+*   GoLang 1.26+ (to build the system binaries if not using the packaged releases)
 *   Your existing ASP codebase (or explore our awesome examples in `/www/`)
 
 ### Building the Engine
@@ -191,7 +191,8 @@ G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
 - **Fast Startup**: Server starts in milliseconds
 - **Low Memory Footprint**: Minimal resource consumption
 - **Concurrent Request Handling**: Native Go concurrency for handling multiple requests
-- **Optimized Parsing**: Efficient VBScript lexer and parser 
+- **Optimized Parsing**: Efficient VBScript lexer and parser and JavaScript AST engine
+- **Advanced Caching**: Script (eval, execute, execute global) and compilation caching for lightning-fast execution, which was not possible in the old ASP version
 
 ---
 
@@ -199,16 +200,17 @@ G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
 
 | Feature | Traditional IIS | G3Pix AxonASP |
 |---------|-----------------|---------------|
-| **Platform** | Windows only | Windows, Linux, macOS |
+| **Platform** | Windows only | Windows, Linux, macOS, other OSs GoLang supports |
 | **Performance** | Standard | Accelerated (Go) |
 | **Dependencies** | IIS, Windows Server | Single binary |
-| **Deployment** | Complex | Simple binary or FastCGI |
+| **Deployment** | Complex | Simple binary |
 | **Database Support** | Windows databases | SQLite, MySQL, PostgreSQL, SQL Server, Oracle, Access |
 | **Cost** | Windows licensing | Free & open source |
 | **Modernization** | Limited | 60+ extended functions |
 | **Container Ready** | Challenging | Docker-friendly |
 | **Web Server Integration** | IIS only | nginx, Apache, IIS, Caddy, FastCGI |
 | **URL Rewriting** | IIS modules | Built-in web.config support on proxy server |
+| **Libraries** | none | Built-in libraries for modern web standards |
 
 ### 🤝 Contributing
 

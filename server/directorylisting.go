@@ -166,7 +166,7 @@ func (d *DirectoryListingRenderer) Render(w http.ResponseWriter, r *http.Request
 
 	assets := loadDirectoryListingAssets()
 	pageData := directoryListingPageData{
-		Title:       "AxonASP Directory Listing",
+		Title:       "❖ AxonASP Directory Listing",
 		RequestPath: requestPath,
 		ParentPath:  resolveParentPath(requestPath),
 		GeneratedAt: time.Now().In(serverLocation).Format("2006-01-02 15:04:05 MST"),

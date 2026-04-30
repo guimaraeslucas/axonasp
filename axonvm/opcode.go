@@ -250,6 +250,17 @@ const (
 	OpJSPostIndexDecrement  // [OpCode] - post-decrement (obj[idx]--)
 	OpJSPreIndexIncrement   // [OpCode] - pre-increment (++obj[idx])
 	OpJSPreIndexDecrement   // [OpCode] - pre-decrement (--obj[idx])
+
+	// Strict Mode & Block Scoping
+	OpJSStrictModeEnter // [OpCode] - enter strict mode scope
+	OpJSStrictModeExit  // [OpCode] - exit strict mode scope
+	OpJSBlockScopeEnter // [OpCode] - enter new block scope for let/const
+	OpJSBlockScopeExit  // [OpCode] - exit block scope
+	OpJSLetDeclare      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - declare let variable
+	OpJSConstDeclare    // [OpCode, NameConstIdxHigh, NameConstIdxLow] - declare const variable
+	OpJSConstInitialize // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pop value, set const, clear TDZ
+	OpJSForIterEnter    // [OpCode, NumVarsHigh, NumVarsLow, NameIdx1Hi, NameIdx1Lo, ...] - per-iteration env enter
+	OpJSForIterExit     // [OpCode, NumVarsHigh, NumVarsLow, NameIdx1Hi, NameIdx1Lo, ...] - per-iteration env exit+writeback
 )
 
 func (op OpCode) String() string {
@@ -516,6 +527,24 @@ func (op OpCode) String() string {
 		return "OpJSPreIndexDecrement"
 	case OpJSMemberIndexSet:
 		return "OpJSMemberIndexSet"
+	case OpJSStrictModeEnter:
+		return "OpJSStrictModeEnter"
+	case OpJSStrictModeExit:
+		return "OpJSStrictModeExit"
+	case OpJSBlockScopeEnter:
+		return "OpJSBlockScopeEnter"
+	case OpJSBlockScopeExit:
+		return "OpJSBlockScopeExit"
+	case OpJSLetDeclare:
+		return "OpJSLetDeclare"
+	case OpJSConstDeclare:
+		return "OpJSConstDeclare"
+	case OpJSConstInitialize:
+		return "OpJSConstInitialize"
+	case OpJSForIterEnter:
+		return "OpJSForIterEnter"
+	case OpJSForIterExit:
+		return "OpJSForIterExit"
 	default:
 		return "OpUnknown"
 	}

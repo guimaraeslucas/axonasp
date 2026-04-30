@@ -61,6 +61,19 @@ type jsEnvFrame struct {
 	bindings map[string]Value
 }
 
+type jsArgumentsBinding struct {
+	envID        int64
+	indexToParam map[string]string
+	paramToIndex map[string]string
+}
+
+type jsDefinePropertySpec struct {
+	desc            jsPropertyDescriptor
+	hasEnumerable   bool
+	hasConfigurable bool
+	hasWritable     bool
+}
+
 type jsFunctionObject struct {
 	name      string
 	params    []string
@@ -436,7 +449,14 @@ func (vm *VM) jsFromGoJSON(payload any) Value {
 	}
 }
 
+// jsJSONStringify converts a value into JSON text honoring ES5 toJSON hooks.
 func (vm *VM) jsJSONStringify(v Value) string {
+	return vm.jsJSONStringifyValue(v)
+}
+
+// jsJSONStringifyValue converts a value into JSON text honoring ES5 toJSON hooks.
+func (vm *VM) jsJSONStringifyValue(v Value) string {
+	v = vm.jsJSONStringifyApplyToJSON(v)
 	switch v.Type {
 	case VTJSUndefined:
 		return "null"
@@ -467,7 +487,7 @@ func (vm *VM) jsJSONStringify(v Value) string {
 			if i > 0 {
 				b.WriteByte(',')
 			}
-			b.WriteString(vm.jsJSONStringify(v.Arr.Values[i]))
+			b.WriteString(vm.jsJSONStringifyValue(v.Arr.Values[i]))
 		}
 		b.WriteByte(']')
 		return b.String()
@@ -487,14 +507,51 @@ func (vm *VM) jsJSONStringify(v Value) string {
 			encodedKey, _ := json.Marshal(k)
 			b.Write(encodedKey)
 			b.WriteByte(':')
-			b.WriteString(vm.jsJSONStringify(obj[k]))
+			b.WriteString(vm.jsJSONStringifyValue(obj[k]))
 		}
 		b.WriteByte('}')
 		return b.String()
+	case VTNativeObject:
+		// Serialize native Dictionary objects (e.g. produced by G3JSON.LoadFile/Parse)
+		// as JSON objects, recursing into nested dictionaries and arrays.
+		if dict, ok := vm.dictionaryItems[v.Num]; ok && dict != nil {
+			var b strings.Builder
+			b.WriteByte('{')
+			for i, k := range dict.keys {
+				if i > 0 {
+					b.WriteByte(',')
+				}
+				encodedKey, _ := json.Marshal(k.String())
+				b.Write(encodedKey)
+				b.WriteByte(':')
+				b.WriteString(vm.jsJSONStringifyValue(dict.values[i]))
+			}
+			b.WriteByte('}')
+			return b.String()
+		}
+		// Non-dictionary native: produce a JSON string (best-effort).
+		encoded, _ := json.Marshal(vm.valueToString(v))
+		return string(encoded)
 	default:
 		encoded, _ := json.Marshal(vm.valueToString(v))
 		return string(encoded)
 	}
+}
+
+// jsJSONStringifyApplyToJSON invokes object-level toJSON before serialization.
+func (vm *VM) jsJSONStringifyApplyToJSON(v Value) Value {
+	if v.Type != VTJSObject {
+		return v
+	}
+	toJSON, deferred := vm.jsMemberGet(v, "toJSON")
+	if deferred || toJSON.Type != VTJSFunction {
+		return v
+	}
+	result := vm.jsCall(toJSON, v, nil)
+	if toJSON.Type == VTJSFunction && len(vm.jsCallStack) > 0 && result.Type == VTJSUndefined {
+		return Value{Type: VTJSUndefined}
+	}
+	return result
 }
 
 func (vm *VM) ensureJSRootEnv() {
@@ -607,8 +664,91 @@ func (vm *VM) jsDeclareName(name string) {
 	env.bindings[name] = Value{Type: VTJSUndefined}
 }
 
+// jsGetNameFromEnv reads a variable value from the env frame chain starting at envID.
+func (vm *VM) jsGetNameFromEnv(envID int64, name string) Value {
+	for id := envID; id != 0; {
+		env := vm.jsEnvItems[id]
+		if env == nil {
+			break
+		}
+		if val, ok := env.bindings[name]; ok {
+			return val
+		}
+		id = env.parentID
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsSetNameInEnv writes a variable value into the env frame chain starting at envID.
+// It searches the chain from envID upward for the first frame that has the binding.
+func (vm *VM) jsSetNameInEnv(envID int64, name string, val Value) {
+	for id := envID; id != 0; {
+		env := vm.jsEnvItems[id]
+		if env == nil {
+			break
+		}
+		if _, ok := env.bindings[name]; ok {
+			env.bindings[name] = val
+			return
+		}
+		id = env.parentID
+	}
+	// Not found: declare in the given env frame
+	if env, ok := vm.jsEnvItems[envID]; ok {
+		env.bindings[name] = val
+	}
+}
+
+// jsGetBlockScopeValue reads from block scopes (innermost first). Returns the value and
+// whether it was found. Raises ReferenceError if the variable is in TDZ (const before init).
+func (vm *VM) jsGetBlockScopeValue(name string) (Value, bool) {
+	for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
+		if _, exists := vm.jsBlockScopes[i][name]; exists {
+			// Check TDZ for const variables (access before initialization).
+			if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
+				vm.jsThrowReferenceError(fmt.Sprintf("Cannot access '%s' before initialization", name))
+				return Value{Type: VTJSUndefined}, true
+			}
+			return vm.jsBlockScopes[i][name], true
+		}
+	}
+	return Value{Type: VTJSUndefined}, false
+}
+
+// jsSetBlockScopeValue writes into the innermost block scope that declares the name.
+// Returns true if found and set. Raises TypeError for const reassignment.
+// Raises ReferenceError if const is in TDZ (accessed before initialization).
+func (vm *VM) jsSetBlockScopeValue(name string, val Value) bool {
+	for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
+		if _, exists := vm.jsBlockScopes[i][name]; exists {
+			// Check TDZ for const before initialization.
+			if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
+				vm.jsThrowReferenceError(fmt.Sprintf("Cannot access '%s' before initialization", name))
+				return true
+			}
+			// Check const immutability: once initialized, const cannot be reassigned.
+			if _, isConst := vm.jsBlockScopeConst[i][name]; isConst {
+				vm.jsThrowTypeError(fmt.Sprintf("Assignment to constant variable '%s'", name))
+				return true
+			}
+			vm.jsBlockScopes[i][name] = val
+			return true
+		}
+	}
+	return false
+}
+
 func (vm *VM) jsSetName(name string, val Value) {
 	vm.ensureJSRootEnv()
+	if vm.jsAssignWithBinding(name, val) {
+		return
+	}
+	// Block scopes take precedence for let/const bindings
+	if vm.jsBlockScopeDepth > 0 {
+		if vm.jsSetBlockScopeValue(name, val) {
+			return
+		}
+	}
 	for envID := vm.jsActiveEnvID; envID != 0; {
 		env := vm.jsEnvItems[envID]
 		if env == nil {
@@ -616,6 +756,7 @@ func (vm *VM) jsSetName(name string, val Value) {
 		}
 		if _, ok := env.bindings[name]; ok {
 			env.bindings[name] = val
+			vm.jsSyncArgumentAliasByParam(envID, name, val)
 			return
 		}
 		envID = env.parentID
@@ -624,9 +765,17 @@ func (vm *VM) jsSetName(name string, val Value) {
 		vm.Globals[idx] = val
 		return
 	}
+
+	// In strict mode, assigning to an undeclared variable is a ReferenceError
+	if vm.jsStrictMode {
+		vm.raise(vbscript.VariableNotDefined, fmt.Sprintf("%s is not defined", name))
+	}
+
+	// Non-strict mode: create variable in root/current environment
 	root := vm.jsEnvItems[vm.jsActiveEnvID]
 	if root != nil {
 		root.bindings[name] = val
+		vm.jsSyncArgumentAliasByParam(vm.jsActiveEnvID, name, val)
 	}
 }
 
@@ -639,6 +788,15 @@ func (vm *VM) jsGetName(name string) Value {
 		if idx, ok := GetBuiltinIndex("Eval"); ok {
 			return Value{Type: VTBuiltin, Num: int64(idx)}
 		}
+	}
+	// Block scopes take precedence (innermost let/const declarations)
+	if vm.jsBlockScopeDepth > 0 {
+		if val, found := vm.jsGetBlockScopeValue(name); found {
+			return val
+		}
+	}
+	if value, ok := vm.jsResolveWithBinding(name); ok {
+		return value
 	}
 	for envID := vm.jsActiveEnvID; envID != 0; {
 		env := vm.jsEnvItems[envID]
@@ -654,6 +812,79 @@ func (vm *VM) jsGetName(name string) Value {
 		return vm.Globals[idx]
 	}
 	return Value{Type: VTJSUndefined}
+}
+
+func (vm *VM) jsResolveWithBinding(name string) (Value, bool) {
+	if len(vm.withStack) == 0 {
+		return Value{Type: VTJSUndefined}, false
+	}
+	for i := len(vm.withStack) - 1; i >= 0; i-- {
+		target := vm.withStack[i]
+		if !vm.jsHasProperty(target, name) {
+			continue
+		}
+		value, deferred := vm.jsMemberGet(target, name)
+		if deferred {
+			return Value{Type: VTJSUndefined}, false
+		}
+		return value, true
+	}
+	return Value{Type: VTJSUndefined}, false
+}
+
+func (vm *VM) jsAssignWithBinding(name string, val Value) bool {
+	if len(vm.withStack) == 0 {
+		return false
+	}
+	for i := len(vm.withStack) - 1; i >= 0; i-- {
+		target := vm.withStack[i]
+		if !vm.jsHasProperty(target, name) {
+			continue
+		}
+		vm.jsMemberSet(target, name, val)
+		return true
+	}
+	return false
+}
+
+func (vm *VM) jsHasProperty(target Value, name string) bool {
+	switch target.Type {
+	case VTJSObject, VTJSFunction:
+		_, ok := vm.jsResolveObjectMember(target.Num, name, make(map[int64]struct{}, 4))
+		if ok {
+			return true
+		}
+		if obj, hasObj := vm.jsObjectItems[target.Num]; hasObj {
+			_, ok = obj[name]
+			return ok
+		}
+		return false
+	case VTArray:
+		if strings.EqualFold(name, "length") {
+			return true
+		}
+		if target.Arr == nil {
+			return false
+		}
+		idx, err := strconv.Atoi(name)
+		if err != nil {
+			return false
+		}
+		adjusted := idx - target.Arr.Lower
+		return adjusted >= 0 && adjusted < len(target.Arr.Values)
+	case VTString:
+		if strings.EqualFold(name, "length") {
+			return true
+		}
+		idx, err := strconv.Atoi(name)
+		if err != nil {
+			return false
+		}
+		runes := []rune(target.Str)
+		return idx >= 0 && idx < len(runes)
+	default:
+		return false
+	}
 }
 
 func (vm *VM) lookupJSGlobalIndex(name string) (int, bool) {
@@ -929,7 +1160,7 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 		}
 	}
 	if _, hasArguments := bindings["arguments"]; !hasArguments {
-		argumentsObject := vm.jsCreateArgumentsObject(args)
+		argumentsObject := vm.jsCreateArgumentsObject(args, closure.params, envID)
 		bindings["arguments"] = argumentsObject
 	}
 	vm.jsEnvItems[envID] = &jsEnvFrame{parentID: closure.envID, bindings: bindings}
@@ -939,7 +1170,7 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 	return true
 }
 
-func (vm *VM) jsCreateArgumentsObject(args []Value) Value {
+func (vm *VM) jsCreateArgumentsObject(args []Value, params []string, envID int64) Value {
 	objID := vm.allocJSID()
 	obj := make(map[string]Value, len(args)+1)
 	for i := 0; i < len(args); i++ {
@@ -948,7 +1179,89 @@ func (vm *VM) jsCreateArgumentsObject(args []Value) Value {
 	obj["length"] = NewInteger(int64(len(args)))
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, len(args)+1)
+	if len(params) > 0 && len(args) > 0 {
+		alias := &jsArgumentsBinding{
+			envID:        envID,
+			indexToParam: make(map[string]string, len(params)),
+			paramToIndex: make(map[string]string, len(params)),
+		}
+		max := len(params)
+		if len(args) < max {
+			max = len(args)
+		}
+		for i := 0; i < max; i++ {
+			key := strconv.Itoa(i)
+			paramName := params[i]
+			alias.indexToParam[key] = paramName
+			if _, exists := alias.paramToIndex[paramName]; !exists {
+				alias.paramToIndex[paramName] = key
+			}
+		}
+		if vm.jsArgumentsItems == nil {
+			vm.jsArgumentsItems = make(map[int64]*jsArgumentsBinding, 8)
+		}
+		vm.jsArgumentsItems[objID] = alias
+	}
 	return Value{Type: VTJSObject, Num: objID}
+}
+
+func (vm *VM) jsSyncArgumentAliasByParam(envID int64, name string, value Value) {
+	if len(vm.jsArgumentsItems) == 0 {
+		return
+	}
+	for objID, alias := range vm.jsArgumentsItems {
+		if alias == nil || alias.envID != envID {
+			continue
+		}
+		idxStr, ok := alias.paramToIndex[name]
+		if !ok {
+			continue
+		}
+		if obj, exists := vm.jsObjectItems[objID]; exists {
+			obj[idxStr] = value
+		}
+	}
+}
+func (vm *VM) jsSetAliasedArgumentValue(objID int64, key string, value Value) bool {
+	alias, ok := vm.jsArgumentsItems[objID]
+	if !ok || alias == nil {
+		return false
+	}
+	paramName, ok := alias.indexToParam[key]
+	if !ok {
+		return false
+	}
+	env := vm.jsEnvItems[alias.envID]
+	if env == nil {
+		return false
+	}
+	env.bindings[paramName] = value
+	if obj, exists := vm.jsObjectItems[objID]; exists {
+		obj[key] = value
+	}
+	return true
+}
+
+// jsGetAliasedArgumentValue reads a live argument value from the env frame
+// for an arguments binding, so that mutations of named params are visible via arguments[n].
+func (vm *VM) jsGetAliasedArgumentValue(objID int64, key string) (Value, bool) {
+	alias, ok := vm.jsArgumentsItems[objID]
+	if !ok || alias == nil {
+		return Value{Type: VTJSUndefined}, false
+	}
+	paramName, ok := alias.indexToParam[key]
+	if !ok {
+		return Value{Type: VTJSUndefined}, false
+	}
+	env := vm.jsEnvItems[alias.envID]
+	if env == nil {
+		return Value{Type: VTJSUndefined}, false
+	}
+	val, exists := env.bindings[paramName]
+	if !exists {
+		return Value{Type: VTJSUndefined}, false
+	}
+	return val, true
 }
 
 func (vm *VM) jsExtractApplyArgs(argArray Value) []Value {
@@ -1104,6 +1417,128 @@ func (vm *VM) jsParseIntES5(args []Value) Value {
 		return NewDouble(math.NaN())
 	}
 	return NewDouble(sign * value)
+}
+
+// jsFunctionExpectedLength returns the ES5 Function.length value.
+func (vm *VM) jsFunctionExpectedLength(fn Value) int {
+	if fn.Type != VTJSFunction {
+		return 0
+	}
+	closure, ok := vm.jsFunctionItems[fn.Num]
+	if !ok || closure == nil {
+		return 0
+	}
+	if closure.isBound {
+		base := vm.jsFunctionExpectedLength(closure.boundFn)
+		remaining := base - len(closure.boundArgs)
+		if remaining < 0 {
+			return 0
+		}
+		return remaining
+	}
+	return len(closure.params)
+}
+
+// jsObjectToStringTag returns the canonical Object.prototype.toString tag.
+func (vm *VM) jsObjectToStringTag(v Value) string {
+	switch v.Type {
+	case VTJSUndefined:
+		return "[object Undefined]"
+	case VTNull:
+		return "[object Null]"
+	case VTArray:
+		return "[object Array]"
+	case VTDate:
+		return "[object Date]"
+	case VTJSFunction:
+		return "[object Function]"
+	case VTString:
+		return "[object String]"
+	case VTBool:
+		return "[object Boolean]"
+	case VTInteger, VTDouble:
+		return "[object Number]"
+	case VTJSObject:
+		tag := vm.jsObjectStringProperty(v, "__js_type")
+		if tag == "" {
+			tag = vm.jsObjectStringProperty(v, "__js_ctor")
+		}
+		switch tag {
+		case "Array", "Date", "Function", "RegExp", "Math", "JSON", "Enumerator", "VBArray", "String", "Number", "Boolean", "Object":
+			return "[object " + tag + "]"
+		default:
+			return "[object Object]"
+		}
+	default:
+		return "[object Object]"
+	}
+}
+
+// jsArrayLikeLength resolves the effective ES5 array-like length from an object.
+func (vm *VM) jsArrayLikeLength(target Value) (int, bool, bool) {
+	switch target.Type {
+	case VTArray:
+		if target.Arr == nil {
+			return 0, true, false
+		}
+		return len(target.Arr.Values), true, false
+	case VTJSObject:
+		lengthVal, deferred := vm.jsMemberGet(target, "length")
+		if deferred {
+			return 0, false, true
+		}
+		if lengthVal.Type == VTJSUndefined {
+			return 0, false, false
+		}
+		n := int(vm.jsToNumber(lengthVal).Flt)
+		if n < 0 {
+			n = 0
+		}
+		return n, true, false
+	default:
+		return 0, false, false
+	}
+}
+
+// jsArrayLikeHasIndex reports whether an array-like value has an element index.
+func (vm *VM) jsArrayLikeHasIndex(target Value, idx int) bool {
+	if idx < 0 {
+		return false
+	}
+	if target.Type == VTArray {
+		if target.Arr == nil {
+			return false
+		}
+		return idx < len(target.Arr.Values)
+	}
+	if target.Type != VTJSObject {
+		return false
+	}
+	return vm.jsHasProperty(target, strconv.Itoa(idx))
+}
+
+// jsArrayLikeGetIndex resolves one element from an array-like value.
+func (vm *VM) jsArrayLikeGetIndex(target Value, idx int) (Value, bool) {
+	if idx < 0 {
+		return Value{Type: VTJSUndefined}, false
+	}
+	if target.Type == VTArray {
+		if target.Arr == nil || idx >= len(target.Arr.Values) {
+			return Value{Type: VTJSUndefined}, false
+		}
+		return target.Arr.Values[idx], true
+	}
+	if target.Type != VTJSObject {
+		return Value{Type: VTJSUndefined}, false
+	}
+	v, deferred := vm.jsMemberGet(target, strconv.Itoa(idx))
+	if deferred {
+		return Value{Type: VTJSUndefined}, false
+	}
+	if v.Type == VTJSUndefined && !vm.jsArrayLikeHasIndex(target, idx) {
+		return Value{Type: VTJSUndefined}, false
+	}
+	return v, true
 }
 
 func (vm *VM) jsParseFloatES5(args []Value) Value {
@@ -1338,6 +1773,9 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTJSObject:
+		if value, ok := vm.jsGetAliasedArgumentValue(target.Num, member); ok {
+			return value, false
+		}
 		desc, hasDesc := vm.jsResolveObjectMember(target.Num, member, make(map[int64]struct{}, 4))
 		if hasDesc {
 			if desc.HasGetter {
@@ -1358,6 +1796,9 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTJSFunction:
+		if strings.EqualFold(member, "length") {
+			return NewInteger(int64(vm.jsFunctionExpectedLength(target))), false
+		}
 		desc, hasDesc := vm.jsResolveObjectMember(target.Num, member, make(map[int64]struct{}, 4))
 		if hasDesc {
 			if desc.HasGetter {
@@ -1407,6 +1848,85 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				boundArgs = args[1:]
 			}
 			return vm.jsBindFunction(target, bindThis, boundArgs), true
+		}
+	}
+
+	if member == "slice" || member == "forEach" || member == "map" || member == "filter" ||
+		strings.EqualFold(member, "slice") || strings.EqualFold(member, "forEach") || strings.EqualFold(member, "map") || strings.EqualFold(member, "filter") {
+		length, isArrayLike, deferred := vm.jsArrayLikeLength(target)
+		if deferred {
+			return Value{Type: VTJSUndefined}, true
+		}
+		if isArrayLike {
+			switch {
+			case strings.EqualFold(member, "slice"):
+				start := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
+				end := length
+				if len(args) > 1 && args[1].Type != VTJSUndefined {
+					end = jsNormalizeRelativeIndex(int(vm.jsToNumber(args[1]).Flt), length)
+				}
+				if end < start {
+					end = start
+				}
+				out := make([]Value, end-start)
+				for i := start; i < end; i++ {
+					if v, ok := vm.jsArrayLikeGetIndex(target, i); ok {
+						out[i-start] = v
+					} else {
+						out[i-start] = Value{Type: VTJSUndefined}
+					}
+				}
+				return ValueFromVBArray(NewVBArrayFromValues(0, out)), true
+			case strings.EqualFold(member, "forEach"):
+				callback := jsArgOrUndefined(args, 0)
+				if callback.Type != VTJSFunction {
+					return Value{Type: VTJSUndefined}, true
+				}
+				thisArg := jsArgOrUndefined(args, 1)
+				for i := 0; i < length; i++ {
+					if !vm.jsArrayLikeHasIndex(target, i) {
+						continue
+					}
+					item, _ := vm.jsArrayLikeGetIndex(target, i)
+					_ = vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
+				}
+				return Value{Type: VTJSUndefined}, true
+			case strings.EqualFold(member, "map"):
+				callback := jsArgOrUndefined(args, 0)
+				if callback.Type != VTJSFunction {
+					return ValueFromVBArray(NewVBArrayFromValues(0, nil)), true
+				}
+				thisArg := jsArgOrUndefined(args, 1)
+				mapped := make([]Value, length)
+				for i := 0; i < length; i++ {
+					if !vm.jsArrayLikeHasIndex(target, i) {
+						mapped[i] = Value{Type: VTJSUndefined}
+						continue
+					}
+					item, _ := vm.jsArrayLikeGetIndex(target, i)
+					result := vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
+					mapped[i] = result
+				}
+				return ValueFromVBArray(NewVBArrayFromValues(0, mapped)), true
+			case strings.EqualFold(member, "filter"):
+				callback := jsArgOrUndefined(args, 0)
+				if callback.Type != VTJSFunction {
+					return ValueFromVBArray(NewVBArrayFromValues(0, nil)), true
+				}
+				thisArg := jsArgOrUndefined(args, 1)
+				filtered := make([]Value, 0, length)
+				for i := 0; i < length; i++ {
+					if !vm.jsArrayLikeHasIndex(target, i) {
+						continue
+					}
+					item, _ := vm.jsArrayLikeGetIndex(target, i)
+					result := vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
+					if vm.jsTruthy(result) {
+						filtered = append(filtered, item)
+					}
+				}
+				return ValueFromVBArray(NewVBArrayFromValues(0, filtered)), true
+			}
 		}
 	}
 
@@ -1627,20 +2147,14 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if len(args) == 0 {
 				return NewString(text), true
 			}
-			replacement := ""
-			if len(args) > 1 {
-				replacement = vm.valueToString(args[1])
-			}
-			return vm.jsStringReplace(text, args[0], replacement, false), true
+			replacementArg := jsArgOrUndefined(args, 1)
+			return vm.jsStringReplace(text, args[0], replacementArg, false), true
 		case strings.EqualFold(member, "replaceAll"):
 			if len(args) == 0 {
 				return NewString(text), true
 			}
-			replacement := ""
-			if len(args) > 1 {
-				replacement = vm.valueToString(args[1])
-			}
-			return vm.jsStringReplace(text, args[0], replacement, true), true
+			replacementArg := jsArgOrUndefined(args, 1)
+			return vm.jsStringReplace(text, args[0], replacementArg, true), true
 		case strings.EqualFold(member, "trim"):
 			trimmed := strings.TrimSpace(text)
 			if !vm.jsEnsureStringSize(len(trimmed)) || !vm.jsChargeStringWork(len(trimmed)) {
@@ -2003,9 +2517,9 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		case strings.EqualFold(member, "isPrototypeOf"):
 			return NewBool(vm.jsObjectIsPrototypeOf(target, jsArgOrUndefined(args, 0))), true
 		case strings.EqualFold(member, "toString"):
-			return NewString("[object Object]"), true
+			return NewString(vm.jsObjectToStringTag(target)), true
 		case strings.EqualFold(member, "toLocaleString"):
-			return NewString("[object Object]"), true
+			return NewString(vm.jsObjectToStringTag(target)), true
 		case strings.EqualFold(member, "valueOf"):
 			return target, true
 		}
@@ -2069,9 +2583,15 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				vm.jsObjectItems[objID] = obj
 				vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
 				if len(args) > 0 {
-					obj["__js_proto"] = args[0]
+					if args[0].Type == VTJSObject || args[0].Type == VTNull {
+						obj["__js_proto"] = args[0]
+					}
 				}
-				return Value{Type: VTJSObject, Num: objID}, true
+				created := Value{Type: VTJSObject, Num: objID}
+				if len(args) > 1 {
+					_, _ = vm.jsCallMember(target, "defineProperties", []Value{created, args[1]})
+				}
+				return created, true
 			case strings.EqualFold(member, "getPrototypeOf"):
 				if len(args) == 0 || args[0].Type != VTJSObject {
 					return NewNull(), true
@@ -2108,33 +2628,16 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				}
 				objID := args[0].Num
 				name := vm.valueToString(args[1])
-				if !vm.jsObjectIsExtensible(args[0]) {
-					if _, exists := vm.jsGetDescriptor(objID, name); !exists {
-						return args[0], true
-					}
+				current, currentExists := vm.jsGetDescriptor(objID, name)
+				if !currentExists && !vm.jsObjectIsExtensible(args[0]) {
+					return args[0], true
 				}
-				descVal := args[2]
-				desc := jsPropertyDescriptor{Enumerable: false, Configurable: false, Writable: false}
-				if descVal.Type == VTJSObject {
-					if dObj, ok := vm.jsObjectItems[descVal.Num]; ok {
-						if v, has := dObj["value"]; has {
-							desc.Value = v
-							desc.HasValue = true
-						}
-						if v, has := dObj["get"]; has {
-							desc.Getter = v
-							desc.HasGetter = true
-						}
-						if v, has := dObj["set"]; has {
-							desc.Setter = v
-							desc.HasSetter = true
-						}
-						desc.Enumerable = vm.jsToDescriptorBoolean(dObj["enumerable"], false)
-						desc.Configurable = vm.jsToDescriptorBoolean(dObj["configurable"], false)
-						desc.Writable = vm.jsToDescriptorBoolean(dObj["writable"], false)
-					}
+				spec := vm.jsReadDefinePropertySpec(args[2])
+				if !vm.jsValidateDefinePropertyTransition(current, currentExists, spec) {
+					return args[0], true
 				}
-				vm.jsSetDescriptor(objID, name, desc)
+				finalDesc := vm.jsApplyDefinePropertySpec(current, currentExists, spec)
+				vm.jsSetDescriptor(objID, name, finalDesc)
 				return args[0], true
 			case strings.EqualFold(member, "defineProperties"):
 				if len(args) < 2 || (args[0].Type != VTJSObject && args[0].Type != VTJSFunction) || args[1].Type != VTJSObject {
@@ -2369,45 +2872,90 @@ func jsArgOrUndefined(args []Value, idx int) Value {
 }
 
 // jsStringReplace implements String.prototype.replace and replaceAll with size guards.
-func (vm *VM) jsStringReplace(source string, patternArg Value, replacement string, replaceAll bool) Value {
+func (vm *VM) jsStringReplace(source string, patternArg Value, replacementArg Value, replaceAll bool) Value {
 	if patternArg.Type == VTJSObject {
 		objType := vm.jsObjectStringProperty(patternArg, "__js_type")
 		if objType == "RegExp" {
 			pattern := vm.jsObjectStringProperty(patternArg, "pattern")
 			flags := vm.jsObjectStringProperty(patternArg, "flags")
-			return vm.jsStringReplaceRegex(source, pattern, flags, replacement, replaceAll)
+			return vm.jsStringReplaceRegex(source, pattern, flags, replacementArg, replaceAll)
 		}
 	}
 
 	search := vm.valueToString(patternArg)
+	useCallback := replacementArg.Type == VTJSFunction
+	replacement := vm.valueToString(replacementArg)
 	if search == "" {
 		if replaceAll {
-			parts := len(source) + 1
-			total := len(source) + parts*len(replacement)
-			if !vm.jsEnsureStringSize(total) || !vm.jsChargeStringWork(total) {
+			var b strings.Builder
+			for i := 0; i <= len(source); i++ {
+				repl := replacement
+				if useCallback {
+					cb := vm.jsCall(replacementArg, Value{Type: VTJSUndefined}, []Value{NewString(""), NewInteger(int64(i)), NewString(source)})
+					repl = vm.valueToString(cb)
+				}
+				b.WriteString(repl)
+				if i < len(source) {
+					b.WriteByte(source[i])
+				}
+			}
+			out := b.String()
+			if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 				return Value{Type: VTJSUndefined}
 			}
-			var b strings.Builder
-			b.Grow(total)
-			b.WriteString(replacement)
-			for i := 0; i < len(source); i++ {
-				b.WriteByte(source[i])
-				b.WriteString(replacement)
-			}
-			return NewString(b.String())
+			return NewString(out)
 		}
-		total := len(source) + len(replacement)
-		if !vm.jsEnsureStringSize(total) || !vm.jsChargeStringWork(total) {
+		repl := replacement
+		if useCallback {
+			cb := vm.jsCall(replacementArg, Value{Type: VTJSUndefined}, []Value{NewString(""), NewInteger(0), NewString(source)})
+			repl = vm.valueToString(cb)
+		}
+		out := repl + source
+		if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 			return Value{Type: VTJSUndefined}
 		}
-		return NewString(replacement + source)
+		return NewString(out)
 	}
 
-	count := 1
-	if replaceAll {
-		count = -1
+	if !replaceAll {
+		idx := strings.Index(source, search)
+		if idx < 0 {
+			if !vm.jsEnsureStringSize(len(source)) || !vm.jsChargeStringWork(len(source)) {
+				return Value{Type: VTJSUndefined}
+			}
+			return NewString(source)
+		}
+		repl := replacement
+		if useCallback {
+			cb := vm.jsCall(replacementArg, Value{Type: VTJSUndefined}, []Value{NewString(search), NewInteger(int64(idx)), NewString(source)})
+			repl = vm.valueToString(cb)
+		}
+		out := source[:idx] + repl + source[idx+len(search):]
+		if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
+			return Value{Type: VTJSUndefined}
+		}
+		return NewString(out)
 	}
-	out := strings.Replace(source, search, replacement, count)
+
+	var b strings.Builder
+	start := 0
+	for {
+		idx := strings.Index(source[start:], search)
+		if idx < 0 {
+			b.WriteString(source[start:])
+			break
+		}
+		idx += start
+		b.WriteString(source[start:idx])
+		repl := replacement
+		if useCallback {
+			cb := vm.jsCall(replacementArg, Value{Type: VTJSUndefined}, []Value{NewString(search), NewInteger(int64(idx)), NewString(source)})
+			repl = vm.valueToString(cb)
+		}
+		b.WriteString(repl)
+		start = idx + len(search)
+	}
+	out := b.String()
 	if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 		return Value{Type: VTJSUndefined}
 	}
@@ -2415,7 +2963,7 @@ func (vm *VM) jsStringReplace(source string, patternArg Value, replacement strin
 }
 
 // jsStringReplaceRegex applies one or all RegExp matches to the source string.
-func (vm *VM) jsStringReplaceRegex(source string, pattern string, flags string, replacement string, replaceAll bool) Value {
+func (vm *VM) jsStringReplaceRegex(source string, pattern string, flags string, replacementArg Value, replaceAll bool) Value {
 	rePattern := pattern
 	flagsLower := strings.ToLower(flags)
 	if strings.Contains(flagsLower, "i") {
@@ -2425,16 +2973,56 @@ func (vm *VM) jsStringReplaceRegex(source string, pattern string, flags string, 
 	if err != nil {
 		return NewString(source)
 	}
+	replacement := vm.valueToString(replacementArg)
+	useCallback := replacementArg.Type == VTJSFunction
 	useAll := replaceAll || strings.Contains(flagsLower, "g")
-	out := source
+	limit := 1
 	if useAll {
-		out = re.ReplaceAllString(source, replacement)
-	} else {
-		loc := re.FindStringIndex(source)
-		if len(loc) == 2 {
-			out = source[:loc[0]] + re.ReplaceAllString(source[loc[0]:loc[1]], replacement) + source[loc[1]:]
-		}
+		limit = -1
 	}
+	matches := re.FindAllStringSubmatchIndex(source, limit)
+	if len(matches) == 0 {
+		if !vm.jsEnsureStringSize(len(source)) || !vm.jsChargeStringWork(len(source)) {
+			return Value{Type: VTJSUndefined}
+		}
+		return NewString(source)
+	}
+	var b strings.Builder
+	last := 0
+	for i := 0; i < len(matches); i++ {
+		idx := matches[i]
+		if len(idx) < 2 {
+			continue
+		}
+		start := idx[0]
+		end := idx[1]
+		if start < last {
+			continue
+		}
+		b.WriteString(source[last:start])
+		repl := replacement
+		if useCallback {
+			captureCount := (len(idx) / 2) - 1
+			callbackArgs := make([]Value, 0, captureCount+3)
+			callbackArgs = append(callbackArgs, NewString(source[start:end]))
+			for c := 0; c < captureCount; c++ {
+				capStart := idx[2+(c*2)]
+				capEnd := idx[3+(c*2)]
+				if capStart >= 0 && capEnd >= capStart {
+					callbackArgs = append(callbackArgs, NewString(source[capStart:capEnd]))
+				} else {
+					callbackArgs = append(callbackArgs, Value{Type: VTJSUndefined})
+				}
+			}
+			callbackArgs = append(callbackArgs, NewInteger(int64(start)), NewString(source))
+			cb := vm.jsCall(replacementArg, Value{Type: VTJSUndefined}, callbackArgs)
+			repl = vm.valueToString(cb)
+		}
+		b.WriteString(repl)
+		last = end
+	}
+	b.WriteString(source[last:])
+	out := b.String()
 	if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 		return Value{Type: VTJSUndefined}
 	}
@@ -2703,6 +3291,9 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 		if target.Type == VTJSObject || target.Type == VTJSFunction {
 			targetID = target.Num
 		}
+		if vm.jsSetAliasedArgumentValue(targetID, member, val) {
+			return
+		}
 		if strings.HasPrefix(member, jsAccessorGetterPrefix) {
 			name := strings.TrimPrefix(member, jsAccessorGetterPrefix)
 			desc, _ := vm.jsGetDescriptor(targetID, name)
@@ -2735,6 +3326,10 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 				return
 			}
 			if !desc.Writable {
+				// In strict mode, writing to a non-writable property is a TypeError.
+				if vm.jsStrictMode {
+					vm.jsThrowTypeError(fmt.Sprintf("Cannot assign to read-only property '%s'", member))
+				}
 				return
 			}
 			desc.Value = val
@@ -2750,6 +3345,9 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 					return
 				}
 				if !inherited.Writable {
+					if vm.jsStrictMode {
+						vm.jsThrowTypeError(fmt.Sprintf("Cannot assign to read-only property '%s'", member))
+					}
 					return
 				}
 			}
@@ -2761,11 +3359,160 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 			vm.jsObjectItems[targetID] = obj
 		}
 		if !vm.jsObjectIsExtensible(target) {
+			// In strict mode, adding a property to a non-extensible object is a TypeError.
+			if vm.jsStrictMode {
+				vm.jsThrowTypeError(fmt.Sprintf("Cannot add property '%s', object is not extensible", member))
+			}
 			return
 		}
 		obj[member] = val
 		vm.jsSetDescriptor(targetID, member, jsDefaultPropertyDescriptor(val))
 	}
+}
+
+func jsDescriptorIsAccessor(desc jsPropertyDescriptor) bool {
+	return desc.HasGetter || desc.HasSetter
+}
+
+func jsDescriptorIsData(desc jsPropertyDescriptor) bool {
+	return desc.HasValue
+}
+
+func (vm *VM) jsReadDefinePropertySpec(descVal Value) jsDefinePropertySpec {
+	spec := jsDefinePropertySpec{desc: jsPropertyDescriptor{Enumerable: false, Configurable: false, Writable: false}}
+	if descVal.Type != VTJSObject {
+		return spec
+	}
+	dObj, ok := vm.jsObjectItems[descVal.Num]
+	if !ok {
+		return spec
+	}
+	if v, has := dObj["value"]; has {
+		spec.desc.Value = v
+		spec.desc.HasValue = true
+	}
+	if v, has := dObj["get"]; has {
+		spec.desc.Getter = v
+		spec.desc.HasGetter = true
+	}
+	if v, has := dObj["set"]; has {
+		spec.desc.Setter = v
+		spec.desc.HasSetter = true
+	}
+	if v, has := dObj["enumerable"]; has {
+		spec.hasEnumerable = true
+		spec.desc.Enumerable = vm.jsToDescriptorBoolean(v, false)
+	}
+	if v, has := dObj["configurable"]; has {
+		spec.hasConfigurable = true
+		spec.desc.Configurable = vm.jsToDescriptorBoolean(v, false)
+	}
+	if v, has := dObj["writable"]; has {
+		spec.hasWritable = true
+		spec.desc.Writable = vm.jsToDescriptorBoolean(v, false)
+	}
+	return spec
+}
+
+func (vm *VM) jsValidateDefinePropertyTransition(current jsPropertyDescriptor, currentExists bool, spec jsDefinePropertySpec) bool {
+	if spec.desc.HasValue && (spec.desc.HasGetter || spec.desc.HasSetter) {
+		return false
+	}
+	if spec.hasWritable && (spec.desc.HasGetter || spec.desc.HasSetter) {
+		return false
+	}
+	if !currentExists {
+		return true
+	}
+	if current.Configurable {
+		return true
+	}
+	if spec.hasConfigurable && spec.desc.Configurable {
+		return false
+	}
+	if spec.hasEnumerable && spec.desc.Enumerable != current.Enumerable {
+		return false
+	}
+	isCurrentAccessor := jsDescriptorIsAccessor(current)
+	isSpecAccessor := spec.desc.HasGetter || spec.desc.HasSetter
+	isSpecData := spec.desc.HasValue || spec.hasWritable
+	if isSpecAccessor && jsDescriptorIsData(current) {
+		return false
+	}
+	if isSpecData && isCurrentAccessor {
+		return false
+	}
+	if isCurrentAccessor {
+		if spec.desc.HasGetter && !vm.jsStrictEquals(spec.desc.Getter, current.Getter) {
+			return false
+		}
+		if spec.desc.HasSetter && !vm.jsStrictEquals(spec.desc.Setter, current.Setter) {
+			return false
+		}
+		return true
+	}
+	if !current.Writable {
+		if spec.hasWritable && spec.desc.Writable {
+			return false
+		}
+		if spec.desc.HasValue && !vm.jsStrictEquals(spec.desc.Value, current.Value) {
+			return false
+		}
+	}
+	return true
+}
+
+func (vm *VM) jsApplyDefinePropertySpec(current jsPropertyDescriptor, currentExists bool, spec jsDefinePropertySpec) jsPropertyDescriptor {
+	result := current
+	if !currentExists {
+		result = jsPropertyDescriptor{Enumerable: false, Configurable: false, Writable: false}
+	}
+	isSpecAccessor := spec.desc.HasGetter || spec.desc.HasSetter
+	isSpecData := spec.desc.HasValue || spec.hasWritable
+	if isSpecAccessor {
+		result.HasValue = false
+		result.Writable = false
+		result.Value = Value{Type: VTJSUndefined}
+		if spec.desc.HasGetter {
+			result.Getter = spec.desc.Getter
+			result.HasGetter = true
+		}
+		if spec.desc.HasSetter {
+			result.Setter = spec.desc.Setter
+			result.HasSetter = true
+		}
+	} else if isSpecData {
+		if jsDescriptorIsAccessor(result) {
+			result.Getter = Value{Type: VTJSUndefined}
+			result.Setter = Value{Type: VTJSUndefined}
+			result.HasGetter = false
+			result.HasSetter = false
+		}
+		if !currentExists {
+			result.HasValue = true
+			result.Value = Value{Type: VTJSUndefined}
+		}
+		if spec.desc.HasValue {
+			result.HasValue = true
+			result.Value = spec.desc.Value
+		}
+		if spec.hasWritable {
+			result.Writable = spec.desc.Writable
+		}
+	}
+	if spec.hasEnumerable {
+		result.Enumerable = spec.desc.Enumerable
+	}
+	if spec.hasConfigurable {
+		result.Configurable = spec.desc.Configurable
+	}
+	if !currentExists && !isSpecAccessor {
+		if !result.HasValue {
+			result.HasValue = true
+			result.Value = Value{Type: VTJSUndefined}
+		}
+	}
+	return result
 }
 
 func (vm *VM) jsEnumerateForInKeys(source Value) []string {
@@ -2885,6 +3632,32 @@ func (vm *VM) jsThrow(v Value) {
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]
 	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
 	vm.jsErrStack = append(vm.jsErrStack, v)
+	vm.ip = target
+}
+
+// jsThrowTypeError throws a JScript TypeError that can be caught by a JS try/catch.
+// If no active catch handler exists, raises a VBScript TypeMismatch error instead.
+func (vm *VM) jsThrowTypeError(msg string) {
+	if len(vm.jsTryStack) == 0 {
+		vm.raise(vbscript.TypeMismatch, msg)
+		return
+	}
+	target := vm.jsTryStack[len(vm.jsTryStack)-1]
+	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
+	vm.jsErrStack = append(vm.jsErrStack, NewString("TypeError: "+msg))
+	vm.ip = target
+}
+
+// jsThrowReferenceError throws a JScript ReferenceError that can be caught by a JS try/catch.
+// If no active catch handler exists, raises a VBScript VariableNotDefined error instead.
+func (vm *VM) jsThrowReferenceError(msg string) {
+	if len(vm.jsTryStack) == 0 {
+		vm.raise(vbscript.VariableNotDefined, msg)
+		return
+	}
+	target := vm.jsTryStack[len(vm.jsTryStack)-1]
+	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
+	vm.jsErrStack = append(vm.jsErrStack, NewString("ReferenceError: "+msg))
 	vm.ip = target
 }
 
@@ -3268,6 +4041,9 @@ func (vm *VM) jsNew(constructor Value, args []Value) Value {
 			obj["__js_vbarray_source"] = source
 			vm.jsObjectItems[objID] = obj
 			vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 3)
+			if proto := vm.jsGetIntrinsicPrototype("Array"); proto.Type == VTJSObject {
+				obj["__js_proto"] = proto
+			}
 			return Value{Type: VTJSObject, Num: objID}
 		}
 	}
@@ -3315,6 +4091,17 @@ func (vm *VM) jsIndexGet(arr Value, index Value) Value {
 			return v
 		}
 		return Value{Type: VTJSUndefined}
+	case VTString:
+		runes := []rune(arr.Str)
+		idx := int(vm.jsToNumber(index).Flt)
+		if idx < 0 || idx >= len(runes) {
+			return Value{Type: VTJSUndefined}
+		}
+		ch := string(runes[idx])
+		if !vm.jsEnsureStringSize(len(ch)) || !vm.jsChargeStringWork(len(ch)) {
+			return Value{Type: VTJSUndefined}
+		}
+		return NewString(ch)
 	default:
 		return Value{Type: VTJSUndefined}
 	}

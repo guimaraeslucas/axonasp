@@ -485,17 +485,22 @@ func indentBlock(text string, prefix string) string {
 
 // printUsage prints command line help for the testsuite binary.
 func printUsage() {
-	fmt.Println("\033[1mG3pix AxonASP Test Suite Usage:\n\033[0m")
+	fmt.Println("\033[1mG3pix ❖ AxonASP TestSuite Usage:\n\033[0m")
 	fmt.Println(`  axonasp-testsuite <directory>
     The runner scans recursively for *test.asp and test_*.asp files,
     executes them through the G3pix AxonASP VM, and returns exit code 1 if any test fails.
 	
-  AxonASP is a high-performance VBScript/ASP 
-  Virtual Machine developed by G3pix in pure GoLang.
+ ABOUT:
+  G3pix ❖ AxonASP
+  is a high-performance, cross-platform Classic ASP engine,
+  with support to VBScript and JScript for Web, FastCGI, and CLI, 
+  bridging legacy compatibility with modern APIs.
   
   Copyright (C) 2026 G3pix Ltda. All rights reserved.
   Website: https://g3pix.com.br/axonasp
   
-  License: MPL 2.0`)
+  License: MPL 2.0
+  
+  `)
 	fmt.Println("\033[0m")
 }

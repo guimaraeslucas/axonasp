@@ -364,11 +364,10 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		fmt.Printf("\033[H\033[2J\033[1mG3Pix AxonASP Server %s >\033[0m\n", Version)
-		fmt.Print("\033]11;#3b6ea5\007\033[1;37m")
-		fmt.Println("--------------------")
-		fmt.Printf("HTTP Server starting on port %s\n", Port)
-		fmt.Printf("Serving files from: %s\n", RootDir)
+		fmt.Printf("\033[H\033[2J\033[1mG3pix ❖ AxonASP Server %s \033[0m\n", Version)
+		fmt.Printf("HTTP Server started on: %s\n", Port)
+		fmt.Printf("Root directory: %s\n", RootDir)
+		fmt.Print("\033]0;G3pix ❖ AxonASP Server\007\033]11;#003399\007\033[1;37m")
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			axonvm.ReportInternalError(axonvm.ErrCouldNotListenOn, err, "HTTP server could not start listening.", Port, 0)
 			os.Exit(1)
