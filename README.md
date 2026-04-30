@@ -1,4 +1,4 @@
-# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript (JScript support)
+# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
 
 <p align="center">
   <img src="www/axonasp.svg" alt="G3Pix AxonASP Logo" width="400"/>

@@ -1,8 +1,8 @@
-﻿# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript (JScript support)
+﻿# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
 
 Supercharge your legacy code. Build blazing-fast modern APIs. Experience Classic ASP like never before.
 
-Welcome to **AxonASP 2.1**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JavaScript (JScript support) in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
+Welcome to **AxonASP 2.1**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JavaScript (JScript) support in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
 
 ---
 

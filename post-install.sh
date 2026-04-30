@@ -23,7 +23,7 @@
 #
 # Post-install script for AxonASP Server
 
-echo "Configuring G3pix AxonASP server environment..."
+echo "Configuring G3pix ❖ AxonASP server environment..."
 
 # 1. Cross-platform user and group creation
 if ! id "axonasp" >/dev/null 2>&1; then
@@ -72,6 +72,8 @@ chmod -R ug+rwX /opt/axonasp
 chmod +x /opt/axonasp/axonasp-* 2>/dev/null || true
 chmod +x /opt/axonasp/*.sh 2>/dev/null || true
 
-echo "G3pix AxonASP installation setup completed successfully!\n"
+echo "G3pix ❖ AxonASP installation setup completed successfully!\n\n"
 echo "If you want to install the systemd service, please run: sudo ./install-service.sh"
 echo "The server is located at /opt/axonasp and runs under the 'axonasp' user for security."
+echo "Check the manual for further configuration and usage instructions: https://g3pix.com.br/axonasp/manual/"
+echo "You can also interactively test ASP code by running 'axonasp-cli' from the command line."
