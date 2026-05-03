@@ -236,10 +236,21 @@ func localizedDateTimeText(value time.Time, profile builtinLocaleProfile, format
 
 // localizedDateString renders implicit VTDate to string conversions using locale-aware date and time formats.
 func localizedDateString(value time.Time, profile builtinLocaleProfile) string {
-	if value.Hour() == 0 && value.Minute() == 0 && value.Second() == 0 {
+	hasDate := value.Year() != 1899 || value.Month() != time.December || value.Day() != 30
+	hasTime := value.Hour() != 0 || value.Minute() != 0 || value.Second() != 0
+
+	if hasDate && hasTime {
+		return localizedFormat(value, profile.shortDateLayout+" "+profile.longTimeLayout, profile)
+	}
+	if hasDate {
 		return localizedFormat(value, profile.shortDateLayout, profile)
 	}
-	return localizedFormat(value, profile.shortDateLayout+" "+profile.longTimeLayout, profile)
+	if hasTime {
+		return localizedFormat(value, profile.longTimeLayout, profile)
+	}
+	// Case where both are "zero" (1899-12-30 00:00:00)
+	// VBScript displays 12:00:00 AM for the base date at midnight.
+	return localizedFormat(value, profile.longTimeLayout, profile)
 }
 
 // localizedNumberString renders a floating-point number using locale-specific separators.

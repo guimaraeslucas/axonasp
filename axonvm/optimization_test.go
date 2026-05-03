@@ -159,13 +159,13 @@ func TestVMPoolPrewarming(t *testing.T) {
 	program := cachedProgramFromCompiler(compiler)
 	pool := getProgramPool(program)
 
-	// Check if pool is pre-warmed. Default retain limit is 128.
+	// Check if pool is pre-warmed. warmLimit is 5.
 	pool.mu.Lock()
 	count := len(pool.items)
 	pool.mu.Unlock()
 
-	if count < 128 {
-		t.Errorf("expected at least 128 pre-warmed VMs, got %d", count)
+	if count != 5 {
+		t.Errorf("expected 5 pre-warmed VMs, got %d", count)
 	}
 
 	// Verify one VM from pool
@@ -207,7 +207,7 @@ func TestAsyncSessionPersistence(t *testing.T) {
 	}
 
 	// Verify file exists
-	path := filepath.Join(tempDir, "session", "async-test.json")
+	path := filepath.Join(tempDir, "session", "async-test.g3ses")
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Errorf("session file was not created: %v", path)
 	}

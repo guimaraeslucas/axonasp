@@ -123,6 +123,7 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 		OptionCompare:       compiler.optionCompare,
 		OptionExplicit:      compiler.optionExplicit,
 		SourceName:          compiler.sourceName,
+		GlobalNames:         cloneStringSlice(allGlobals),
 		GlobalPreludeNames:  prelude,
 		GlobalPreludeConsts: filterNamesByFlagSet(compiler.constGlobals, prelude),
 		UserGlobalNames:     users,
@@ -157,7 +158,7 @@ func applyProgramGlobalMetadata(vm *VM, program CachedProgram) {
 	clear(vm.constGlobals)
 
 	if len(program.GlobalNames) > 0 {
-		vm.globalNames = append(vm.globalNames[:0], program.GlobalNames...)
+		vm.globalNames = program.GlobalNames
 		if len(program.GlobalNamesLower) > 0 {
 			vm.baseGlobalNamesLower = program.GlobalNamesLower
 		}

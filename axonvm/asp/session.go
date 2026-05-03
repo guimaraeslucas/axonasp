@@ -23,8 +23,9 @@ package asp
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/binary"
 	"hash/fnv"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,27 +78,8 @@ func sessionWriterWorker() {
 			continue
 		}
 		// Save performing actual disk I/O.
-		// Save handles its own locking and version checks.
 		_ = s.Save()
 	}
-}
-
-// sessionDiskPayload stores session fields serialized to disk.
-type sessionDiskPayload struct {
-	ID            string                      `json:"id"`
-	Data          map[string]ApplicationValue `json:"data"`
-	StaticObjects map[string]ApplicationValue `json:"static_objects"`
-	LCID          int                         `json:"lcid"`
-	CodePage      int                         `json:"codepage"`
-	Timeout       int                         `json:"timeout"`
-	CreatedAt     time.Time                   `json:"created_at"`
-	LastAccessed  time.Time                   `json:"last_accessed"`
-}
-
-// sessionDiskExpiryPayload stores only fields needed to evaluate disk session expiration.
-type sessionDiskExpiryPayload struct {
-	Timeout      int       `json:"timeout"`
-	LastAccessed time.Time `json:"last_accessed"`
 }
 
 const (
@@ -461,7 +443,6 @@ func (s *Session) SaveIfDirty() error {
 }
 
 // QueueSaveIfDirty pushes the session to the background write queue if it has pending changes.
-// It returns true if the session was queued, false if it was already queued or has no changes.
 func (s *Session) QueueSaveIfDirty() bool {
 	s.mu.RLock()
 	dirty := s.dirty
@@ -477,35 +458,44 @@ func (s *Session) QueueSaveIfDirty() bool {
 	case sessionWriteQueue <- s:
 		return true
 	default:
-		// Queue is full, session will be saved in next auto-flush or request.
-		// We log this to identify potential resource starvation in background workers.
 		println("Warning: Session write queue overflow. Persistence delayed for session:", s.ID)
 		return false
 	}
 }
 
-// Save persists session state as JSON in temp/session.
+// Save persists session state using a high-performance binary format (.g3ses).
+// Binary Format Specification:
+// - Magic Bytes: [6]byte{'G','3','S','E','S', 0x00}
+// - Version: uint8 (Value: 1)
+// - Session ID: [24]byte
+// - CreatedAt: int64 (Unix seconds)
+// - LastAccessed: int64 (Unix seconds)
+// - Timeout: int16
+// - LCID: uint16
+// - CodePage: uint32
+// - Block Separator: 0x1E (RS) followed by uint32 (Payload Length)
+// - Data Block 1: session.data map
+// - Data Block 2: session.staticObjects map
 func (s *Session) Save() error {
 	s.mu.RLock()
 	version := s.version
-	payload := sessionDiskPayload{
-		ID:            s.ID,
-		Data:          copySessionData(s.data),
-		StaticObjects: copySessionData(s.staticObjects),
-		LCID:          s.LCID,
-		CodePage:      s.CodePage,
-		Timeout:       s.Timeout,
-		CreatedAt:     s.CreatedAt,
-		LastAccessed:  s.LastAccessed,
+	id := s.ID
+	data := s.data
+	static := s.staticObjects
+	lcid := uint16(s.LCID)
+	codePage := uint32(s.CodePage)
+	timeout := int16(s.Timeout)
+	createdAt := s.CreatedAt.Unix()
+	lastAccessed := s.LastAccessed.Unix()
+
+	if lcid == 0 {
+		lcid = uint16(resolveDefaultSessionLCID())
 	}
-	if payload.LCID <= 0 {
-		payload.LCID = resolveDefaultSessionLCID()
+	if codePage == 0 {
+		codePage = defaultSessionCodePage
 	}
-	if payload.CodePage <= 0 {
-		payload.CodePage = defaultSessionCodePage
-	}
-	if payload.Timeout <= 0 {
-		payload.Timeout = defaultSessionTimeoutMinutes
+	if timeout == 0 {
+		timeout = defaultSessionTimeoutMinutes
 	}
 	s.mu.RUnlock()
 
@@ -513,17 +503,42 @@ func (s *Session) Save() error {
 		return err
 	}
 
-	// Optimization: Use pooled buffers to avoid heavy allocations during high-frequency saves.
 	buf := sessionBufferPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer sessionBufferPool.Put(buf)
 
-	encoder := json.NewEncoder(buf)
-	if err := encoder.Encode(payload); err != nil {
-		return err
-	}
+	// Magic + Version + ID + Created + Accessed + Timeout + LCID + CodePage
+	// 6 + 1 + 24 + 8 + 8 + 2 + 2 + 4 = 55 bytes
+	var header [55]byte
+	copy(header[0:6], "G3SES\x00")
+	header[6] = 1
+	copy(header[7:31], id)
+	binary.LittleEndian.PutUint64(header[31:39], uint64(createdAt))
+	binary.LittleEndian.PutUint64(header[39:47], uint64(lastAccessed))
+	binary.LittleEndian.PutUint16(header[47:49], uint16(timeout))
+	binary.LittleEndian.PutUint16(header[49:51], lcid)
+	binary.LittleEndian.PutUint32(header[51:55], codePage)
+	buf.Write(header[:])
 
-	if err := os.WriteFile(sessionFilePath(s.ID), buf.Bytes(), 0o600); err != nil {
+	// Block 1: Data
+	buf.WriteByte(0x1E)
+	dataBuf := sessionBufferPool.Get().(*bytes.Buffer)
+	dataBuf.Reset()
+	serializeApplicationMap(dataBuf, data)
+	writeUint32(buf, uint32(dataBuf.Len()))
+	buf.Write(dataBuf.Bytes())
+	sessionBufferPool.Put(dataBuf)
+
+	// Block 2: Static Objects
+	buf.WriteByte(0x1E)
+	staticBuf := sessionBufferPool.Get().(*bytes.Buffer)
+	staticBuf.Reset()
+	serializeApplicationMap(staticBuf, static)
+	writeUint32(buf, uint32(staticBuf.Len()))
+	buf.Write(staticBuf.Bytes())
+	sessionBufferPool.Put(staticBuf)
+
+	if err := os.WriteFile(sessionFilePath(id), buf.Bytes(), 0o600); err != nil {
 		return err
 	}
 
@@ -536,7 +551,7 @@ func (s *Session) Save() error {
 	return nil
 }
 
-// Delete removes persisted session JSON from disk.
+// Delete removes persisted session from disk.
 func (s *Session) Delete() error {
 	err := os.Remove(sessionFilePath(s.ID))
 	if err != nil && !os.IsNotExist(err) {
@@ -546,9 +561,9 @@ func (s *Session) Delete() error {
 	return nil
 }
 
-// LoadSession loads a persisted session by ID, or returns false if not found.
+// LoadSession loads a persisted binary session by ID.
 func LoadSession(sessionID string) (*Session, bool, error) {
-	bytes, err := os.ReadFile(sessionFilePath(sessionID))
+	data, err := os.ReadFile(sessionFilePath(sessionID))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, false, nil
@@ -556,42 +571,59 @@ func LoadSession(sessionID string) (*Session, bool, error) {
 		return nil, false, err
 	}
 
-	var payload sessionDiskPayload
-	if err := json.Unmarshal(bytes, &payload); err != nil {
-		return nil, false, err
-	}
-
-	session := NewSessionWithID(payload.ID)
-	session.data = payload.Data
-	if session.data == nil {
-		session.data = make(map[string]ApplicationValue)
-	}
-	session.staticObjects = payload.StaticObjects
-	if session.staticObjects == nil {
-		session.staticObjects = make(map[string]ApplicationValue)
-	}
-	session.LCID = payload.LCID
-	session.CodePage = payload.CodePage
-	session.Timeout = payload.Timeout
-	session.CreatedAt = payload.CreatedAt
-	session.LastAccessed = payload.LastAccessed
-	session.dirty = false
-	session.version = 0
-
-	if session.IsExpired() {
-		_ = session.Delete()
+	if len(data) < 55 || string(data[0:6]) != "G3SES\x00" {
 		return nil, false, nil
 	}
 
-	session.Touch()
-	return session, true, nil
+	ver := data[6]
+	if ver != 1 {
+		return nil, false, nil
+	}
+
+	createdAt := int64(binary.LittleEndian.Uint64(data[31:39]))
+	lastAccessed := int64(binary.LittleEndian.Uint64(data[39:47]))
+	timeout := int16(binary.LittleEndian.Uint16(data[47:49]))
+	lcid := int(binary.LittleEndian.Uint16(data[49:51]))
+	codePage := int(binary.LittleEndian.Uint32(data[51:55]))
+
+	s := NewSessionWithID(sessionID)
+	s.CreatedAt = time.Unix(createdAt, 0)
+	s.LastAccessed = time.Unix(lastAccessed, 0)
+	s.Timeout = int(timeout)
+	s.LCID = lcid
+	s.CodePage = codePage
+
+	r := bytes.NewReader(data[55:])
+
+	// Read Data Block
+	if sep, _ := r.ReadByte(); sep == 0x1E {
+		length := readUint32(r)
+		_ = length
+		s.data = deserializeApplicationMap(r)
+	}
+
+	// Read Static Objects Block
+	if sep, _ := r.ReadByte(); sep == 0x1E {
+		length := readUint32(r)
+		_ = length
+		s.staticObjects = deserializeApplicationMap(r)
+	}
+
+	s.dirty = false
+	s.version = 0
+
+	if s.IsExpired() {
+		_ = s.Delete()
+		return nil, false, nil
+	}
+
+	s.Touch()
+	return s, true, nil
 }
 
-// CreateSession creates a brand-new session with generated ID and persists it asynchronously.
+// CreateSession creates a brand-new session and persists it asynchronously.
 func CreateSession() (*Session, error) {
 	session := NewSessionWithID(newSessionID())
-	// Optimization: Never call Save() synchronously during initialization.
-	// Mark as dirty and let the background flusher handle persistence.
 	session.mu.Lock()
 	session.markDirtyLocked()
 	session.mu.Unlock()
@@ -712,7 +744,6 @@ func StopSessionAutoFlush() {
 }
 
 // FlushRegisteredSessions persists registered sessions.
-// When force is false, only dirty sessions are persisted.
 func FlushRegisteredSessions(force bool) error {
 	sessionRegistryMu.RLock()
 	sessions := make([]*Session, 0, len(sessionRegistry))
@@ -774,11 +805,11 @@ func cleanupExpiredSessionFilesOnDisk(now time.Time, registeredIDs map[string]st
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasSuffix(name, ".json") {
+		if !strings.HasSuffix(name, ".g3ses") {
 			continue
 		}
 
-		sessionID := strings.TrimSuffix(name, ".json")
+		sessionID := strings.TrimSuffix(name, ".g3ses")
 		if _, ok := registeredIDs[sessionID]; ok {
 			continue
 		}
@@ -805,7 +836,7 @@ func cleanupExpiredSessionFilesOnDisk(now time.Time, registeredIDs map[string]st
 	return firstErr
 }
 
-// persistedSessionFileExpired checks expiration using only timeout and last access fields from disk JSON.
+// persistedSessionFileExpired checks expiration using only timeout and last access fields from binary header.
 func persistedSessionFileExpired(path string, now time.Time) (bool, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -816,30 +847,29 @@ func persistedSessionFileExpired(path string, now time.Time) (bool, error) {
 	}
 	defer file.Close()
 
-	var payload sessionDiskExpiryPayload
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&payload); err != nil {
-		return false, err
+	// Magic [6] + Version [1] + ID [24] + Created [8] + Accessed [8] + Timeout [2] = 49 bytes
+	var header [49]byte
+	n, err := file.Read(header[:])
+	if err != nil || n < 49 {
+		return true, nil // Treat corrupt as expired
 	}
 
-	timeoutMinutes := payload.Timeout
+	if string(header[0:6]) != "G3SES\x00" {
+		return true, nil
+	}
+
+	lastAccessedUnix := int64(binary.LittleEndian.Uint64(header[39:47]))
+	timeoutMinutes := int16(binary.LittleEndian.Uint16(header[47:49]))
+
 	if timeoutMinutes <= 0 {
 		timeoutMinutes = defaultSessionTimeoutMinutes
 	}
-	if payload.LastAccessed.IsZero() {
-		if info, infoErr := os.Stat(path); infoErr == nil {
-			payload.LastAccessed = info.ModTime()
-		} else if os.IsNotExist(infoErr) {
-			return false, nil
-		} else {
-			return false, infoErr
-		}
-	}
 
-	return now.Sub(payload.LastAccessed) > time.Duration(timeoutMinutes)*time.Minute, nil
+	lastAccessed := time.Unix(lastAccessedUnix, 0)
+	return now.Sub(lastAccessed) > time.Duration(timeoutMinutes)*time.Minute, nil
 }
 
-// SetSessionStorageDir changes session persistence directory for tests and tooling.
+// SetSessionStorageDir changes session persistence directory.
 func SetSessionStorageDir(path string) {
 	if strings.TrimSpace(path) == "" {
 		sessionStorageDir = filepath.Join("temp", "session")
@@ -862,13 +892,10 @@ func numericSessionID(sessionID string) int64 {
 	return value
 }
 
-// newSessionID generates a random session ID that matches the Classic ASP / IIS ASPSESSIONID
-// cookie value format: 24 uppercase letters (A-Z only, no digits, no hyphens).
-// Classic ASP uses this exact character set — lowercase hex would not match.
+// newSessionID generates a random session ID (24 uppercase letters).
 func newSessionID() string {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback: derive from timestamp digits mapped to uppercase letters.
 		ts := strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", "")
 		for len(ts) < 24 {
 			ts += ts
@@ -887,20 +914,11 @@ func newSessionID() string {
 	return string(result)
 }
 
-// sessionFilePath builds the absolute session JSON file path for an ID.
+// sessionFilePath builds the absolute session binary file path.
 func sessionFilePath(sessionID string) string {
 	safeID := strings.ReplaceAll(sessionID, "/", "_")
 	safeID = strings.ReplaceAll(safeID, "\\", "_")
-	return filepath.Join(sessionStorageDir, safeID+".json")
-}
-
-// copySessionData copies typed session map data.
-func copySessionData(source map[string]ApplicationValue) map[string]ApplicationValue {
-	copyMap := make(map[string]ApplicationValue, len(source))
-	for key, value := range source {
-		copyMap[key] = value
-	}
-	return copyMap
+	return filepath.Join(sessionStorageDir, safeID+".g3ses")
 }
 
 // touchLocked updates LastAccessed and assumes write lock is already held.
@@ -925,4 +943,114 @@ func (s *Session) isExpiredAt(now time.Time) bool {
 		timeout = defaultSessionTimeoutMinutes
 	}
 	return now.Sub(s.LastAccessed) > time.Duration(timeout)*time.Minute
+}
+
+// Binary serialization helpers (Zero Reflection)
+
+func writeUint32(buf *bytes.Buffer, v uint32) {
+	var b [4]byte
+	binary.LittleEndian.PutUint32(b[:], v)
+	buf.Write(b[:])
+}
+
+func readUint32(r *bytes.Reader) uint32 {
+	var b [4]byte
+	_, _ = r.Read(b[:])
+	return binary.LittleEndian.Uint32(b[:])
+}
+
+func readUint64(r *bytes.Reader) uint64 {
+	var b [8]byte
+	_, _ = r.Read(b[:])
+	return binary.LittleEndian.Uint64(b[:])
+}
+
+func serializeApplicationMap(buf *bytes.Buffer, m map[string]ApplicationValue) {
+	writeUint32(buf, uint32(len(m)))
+	for k, v := range m {
+		writeUint32(buf, uint32(len(k)))
+		buf.WriteString(k)
+		serializeApplicationValue(buf, v)
+	}
+}
+
+func deserializeApplicationMap(r *bytes.Reader) map[string]ApplicationValue {
+	count := readUint32(r)
+	m := make(map[string]ApplicationValue, count)
+	for i := uint32(0); i < count; i++ {
+		kLen := readUint32(r)
+		kBuf := make([]byte, kLen)
+		_, _ = r.Read(kBuf)
+		k := string(kBuf)
+		val, _ := deserializeApplicationValue(r)
+		m[k] = val
+	}
+	return m
+}
+
+func serializeApplicationValue(buf *bytes.Buffer, v ApplicationValue) {
+	buf.WriteByte(byte(v.Type))
+	switch v.Type {
+	case ApplicationValueString:
+		writeUint32(buf, uint32(len(v.Str)))
+		buf.WriteString(v.Str)
+	case ApplicationValueInteger:
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], uint64(v.Num))
+		buf.Write(b[:])
+	case ApplicationValueDouble:
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], math.Float64bits(v.Flt))
+		buf.Write(b[:])
+	case ApplicationValueBool:
+		if v.Num != 0 {
+			buf.WriteByte(1)
+		} else {
+			buf.WriteByte(0)
+		}
+	case ApplicationValueArray:
+		writeUint32(buf, uint32(v.ArrLower))
+		writeUint32(buf, uint32(len(v.Arr)))
+		for i := range v.Arr {
+			serializeApplicationValue(buf, v.Arr[i])
+		}
+	}
+}
+
+func deserializeApplicationValue(r *bytes.Reader) (ApplicationValue, error) {
+	t, err := r.ReadByte()
+	if err != nil {
+		return ApplicationValue{}, err
+	}
+	v := ApplicationValue{Type: ApplicationValueType(t)}
+	switch v.Type {
+	case ApplicationValueString:
+		l := readUint32(r)
+		str := make([]byte, l)
+		_, _ = r.Read(str)
+		v.Str = string(str)
+	case ApplicationValueInteger:
+		v.Num = int64(readUint64(r))
+	case ApplicationValueDouble:
+		v.Flt = math.Float64frombits(readUint64(r))
+	case ApplicationValueBool:
+		b, _ := r.ReadByte()
+		if b != 0 {
+			v.Num = 1
+		} else {
+			v.Num = 0
+		}
+	case ApplicationValueArray:
+		v.ArrLower = int(readUint32(r))
+		l := readUint32(r)
+		v.Arr = make([]ApplicationValue, l)
+		for i := uint32(0); i < l; i++ {
+			elem, err := deserializeApplicationValue(r)
+			if err != nil {
+				return v, err
+			}
+			v.Arr[i] = elem
+		}
+	}
+	return v, nil
 }

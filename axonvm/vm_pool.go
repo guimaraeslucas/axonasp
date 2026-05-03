@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas GuimarÃ£es - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -35,15 +35,14 @@ type vmProgramPool struct {
 	program     CachedProgram
 }
 
-// vmProgramPool manages a pool of VM instances for a specific compiled program, allowing for efficient reuse and reduced allocation overhead. This limit can be changed in axonasp.toml
-const vmProgramPoolDefaultRetained = 10
+// vmProgramPool manages a pool of VM instances for a specific compiled program.
+const vmProgramPoolDefaultRetained = 250
 
 var cachedProgramPools sync.Map
 var vmPoolLimitMu sync.RWMutex
 var vmPoolLimiter chan struct{}
 
 // SetVMPoolSizeLimit sets the maximum number of concurrently checked-out VMs.
-// A limit of 0 means unlimited.
 func SetVMPoolSizeLimit(limit int) {
 	vmPoolLimitMu.Lock()
 	defer vmPoolLimitMu.Unlock()
@@ -125,9 +124,13 @@ func getProgramPool(program CachedProgram) *vmProgramPool {
 		program:     immutableCachedProgramView(program),
 	}
 
-	// Pre-warming: Fill the pool with pre-allocated VMs to handle sudden traffic spikes
-	// without triggering expensive on-the-fly allocations and deep state cloning.
-	for i := 0; i < limit; i++ {
+	// Pre-warming: Fill the pool with a few pre-allocated VMs to handle initial bursts.
+	// We don't fill the entire limit (250) to avoid excessive memory usage in tests/rare scripts.
+	warmLimit := 5
+	if limit < warmLimit {
+		warmLimit = limit
+	}
+	for i := 0; i < warmLimit; i++ {
 		vm := NewVMFromCachedProgram(entry.program)
 		vm.pooledFrom = entry
 		entry.items = append(entry.items, vm)
@@ -234,25 +237,50 @@ func (vm *VM) captureBaseProgramState() {
 	}
 	vm.baseBytecode = immutableBytecodeView(vm.bytecode)
 	vm.baseConstants = immutableValueView(vm.constants)
-	vm.baseGlobals = cloneValueSlice(vm.Globals)
+
+	// Perfectly size baseGlobals and reuse capacity if possible.
+	if cap(vm.baseGlobals) < len(vm.Globals) {
+		vm.baseGlobals = make([]Value, len(vm.Globals))
+	} else {
+		vm.baseGlobals = vm.baseGlobals[:len(vm.Globals)]
+	}
+	copy(vm.baseGlobals, vm.Globals)
+
 	vm.baseOptionCompare = vm.optionCompare
 	vm.baseOptionExplicit = vm.optionExplicit
-	vm.baseGlobalNames = cloneStringSlice(vm.globalNames)
-	vm.baseGlobalNamesLower = cloneStringSlice(vm.baseGlobalNamesLower)
+	vm.baseGlobalNames = vm.globalNames
+	vm.baseGlobalNamesLower = vm.baseGlobalNamesLower
 	vm.baseGlobalNamesHash = vm.globalNamesHash
-	clear(vm.baseGlobalZeroArgFuncs)
+
+	if vm.baseGlobalZeroArgFuncs == nil {
+		vm.baseGlobalZeroArgFuncs = make(map[string]bool, len(vm.globalZeroArgFuncs))
+	} else {
+		clear(vm.baseGlobalZeroArgFuncs)
+	}
 	for key, value := range vm.globalZeroArgFuncs {
 		vm.baseGlobalZeroArgFuncs[key] = value
 	}
+
 	vm.baseRuntimeClassVersion = vm.runtimeClassVersion
-	clear(vm.baseDeclared)
+
+	if vm.baseDeclared == nil {
+		vm.baseDeclared = make(map[string]bool, len(vm.declaredGlobals))
+	} else {
+		clear(vm.baseDeclared)
+	}
 	for key, value := range vm.declaredGlobals {
 		vm.baseDeclared[key] = value
 	}
-	clear(vm.baseConst)
+
+	if vm.baseConst == nil {
+		vm.baseConst = make(map[string]bool, len(vm.constGlobals))
+	} else {
+		clear(vm.baseConst)
+	}
 	for key, value := range vm.constGlobals {
 		vm.baseConst[key] = value
 	}
+
 	vm.baseSourceName = vm.sourceName
 	vm.bytecode = immutableBytecodeView(vm.baseBytecode)
 	vm.constants = immutableValueView(vm.baseConstants)
@@ -274,14 +302,20 @@ func (vm *VM) resetForReuse() {
 	vm.resetDynamicMaps()
 	vm.optionCompare = vm.baseOptionCompare
 	vm.optionExplicit = vm.baseOptionExplicit
-	vm.globalNames = append(vm.globalNames[:0], vm.baseGlobalNames...)
-	vm.globalNamesHash = vm.baseGlobalNamesHash
+
+	// Direct assignment from immutable base state. Subsequent ExecuteGlobal
+	// will allocate a new backing array because baseGlobalNames has cap == len.
+	vm.globalNames = vm.baseGlobalNames
+
+	vm.globalNamesHash = vm.globalNamesHash
 	vm.runtimeClassVersion = vm.baseRuntimeClassVersion
 	vm.rebuildGlobalNameIndex()
+
 	clear(vm.globalZeroArgFuncs)
 	for key, value := range vm.baseGlobalZeroArgFuncs {
 		vm.globalZeroArgFuncs[key] = value
 	}
+
 	clear(vm.dynamicProgramStarts)
 	clear(vm.declaredGlobals)
 	for key, value := range vm.baseDeclared {

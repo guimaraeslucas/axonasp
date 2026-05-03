@@ -769,3 +769,34 @@ func TestBuiltinDateStringParsing(t *testing.T) {
 		}
 	}
 }
+
+// TestBuiltinTimeFormatting verifies that Time() returns only the time part
+// and Date() returns only the date part when converted to string.
+func TestBuiltinTimeFormatting(t *testing.T) {
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	vm.SetHost(host)
+	host.Session().SetLCID(int(EnglishUS))
+
+	// Time() should return only time (since it's anchored to 1899-12-30)
+	timeVal := callBuiltin(t, vm, "Time")
+	timeStr := vm.valueToString(timeVal)
+	if strings.Contains(timeStr, "1899") {
+		t.Fatalf("expected Time() string to omit date part, got %q", timeStr)
+	}
+
+	// Date() should return only date (since time is 00:00:00)
+	dateVal := callBuiltin(t, vm, "Date")
+	dateStr := vm.valueToString(dateVal)
+	if strings.Contains(dateStr, ":") {
+		t.Fatalf("expected Date() string to omit time part, got %q", dateStr)
+	}
+
+	// Now() should return both
+	nowVal := callBuiltin(t, vm, "Now")
+	nowStr := vm.valueToString(nowVal)
+	if !strings.Contains(nowStr, "/") || !strings.Contains(nowStr, ":") {
+		t.Fatalf("expected Now() string to include both date and time, got %q", nowStr)
+	}
+}
+

@@ -1,6 +1,3 @@
-<%
-@ CodePage = 65001
-%>
 <!--
 	AxonASP Server - G3ZSTD Sample Page
 	Demonstration of Zstandard (zstd) compression functionality
@@ -11,6 +8,7 @@ Option Explicit
 %>
 <!DOCTYPE html>
 <html>
+
     <head>
         <meta charset="utf-8" />
         <title>G3ZSTD - Zstandard Compression Test</title>
@@ -22,6 +20,7 @@ Option Explicit
                 border: 1px solid #999;
                 background: #f9f9f9;
             }
+
             .code-box {
                 background: #fff;
                 border: 1px solid #ccc;
@@ -31,30 +30,36 @@ Option Explicit
                 white-space: pre-wrap;
                 word-wrap: break-word;
             }
+
             .success {
                 color: green;
                 font-weight: bold;
             }
+
             .error {
                 color: red;
                 font-weight: bold;
             }
+
             table {
                 border-collapse: collapse;
                 width: 100%;
                 margin: 10px 0;
             }
+
             th,
             td {
                 border: 1px solid #999;
                 padding: 8px;
                 text-align: left;
             }
+
             th {
                 background: #e8e8e8;
             }
         </style>
     </head>
+
     <body>
         <h1>G3ZSTD - Zstandard Compression Test</h1>
         <p>
@@ -299,9 +304,8 @@ Option Explicit
         </div>
 
         <hr />
-        <small
-            >AxonASP Server - G3ZSTD Zstandard Compression Test &copy;
-            2026</small
-        >
+        <small>AxonASP Server - G3ZSTD Zstandard Compression Test &copy;
+            2026</small>
     </body>
+
 </html>

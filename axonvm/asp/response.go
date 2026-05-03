@@ -21,6 +21,7 @@
 package asp
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
@@ -36,18 +37,15 @@ import (
 // ResponseEndSignal is used to terminate script execution after Response.End/Redirect.
 const ResponseEndSignal = "RESPONSE_END"
 
-// responseBufferPool pools pre-allocated []byte slices that back the per-request
-// Response body buffer. Reusing these slices across requests eliminates the
+// responseBufferPool pools pre-allocated *bytes.Buffer instances that back the per-request
+// Response body buffer. Reusing these buffers across requests eliminates the
 // per-request heap allocation and reduces GC pressure under concurrent load.
-// Buffers larger than maxPooledBufferCap are discarded instead of pooled so
-// a single unusually-large page does not hold a huge slab across all requests.
-const maxPooledBufferCap = 256 * 1024 // 256 KB upper limit for pooled slices
+const maxPooledBufferCap = 256 * 1024 // 256 KB upper limit for pooled buffers
 
 var responseBufferPool = sync.Pool{
 	New: func() any {
-		// Start with 8 KB — comfortably covers most classic ASP pages.
-		b := make([]byte, 0, 8192)
-		return &b
+		// Start with 24 KB — comfortably covers most classic ASP pages.
+		return bytes.NewBuffer(make([]byte, 0, 24*1024))
 	},
 }
 
@@ -68,7 +66,7 @@ type Response struct {
 	w      http.ResponseWriter
 	req    *http.Request
 
-	buffer         []byte
+	buffer         *bytes.Buffer
 	mu             sync.RWMutex
 	ended          bool
 	flushed        bool
@@ -107,14 +105,12 @@ func (e *ResponseBufferLimitError) Error() string {
 }
 
 // NewResponse creates a new response object with ASP-compatible defaults.
-// The internal body buffer is obtained from a global sync.Pool to avoid a
-// per-request heap allocation on the hot HTTP/FastCGI path.
 func NewResponse(output io.Writer) *Response {
-	bufPtr := responseBufferPool.Get().(*[]byte)
-	*bufPtr = (*bufPtr)[:0] // reset length, keep capacity
+	buf := responseBufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
 	r := &Response{
 		Output:         output,
-		buffer:         *bufPtr,
+		buffer:         buf,
 		bufferEnabled:  true,
 		maxBufferBytes: DefaultResponseBufferLimitBytes,
 		cacheControl:   "Private",
@@ -225,11 +221,12 @@ func (r *Response) Write(s string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.ended || r.Output == nil {
+	if r.ended || r.buffer == nil {
 		return
 	}
-	r.ensureBufferCapacityLocked(len(r.buffer) + len(s))
-	r.buffer = append(r.buffer, s...)
+	r.ensureBufferCapacityLocked(r.buffer.Len() + len(s))
+	// Optimization: Use WriteString to avoid heap allocation from implicit []byte(s) conversion.
+	_, _ = r.buffer.WriteString(s)
 	if !r.bufferEnabled {
 		r.flushInternal()
 	}
@@ -240,11 +237,11 @@ func (r *Response) BinaryWrite(data []byte) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.ended || r.Output == nil {
+	if r.ended || r.buffer == nil {
 		return
 	}
-	r.ensureBufferCapacityLocked(len(r.buffer) + len(data))
-	r.buffer = append(r.buffer, data...)
+	r.ensureBufferCapacityLocked(r.buffer.Len() + len(data))
+	_, _ = r.buffer.Write(data)
 	if !r.bufferEnabled {
 		r.flushInternal()
 	}
@@ -306,10 +303,10 @@ func (r *Response) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.ended {
+	if r.ended || r.buffer == nil {
 		return
 	}
-	r.buffer = r.buffer[:0]
+	r.buffer.Reset()
 }
 
 // Flush sends buffered output to the client.
@@ -335,7 +332,9 @@ func (r *Response) Redirect(location string) {
 		r.mu.Unlock()
 		return
 	}
-	r.buffer = r.buffer[:0]
+	if r.buffer != nil {
+		r.buffer.Reset()
+	}
 	r.headers["Location"] = location
 	r.status = "302 Found"
 	r.flushInternal()
@@ -663,9 +662,9 @@ func (r *Response) flushInternal() {
 		r.flushed = true
 	}
 
-	if len(r.buffer) > 0 {
-		_, _ = r.Output.Write(r.buffer)
-		r.buffer = r.buffer[:0]
+	if r.buffer != nil && r.buffer.Len() > 0 {
+		_, _ = r.Output.Write(r.buffer.Bytes())
+		r.buffer.Reset()
 	}
 
 	if flusher, ok := r.Output.(http.Flusher); ok {
@@ -673,11 +672,7 @@ func (r *Response) flushInternal() {
 	}
 }
 
-// ReleaseBuffer returns the internal body buffer to the global pool so it can be
-// reused by the next request without a heap allocation. This must be called exactly
-// once per request, AFTER all response content has been flushed to the wire (i.e.
-// after Flush / flushInternal has run). Callers in server, fastcgi, and cli host
-// layers are responsible for invoking this method in their request completion path.
+// ReleaseBuffer returns the internal body buffer to the global pool.
 func (r *Response) ReleaseBuffer() {
 	if r == nil {
 		return
@@ -686,11 +681,9 @@ func (r *Response) ReleaseBuffer() {
 	buf := r.buffer
 	r.buffer = nil
 	r.mu.Unlock()
-	// Only return reasonably-sized buffers to the pool; discard unusually large ones
-	// so a single huge page does not permanently inflate the pooled slab size.
-	if buf != nil && cap(buf) > 0 && cap(buf) <= maxPooledBufferCap {
-		b := buf[:0]
-		responseBufferPool.Put(&b)
+	if buf != nil && buf.Cap() > 0 && buf.Cap() <= maxPooledBufferCap {
+		buf.Reset()
+		responseBufferPool.Put(buf)
 	}
 }
 

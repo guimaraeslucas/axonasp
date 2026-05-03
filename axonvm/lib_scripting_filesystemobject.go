@@ -1401,6 +1401,18 @@ func (vm *VM) fsoResolvePath(path string) (string, bool) {
 	}
 
 	rootPath := vm.host.Server().MapPath("/")
+	currentDir := ""
+	if vm.host != nil {
+		currentDir = filepath.Dir(vm.host.Server().GetRequestPath())
+	}
+
+	// Optimization: Memoize resolved paths to avoid expensive filepath.Abs and MapPath calls.
+	// Cache key includes rootPath and currentDir to ensure context-aware sandbox integrity.
+	cacheKey := rootPath + "|" + currentDir + "|" + trimmed
+	if val, ok := globalFSOCache.pathCache.Load(cacheKey); ok {
+		return val.(string), true
+	}
+
 	resolvedPath := trimmed
 	if !filepath.IsAbs(trimmed) {
 		resolvedPath = vm.host.Server().MapPath(trimmed)
@@ -1416,6 +1428,7 @@ func (vm *VM) fsoResolvePath(path string) (string, bool) {
 	cleanResolved := strings.ToLower(filepath.Clean(absResolved))
 
 	if cleanResolved == cleanRoot {
+		globalFSOCache.pathCache.Store(cacheKey, absResolved)
 		return absResolved, true
 	}
 
@@ -1424,6 +1437,7 @@ func (vm *VM) fsoResolvePath(path string) (string, bool) {
 		return "", false
 	}
 
+	globalFSOCache.pathCache.Store(cacheKey, absResolved)
 	return absResolved, true
 }
 

@@ -38,6 +38,9 @@ type fsoCacheManager struct {
 	mu    sync.RWMutex
 	items map[string]*fsoCacheItem
 
+	// pathCache memoizes resolved absolute paths to avoid redundant filepath.Abs calls.
+	pathCache sync.Map
+
 	// inflightMu and inflight map implement a simple Singleflight-like mechanism.
 	// This ensures that concurrent requests for the same path only trigger one disk I/O.
 	inflightMu sync.Mutex
