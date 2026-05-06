@@ -71,6 +71,7 @@ var (
 	BytecodeCachingMode      = "enabled"
 	CacheMaxSizeMB           = 128
 	SessionAutoFlushSeconds  = 15
+	G3AxonLiveActive         = false
 	serverLocation           = time.UTC
 	scriptCache              *axonvm.ScriptCache
 )
@@ -156,6 +157,7 @@ func loadFastCGIConfig() {
 	axonvm.SetVMPoolSizeLimit(VMPoolSize)
 
 	axonvm.InitGlobalAxonFunctions(v.GetBool("axfunctions.enable_global_ax"))
+	G3AxonLiveActive = v.GetBool("g3axonlive.g3axonlive_active")
 }
 
 // parseFastCGIListenEndpoint parses FastCGI listener settings as TCP port/host:port or unix:/path socket endpoint.
@@ -373,6 +375,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	RegisterG3AxonLiveEndpoint(mux)
 	mux.HandleFunc("/", fastCGIMiddleware(handleRequest))
 
 	listener, err := prepareFastCGIListener(ListenNetwork, ListenAddr)

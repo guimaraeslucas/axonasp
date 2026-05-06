@@ -133,6 +133,19 @@ func NewFastCGIHost(w http.ResponseWriter, r *http.Request) *FastCGIHost {
 	host.request.ServerVars.Add("HTTP_ACCEPT_LANGUAGE", r.Header.Get("Accept-Language"))
 	host.request.ServerVars.Add("CONTENT_LENGTH", strconv.FormatInt(host.request.TotalBytes(), 10))
 	host.request.ServerVars.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE", r.Header.Get("X-G3AxonLive"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_SESSIONID", r.Header.Get("X-G3AxonLive-SessionId"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_COMPONENTID", r.Header.Get("X-G3AxonLive-ComponentId"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_EVENTNAME", r.Header.Get("X-G3AxonLive-EventName"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_EVENTARGS", r.Header.Get("X-G3AxonLive-EventArgs"))
+
+	// Expose all request headers for ASP access (HTTP_<HEADER_NAME>).
+	for headerName, values := range r.Header {
+		if len(values) == 0 {
+			continue
+		}
+		host.request.ServerVars.Add(fastCGIServerVariableFromHeader(headerName), strings.Join(values, ","))
+	}
 
 	host.setSessionCookie()
 
@@ -350,4 +363,11 @@ func fastCGIRequestServerPort(r *http.Request) string {
 		return "443"
 	}
 	return "80"
+}
+
+// fastCGIServerVariableFromHeader converts an HTTP header name to classic ASP
+// ServerVariables key format: HTTP_<UPPERCASE_WITH_UNDERSCORES>.
+func fastCGIServerVariableFromHeader(headerName string) string {
+	normalized := strings.ToUpper(strings.ReplaceAll(headerName, "-", "_"))
+	return "HTTP_" + normalized
 }

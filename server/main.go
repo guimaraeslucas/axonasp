@@ -77,6 +77,7 @@ var (
 	BytecodeCachingMode        = "enabled"
 	CacheMaxSizeMB             = 128
 	SessionAutoFlushSeconds    = 15
+	G3AxonLiveActive           = false
 	serverLocation             = time.UTC
 	blockedDirPrefixes         = []string{}
 	scriptCache                *axonvm.ScriptCache
@@ -180,6 +181,7 @@ func loadServerConfig() {
 	axonvm.SetVMPoolSizeLimit(VMPoolSize)
 
 	axonvm.InitGlobalAxonFunctions(v.GetBool("axfunctions.enable_global_ax"))
+	G3AxonLiveActive = v.GetBool("g3axonlive.g3axonlive_active")
 
 	blockedDirPrefixes = buildBlockedDirPrefixes(BlockedDirs)
 }
@@ -354,6 +356,7 @@ func main() {
 	if DebugASP {
 		registerPprofHandlers(mux)
 	}
+	RegisterG3AxonLiveEndpoint(mux)
 	mux.HandleFunc("/", handleRequest)
 
 	httpServer := &http.Server{

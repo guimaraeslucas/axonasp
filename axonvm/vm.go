@@ -288,6 +288,7 @@ type VM struct {
 	g3tarItems                     map[int64]*G3TAR
 	g3zstdItems                    map[int64]*G3ZSTD
 	g3fcItems                      map[int64]*G3FC
+	g3axonliveItems                map[int64]*G3AXONLIVE
 	g3dbItems                      map[int64]*G3DB
 	g3dbResultSetItems             map[int64]*G3DBResultSet
 	g3dbFieldsItems                map[int64]*G3DBFields
@@ -492,6 +493,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		g3tarItems:                     make(map[int64]*G3TAR),
 		g3zstdItems:                    make(map[int64]*G3ZSTD),
 		g3fcItems:                      make(map[int64]*G3FC),
+		g3axonliveItems:                make(map[int64]*G3AXONLIVE),
 		g3dbItems:                      make(map[int64]*G3DB),
 		g3dbResultSetItems:             make(map[int64]*G3DBResultSet),
 		g3dbFieldsItems:                make(map[int64]*G3DBFields),
@@ -1136,6 +1138,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.g3tarItems = child.g3tarItems
 	vm.g3zstdItems = child.g3zstdItems
 	vm.g3fcItems = child.g3fcItems
+	vm.g3axonliveItems = child.g3axonliveItems
 	vm.g3dbItems = child.g3dbItems
 	vm.g3dbResultSetItems = child.g3dbResultSetItems
 	vm.g3dbFieldsItems = child.g3dbFieldsItems
@@ -3556,6 +3559,9 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 	if g3fcObject, exists := vm.g3fcItems[objID]; exists {
 		return g3fcObject.DispatchMethod(member, args)
 	}
+	if g3axonliveObject, exists := vm.g3axonliveItems[objID]; exists {
+		return g3axonliveObject.DispatchMethod(member, args)
+	}
 	if g3dbObject, exists := vm.g3dbItems[objID]; exists {
 		return g3dbObject.DispatchMethod(member, args)
 	}
@@ -4173,6 +4179,9 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				if strings.EqualFold(progID, "G3FC") {
 					return vm.newG3FCObject()
 				}
+				if strings.EqualFold(progID, "G3AXONLIVE") {
+					return vm.newG3AxonLiveObject()
+				}
 				if strings.EqualFold(progID, "WScript.Shell") {
 					return vm.newWScriptShellObject()
 				}
@@ -4701,6 +4710,9 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 
 	if g3imageObject, exists := vm.g3imageItems[target.Num]; exists {
 		return g3imageObject.DispatchPropertyGet(member)
+	}
+	if g3axonliveObject, exists := vm.g3axonliveItems[target.Num]; exists {
+		return g3axonliveObject.DispatchPropertyGet(member)
 	}
 	if g3filesObject, exists := vm.g3filesItems[target.Num]; exists {
 		return g3filesObject.DispatchPropertyGet(member)

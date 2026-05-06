@@ -1,4 +1,4 @@
-# AxonASP and VBScript Error Code Reference
+# AxonASP Error Code Reference
 
 ## Overview
 
@@ -6,6 +6,7 @@ This page lists all error codes recognized by G3Pix AxonASP, divided into two di
 
 - **AxonASP Error Codes** — Internal platform errors raised by the GoLang runtime, server, FastCGI process, CLI, service wrapper, caching layer, and built-in libraries. These are defined in `axonvm/axonvmerrorcodes.go` and are exclusive to the AxonASP engine. They are always expressed as plain decimal integers.
 - **VBScript Error Codes** — Standard VBScript runtime and syntax errors, compatible with the original Microsoft VBScript specification. These are defined in `vbscript/vberrorcodes.go`. VBScript errors can be represented in multiple numeric formats depending on the context in which they appear.
+- **JavaScript Error Codes** — Standard JScript runtime and syntax errors, compatible with the original Microsoft JScript specification. These are defined in `jscript/jscripterrorcodes.go`. JavaScript errors can be represented in multiple numeric formats depending on the context in which they appear.
 
 ## VBScript Error Number Formats
 
@@ -108,6 +109,7 @@ AxonASP error codes are internal to the G3Pix AxonASP platform. They are never r
 | 4009 | Interactive desktop functions are not supported in ASP server-side execution |
 | 4010 | Response buffer limit exceeded |
 | 4011 | Script timeout reached and execution goroutine was detached |
+| 4012 | The requested library is disabled and was not compiled into this AxonASP executable. |
 
 ### Caching (5000–5003)
 
@@ -357,18 +359,6 @@ The following error codes follow the standard VBScript specification. They are s
 - **VBScript error codes** are defined in `vbscript/vberrorcodes.go`. They are raised during script execution and are directly accessible via `Err.Number` and `Err.Description` inside an `On Error Resume Next` block.
 - The HRESULT hexadecimal form of VBScript errors follows the standard COM convention: `HRESULT = 0x800A0000 + decimal_code`. This value is what COM-aware environments and some external debugging tools report. AxonASP itself always exposes the short decimal form through `Err.Number`.
 - The error codes `32766` (True) and `32767` (False) are compatibility constants and are not raised as operational errors.
-
----
-
-## AxonASP Addendum: Missing Internal Codes
-
-The following AxonASP code is also defined in the engine and must be included in runtime troubleshooting references.
-
-### Script and AxonVM (4000–4012)
-
-| Code | Description |
-|------|-------------|
-| 4012 | The requested library is disabled and was not compiled into this AxonASP executable. |
 
 ---
 

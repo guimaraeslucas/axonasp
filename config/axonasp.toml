@@ -272,6 +272,33 @@ oracle_user = "system"
 smpt_host = "smtp.example.com"
 smtp_from = "sender@example.com"
 smtp_pass = "your_password"
+
+# G3AXONLIVE Configuration - Reactive Component Framework
+# The G3AXONLIVE library provides a native reactive component framework for building stateful ASP pages
+# where components update asynchronously without full page reloads. All business logic stays on the server.
+# When g3axonlive_active is set to false, the library is completely disabled and no resources are allocated.
+[g3axonlive]
+# Enable/Disable the G3AXONLIVE reactive component library. When disabled, the /g3al/ endpoint is not registered
+# and the G3AXONLIVE object cannot be created via Server.CreateObject("G3AXONLIVE").
+g3axonlive_active = true
+
+# Cleanup interval in minutes for orphaned component states. When a component state has not been accessed
+# for this duration, it will be automatically removed from memory by the background cleanup goroutine.
+# This prevents memory leaks from users who close their browser without properly closing the connection.
+# Minimum recommended value is 5 minutes.
+g3axonlive_cleanup_interval_minutes = 5
+
+# Enable automatic background cleanup goroutine for orphaned component states.
+# When enabled, the G3AXONLIVE library will spawn a background goroutine on first instantiation
+# that periodically removes stale component states. Set to false to disable automatic cleanup and
+# manage cleanup manually via StopCleanup()/StartCleanup() methods.
+g3axonlive_auto_cleanup = true
+
+# Maximum number of component patches allowed per EndAsyncResponse() call.
+# If the server tries to register more patches than this limit, an error is raised.
+# Increase this value if your page renders many independently-updated components at once.
+max_components_per_response = 200
+
 smtp_port = 587
 smtp_user = "your_email@example.com"
 

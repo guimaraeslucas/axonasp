@@ -21,7 +21,7 @@
     * [Service Wrapper](md/runtime/service-wrapper.md)
     * [MCP Server and VS Code](md/runtime/mcp-vscode.md)
     * [System Pages and Error Pages](md/runtime/system-pages.md)
-    * [AxonASP and VBScript Error Code Reference](md/runtime/axonasp-error-codes.md)
+    * [AxonASP Error Code Reference](md/runtime/axonasp-error-codes.md)
 * Configuration
     * [axonasp.toml](md/config/axonasp-toml.md)
 * ASP Foundations
@@ -178,6 +178,16 @@
             * [Newobject](md/libraries/g3json/methods/newobject.md)
             * [Parse](md/libraries/g3json/methods/parse.md)
             * [Stringify](md/libraries/g3json/methods/stringify.md)
+    * G3AXONLIVE
+        * [Overview](md/libraries/g3axonlive/overview.md)
+        * G3AxonLive Guides
+            * [Building Reactive Pages](md/libraries/g3axonlive/building-reactive-pages.md)
+            * [Architecture and Lifecycle](md/libraries/g3axonlive/architecture.md)
+            * [Configuration](md/libraries/g3axonlive/configuration.md)
+            * [Troubleshooting](md/libraries/g3axonlive/troubleshooting.md)
+        * API Reference
+            * [Server-Side API](md/libraries/g3axonlive/server-api.md)
+            * [Client-Side API](md/libraries/g3axonlive/client-api.md)
     * G3DB
         * [Overview](md/libraries/g3db/overview.md)
         * [Methods](md/libraries/g3db/methods.md)

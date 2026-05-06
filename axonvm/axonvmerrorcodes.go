@@ -166,6 +166,22 @@ const (
 	ErrG3SearchIndexOpenFailed  AxonASPErrorCode = 9022
 	ErrG3SearchIndexWriteFailed AxonASPErrorCode = 9023
 	ErrG3SearchSearchFailed     AxonASPErrorCode = 9024
+
+	// G3AXONLIVE reactive component framework errors (10000-10099).
+	ErrG3ALNotInitialized         AxonASPErrorCode = 10000
+	ErrG3ALInvalidSessionID       AxonASPErrorCode = 10001
+	ErrG3ALInvalidComponentID     AxonASPErrorCode = 10002
+	ErrG3ALInvalidEventName       AxonASPErrorCode = 10003
+	ErrG3ALMissingXHeader         AxonASPErrorCode = 10004
+	ErrG3ALBodyReadFailed         AxonASPErrorCode = 10005
+	ErrG3ALInvalidJSONPayload     AxonASPErrorCode = 10006
+	ErrG3ALSessionNotRegistered   AxonASPErrorCode = 10007
+	ErrG3ALPagePathOutsideRoot    AxonASPErrorCode = 10008
+	ErrG3ALComponentLimitExceeded AxonASPErrorCode = 10009
+	ErrG3ALTimerDelayInvalid      AxonASPErrorCode = 10010
+	ErrG3ALWebSocketNotSupported  AxonASPErrorCode = 10011
+	ErrG3ALResponseAlreadyEnded   AxonASPErrorCode = 10012
+	ErrG3ALDisabled               AxonASPErrorCode = 10013
 )
 
 var AxonASPErrorMessages = map[AxonASPErrorCode]string{
@@ -312,6 +328,22 @@ var AxonASPErrorMessages = map[AxonASPErrorCode]string{
 	ErrG3SearchIndexOpenFailed:  "G3SEARCH: failed to open index",
 	ErrG3SearchIndexWriteFailed: "G3SEARCH: failed to write index",
 	ErrG3SearchSearchFailed:     "G3SEARCH: search execution failed",
+
+	// G3AXONLIVE reactive component framework
+	ErrG3ALNotInitialized:         "G3AXONLIVE: InitPage must be called before using AxonLive methods",
+	ErrG3ALInvalidSessionID:       "G3AXONLIVE: sessionId is required and cannot be empty",
+	ErrG3ALInvalidComponentID:     "G3AXONLIVE: componentId is required and cannot be empty",
+	ErrG3ALInvalidEventName:       "G3AXONLIVE: eventName is required and cannot be empty",
+	ErrG3ALMissingXHeader:         "G3AXONLIVE: missing or invalid X-G3AxonLive request header",
+	ErrG3ALBodyReadFailed:         "G3AXONLIVE: failed to read request body",
+	ErrG3ALInvalidJSONPayload:     "G3AXONLIVE: invalid or malformed JSON payload",
+	ErrG3ALSessionNotRegistered:   "G3AXONLIVE: session is not registered or has expired; reload the page",
+	ErrG3ALPagePathOutsideRoot:    "G3AXONLIVE: registered page path is outside the configured web root directory",
+	ErrG3ALComponentLimitExceeded: "G3AXONLIVE: component patch limit per response exceeded",
+	ErrG3ALTimerDelayInvalid:      "G3AXONLIVE: SetTimer delay must be a positive integer (milliseconds)",
+	ErrG3ALWebSocketNotSupported:  "G3AXONLIVE: WebSocket connections are not supported in FastCGI mode; use the HTTP server",
+	ErrG3ALResponseAlreadyEnded:   "G3AXONLIVE: EndAsyncResponse has already been called for this request",
+	ErrG3ALDisabled:               "G3AXONLIVE: the G3AxonLive library is disabled; enable it in axonasp.toml under [g3axonlive]",
 }
 
 func (e AxonASPErrorCode) String() string {

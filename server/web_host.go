@@ -123,6 +123,11 @@ func NewWebHost(w http.ResponseWriter, r *http.Request) *WebHost {
 	host.request.ServerVars.Add("QUERY_STRING", queryString)
 	host.request.ServerVars.Add("HTTP_HOST", r.Host)
 	host.request.ServerVars.Add("HTTP_CONTENT_TYPE", r.Header.Get("Content-Type"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE", r.Header.Get("X-G3AxonLive"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_SESSIONID", r.Header.Get("X-G3AxonLive-SessionId"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_COMPONENTID", r.Header.Get("X-G3AxonLive-ComponentId"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_EVENTNAME", r.Header.Get("X-G3AxonLive-EventName"))
+	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_EVENTARGS", r.Header.Get("X-G3AxonLive-EventArgs"))
 	host.request.ServerVars.Add("HTTPS", httpsValue)
 	host.request.ServerVars.Add("SERVER_PROTOCOL", r.Proto)
 	host.request.ServerVars.Add("REQUEST_URI", requestURI)
@@ -137,6 +142,14 @@ func NewWebHost(w http.ResponseWriter, r *http.Request) *WebHost {
 	host.request.ServerVars.Add("HTTP_ACCEPT_LANGUAGE", r.Header.Get("Accept-Language"))
 	host.request.ServerVars.Add("CONTENT_LENGTH", strconv.FormatInt(host.request.TotalBytes(), 10))
 	host.request.ServerVars.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
+
+	// Expose all request headers for ASP access (HTTP_<HEADER_NAME>).
+	for headerName, values := range r.Header {
+		if len(values) == 0 {
+			continue
+		}
+		host.request.ServerVars.Add(serverVariableFromHeader(headerName), strings.Join(values, ","))
+	}
 
 	host.setSessionCookie()
 
@@ -346,4 +359,11 @@ func requestServerPort(r *http.Request) string {
 		return "443"
 	}
 	return "80"
+}
+
+// serverVariableFromHeader converts an HTTP header name to classic ASP
+// ServerVariables key format: HTTP_<UPPERCASE_WITH_UNDERSCORES>.
+func serverVariableFromHeader(headerName string) string {
+	normalized := strings.ToUpper(strings.ReplaceAll(headerName, "-", "_"))
+	return "HTTP_" + normalized
 }

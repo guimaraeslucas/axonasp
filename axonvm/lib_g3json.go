@@ -24,6 +24,7 @@ package axonvm
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"strings"
 )
@@ -71,7 +72,7 @@ func (j *G3JSON) DispatchMethod(methodName string, args []Value) Value {
 		if len(args) == 0 {
 			return NewString("")
 		}
-		goVal := j.vmValueToGoValue(args[0])
+		goVal := j.vmValueToGoValue(args[0], make(map[int64]bool), make(map[*VBArray]bool))
 		bytes, err := json.Marshal(goVal)
 		if err != nil {
 			return NewString("")
@@ -147,45 +148,83 @@ func (j *G3JSON) goValueToVMValue(data interface{}) Value {
 	}
 }
 
-// vmValueToGoValue recursively converts VM Dictionaries/Arrays into Go maps/slices for json.Marshal
-func (j *G3JSON) vmValueToGoValue(v Value) interface{} {
+// vmValueToGoValue recursively converts VM values into json.Marshal-compatible
+// Go values. It guards against native-object/array cycles and normalizes
+// unsupported VM-only value kinds into JSON-safe fallbacks.
+func (j *G3JSON) vmValueToGoValue(v Value, seenNative map[int64]bool, seenArrays map[*VBArray]bool) interface{} {
 	switch v.Type {
 	case VTArray:
 		if v.Arr == nil {
 			return []interface{}{}
 		}
+		if seenArrays[v.Arr] {
+			return nil
+		}
+		seenArrays[v.Arr] = true
+		defer delete(seenArrays, v.Arr)
 		arr := make([]interface{}, len(v.Arr.Values))
 		for i, item := range v.Arr.Values {
-			arr[i] = j.vmValueToGoValue(item)
+			arr[i] = j.vmValueToGoValue(item, seenNative, seenArrays)
 		}
 		return arr
 
 	case VTNativeObject:
+		if seenNative[v.Num] {
+			return nil
+		}
+		seenNative[v.Num] = true
+		defer delete(seenNative, v.Num)
+
 		if _, ok := j.vm.dictionaryItems[v.Num]; ok {
 			m := make(map[string]interface{})
 			// We can iterate the dictionary keys
 			keysVal, _ := j.vm.dispatchDictionaryMethod(v.Num, "Keys", nil)
 			itemsVal, _ := j.vm.dispatchDictionaryMethod(v.Num, "Items", nil)
 			if keysVal.Type == VTArray && itemsVal.Type == VTArray && keysVal.Arr != nil && itemsVal.Arr != nil {
-				for i := 0; i < len(keysVal.Arr.Values); i++ {
+				limit := len(keysVal.Arr.Values)
+				if len(itemsVal.Arr.Values) < limit {
+					limit = len(itemsVal.Arr.Values)
+				}
+				for i := 0; i < limit; i++ {
 					k := keysVal.Arr.Values[i].String()
-					m[k] = j.vmValueToGoValue(itemsVal.Arr.Values[i])
+					m[k] = j.vmValueToGoValue(itemsVal.Arr.Values[i], seenNative, seenArrays)
 				}
 			}
 			return m
 		}
-		return nil
+		// Unknown native objects are represented as descriptive strings rather
+		// than forcing null, preserving useful diagnostics in JSON outputs.
+		return v.String()
+
+	case VTObject:
+		if v.Num == 0 {
+			return nil
+		}
+		return v.String()
 
 	case VTString:
 		return v.String()
 	case VTInteger:
 		return v.Num
 	case VTDouble:
+		if math.IsNaN(v.Flt) || math.IsInf(v.Flt, 0) {
+			return nil
+		}
 		return v.Flt
 	case VTBool:
 		return v.Num != 0
+	case VTDate:
+		return v.String()
+	case VTNothing:
+		return nil
 	case VTNull, VTEmpty:
 		return nil
+	case VTBuiltin, VTUserSub, VTArgRef:
+		return v.String()
+	case VTJSUndefined:
+		return nil
+	case VTJSObject, VTJSFunction, VTJSFunctionTemplate, VTJSArrowFunctionTemplate, VTSymbol:
+		return v.String()
 	default:
 		return v.String()
 	}
