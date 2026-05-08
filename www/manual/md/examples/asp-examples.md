@@ -2,7 +2,7 @@
 
 ## Overview
 
-AxonASP ships with four example web applications located under the `www/` directory. Each example demonstrates a common web application pattern implemented in Classic ASP using AxonASP features. The examples are intended as learning references and starting points for new projects.
+AxonASP ships with five example web applications and one visual builder tool located under the `www/` directory. Each example demonstrates a common web application pattern implemented in Classic ASP using AxonASP features. The examples are intended as learning references and starting points for new projects.
 
 Access the examples from the web root while the HTTP server is running at `http://localhost:8801/`.
 
@@ -118,9 +118,27 @@ GET http://localhost:8801/jscript-api/api.asp?location=tokyo
 
 ---
 
-## Shared Patterns
+## AxonLive Builder — Visual ASP Page Builder
 
-All four examples follow these AxonASP Classic ASP conventions:
+**Path:** `./www/axonlive/builder/`
+**URL:** `http://localhost:8801/axonlive/builder/`
+
+This tool provides a visual drag-and-drop interface for composing ASP page layouts and exporting generated `.asp` code.
+
+| Path | Description |
+|------|-------------|
+| `axonlive/builder/index.html` | Visual builder interface and layout canvas |
+| `axonlive/builder/app.js` | Builder logic, component model, and ASP code generation |
+| `axonlive/builder/builder.css` | Builder-specific stylesheet |
+| `axonlive/builder/g3axonlive.js` | AxonLive integration runtime helpers |
+
+**How it works:** Open the builder in your browser, drag components from the toolbox to the canvas, configure properties, then copy or download the generated ASP file.
+
+---
+
+## Shared ASP Patterns
+
+The ASP examples above follow these AxonASP Classic ASP conventions:
 
 - `Option Explicit` is declared at the top of VBScript files.
 - Objects use `Set ... = Server.CreateObject(...)` syntax (VBScript) or `var ... = Server.CreateObject(...)` (JScript).
@@ -132,4 +150,4 @@ All four examples follow these AxonASP Classic ASP conventions:
 
 - The example applications are for development and educational use only. They are not hardened for production deployment.
 - To adapt an example as a starting point for a real project, copy the directory to a new location under `www/` and modify the files as needed.
-- All four examples run without any database or external service. They can be exercised immediately after starting the AxonASP HTTP server.
+- All five web application examples run without any database or external service. They can be exercised immediately after starting the AxonASP HTTP server.

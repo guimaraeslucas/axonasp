@@ -210,6 +210,51 @@ const buildComponentAttrs = (comp, options = {}) => {
 const buildUploaderAction = (compId, fileInputId) =>
     `G3AxonLive.uploadFile(&quot;${escapeHtmlAttr(compId)}&quot;, &quot;${escapeHtmlAttr(fileInputId)}&quot;, &quot;onupload&quot;)`;
 
+const renderableAsyncTypes = {
+    modal: true,
+    button: true,
+    input: true,
+    textarea: true,
+    checkbox: true,
+    checkboxlist: true,
+    radio: true,
+    radiobuttonlist: true,
+    select: true,
+    listbox: true,
+    label: true,
+    hiddenfield: true,
+    fileuploader: true,
+    mdviewer: true,
+    placeholder: true
+};
+
+const isRenderableAsyncType = (type) => !!renderableAsyncTypes[type];
+
+const getRenderFunctionName = (compId) => `render_${String(compId || '').replace(/[^a-zA-Z0-9_]/g, '_')}`;
+
+const collectRenderableComponents = (compList, result) => {
+    result = result || [];
+    for (const comp of compList) {
+        if (comp.reRender && isRenderableAsyncType(comp.type)) {
+            result.push(comp);
+        }
+        if (comp.children) collectRenderableComponents(comp.children, result);
+        if (comp.type === 'table' && comp.cells) {
+            for (const k in comp.cells) {
+                if (comp.cells[k].children) collectRenderableComponents(comp.cells[k].children, result);
+            }
+        }
+    }
+    return result;
+};
+
+const getStateDefaultValue = (comp) => {
+    if (comp.type === 'checkbox') return comp.checked ? 'true' : 'false';
+    if (comp.type === 'checkboxlist' || comp.type === 'radiobuttonlist' || comp.type === 'listbox' || comp.type === 'select') return '';
+    if (comp.type === 'hiddenfield') return comp.value || '';
+    return comp.text || comp.value || '';
+};
+
 const renderUploaderInner = (comp, resultMarkup) => {
     const fileInputId = `${comp.id}_file`;
     const resultId = `${comp.id}_result`;
@@ -911,6 +956,12 @@ const app = createApp({
             for (const comp of compList) {
                 if (['timer', 'script', 'style'].includes(comp.type)) continue;
 
+                if (comp.reRender && isRenderableAsyncType(comp.type)) {
+                    const fn = getRenderFunctionName(comp.id);
+                    html += `${indent}<%=${fn}()%>\n`;
+                    continue;
+                }
+
                 const { attrs, styleStr } = buildComponentAttrs(comp, { includeRuntimeBindings: true, skipClass: comp.type === 'modal', skipStyle: comp.type === 'modal' });
 
                 if (comp.type === 'panel') {
@@ -954,7 +1005,7 @@ const app = createApp({
                 } else if (comp.type === 'radio') {
                     html += `${indent}<label ${attrs}><input type="radio" name="${comp.name}" value="${comp.value || '1'}"> ${comp.text}</label>\n`;
                 } else if (comp.type === 'radiobuttonlist') {
-                    html += `${indent}<div ${attrs}>\n`;
+                    html += `${indent}<div ${attrs} data-g3al-type="radiobuttonlist">\n`;
                     const items = (comp.items || '').split(',');
                     for (const item of items) {
                         const itm = item.trim();
@@ -1054,7 +1105,7 @@ const app = createApp({
         const collectStateComponents = (compList, result) => {
             result = result || [];
             for (const comp of compList) {
-                if (comp.reRender && (comp.type === 'label' || comp.type === 'input' || comp.type === 'textarea' || comp.type === 'select' || comp.type === 'checkbox' || comp.type === 'radio' || comp.type === 'hiddenfield' || comp.type === 'fileuploader' || comp.type === 'mdviewer')) {
+                if (comp.reRender && isRenderableAsyncType(comp.type)) {
                     result.push(comp);
                 }
                 if (comp.children) collectStateComponents(comp.children, result);
@@ -1092,11 +1143,131 @@ const app = createApp({
                     }
                     js += `}\n`;
                 } else {
-                    const defaultVal = (comp.text || comp.value || "").replace(/"/g, '\\"');
+                    const defaultVal = getStateDefaultValue(comp).replace(/"/g, '\\"');
                     js += `if (${comp.id}_val === null || ${comp.id}_val === "") { ${comp.id}_val = "${defaultVal}"; }\n`;
                 }
             }
             return js;
+        };
+
+        const generateRenderHelpers = (compList) => {
+            const renderables = collectRenderableComponents(compList, []);
+            if (renderables.length === 0) return '';
+
+            let code = '// Shared render helpers used by both initial HTML and async re-render\n';
+
+            for (const comp of renderables) {
+                const fn = getRenderFunctionName(comp.id);
+                const valExpr = `(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${escapeJsSingleQuotedString(getStateDefaultValue(comp))}")`;
+                const { attrs, styleStr } = buildComponentAttrs(comp, { includeRuntimeBindings: true, skipClass: comp.type === 'modal', skipStyle: comp.type === 'modal' });
+                code += `function ${fn}() {\n`;
+
+                if (comp.type === 'label') {
+                    code += `    return '<span ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</span>';\n`;
+                } else if (comp.type === 'button') {
+                    code += `    return '<button ${escapeJsSingleQuotedString(attrs)}>${escapeJsSingleQuotedString(comp.text || '')}</button>';\n`;
+                } else if (comp.type === 'input') {
+                    const inputType = escapeJsSingleQuotedString(comp.inputType || 'text');
+                    code += `    return '<input type="${inputType}" ${escapeJsSingleQuotedString(attrs)} value="' + ${valExpr} + '">';\n`;
+                } else if (comp.type === 'textarea') {
+                    code += `    return '<textarea ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</textarea>';\n`;
+                } else if (comp.type === 'checkbox') {
+                    code += `    var __checked = (${comp.id}_val === 'true' || ${comp.id}_val === true) ? ' checked' : '';\n`;
+                    code += `    return '<label ${escapeJsSingleQuotedString(attrs)}><input type="checkbox" value="${escapeJsSingleQuotedString(comp.value || '1')}"' + __checked + '> ${escapeJsSingleQuotedString(comp.text || '')}</label>';\n`;
+                } else if (comp.type === 'checkboxlist') {
+                    const items = (comp.items || '').split(',').map(x => x.trim()).filter(Boolean);
+                    code += `    var __selected = String(${comp.id}_val || '').split(',');\n`;
+                    code += `    var __map = {};\n`;
+                    code += `    for (var __i = 0; __i < __selected.length; __i++) { __map[__selected[__i].trim()] = true; }\n`;
+                    code += `    var __html = '<div ${escapeJsSingleQuotedString(attrs)} data-g3al-type="checkboxlist">';\n`;
+                    for (const itm of items) {
+                        const lit = escapeJsSingleQuotedString(itm);
+                        code += `    __html += '<label><input type="checkbox" value="${lit}"' + (__map['${lit}'] ? ' checked' : '') + '> ${lit}</label><br>';\n`;
+                    }
+                    code += `    __html += '</div>';\n`;
+                    code += `    return __html;\n`;
+                } else if (comp.type === 'radio') {
+                    code += `    var __checked = (${comp.id}_val === 'true' || ${comp.id}_val === true) ? ' checked' : '';\n`;
+                    code += `    return '<label ${escapeJsSingleQuotedString(attrs)}><input type="radio" name="${escapeJsSingleQuotedString(comp.name || '')}" value="${escapeJsSingleQuotedString(comp.value || '1')}"' + __checked + '> ${escapeJsSingleQuotedString(comp.text || '')}</label>';\n`;
+                } else if (comp.type === 'radiobuttonlist') {
+                    const items = (comp.items || '').split(',').map(x => x.trim()).filter(Boolean);
+                    const name = escapeJsSingleQuotedString(comp.name || '');
+                    code += `    var __html = '<div ${escapeJsSingleQuotedString(attrs)} data-g3al-type="radiobuttonlist">';\n`;
+                    for (const itm of items) {
+                        const lit = escapeJsSingleQuotedString(itm);
+                        code += `    __html += '<label><input type="radio" name="${name}" value="${lit}"' + (String(${comp.id}_val || '') === '${lit}' ? ' checked' : '') + '> ${lit}</label><br>';\n`;
+                    }
+                    code += `    __html += '</div>';\n`;
+                    code += `    return __html;\n`;
+                } else if (comp.type === 'select') {
+                    const opts = (comp.options || '').split(',').map(x => x.trim()).filter(Boolean);
+                    code += `    var __html = '<select ${escapeJsSingleQuotedString(attrs)}>';\n`;
+                    for (const opt of opts) {
+                        const lit = escapeJsSingleQuotedString(opt);
+                        code += `    __html += '<option value="${lit}"' + (String(${comp.id}_val || '') === '${lit}' ? ' selected' : '') + '>${lit}</option>';\n`;
+                    }
+                    code += `    __html += '</select>';\n`;
+                    code += `    return __html;\n`;
+                } else if (comp.type === 'listbox') {
+                    const opts = (comp.options || '').split(',').map(x => x.trim()).filter(Boolean);
+                    const multi = comp.multiSelect ? ' multiple' : '';
+                    const size = comp.size ? ` size="${escapeJsSingleQuotedString(String(comp.size))}"` : '';
+                    code += `    var __selected = String(${comp.id}_val || '').split(',');\n`;
+                    code += `    var __map = {};\n`;
+                    code += `    for (var __i = 0; __i < __selected.length; __i++) { __map[__selected[__i].trim()] = true; }\n`;
+                    code += `    var __html = '<select ${escapeJsSingleQuotedString(attrs)}${multi}${size}>';\n`;
+                    for (const opt of opts) {
+                        const lit = escapeJsSingleQuotedString(opt);
+                        if (comp.multiSelect) {
+                            code += `    __html += '<option value="${lit}"' + (__map['${lit}'] ? ' selected' : '') + '>${lit}</option>';\n`;
+                        } else {
+                            code += `    __html += '<option value="${lit}"' + (String(${comp.id}_val || '') === '${lit}' ? ' selected' : '') + '>${lit}</option>';\n`;
+                        }
+                    }
+                    code += `    __html += '</select>';\n`;
+                    code += `    return __html;\n`;
+                } else if (comp.type === 'hiddenfield') {
+                    code += `    return '<input type="hidden" ${escapeJsSingleQuotedString(attrs)} value="' + ${valExpr} + '">';\n`;
+                } else if (comp.type === 'fileuploader') {
+                    const fileInputId = `${comp.id}_file`;
+                    const resultId = `${comp.id}_result`;
+                    const uploadAction = buildUploaderAction(comp.id, fileInputId);
+                    const inputOnChange = comp.showUploadButton ? '' : ` onchange="${uploadAction}"`;
+                    const uploadButton = comp.showUploadButton
+                        ? `<button type="button" class="btn btn-primary" style="margin-top:5px;" onclick="${uploadAction}">${escapeHtmlText(comp.uploadButtonText || 'Send File')}</button>`
+                        : '';
+                    code += `    var __html = '<div ${escapeJsSingleQuotedString(attrs)}><div class="sidebar-header" style="font-size:10px; margin-bottom:5px;">File Upload</div><input type="file" id="${escapeJsSingleQuotedString(fileInputId)}"${escapeJsSingleQuotedString(inputOnChange)}>${escapeJsSingleQuotedString(uploadButton)}<div id="${escapeJsSingleQuotedString(resultId)}" style="font-size:10px; color:#666; margin-top:5px;">Result: ' + (${comp.id}_val || "Ready") + '</div></div>';\n`;
+                    code += `    return __html;\n`;
+                } else if (comp.type === 'mdviewer') {
+                    code += `    return '<div ${escapeJsSingleQuotedString(attrs)}>' + (${comp.id}_val || '') + '</div>';\n`;
+                } else if (comp.type === 'modal') {
+                    const mClass = comp.cssClass ? ` ${comp.cssClass}` : '';
+                    const winClass = escapeJsSingleQuotedString(`window${mClass}`);
+                    const modalStyle = escapeJsSingleQuotedString(`display:none; ${styleStr}`);
+                    code += `    var __html = '<div ${escapeJsSingleQuotedString(attrs)} class="${winClass}" style="${modalStyle}">';\n`;
+                    code += `    __html += '<div class="window-header"><span>${escapeJsSingleQuotedString(comp.title || '')}</span><span style="cursor:pointer" onclick="G3AxonLive.closeModal(\\'${escapeJsSingleQuotedString(comp.id)}\\')">X</span></div>';\n`;
+                    code += `    __html += '<div class="window-body">';\n`;
+                    if (comp.modalType !== 'none') {
+                        code += `    __html += '<div class="alert alert-${escapeJsSingleQuotedString(comp.modalType)}">' + ${valExpr} + '</div>';\n`;
+                    } else {
+                        code += `    __html += '<div>' + ${valExpr} + '</div>';\n`;
+                    }
+                    code += `    __html += '<div style="margin-top: 15px; display:flex; justify-content:flex-end; gap:5px;">';\n`;
+                    if (comp.showBtn1) code += `    __html += '<button class="btn btn-primary" onclick="${escapeJsSingleQuotedString((comp.btn1Action || '').replace(/"/g, '&quot;'))}">${escapeJsSingleQuotedString(comp.btn1Text || '')}</button>';\n`;
+                    if (comp.showBtn2) code += `    __html += '<button class="btn btn-secondary" onclick="${escapeJsSingleQuotedString((comp.btn2Action || '').replace(/"/g, '&quot;'))}">${escapeJsSingleQuotedString(comp.btn2Text || '')}</button>';\n`;
+                    if (comp.showBtn3) code += `    __html += '<button class="btn btn-secondary" onclick="${escapeJsSingleQuotedString((comp.btn3Action || '').replace(/"/g, '&quot;'))}">${escapeJsSingleQuotedString(comp.btn3Text || '')}</button>';\n`;
+                    code += `    __html += '</div></div></div>';\n`;
+                    code += `    return __html;\n`;
+                } else if (comp.type === 'placeholder') {
+                    code += `    return '<div ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</div>';\n`;
+                } else {
+                    code += `    return '';\n`;
+                }
+
+                code += `}\n`;
+            }
+
+            return code;
         };
 
         const generateStatePersist = (compList) => {
@@ -1112,42 +1283,9 @@ const app = createApp({
         const generateReRenderCalls = (compList) => {
             let js = "";
             for (const comp of compList) {
-                if (comp.reRender && !['timer', 'script', 'style', 'rawhtml', 'checkboxlist', 'radiobuttonlist', 'bulletedlist', 'listbox', 'hr'].includes(comp.type)) {
-                    let { attrs } = buildComponentAttrs(comp, { includeRuntimeBindings: true });
-
-                    let inner = "";
-                    let tag = "div";
-                    if (comp.type === 'label') { tag = "span"; inner = `'+(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${comp.text}")+'`; }
-                    else if (comp.type === 'button') { tag = "button"; inner = comp.text; }
-                    else if (comp.type === 'input') { tag = "input"; inner = ""; attrs += ` value="'+(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${comp.text}")+'" type="${comp.inputType}"`; }
-                    else if (comp.type === 'textarea') { tag = "textarea"; inner = `'+(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${comp.text}")+'`; }
-                    else if (comp.type === 'select') { tag = "select"; inner = `'+(${comp.id}_val || "")+'`; }
-                    else if (comp.type === 'checkbox') { tag = "label"; inner = `<input type="checkbox" '+(${comp.id}_val === "true" ? "checked" : "")+'> ${comp.text}`; }
-                    else if (comp.type === 'radio') { tag = "label"; inner = `<input type="radio" name="${comp.name}" '+(${comp.id}_val === "true" ? "checked" : "")+'> ${comp.text}`; }
-                    else if (comp.type === 'hiddenfield') { tag = "input"; inner = ""; attrs += ` type="hidden" value="'+${comp.id}_val+'"`; }
-                    else if (comp.type === 'fileuploader') {
-                        inner = renderUploaderInner(comp, `'+(${comp.id}_val || "Ready")+'`);
-                    }
-                    else if (comp.type === 'mdviewer') {
-                        // _val holds the already-rendered G3MD HTML; inject raw
-                        inner = `'+(${comp.id}_val || "")+'`;
-                    }
-                    else { inner = comp.text || ""; }
-
-                    let htmlStr = `<${tag} ${attrs}>${inner}</${tag}>`;
-                    if (tag === 'input' || tag === 'img') {
-                        htmlStr = `<${tag} ${attrs}>`;
-                    }
-
-                    if (comp.type === 'mdviewer') {
-                        // MD Viewer: _val contains rendered G3MD HTML which may hold any character.
-                        // Build RegisterComponent via explicit JS concatenation so the variable
-                        // value is never embedded inside a single-quoted string literal.
-                        const staticAttrs = escapeJsSingleQuotedString(attrs);
-                        js += `    AxonLive.RegisterComponent("${comp.id}", '<div ${staticAttrs}>' + (${comp.id}_val || '') + '</div>');\n`;
-                    } else {
-                        js += `    AxonLive.RegisterComponent("${comp.id}", '${escapeJsSingleQuotedString(htmlStr)}');\n`;
-                    }
+                if (comp.reRender && isRenderableAsyncType(comp.type)) {
+                    const fn = getRenderFunctionName(comp.id);
+                    js += `    AxonLive.RegisterComponent("${comp.id}", ${fn}());\n`;
                 }
                 if (comp.children) {
                     js += generateReRenderCalls(comp.children);
@@ -1249,6 +1387,7 @@ const app = createApp({
             const renderLogic = generateReRenderCalls(allComponents.value);
             const stateRestore = generateStateRestore(allComponents.value);
             const statePersist = generateStatePersist(allComponents.value);
+            const renderHelpers = generateRenderHelpers(allComponents.value);
             const htmlLayout = generateHTML(components.value, "    ");
             const hasModal = hasComponentType(allComponents.value, 'modal');
 
@@ -1286,6 +1425,7 @@ AxonLive.InitPage();
 var sessionID = Session.SessionID;
 
 ${stateRestore}
+${renderHelpers}
 if (AxonLive.IsAsyncRequest) {
     var compID  = AxonLive.EventComponentID;
     var evtName = AxonLive.EventName;

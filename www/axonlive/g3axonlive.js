@@ -162,6 +162,12 @@
                 } else if (type === 'checkbox') {
                     args['value'] = component.checked ? component.value : '';
                     args['checked'] = component.checked ? 'true' : 'false';
+                } else if (tagName === 'select' && component.multiple) {
+                    var selectedValues = [];
+                    for (var s = 0; s < component.options.length; s++) {
+                        if (component.options[s].selected) selectedValues.push(component.options[s].value);
+                    }
+                    args['value'] = selectedValues.join(',');
                 } else {
                     args['value'] = component.value;
                 }
@@ -173,6 +179,10 @@
                     if (cbks[k].checked) selected.push(cbks[k].value);
                 }
                 args['value'] = selected.join(',');
+            } else if (component.getAttribute('data-g3al-type') === 'radiobuttonlist') {
+                // Special handling for a container representing a radio button list
+                var checkedRadio = component.querySelector('input[type="radio"]:checked');
+                args['value'] = checkedRadio ? checkedRadio.value : '';
             }
 
             return args;
