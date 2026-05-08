@@ -1,13 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
+    <!--
+                
+                AxonASP Server
+                Copyright (C) 2026 G3pix Ltda. All rights reserved.
+                
+                Developed by Lucas Guimarães - G3pix Ltda
+                Contact: https://g3pix.com.br/
+                Project URL: https://g3pix.com.br/axonasp
+                
+                This Source Code Form is subject to the terms of the Mozilla Public
+                License, v. 2.0. If a copy of the MPL was not distributed with this
+                file, You can obtain one at https://mozilla.org/MPL/2.0/.
+                
+                Attribution Notice:
+                If this software is used in other projects, the name "AxonASP Server"
+                must be cited in the documentation or "About" section.
+                
+                Contribution Policy:
+                Modifications to the core source code of AxonASP Server must be
+                made available under this same license terms.
+                
+                -->
 
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>❖ AxonLive Visual Builder</title>
         <link rel="stylesheet" href="builder.css">
-        <!-- Using Vue 3 via CDN for the visual builder SPA -->
-        <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+        <script src="vue.global.prod.js"></script>
     </head>
 
     <body>
@@ -16,9 +37,20 @@
                 G3pix ❖ Axon<i>Live</i> Visual Builder
             </div>
             <div class="builder-toolbar">
-                <button class="btn-xp" @click="copyCode">Copy ASP Code to Clipboard</button>
-                <button class="btn-xp" @click="downloadCode">Download .asp File</button>
-                <button class="btn-xp" @click="clearCanvas">Clear Canvas</button>
+                <button class="btn-xp" @click="saveModel">💾 Save model</button>
+                <button class="btn-xp" @click="openModel">📂 Open model</button>
+                <input type="file" ref="fileInput" style="display:none" accept=".g3al" @change="handleFileOpen">
+                <div style="width:1px; background:#ACA899; margin: 0 5px;"></div>
+                <button class="btn-xp" @click="undo" :disabled="historyIndex <= 0">⟲ Undo</button>
+                <button class="btn-xp" @click="redo" :disabled="historyIndex >= history.length - 1">⟳ Redo</button>
+                <div style="width:1px; background:#ACA899; margin: 0 5px;"></div>
+                <button class="btn-xp" @click="copyComp" :disabled="!selectedComponent">📄 Copy</button>
+                <button class="btn-xp" @click="pasteComp" :disabled="!clipboard">📋 Paste</button>
+                <button class="btn-xp" @click="duplicateComp" :disabled="!selectedComponent">📑 Duplicate</button>
+                <div style="width:1px; background:#ACA899; margin: 0 5px;"></div>
+                <button class="btn-xp" @click="copyCode">📜 Copy ASP Code to Clipboard</button>
+                <button class="btn-xp" @click="downloadCode">⬇️ Download .asp File</button>
+                <button class="btn-xp" @click="clearCanvas">🗑 Clear Canvas</button>
             </div>
             <div class="builder-workspace">
                 <!-- Sidebar: Components -->
@@ -33,13 +65,16 @@
                 </div>
 
                 <!-- Main Canvas -->
-                <div class="builder-canvas-container" @dragover.prevent @drop="onDrop($event, null)">
+                <div class="builder-canvas-container" @dragover.prevent @drop="onDrop($event, null)"
+                    @contextmenu.prevent="onContextMenu($event, null)">
                     <div class="builder-canvas" :style="{
                         display: pageSettings.display,
                         flexDirection: pageSettings.display === 'flex' ? pageSettings.flexDirection : '',
                         justifyContent: pageSettings.display === 'flex' ? pageSettings.justifyContent : '',
-                        alignItems: pageSettings.display === 'flex' ? pageSettings.alignItems : ''
-                     }" @click.self="selectComponent(null)">
+                        alignItems: pageSettings.display === 'flex' ? pageSettings.alignItems : '',
+                        width: pageSettings.canvasWidth + 'px',
+                        height: pageSettings.canvasHeight + 'px'
+                     }" @click.self="selectComponent(null)" @contextmenu.prevent.self="onContextMenu($event, null)">
 
                         <div v-if="components.length === 0" class="empty-canvas" @click.self="selectComponent(null)">
                             Drag and drop components here... (Click blank space for page properties)
@@ -48,7 +83,8 @@
                         <!-- Recursive rendering of components -->
                         <component-renderer v-for="(comp, index) in components" :key="comp.id" :comp="comp"
                             :selected-id="selectedComponent ? selectedComponent.id : null" @select="selectComponent"
-                            @remove="removeComponent()">
+                            @drag-start="handleDragStart" @resize-start="handleResizeStart"
+                            @context-menu="onContextMenu" @remove="removeComponent()">
                         </component-renderer>
                     </div>
                 </div>
@@ -63,14 +99,63 @@
                             <input type="text" class="prop-input" v-model="selectedComponent.id">
                         </div>
 
-                        <div class="prop-group" v-if="selectedComponent.text !== undefined">
-                            <label class="prop-label">Text / Content / Code</label>
-                            <textarea v-if="['rawhtml','script','style','modal'].includes(selectedComponent.type)" class="prop-textarea" v-model="selectedComponent.text"></textarea>
-                            <input v-else type="text" class="prop-input" v-model="selectedComponent.text">
+                        <div class="prop-group"
+                            v-if="['label','button','radio','checkbox','link'].includes(selectedComponent.type)">
+                            <label class="prop-label">Text / Label</label>
+                            <input type="text" class="prop-input" v-model="selectedComponent.text">
+                        </div>
+
+                        <!-- Checkbox specific -->
+                        <div class="prop-group" v-if="selectedComponent.type === 'checkbox'">
+                            <label><input type="checkbox" v-model="selectedComponent.checked"> Checked by
+                                Default</label>
+                        </div>
+
+                        <!-- Radio specific -->
+                        <div class="prop-group" v-if="['radio','radiobuttonlist'].includes(selectedComponent.type)">
+                            <label class="prop-label">Group Name (name attribute)</label>
+                            <input type="text" class="prop-input" v-model="selectedComponent.name">
+                        </div>
+
+                        <!-- List components (BulletedList, CheckBoxList, RBList, ListBox, Select) -->
+                        <div class="prop-group"
+                            v-if="['checkboxlist','radiobuttonlist','bulletedlist','select','listbox'].includes(selectedComponent.type)">
+                            <label class="prop-label">Items / Options (comma separated)</label>
+                            <textarea class="prop-textarea" v-model="selectedComponent.items"
+                                v-if="['checkboxlist','radiobuttonlist','bulletedlist'].includes(selectedComponent.type)"
+                                placeholder="Item 1, Item 2, ..."></textarea>
+                            <textarea class="prop-textarea" v-model="selectedComponent.options" v-else
+                                placeholder="Option 1, Option 2, ..."></textarea>
+                        </div>
+
+                        <div class="prop-group" v-if="selectedComponent.type === 'bulletedlist'">
+                            <label class="prop-label">List Type</label>
+                            <select v-model="selectedComponent.listType" class="prop-input">
+                                <option value="ul">Unordered (Bullet)</option>
+                                <option value="ol">Ordered (Numbered)</option>
+                            </select>
+                        </div>
+
+                        <div class="prop-group" v-if="selectedComponent.type === 'listbox'">
+                            <label><input type="checkbox" v-model="selectedComponent.multiSelect"> Allow
+                                Multi-Select</label>
+                            <label class="prop-label" style="margin-top:5px;">Visible Size</label>
+                            <input type="number" class="prop-input" v-model.number="selectedComponent.size">
+                        </div>
+
+                        <!-- Hidden Field / Generic Value -->
+                        <div class="prop-group"
+                            v-if="['hiddenfield','input','radio','checkbox'].includes(selectedComponent.type)">
+                            <label class="prop-label">Value</label>
+                            <input type="text" class="prop-input" v-model="selectedComponent.value">
                         </div>
 
                         <!-- Modal specific -->
                         <div v-if="selectedComponent.type === 'modal'">
+                            <div class="prop-group">
+                                <label><input type="checkbox" v-model="selectedComponent.showInBuilder"> Visible in
+                                    Editor</label>
+                            </div>
                             <div class="prop-group">
                                 <label class="prop-label">Title</label>
                                 <input type="text" class="prop-input" v-model="selectedComponent.title">
@@ -86,24 +171,33 @@
                             </div>
                             <div class="sidebar-header" style="margin: 10px -5px 10px -5px;">Modal Buttons</div>
                             <div class="prop-group">
-                                <label><input type="checkbox" v-model="selectedComponent.showBtn1"> Button 1 (Primary)</label>
+                                <label><input type="checkbox" v-model="selectedComponent.showBtn1"> Button 1
+                                    (Primary)</label>
                                 <div v-if="selectedComponent.showBtn1" style="margin-top:5px; padding-left:10px;">
-                                    <input type="text" class="prop-input" v-model="selectedComponent.btn1Text" placeholder="Text">
-                                    <input type="text" class="prop-input" v-model="selectedComponent.btn1Action" placeholder="onclick JS logic" style="margin-top:2px;">
+                                    <input type="text" class="prop-input" v-model="selectedComponent.btn1Text"
+                                        placeholder="Text">
+                                    <input type="text" class="prop-input" v-model="selectedComponent.btn1Action"
+                                        placeholder="onclick JS logic" style="margin-top:2px;">
                                 </div>
                             </div>
                             <div class="prop-group">
-                                <label><input type="checkbox" v-model="selectedComponent.showBtn2"> Button 2 (Secondary)</label>
+                                <label><input type="checkbox" v-model="selectedComponent.showBtn2"> Button 2
+                                    (Secondary)</label>
                                 <div v-if="selectedComponent.showBtn2" style="margin-top:5px; padding-left:10px;">
-                                    <input type="text" class="prop-input" v-model="selectedComponent.btn2Text" placeholder="Text">
-                                    <input type="text" class="prop-input" v-model="selectedComponent.btn2Action" placeholder="onclick JS logic" style="margin-top:2px;">
+                                    <input type="text" class="prop-input" v-model="selectedComponent.btn2Text"
+                                        placeholder="Text">
+                                    <input type="text" class="prop-input" v-model="selectedComponent.btn2Action"
+                                        placeholder="onclick JS logic" style="margin-top:2px;">
                                 </div>
                             </div>
                             <div class="prop-group">
-                                <label><input type="checkbox" v-model="selectedComponent.showBtn3"> Button 3 (Secondary)</label>
+                                <label><input type="checkbox" v-model="selectedComponent.showBtn3"> Button 3
+                                    (Secondary)</label>
                                 <div v-if="selectedComponent.showBtn3" style="margin-top:5px; padding-left:10px;">
-                                    <input type="text" class="prop-input" v-model="selectedComponent.btn3Text" placeholder="Text">
-                                    <input type="text" class="prop-input" v-model="selectedComponent.btn3Action" placeholder="onclick JS logic" style="margin-top:2px;">
+                                    <input type="text" class="prop-input" v-model="selectedComponent.btn3Text"
+                                        placeholder="Text">
+                                    <input type="text" class="prop-input" v-model="selectedComponent.btn3Action"
+                                        placeholder="onclick JS logic" style="margin-top:2px;">
                                 </div>
                             </div>
                         </div>
@@ -139,6 +233,14 @@
                                 <div style="flex:1;"><label class="prop-label">Cols</label><input type="number"
                                         class="prop-input" v-model.number="selectedComponent.cols"></div>
                             </div>
+                            <div style="margin-top:5px;">
+                                <label><input type="checkbox" v-model="selectedComponent.showHeader"> Show
+                                    Header</label>
+                            </div>
+                            <div>
+                                <label><input type="checkbox" v-model="selectedComponent.showFooter"> Show
+                                    Footer</label>
+                            </div>
                         </div>
 
                         <!-- Timer specific -->
@@ -153,8 +255,7 @@
                                 Server Logic</div>
                             <label class="prop-label" style="margin-top:5px;">{{ selectedComponent.triggerEvent }}
                                 handler</label>
-                            <textarea class="prop-textarea"
-                                v-if="selectedComponent.events"
+                            <textarea class="prop-textarea" v-if="selectedComponent.events"
                                 v-model="selectedComponent.events[selectedComponent.triggerEvent]"
                                 placeholder="// Timer logic here..."></textarea>
                         </div>
@@ -181,6 +282,35 @@
                                     <option value="fixed">Fixed</option>
                                 </select>
                             </div>
+
+                            <!-- Flex Item Specific -->
+                            <div class="prop-group" v-if="pageSettings.display === 'flex'">
+                                <div style="display:flex; gap:5px;">
+                                    <div style="flex:1;"><label class="prop-label">Flex Grow</label><input type="text"
+                                            class="prop-input" v-model="selectedComponent.flexGrow" placeholder="0">
+                                    </div>
+                                    <div style="flex:1;"><label class="prop-label">Flex Shrink</label><input type="text"
+                                            class="prop-input" v-model="selectedComponent.flexShrink" placeholder="1">
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:5px; margin-top:5px;">
+                                    <div style="flex:1;"><label class="prop-label">Flex Basis</label><input type="text"
+                                            class="prop-input" v-model="selectedComponent.flexBasis" placeholder="auto">
+                                    </div>
+                                    <div style="flex:1;"><label class="prop-label">Align Self</label>
+                                        <select v-model="selectedComponent.alignSelf" class="prop-input">
+                                            <option value="">Default</option>
+                                            <option value="flex-start">Start</option>
+                                            <option value="center">Center</option>
+                                            <option value="flex-end">End</option>
+                                            <option value="stretch">Stretch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="margin-top:5px;"><label class="prop-label">Order</label><input type="number"
+                                        class="prop-input" v-model.number="selectedComponent.order"></div>
+                            </div>
+
                             <div class="prop-group" v-if="selectedComponent.position !== 'static'">
                                 <div style="display:flex; gap:5px;">
                                     <div style="flex:1;"><label class="prop-label">Top</label><input type="text"
@@ -194,6 +324,10 @@
                                     <div style="flex:1;"><label class="prop-label">Right</label><input type="text"
                                             class="prop-input" v-model="selectedComponent.right"></div>
                                 </div>
+                                <div style="margin-top:5px;">
+                                    <label class="prop-label">Z-Index</label>
+                                    <input type="number" class="prop-input" v-model.number="selectedComponent.zIndex">
+                                </div>
                             </div>
                         </div>
 
@@ -201,6 +335,32 @@
                         <div v-if="!['timer','rawhtml','script','style'].includes(selectedComponent.type)">
                             <div class="sidebar-header" style="margin: 10px -5px 10px -5px;">Appearance</div>
                             <div class="prop-group">
+                                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                                    <div style="flex:1;"><label class="prop-label">Font Family</label><input type="text"
+                                            class="prop-input" v-model="selectedComponent.fontFamily"
+                                            placeholder="Tahoma"></div>
+                                    <div style="flex:1;"><label class="prop-label">Size</label><input type="text"
+                                            class="prop-input" v-model="selectedComponent.fontSize" placeholder="12px">
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:5px; margin-bottom:5px;">
+                                    <div style="flex:1;"><label class="prop-label">Font Color</label><input type="color"
+                                            class="prop-input" v-model="selectedComponent.color"></div>
+                                    <div style="flex:1;"><label class="prop-label">BG Color</label><input type="color"
+                                            class="prop-input" v-model="selectedComponent.backgroundColor"></div>
+                                </div>
+                                <div style="margin-bottom:5px;">
+                                    <label><input type="checkbox" v-model="selectedComponent.fontWeight"
+                                            true-value="bold" false-value=""> Bold</label>
+                                    <label><input type="checkbox" v-model="selectedComponent.fontStyle"
+                                            true-value="italic" false-value=""> Italic</label>
+                                    <label><input type="checkbox" v-model="selectedComponent.textDecoration"
+                                            true-value="underline" false-value=""> Underline</label>
+                                </div>
+                                <div style="margin-bottom:5px;">
+                                    <label class="prop-label">Border</label><input type="text" class="prop-input"
+                                        v-model="selectedComponent.border" placeholder="1px solid #000">
+                                </div>
                                 <label class="prop-label">CSS Classes</label>
                                 <input type="text" class="prop-input" v-model="selectedComponent.cssClass">
                             </div>
@@ -213,23 +373,28 @@
 
                         <!-- Events -->
                         <div v-if="!['timer','rawhtml','script','style'].includes(selectedComponent.type)">
-                            
+
                             <!-- Client Events -->
                             <div class="sidebar-header" style="margin: 10px -5px 10px -5px;">Local Events (JS)</div>
-                            <div class="prop-group" v-if="selectedComponent.clientEvents" v-for="(code, evtName) in selectedComponent.clientEvents" :key="evtName">
+                            <div class="prop-group" v-if="selectedComponent.clientEvents"
+                                v-for="(code, evtName) in selectedComponent.clientEvents" :key="evtName">
                                 <label class="prop-label">{{ evtName }}</label>
-                                <input type="text" class="prop-input" v-model="selectedComponent.clientEvents[evtName]" placeholder="e.g. alert('clicked');">
+                                <input type="text" class="prop-input" v-model="selectedComponent.clientEvents[evtName]"
+                                    placeholder="e.g. alert('clicked');">
                             </div>
                             <div class="prop-group" v-if="selectedComponent.type !== 'placeholder'">
                                 <div style="display:flex; gap:5px;">
-                                    <input type="text" class="prop-input" v-model="newClientEventName" placeholder="onclick">
+                                    <input type="text" class="prop-input" v-model="newClientEventName"
+                                        placeholder="onclick">
                                     <button class="btn-xp" @click="addClientEvent">Add Local Event</button>
                                 </div>
                             </div>
 
                             <!-- Server Events -->
-                            <div class="sidebar-header" style="margin: 10px -5px 10px -5px;">Server-Side Events (JS)</div>
-                            <div class="prop-group" v-if="selectedComponent.events" v-for="(code, evtName) in selectedComponent.events" :key="evtName">
+                            <div class="sidebar-header" style="margin: 10px -5px 10px -5px;">Server-Side Events (JS)
+                            </div>
+                            <div class="prop-group" v-if="selectedComponent.events"
+                                v-for="(code, evtName) in selectedComponent.events" :key="evtName">
                                 <label class="prop-label">{{ evtName }} handler</label>
                                 <textarea class="prop-textarea" v-model="selectedComponent.events[evtName]"
                                     placeholder="// Enter server-side logic here..."></textarea>
@@ -322,19 +487,43 @@
                 </div>
             </div>
 
+            <!-- Functional Components Bar (Scripts, Styles, Timers) -->
+            <div class="functional-bar" v-show="functionalComponents.length > 0">
+                <div v-for="comp in functionalComponents" :key="comp.id"
+                    :class="['functional-item', comp.type, { selected: selectedComponent && selectedComponent.id === comp.id }]"
+                    @click="selectComponent(comp)">
+                    <div style="font-weight:bold; margin-bottom:2px;">{{ comp.type.toUpperCase() }}</div>
+                    <div>{{ comp.id }}</div>
+                </div>
+            </div>
+
             <!-- Code Preview Pane -->
-            <div class="builder-code-pane">
+            <div :class="['builder-code-pane', codePaneState]">
                 <div class="code-header">
                     <span>Generated ASP Source (Server-Side JavaScript)</span>
-                    <div>
+                    <div style="display:flex; align-items:center; gap:10px;">
                         <label style="font-weight:normal; font-size:11px;">
                             <input type="checkbox" v-model="showJsonTree"> Show JSON Tree
                         </label>
+                        <div class="btn-toggle-pane" @click="toggleCodePane" title="Toggle Size">🗔</div>
                     </div>
                 </div>
                 <textarea class="code-area" readonly v-if="!showJsonTree" :value="generatedCode"></textarea>
-                <textarea class="code-area" readonly v-if="showJsonTree" :value="jsonTree"></textarea>
+                <textarea class="code-area" v-if="showJsonTree" v-model="editableJsonTree"
+                    @input="updateFromJson"></textarea>
             </div>
+            <div v-if="contextMenu.show" class="context-menu"
+                :style="{top: contextMenu.y + 'px', left: contextMenu.x + 'px'}">
+                <div class="context-menu-item" @click="undo">Undo</div>
+                <div class="context-menu-item" @click="redo">Redo</div>
+                <div class="context-menu-divider"></div>
+                <div class="context-menu-item" @click="copyComp">Copy</div>
+                <div class="context-menu-item" @click="pasteComp">Paste</div>
+                <div class="context-menu-item" @click="duplicateComp">Duplicate</div>
+                <div class="context-menu-divider"></div>
+                <div class="context-menu-item" @click="removeComponent">Delete</div>
+            </div>
+
         </div>
 
         <script src="app.js"></script>

@@ -118,12 +118,15 @@
         /**
          * Extract event arguments from data-g3al-arg-* attributes on the component.
          * For example: data-g3al-arg-step="2" yields { step: "2" }.
+         * Also automatically includes the value of form elements.
          * @param {HTMLElement} component - The reactive component element
          * @returns {Object} - Map of argument names to string values
          */
         extractEventArgs: function (component) {
             var args = {};
             if (!component.attributes) return args;
+
+            // 1. Existing data-g3al-arg-* extraction
             for (var i = 0; i < component.attributes.length; i++) {
                 var attr = component.attributes[i];
                 if (attr.name.indexOf('data-g3al-arg-') === 0) {
@@ -131,6 +134,42 @@
                     args[argName] = attr.value;
                 }
             }
+
+            // 2. Automatic value extraction for form elements
+            var tagName = component.tagName.toLowerCase();
+            var type = (component.type || '').toLowerCase();
+
+            if (tagName === 'input' || tagName === 'select' || tagName === 'textarea') {
+                if (type === 'radio') {
+                    // Handle Radio Group: if a name is present, find the checked one in the same group
+                    var name = component.getAttribute('name');
+                    if (name) {
+                        var radios = document.getElementsByName(name);
+                        for (var j = 0; j < radios.length; j++) {
+                            if (radios[j].checked) {
+                                args['value'] = radios[j].value;
+                                break;
+                            }
+                        }
+                    } else {
+                        args['value'] = component.checked ? component.value : '';
+                    }
+                } else if (type === 'checkbox') {
+                    args['value'] = component.checked ? component.value : '';
+                    args['checked'] = component.checked ? 'true' : 'false';
+                } else {
+                    args['value'] = component.value;
+                }
+            } else if (component.getAttribute('data-g3al-type') === 'checkboxlist') {
+                // Special handling for a container representing a checkbox list
+                var selected = [];
+                var cbks = component.querySelectorAll('input[type="checkbox"]');
+                for (var k = 0; k < cbks.length; k++) {
+                    if (cbks[k].checked) selected.push(cbks[k].value);
+                }
+                args['value'] = selected.join(',');
+            }
+
             return args;
         },
 
@@ -339,6 +378,106 @@
                             }
                             break;
 
+                        case 'set_property':
+                            // Set a property on the identified component element (e.g. value, disabled).
+                            if (action.componentId && action.name) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    // Security constraint: block dangerous properties to prevent XSS.
+                                    var blocked = ['innerHTML', 'outerHTML', 'onclick', 'onchange', 'onsubmit', 'onmouseover'];
+                                    if (blocked.indexOf(action.name.toLowerCase()) !== -1 || action.name.indexOf('on') === 0) {
+                                        console.warn('G3AxonLive: set_property blocked dangerous property:', action.name);
+                                        break;
+                                    }
+                                    // Handle boolean conversion if necessary
+                                    var val = action.value;
+                                    if (val === 'true') val = true;
+                                    if (val === 'false') val = false;
+                                    el[action.name] = val;
+                                } else {
+                                    console.warn('G3AxonLive: set_property — element not found:', action.componentId);
+                                }
+                            }
+                            break;
+
+                        case 'set_style':
+                            // Update a specific CSS style property.
+                            if (action.componentId && action.name) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.style[action.name] = action.value || '';
+                                } else {
+                                    console.warn('G3AxonLive: set_style — element not found:', action.componentId);
+                                }
+                            }
+                            break;
+
+                        case 'add_class':
+                            // Add a CSS class via classList.
+                            if (action.componentId && action.value) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.classList.add(action.value);
+                                } else {
+                                    console.warn('G3AxonLive: add_class — element not found:', action.componentId);
+                                }
+                            }
+                            break;
+
+                        case 'remove_class':
+                            // Remove a CSS class via classList.
+                            if (action.componentId && action.value) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.classList.remove(action.value);
+                                } else {
+                                    console.warn('G3AxonLive: remove_class — element not found:', action.componentId);
+                                }
+                            }
+                            break;
+
+                        case 'remove_attribute':
+                            // Remove an HTML attribute.
+                            if (action.componentId && action.name) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.removeAttribute(action.name);
+                                } else {
+                                    console.warn('G3AxonLive: remove_attribute — element not found:', action.componentId);
+                                }
+                            }
+                            break;
+
+                        case 'add_title':
+                            // Update the element's title (tooltip).
+                            if (action.componentId) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.title = action.value || '';
+                                }
+                            }
+                            break;
+
+                        case 'remove_title':
+                            // Clear the element's title.
+                            if (action.componentId) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.title = '';
+                                }
+                            }
+                            break;
+
+                        case 'set_value':
+                            // Direct value assignment (helper for form fields).
+                            if (action.componentId) {
+                                var el = document.getElementById(action.componentId);
+                                if (el) {
+                                    el.value = action.value || '';
+                                }
+                            }
+                            break;
+
                         default:
                             console.warn('G3AxonLive: Unknown action type "' + action.type + '":', action);
                             break;
@@ -380,6 +519,35 @@
      */
     G3AxonLive.trigger = function (componentId, eventName, eventArgs) {
         this.sendEvent(componentId, eventName, eventArgs || {});
+    };
+
+    /**
+     * Shows a modal component by ID.
+     * @param {string} modalId - The DOM ID of the modal container.
+     */
+    G3AxonLive.showModal = function (modalId) {
+        var el = document.getElementById(modalId);
+        if (el) el.style.display = 'block';
+    };
+
+    /**
+     * Closes a modal component by ID.
+     * @param {string} modalId - The DOM ID of the modal container.
+     */
+    G3AxonLive.closeModal = function (modalId) {
+        var el = document.getElementById(modalId);
+        if (el) el.style.display = 'none';
+    };
+
+    /**
+     * Toggles a modal component's visibility.
+     * @param {string} modalId - The DOM ID of the modal container.
+     */
+    G3AxonLive.toggleModal = function (modalId) {
+        var el = document.getElementById(modalId);
+        if (el) {
+            el.style.display = (el.style.display === 'none' || el.style.display === '') ? 'block' : 'none';
+        }
     };
 
 })();

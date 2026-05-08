@@ -33,17 +33,73 @@ newHtml = "<div id=""my-comp"">Updated Content</div>"
 AxonLive.RegisterComponent "my-comp", newHtml
 ```
 
+### GetComponent( `componentId` )
+Returns a **Component Proxy Object** that allows you to modify properties, styles, and classes of a specific DOM element directly, without re-rendering its entire HTML.
+
+*   `componentId` (String): The unique ID of the target HTML element.
+*   **Returns:** A `G3ALComponentProxy` object.
+
+```asp
+Dim btn
+Set btn = AxonLive.GetComponent("btnSubmit")
+btn.value = "Processing..."
+btn.disabled = True
+btn.SetStyle "background-color", "gray"
+```
+
 ### EndAsyncResponse()
-Serializes all registered components and any pending client actions into a single JSON response, sends it to the browser, and immediately halts script execution. This **must** be the final call in your async event handling block.
+Serializes all registered components, granular mutations, and any pending client actions into a single JSON response, sends it to the browser, and immediately halts script execution. This **must** be the final call in your async event handling block.
 
 ```asp
 If AxonLive.IsAsyncRequest Then
-    ' ... handle event, register components ...
+    ' ... handle event, register components or use proxies ...
 
     ' Send the response and stop
     AxonLive.EndAsyncResponse()
 End If
 ```
+
+## Component Proxy Object (G3ALComponentProxy)
+
+The proxy object returned by `GetComponent` provides a granular API for DOM manipulation.
+
+### Properties
+You can read and write standard DOM properties directly on the proxy object. Assignments are queued as client-side actions and also persisted in the `G3ALStore`.
+
+*   `value` (String/Boolean): Sets or gets the `value` property.
+*   `disabled` (Boolean): Sets or gets the `disabled` property.
+*   `checked` (Boolean): Sets or gets the `checked` property.
+*   `className` (String): Sets or gets the `className` property.
+
+### Methods
+
+#### SetStyle( `name`, `value` )
+Updates a specific CSS style property on the element.
+*   `name` (String): The CSS property name (e.g., "color", "display").
+*   `value` (String): The new style value.
+
+#### AddClass( `className` )
+Adds a CSS class to the element's `classList`.
+
+#### RemoveClass( `className` )
+Removes a CSS class from the element's `classList`.
+
+#### SetAttribute( `name`, `value` )
+Sets an HTML attribute on the element.
+
+#### RemoveAttribute( `name` )
+Removes an HTML attribute from the element.
+
+#### AddTitle( `title` )
+Sets the `title` attribute (tooltip) of the element.
+
+#### RemoveTitle()
+Clears the `title` attribute.
+
+#### SetValue( `value` )
+Directly sets the `value` property of the element (helper method).
+
+---
 
 ## Async Request Properties
 

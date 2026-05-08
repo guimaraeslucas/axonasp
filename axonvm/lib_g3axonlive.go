@@ -47,10 +47,18 @@ type G3ALPatch struct {
 // The "type" field determines what the client engine does.
 //
 // Supported types:
-//   - "set_timer"     — fire eventName on componentId after delay ms
-//   - "redirect"      — navigate the browser to url
-//   - "trigger"       — immediately fire eventName on componentId
-//   - "add_attribute" — set attr on componentId element
+//   - "set_timer"        — fire eventName on componentId after delay ms
+//   - "redirect"         — navigate the browser to url
+//   - "trigger"          — immediately fire eventName on componentId
+//   - "add_attribute"    — set attr on componentId element
+//   - "set_property"     — assign DOM property (value, disabled, checked, etc.)
+//   - "set_style"        — update element.style[name]
+//   - "add_class"        — add CSS class to element.classList
+//   - "remove_class"     — remove CSS class from element.classList
+//   - "remove_attribute" — remove DOM attribute
+//   - "add_title"        — add tooltip title
+//   - "remove_title"     — remove tooltip title
+//   - "set_value"        — set form field value
 type G3ALAction struct {
 	Type        string `json:"type"`
 	ComponentID string `json:"componentId,omitempty"`
@@ -245,6 +253,168 @@ func g3alPerformCleanup(idle time.Duration) {
 }
 
 // ---------------------------------------------------------------------------
+// Component Proxy Object — Granular DOM manipulation
+// ---------------------------------------------------------------------------
+
+// G3ALComponentProxy is a native object that represents a specific reactive component.
+// It allows ASP code to modify component properties, styles, and classes directly
+// without re-rendering the entire HTML block.
+type G3ALComponentProxy struct {
+	parent      *G3AXONLIVE
+	componentID string
+}
+
+// DispatchPropertyGet retrieves a property value from the persistent g3alStore.
+func (p *G3ALComponentProxy) DispatchPropertyGet(propertyName string) Value {
+	method := strings.ToLower(strings.TrimSpace(propertyName))
+
+	// Determine the active session ID.
+	sessionID := ""
+	if p.parent.vm.host.Session() != nil {
+		sessionID = p.parent.vm.host.Session().ID
+	}
+	if sessionID == "" && p.parent.eventSessionID != "" {
+		sessionID = p.parent.eventSessionID
+	}
+
+	if sessionID == "" {
+		return Value{Type: VTEmpty}
+	}
+
+	s := getG3ALStore()
+	key := componentKey(sessionID, p.componentID, method)
+	s.mu.RLock()
+	entry, ok := s.componentValues[key]
+	s.mu.RUnlock()
+
+	if !ok {
+		return Value{Type: VTEmpty}
+	}
+
+	// Simple type coercion: try to return bool for "true"/"false" strings.
+	if strings.EqualFold(entry.value, "true") {
+		return Value{Type: VTBool, Num: 1}
+	}
+	if strings.EqualFold(entry.value, "false") {
+		return Value{Type: VTBool, Num: 0}
+	}
+
+	return NewString(entry.value)
+}
+
+// DispatchPropertySet queues a "set_property" action and updates the persistent store.
+func (p *G3ALComponentProxy) DispatchPropertySet(propertyName string, args []Value) {
+	if len(args) < 1 {
+		return
+	}
+	method := strings.ToLower(strings.TrimSpace(propertyName))
+	val := args[0]
+	valStr := val.String()
+
+	// 1. Queue the client-side mutation action.
+	p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+		Type:        "set_property",
+		ComponentID: p.componentID,
+		AttrName:    method,
+		AttrValue:   valStr,
+	})
+
+	// 2. Persistence: Update the global state so future reads reflect this change.
+	sessionID := ""
+	if p.parent.vm.host.Session() != nil {
+		sessionID = p.parent.vm.host.Session().ID
+	}
+	if sessionID == "" && p.parent.eventSessionID != "" {
+		sessionID = p.parent.eventSessionID
+	}
+
+	if sessionID != "" {
+		s := getG3ALStore()
+		key := componentKey(sessionID, p.componentID, method)
+		s.mu.Lock()
+		s.componentValues[key] = g3alComponentEntry{value: valStr, updatedAt: time.Now()}
+		s.lastAccess[sessionID] = time.Now()
+		s.mu.Unlock()
+	}
+}
+
+// DispatchMethod implements granular manipulation methods (SetStyle, AddClass, etc.)
+func (p *G3ALComponentProxy) DispatchMethod(methodName string, args []Value) Value {
+	method := strings.ToLower(strings.TrimSpace(methodName))
+	switch method {
+	case "setstyle":
+		if len(args) >= 2 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "set_style",
+				ComponentID: p.componentID,
+				AttrName:    args[0].String(),
+				AttrValue:   args[1].String(),
+			})
+		}
+	case "addclass":
+		if len(args) >= 1 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "add_class",
+				ComponentID: p.componentID,
+				AttrValue:   args[0].String(),
+			})
+		}
+	case "removeclass":
+		if len(args) >= 1 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "remove_class",
+				ComponentID: p.componentID,
+				AttrValue:   args[0].String(),
+			})
+		}
+	case "setattribute":
+		if len(args) >= 2 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "add_attribute",
+				ComponentID: p.componentID,
+				AttrName:    args[0].String(),
+				AttrValue:   args[1].String(),
+			})
+		}
+	case "removeattribute":
+		if len(args) >= 1 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "remove_attribute",
+				ComponentID: p.componentID,
+				AttrName:    args[0].String(),
+			})
+		}
+	case "addtitle":
+		if len(args) >= 1 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "add_title",
+				ComponentID: p.componentID,
+				AttrValue:   args[0].String(),
+			})
+		}
+	case "removetitle":
+		p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+			Type:        "remove_title",
+			ComponentID: p.componentID,
+		})
+	case "setvalue":
+		if len(args) >= 1 {
+			p.parent.pendingActions = append(p.parent.pendingActions, G3ALAction{
+				Type:        "set_value",
+				ComponentID: p.componentID,
+				AttrValue:   args[0].String(),
+			})
+		}
+	default:
+		// Fallback for zero-arg property reads (VBScript compatibility).
+		if len(args) == 0 {
+			return p.DispatchPropertyGet(methodName)
+		}
+	}
+	return Value{Type: VTEmpty}
+}
+
+// ---------------------------------------------------------------------------
 // Per-request G3AXONLIVE struct — thin proxy to the singleton + request state
 // ---------------------------------------------------------------------------
 
@@ -345,6 +515,8 @@ func (g *G3AXONLIVE) DispatchMethod(methodName string, args []Value) Value {
 		return g.getEventArg(args)
 	case "registercomponent":
 		return g.registerComponent(args)
+	case "getcomponent":
+		return g.getComponent(args)
 	case "endasyncresponse":
 		return g.endAsyncResponse()
 
@@ -575,6 +747,36 @@ func (g *G3AXONLIVE) registerComponent(args []Value) Value {
 		HTML:        html,
 	})
 	return Value{Type: VTEmpty}
+}
+
+// getComponent returns a G3ALComponentProxy native object for granular DOM manipulation.
+// Signature: GetComponent(componentId)
+func (g *G3AXONLIVE) getComponent(args []Value) Value {
+	if len(args) < 1 {
+		return Value{Type: VTEmpty}
+	}
+	componentID := strings.TrimSpace(args[0].String())
+	if componentID == "" {
+		return Value{Type: VTEmpty}
+	}
+
+	// Validate that the component ID contains only safe characters.
+	if !g3alIsValidComponentID(componentID) {
+		g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ALInvalidComponentID, nil, AxonASPErrorMessages[ErrG3ALInvalidComponentID], "axonvm/lib_g3axonlive.go", 0).Error())
+		return Value{Type: VTEmpty}
+	}
+
+	proxy := &G3ALComponentProxy{
+		parent:      g,
+		componentID: componentID,
+	}
+	id := g.vm.nextDynamicNativeID
+	g.vm.nextDynamicNativeID++
+	if g.vm.g3axonliveProxyItems == nil {
+		g.vm.g3axonliveProxyItems = make(map[int64]*G3ALComponentProxy)
+	}
+	g.vm.g3axonliveProxyItems[id] = proxy
+	return Value{Type: VTNativeObject, Num: id}
 }
 
 // endAsyncResponse serializes all pending patches and client actions into a

@@ -64,10 +64,34 @@ If AxonLive.IsAsyncRequest Then
     ' Persist updated state
     Call AxonLive.SetComponentProperty(sessionID, "counter", "count", CStr(count))
 
-    ' Register the component HTML patches that the client will swap in.
-    ' The element id must match the data-g3al-id attribute in the HTML below.
-    Call AxonLive.RegisterComponent("lblCounter", _
-        "<span id=""lblCounter"" class=""counter-value"">" & count & "</span>")
+    ' --- New Feature: Granular DOM manipulation via Proxy Object ---
+    Dim lbl, btnReset
+    Set lbl = AxonLive.GetComponent("lblCounter")
+    Set btnReset = AxonLive.GetComponent("btnReset")
+    
+    ' Update the label value directly without RegisterComponent
+    lbl.value = CStr(count)
+    
+    ' Dynamic styling based on value
+    If count < 0 Then
+        lbl.SetStyle "color", "red"
+        lbl.AddClass "status-p"
+    ElseIf count > 0 Then
+        lbl.SetStyle "color", "green"
+        lbl.RemoveClass "status-p"
+    Else
+        lbl.RemoveAttribute "style" ' Reset to default
+        lbl.RemoveClass "status-p"
+    End If
+    
+    ' Control button state
+    If count = 0 Then
+        btnReset.disabled = True
+        btnReset.AddTitle "Counter is already zero"
+    Else
+        btnReset.disabled = False
+        btnReset.RemoveTitle()
+    End If
 
     ' Serialize all pending patches to JSON, write the response, and halt.
     Call AxonLive.EndAsyncResponse()

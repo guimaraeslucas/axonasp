@@ -59,9 +59,33 @@ if (AxonLive.IsAsyncRequest) {
     // Persist updated state
     AxonLive.SetComponentProperty(sessionID, "counter", "count", String(count));
 
-    // Register the component HTML patch that the client will swap in.
-    AxonLive.RegisterComponent("lblCounter",
-        '<span id="lblCounter" class="counter-value">' + count + '</span>');
+    // --- New Feature: Granular DOM manipulation via Proxy Object ---
+    var lbl = AxonLive.GetComponent("lblCounter");
+    var btnReset = AxonLive.GetComponent("btnReset");
+
+    // Update the label value directly
+    lbl.value = String(count);
+
+    // Dynamic styling
+    if (count < 0) {
+        lbl.SetStyle("color", "red");
+        lbl.AddClass("status-p");
+    } else if (count > 0) {
+        lbl.SetStyle("color", "green");
+        lbl.RemoveClass("status-p");
+    } else {
+        lbl.RemoveAttribute("style");
+        lbl.RemoveClass("status-p");
+    }
+
+    // Control button state
+    if (count === 0) {
+        btnReset.disabled = true;
+        btnReset.AddTitle("Counter is already zero");
+    } else {
+        btnReset.disabled = false;
+        btnReset.RemoveTitle();
+    }
 
     // Serialize all pending patches to JSON, write the response, and halt.
     AxonLive.EndAsyncResponse();

@@ -289,6 +289,7 @@ type VM struct {
 	g3zstdItems                    map[int64]*G3ZSTD
 	g3fcItems                      map[int64]*G3FC
 	g3axonliveItems                map[int64]*G3AXONLIVE
+	g3axonliveProxyItems           map[int64]*G3ALComponentProxy
 	g3dbItems                      map[int64]*G3DB
 	g3dbResultSetItems             map[int64]*G3DBResultSet
 	g3dbFieldsItems                map[int64]*G3DBFields
@@ -494,6 +495,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		g3zstdItems:                    make(map[int64]*G3ZSTD),
 		g3fcItems:                      make(map[int64]*G3FC),
 		g3axonliveItems:                make(map[int64]*G3AXONLIVE),
+		g3axonliveProxyItems:           make(map[int64]*G3ALComponentProxy),
 		g3dbItems:                      make(map[int64]*G3DB),
 		g3dbResultSetItems:             make(map[int64]*G3DBResultSet),
 		g3dbFieldsItems:                make(map[int64]*G3DBFields),
@@ -1139,6 +1141,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.g3zstdItems = child.g3zstdItems
 	vm.g3fcItems = child.g3fcItems
 	vm.g3axonliveItems = child.g3axonliveItems
+	vm.g3axonliveProxyItems = child.g3axonliveProxyItems
 	vm.g3dbItems = child.g3dbItems
 	vm.g3dbResultSetItems = child.g3dbResultSetItems
 	vm.g3dbFieldsItems = child.g3dbFieldsItems
@@ -3562,6 +3565,12 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 	if g3axonliveObject, exists := vm.g3axonliveItems[objID]; exists {
 		return g3axonliveObject.DispatchMethod(member, args)
 	}
+	if g3axonliveProxy, exists := vm.g3axonliveProxyItems[objID]; exists {
+		return g3axonliveProxy.DispatchMethod(member, args)
+	}
+	if g3filesObject, exists := vm.g3filesItems[objID]; exists {
+		return g3filesObject.DispatchMethod(member, args)
+	}
 	if g3dbObject, exists := vm.g3dbItems[objID]; exists {
 		return g3dbObject.DispatchMethod(member, args)
 	}
@@ -4714,6 +4723,9 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 	if g3axonliveObject, exists := vm.g3axonliveItems[target.Num]; exists {
 		return g3axonliveObject.DispatchPropertyGet(member)
 	}
+	if g3axonliveProxy, exists := vm.g3axonliveProxyItems[target.Num]; exists {
+		return g3axonliveProxy.DispatchPropertyGet(member)
+	}
 	if g3filesObject, exists := vm.g3filesItems[target.Num]; exists {
 		return g3filesObject.DispatchPropertyGet(member)
 	}
@@ -5114,6 +5126,11 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 
 	if g3imageObject, exists := vm.g3imageItems[objID]; exists {
 		g3imageObject.DispatchPropertySet(member, []Value{val})
+		return
+	}
+
+	if g3axonliveProxy, exists := vm.g3axonliveProxyItems[objID]; exists {
+		g3axonliveProxy.DispatchPropertySet(member, []Value{val})
 		return
 	}
 
