@@ -52,7 +52,7 @@ func TestJScriptOpcodeDefinitions(t *testing.T) {
 	_ = OpJSBlockScopeEnter
 	_ = OpJSBlockScopeExit
 	_ = OpJSLetDeclare
-	_ = OpJSConstDeclare
+	_ = OpJSTDZRegisterConst
 
 	// Verify opcode string representation works
 	if OpJSStrictModeEnter.String() != "OpJSStrictModeEnter" {
@@ -70,8 +70,8 @@ func TestJScriptOpcodeDefinitions(t *testing.T) {
 	if OpJSLetDeclare.String() != "OpJSLetDeclare" {
 		t.Error("OpJSLetDeclare string representation is incorrect")
 	}
-	if OpJSConstDeclare.String() != "OpJSConstDeclare" {
-		t.Error("OpJSConstDeclare string representation is incorrect")
+	if OpJSTDZRegisterConst.String() != "OpJSTDZRegisterConst" {
+		t.Error("OpJSTDZRegisterConst string representation is incorrect")
 	}
 }
 

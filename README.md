@@ -260,10 +260,8 @@ G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
 
 AxonASP now includes a **experimental support for WebAssembly**, allowing you to:
 
-*   **Run ASP on the Browser:** Compile and execute ASP/VBScript/JavaScript code directly in the browser using WebAssembly, enabling new use cases like offline-capable web applications and edge computing.
+*   **Run ASP on the Browser:** Compile and execute ASP/VBScript/JScript code directly in the browser using WebAssembly, enabling new use cases like offline-capable web applications and edge computing.
 *   **Hybrid Execution:** Seamlessly mix client-side ASP (via WASM) and server-side execution for optimal performance and user experience.
-*   **Portable Bytecode:** Distribute compiled ASP bytecode to clients, reducing server load and enabling true distributed computing scenarios.
-*   **Performance:** Leverage native WASM performance (near-native speeds) for computationally intensive operations on the client side.
 
 ### Using WASM
 

@@ -689,3 +689,62 @@ func TestJScriptForOfEmpty(t *testing.T) {
 		t.Errorf("expected 'ok', got %q", out)
 	}
 }
+
+func TestJScriptTDZ(t *testing.T) {
+	code := `
+		let a = 1;
+		{
+			let b = a;
+			let a = 2; // TDZ error
+		}
+	`
+	_, err := runJScript2(t, jscriptSrc(code))
+	if err == nil {
+		t.Errorf("Expected ReferenceError for TDZ, got no error")
+	} else if !strings.Contains(err.Error(), "Cannot access 'a' before initialization") {
+		t.Errorf("Expected ReferenceError for TDZ, got: %v", err)
+	}
+
+	code2 := `
+		let a = 1;
+		{
+			const b = a;
+			const a = 2; // TDZ error
+		}
+	`
+	_, err = runJScript2(t, jscriptSrc(code2))
+	if err == nil {
+		t.Errorf("Expected ReferenceError for TDZ const, got no error")
+	} else if !strings.Contains(err.Error(), "Cannot access 'a' before initialization") {
+		t.Errorf("Expected ReferenceError for TDZ const, got: %v", err)
+	}
+}
+
+func TestJScriptUnicodeCodePointEscape(t *testing.T) {
+	code := `
+		var s = "\u{1D306}";
+		Response.Write(s.length);
+	`
+	out, err := runJScript2(t, jscriptSrc(code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "2" { // Surrogate pair
+		t.Errorf("expected '2', got %q", out)
+	}
+}
+
+func TestJScriptRegExpUnicodeFlag(t *testing.T) {
+	code := `
+		var re = /^\u{1D306}$/u;
+		var s = "\u{1D306}";
+		Response.Write(re.test(s) ? "pass" : "fail");
+	`
+	out, err := runJScript2(t, jscriptSrc(code))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "pass" {
+		t.Errorf("expected 'pass', got %q", out)
+	}
+}

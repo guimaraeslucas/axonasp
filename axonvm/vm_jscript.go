@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"g3pix.com.br/axonasp/jscript/ftoa"
+	jsparser "g3pix.com.br/axonasp/jscript/parser"
 	"g3pix.com.br/axonasp/vbscript"
 )
 
@@ -1872,7 +1873,7 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 		return vm.dispatchMemberGet(target, member), false
 	case VTString:
 		if strings.EqualFold(member, "length") {
-			return NewInteger(int64(len(target.Str))), false
+			return NewInteger(jsStringLength(target.Str)), false
 		}
 		proto := vm.jsGetIntrinsicPrototype("String")
 		if proto.Type == VTJSObject {
@@ -2257,11 +2258,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				pattern = vm.jsObjectStringProperty(patternVal, "pattern")
 				flags = vm.jsObjectStringProperty(patternVal, "flags")
 			}
-			rePattern := pattern
-			if strings.Contains(strings.ToLower(flags), "i") {
-				rePattern = "(?i)" + rePattern
-			}
-			re, err := regexp.Compile(rePattern)
+			re, err := vm.jsCompileRegExp(pattern, flags)
 			if err != nil {
 				return NewNull(), true
 			}
@@ -2296,11 +2293,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				pattern = vm.jsObjectStringProperty(patternVal, "pattern")
 				flags = vm.jsObjectStringProperty(patternVal, "flags")
 			}
-			rePattern := pattern
-			if strings.Contains(strings.ToLower(flags), "i") {
-				rePattern = "(?i)" + rePattern
-			}
-			re, err := regexp.Compile(rePattern)
+			re, err := vm.jsCompileRegExp(pattern, flags)
 			if err != nil {
 				return NewInteger(-1), true
 			}
@@ -3576,11 +3569,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				if len(args) > 0 {
 					needle = vm.valueToString(args[0])
 				}
-				rePattern := pattern
-				if strings.Contains(strings.ToLower(flags), "i") {
-					rePattern = "(?i)" + rePattern
-				}
-				re, err := regexp.Compile(rePattern)
+				re, err := vm.jsCompileRegExp(pattern, flags)
 				if err != nil {
 					return NewBool(false), true
 				}
@@ -5159,4 +5148,30 @@ func (vm *VM) jsIndexSet(arr Value, index Value, value Value) {
 		key := vm.jsPropertyKeyFromValue(index)
 		vm.jsMemberSet(arr, key, value)
 	}
+}
+
+func (vm *VM) jsCompileRegExp(pattern string, flags string) (*regexp.Regexp, error) {
+	flagsLower := strings.ToLower(flags)
+	isUnicode := strings.Contains(flagsLower, "u")
+	transformed, err := jsparser.TransformRegExp(pattern, false, isUnicode)
+	if err != nil {
+		// Fallback to literal interpretation if syntax is not understood
+		transformed = pattern
+	}
+	if strings.Contains(flagsLower, "i") {
+		transformed = "(?i)" + transformed
+	}
+	return regexp.Compile(transformed)
+}
+
+func jsStringLength(s string) int64 {
+	length := int64(0)
+	for _, r := range s {
+		if r >= 0x10000 {
+			length += 2
+		} else {
+			length += 1
+		}
+	}
+	return length
 }

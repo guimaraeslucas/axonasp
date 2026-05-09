@@ -279,9 +279,16 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		c.emit(OpJSThrow)
 	case *jsast.BlockStatement:
 		// Check if block contains let/const declarations requiring a block scope
-		hasLexical := jsBlockHasLexicalDeclarations(node.List)
+		letNames, constNames := jsGetBlockLexicalNames(node.List)
+		hasLexical := len(letNames) > 0 || len(constNames) > 0
 		if hasLexical {
 			c.emit(OpJSBlockScopeEnter)
+			for _, name := range letNames {
+				c.emit(OpJSTDZRegisterLet, c.addConstant(NewString(name)))
+			}
+			for _, name := range constNames {
+				c.emit(OpJSTDZRegisterConst, c.addConstant(NewString(name)))
+			}
 		}
 		for i := range node.List {
 			c.compileJScriptStatement(node.List[i])
@@ -524,12 +531,13 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 				}
 				nameIdx := c.addConstant(NewString(name))
 				if lexDecl.Token == jstoken.CONST {
-					c.emit(OpJSConstDeclare, nameIdx)
+					c.emit(OpJSTDZRegisterConst, nameIdx)
 					if binding.Initializer != nil {
 						c.compileJScriptExpression(binding.Initializer)
 						c.emitConstInitialize(nameIdx)
 					}
 				} else {
+					c.emit(OpJSTDZRegisterLet, nameIdx)
 					c.emit(OpJSLetDeclare, nameIdx)
 					if binding.Initializer != nil {
 						c.compileJScriptExpression(binding.Initializer)
@@ -671,8 +679,10 @@ func (c *Compiler) compileJScriptForInStatement(node *jsast.ForInStatement) {
 
 	if declareName {
 		if isConst {
-			c.emit(OpJSConstDeclare, nameIdx)
+			c.emit(OpJSTDZRegisterConst, nameIdx)
+			// for-in initializes the variable on each iteration, so it will clear TDZ when entering iteration scope
 		} else if isLexical {
+			c.emit(OpJSTDZRegisterLet, nameIdx)
 			c.emit(OpJSLetDeclare, nameIdx)
 		} else {
 			c.emit(OpJSDeclareName, nameIdx)
@@ -781,8 +791,10 @@ func (c *Compiler) compileJScriptForOfStatement(node *jsast.ForOfStatement) {
 			// Per-iteration immutability is enforced at block scope; the value cannot be
 			// reassigned inside the body because the let slot is still read-protected by the
 			// enclosing block scope boundary.
+			c.emit(OpJSTDZRegisterLet, nameIdx)
 			c.emit(OpJSLetDeclare, nameIdx)
 		} else if isLexical {
+			c.emit(OpJSTDZRegisterLet, nameIdx)
 			c.emit(OpJSLetDeclare, nameIdx)
 		} else {
 			c.emit(OpJSDeclareName, nameIdx)
@@ -1576,15 +1588,24 @@ func jsIsRestrictedIdentifier(name string) bool {
 	return strings.EqualFold(name, "eval") || strings.EqualFold(name, "arguments")
 }
 
-// jsBlockHasLexicalDeclarations returns true if the statement list contains any
-// LexicalDeclaration (let or const). Used to decide when to emit block scope opcodes.
-func jsBlockHasLexicalDeclarations(stmts []jsast.Statement) bool {
+// jsGetBlockLexicalNames returns lists of names for let and const declarations in the block.
+func jsGetBlockLexicalNames(stmts []jsast.Statement) ([]string, []string) {
+	var letNames []string
+	var constNames []string
 	for _, s := range stmts {
-		if _, ok := s.(*jsast.LexicalDeclaration); ok {
-			return true
+		if decl, ok := s.(*jsast.LexicalDeclaration); ok {
+			for _, binding := range decl.List {
+				if name, ok := jsBindingIdentifierName(binding.Target); ok {
+					if decl.Token == jstoken.CONST {
+						constNames = append(constNames, name)
+					} else {
+						letNames = append(letNames, name)
+					}
+				}
+			}
 		}
 	}
-	return false
+	return letNames, constNames
 }
 
 // compileJScriptLexicalDeclaration emits block-scoped let/const declarations.
@@ -1606,7 +1627,6 @@ func (c *Compiler) compileJScriptLexicalDeclaration(node *jsast.LexicalDeclarati
 		}
 		nameIdx := c.addConstant(NewString(name))
 		if isConst {
-			c.emit(OpJSConstDeclare, nameIdx)
 			if binding.Initializer != nil {
 				c.compileJScriptExpression(binding.Initializer)
 				c.emitConstInitialize(nameIdx)

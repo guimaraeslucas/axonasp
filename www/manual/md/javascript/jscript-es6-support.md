@@ -2,9 +2,96 @@
 
 ## Overview
 
-AxonASP's Javascript engine supports a subset of ECMAScript 6 (ES6) language features in addition to the base ECMAScript 5 (Javascript) support. This page documents all supported ES6 additions available in AxonASP: template literals, arrow functions, default parameter values, rest parameters, spread in array literals, object literal shorthand, computed property names, `for...of` loops, `Object` static utilities, property reflection helpers, ES6 `String` methods, ES6 `Number` static methods and constants, binary and octal numeric literals, `Math` extensions, `Symbol` primitive, `Set` and `Map` collections, and `Array` utilities.
+AxonASP's Javascript engine supports a subset of ECMAScript 6 (ES6) language features in addition to the base ECMAScript 5 (Javascript) support. This page documents all supported ES6 additions available in AxonASP: template literals, block-scoped declarations (`let` and `const`) with Temporal Dead Zone (TDZ), arrow functions, default parameter values, rest parameters, spread in array literals, object literal shorthand, computed property names, `for...of` loops, `Object` static utilities, property reflection helpers, ES6 `String` methods including Unicode code point escapes, full Unicode support in `RegExp`, ES6 `Number` static methods and constants, binary and octal numeric literals, `Math` extensions, `Symbol` primitive, `Set` and `Map` collections, and `Array` utilities.
 
 All ES6 features described here are available in `<script runat="server" language="JScript">` blocks and in `<% language="JScript" %>` inline blocks.
+
+---
+
+## Block-Scoped Declarations (let and const)
+
+### Syntax
+
+```javascript
+let x = 10;
+const y = 20;
+
+{
+    let x = 30; // Shadows outer x
+    const y = 40; // Shadows outer y
+}
+```
+
+### Remarks
+
+- `let` and `const` provide block-level scoping. Variables declared inside a `{}` block are only accessible within that block.
+- **Temporal Dead Zone (TDZ):** Unlike `var`, accessing a `let` or `const` variable before its declaration line in the execution flow results in a `ReferenceError`.
+- `const` bindings are immutable; attempting to reassign a value to a `const` variable results in a `TypeError`.
+
+### Code Example
+
+```javascript
+<%
+let a = 1;
+{
+    // Response.Write(a); // This would throw ReferenceError due to TDZ if 'let a' exists below
+    let a = 2;
+    Response.Write(a); // Output: 2
+}
+Response.Write(a); // Output: 1
+
+const PI = 3.14;
+// PI = 3.15; // This would throw TypeError
+%>
+```
+
+---
+
+## Full Unicode Support
+
+### String Code Point Escapes
+
+ES6 introduces a new escape sequence for Unicode characters that allows representing any character using its code point value in hexadecimal between braces.
+
+#### Syntax
+
+```javascript
+var s = "\u{1D306}"; // Tetragram for Centre
+```
+
+#### Remarks
+
+- Supports values from `0` up to `0x10FFFF`.
+- Correctly handles surrogate pairs internally. A character like `\u{1D306}` has a `.length` of 2 in JScript (representing two UTF-16 code units).
+
+### RegExp /u flag
+
+The `u` flag (Unicode) enables advanced Unicode features in regular expressions.
+
+#### Syntax
+
+```javascript
+var re = /^\u{1D306}$/u;
+```
+
+#### Remarks
+
+- When the `u` flag is present, `.` matches a full Unicode code point (even if it spans multiple UTF-16 code units).
+- Enables `\u{...}` escape sequences inside the regular expression pattern.
+
+### Code Example
+
+```javascript
+<%
+// String length with surrogate pairs
+var s = "\u{1D306}";
+Response.Write(s.length); // Output: 2
+
+// Unicode RegExp matching
+var re = /^.$/u;
+Response.Write(re.test(s)); // Output: true (matches the whole surrogate pair)
+%>
+```
 
 ---
 

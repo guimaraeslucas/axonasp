@@ -832,7 +832,7 @@ func opcodeOperandSize(op OpCode) int {
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 		OpJSMemberIndexGet, OpJSMemberIndexSet,
 		OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
-		OpJSLetDeclare, OpJSConstDeclare, OpJSConstInitialize:
+		OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize:
 		return 2
 	// 4-byte operands (for jump targets)
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
@@ -885,7 +885,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 			OpJSMemberIndexGet, OpJSMemberIndexSet,
 			OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
-			OpJSLetDeclare, OpJSConstDeclare, OpJSConstInitialize:
+			OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize:
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
 			ip += 2
@@ -3108,24 +3108,34 @@ aspExecLoop:
 				vm.jsBlockScopeDepth--
 			}
 
-		case OpJSLetDeclare:
+		case OpJSTDZRegisterLet:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			name := vm.constants[nameIdx].Str
-			// Declare in the current block scope, initialized to undefined (no TDZ for let)
 			if vm.jsBlockScopeDepth > 0 && len(vm.jsBlockScopes) > 0 {
 				vm.jsBlockScopes[len(vm.jsBlockScopes)-1][name] = Value{Type: VTJSUndefined}
+				vm.jsBlockScopeTDZ[len(vm.jsBlockScopeTDZ)-1][name] = struct{}{}
 			}
 
-		case OpJSConstDeclare:
+		case OpJSTDZRegisterConst:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			name := vm.constants[nameIdx].Str
-			// Declare in the current block scope with TDZ and const marker
 			if vm.jsBlockScopeDepth > 0 && len(vm.jsBlockScopes) > 0 {
 				vm.jsBlockScopes[len(vm.jsBlockScopes)-1][name] = Value{Type: VTJSUndefined}
 				vm.jsBlockScopeConst[len(vm.jsBlockScopeConst)-1][name] = struct{}{}
 				vm.jsBlockScopeTDZ[len(vm.jsBlockScopeTDZ)-1][name] = struct{}{}
+			}
+
+		case OpJSLetDeclare:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			name := vm.constants[nameIdx].Str
+			for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
+				if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
+					delete(vm.jsBlockScopeTDZ[i], name)
+					break
+				}
 			}
 
 		case OpJSConstInitialize:
