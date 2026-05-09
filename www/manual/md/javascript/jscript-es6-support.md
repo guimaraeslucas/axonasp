@@ -2,7 +2,7 @@
 
 ## Overview
 
-AxonASP's Javascript engine supports a subset of ECMAScript 6 (ES6) language features in addition to the base ECMAScript 5 (Javascript) support. This page documents all supported ES6 additions available in AxonASP: template literals, block-scoped declarations (`let` and `const`) with Temporal Dead Zone (TDZ), arrow functions, default parameter values, rest parameters, spread in array literals, object literal shorthand, computed property names, `for...of` loops, `Object` static utilities, property reflection helpers, ES6 `String` methods including Unicode code point escapes, full Unicode support in `RegExp`, ES6 `Number` static methods and constants, binary and octal numeric literals, `Math` extensions, `Symbol` primitive, `Set` and `Map` collections, and `Array` utilities.
+AxonASP's Javascript engine supports a wide range of modern ECMAScript features, including ES6 (ES2015) additions and subsequent standards up to ES2024. This page documents all supported modern capabilities: template literals, block-scoped declarations (`let` and `const`) with Temporal Dead Zone (TDZ), arrow functions, default parameter values, rest parameters, spread in array literals, object literal shorthand, computed property names, `for...of` loops, `Object` static utilities (including `values`, `entries`, and `fromEntries`), property reflection helpers, modern `String` methods (like `includes`, `padStart`, and `at`), full Unicode support in `RegExp`, `Number` static methods, `Math` extensions, `Symbol` primitive, `Set` and `Map` collections, and a comprehensive set of `Array` utilities (including `find`, `flat`, `flatMap`, and immutable `toSorted`/`toReversed`/`toSpliced` methods).
 
 All ES6 features described here are available in `<script runat="server" language="JScript">` blocks and in `<% language="JScript" %>` inline blocks.
 
@@ -314,6 +314,10 @@ Returns an array of enumerable own property values.
 
 Returns an array where each item is a two-element `[key, value]` pair for each enumerable own property.
 
+### `Object.fromEntries(iterable)`
+
+Converts an iterable of key-value pairs (such as an array of `[key, value]` arrays) into a new object.
+
 ### Remarks
 
 - `Object.assign` skips `null` and `undefined` sources.
@@ -337,6 +341,11 @@ Response.Write(Object.values(target).join(","));
 var e = Object.entries(target);
 Response.Write(e[0][0] + ":" + e[0][1]);
 // Output: a:1
+
+var entries = [["x", 10], ["y", 20]];
+var obj = Object.fromEntries(entries);
+Response.Write(obj.x + "," + obj.y);
+// Output: 10,20
 </script>
 ```
 
@@ -435,20 +444,53 @@ Fills all elements from `start` to `end` (exclusive) with `value`, in place. Neg
 
 Copies a portion of the array (from `start` to `end`, exclusive) to another position (`target`) within the same array, in place. Does not change the array length. Returns the modified array.
 
+### `Array.prototype.at(index)`
+
+Returns the element at the specified `index`. Supports relative indexing from the end if `index` is negative.
+
+### `Array.prototype.flat([depth])`
+
+Returns a new array with all sub-array elements concatenated into it recursively up to the specified `depth`. Defaults to `1`.
+
+### `Array.prototype.flatMap(callback[, thisArg])`
+
+Returns a new array formed by applying a given callback function to each element of the array, and then flattening the result by one level.
+
+### `Array.prototype.toSorted([compareFn])`
+
+Returns a **new** array with the elements sorted in ascending order. Unlike `sort()`, it does not mutate the original array.
+
+### `Array.prototype.toReversed()`
+
+Returns a **new** array with the elements in reversed order. Unlike `reverse()`, it does not mutate the original array.
+
+### `Array.prototype.toSpliced(start[, deleteCount[, ...items]])`
+
+Returns a **new** array with some elements removed and/or replaced at a given index. Unlike `splice()`, it does not mutate the original array.
+
 ### Remarks
 
-- Both methods operate in place and return the same array reference.
-- Negative index arguments are normalized relative to the array length before use.
+- Methods like `fill` and `copyWithin` operate in place and return the same array reference.
+- Modern immutable methods (`toSorted`, `toReversed`, `toSpliced`) always return a new array instance.
+- Negative index arguments in `at`, `fill`, and `copyWithin` are normalized relative to the array length.
 
 ### Code Example
 
 ```javascript
 <script runat="server" language="JScript">
-var buffer = Array.of(0, 0, 0, 0, 0);
-buffer.fill(255, 1, 4);
-buffer.copyWithin(0, 3);
-Response.Write(buffer.join(","));
-// Output: 255,0,255,255,0
+var arr = [1, [2, 3]];
+Response.Write(JSON.stringify(arr.flat()));
+// Output: [1,2,3]
+
+var original = [3, 1, 2];
+var sorted = original.toSorted();
+Response.Write(sorted.join(","));
+// Output: 1,2,3
+Response.Write(original.join(","));
+// Output: 3,1,2 (unchanged)
+
+Response.Write("abc".at(-1));
+// Output: c
 </script>
 ```
 
@@ -473,6 +515,10 @@ Returns `true` if the string ends with `searchString`; `false` otherwise. Case-s
 ### `String.prototype.repeat(count)`
 
 Returns a new string containing `count` repetitions of the original string. Returns an empty string if `count` is 0.
+
+### `String.prototype.at(index)`
+
+Returns the character at the specified `index`. Supports relative indexing from the end if `index` is negative.
 
 ### `String.prototype.padStart(targetLength, padString)`
 

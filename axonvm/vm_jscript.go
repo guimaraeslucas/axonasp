@@ -1458,6 +1458,22 @@ func (vm *VM) jsExtractApplyArgs(argArray Value) []Value {
 	}
 }
 
+func (vm *VM) jsArrayFlat(vals []Value, depth int) []Value {
+	if depth < 1 {
+		return append([]Value(nil), vals...)
+	}
+	out := make([]Value, 0, len(vals))
+	for _, v := range vals {
+		if v.Type == VTArray && v.Arr != nil {
+			flattened := vm.jsArrayFlat(v.Arr.Values, depth-1)
+			out = append(out, flattened...)
+		} else {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
 func (vm *VM) jsBindFunction(fn Value, thisArg Value, boundArgs []Value) Value {
 	if fn.Type != VTJSFunction {
 		return Value{Type: VTJSUndefined}
@@ -2010,14 +2026,29 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		}
 	}
 
-	if member == "slice" || member == "forEach" || member == "map" || member == "filter" ||
-		strings.EqualFold(member, "slice") || strings.EqualFold(member, "forEach") || strings.EqualFold(member, "map") || strings.EqualFold(member, "filter") {
+	if member == "slice" || member == "forEach" || member == "map" || member == "filter" || member == "at" ||
+		strings.EqualFold(member, "slice") || strings.EqualFold(member, "forEach") || strings.EqualFold(member, "map") || strings.EqualFold(member, "filter") || strings.EqualFold(member, "at") {
 		length, isArrayLike, deferred := vm.jsArrayLikeLength(target)
 		if deferred {
 			return Value{Type: VTJSUndefined}, true
 		}
 		if isArrayLike {
 			switch {
+			case strings.EqualFold(member, "at"):
+				idx := 0
+				if len(args) > 0 {
+					idx = int(vm.jsToNumber(args[0]).Flt)
+				}
+				if idx < 0 {
+					idx = length + idx
+				}
+				if idx < 0 || idx >= length {
+					return Value{Type: VTJSUndefined}, true
+				}
+				if v, ok := vm.jsArrayLikeGetIndex(target, idx); ok {
+					return v, true
+				}
+				return Value{Type: VTJSUndefined}, true
 			case strings.EqualFold(member, "slice"):
 				start := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
 				end := length
@@ -2167,6 +2198,23 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			idx := int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt)
 			if idx < 0 || idx >= len(runes) {
 				return NewString(""), true
+			}
+			ch := string(runes[idx])
+			if !vm.jsEnsureStringSize(len(ch)) || !vm.jsChargeStringWork(len(ch)) {
+				return Value{Type: VTJSUndefined}, true
+			}
+			return NewString(ch), true
+		case strings.EqualFold(member, "at"):
+			length := len(runes)
+			idx := 0
+			if len(args) > 0 {
+				idx = int(vm.jsToNumber(args[0]).Flt)
+			}
+			if idx < 0 {
+				idx = length + idx
+			}
+			if idx < 0 || idx >= length {
+				return Value{Type: VTJSUndefined}, true
 			}
 			ch := string(runes[idx])
 			if !vm.jsEnsureStringSize(len(ch)) || !vm.jsChargeStringWork(len(ch)) {
@@ -2515,6 +2563,97 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				target.Arr.Values[i] = fillValue
 			}
 			return target, true
+		case strings.EqualFold(member, "at"):
+			length := len(target.Arr.Values)
+			idx := 0
+			if len(args) > 0 {
+				idx = int(vm.jsToNumber(args[0]).Flt)
+			}
+			if idx < 0 {
+				idx = length + idx
+			}
+			if idx < 0 || idx >= length {
+				return Value{Type: VTJSUndefined}, true
+			}
+			return target.Arr.Values[idx], true
+		case strings.EqualFold(member, "flat"):
+			depth := 1
+			if len(args) > 0 && args[0].Type != VTJSUndefined {
+				num := vm.jsToNumber(args[0])
+				if math.IsInf(num.Flt, 1) {
+					depth = 1000 // effectively infinity
+				} else {
+					depth = int(num.Flt)
+				}
+			}
+			if depth < 0 {
+				depth = 0
+			}
+			flattened := vm.jsArrayFlat(target.Arr.Values, depth)
+			return ValueFromVBArray(NewVBArrayFromValues(0, flattened)), true
+		case strings.EqualFold(member, "flatMap"):
+			callback := jsArgOrUndefined(args, 0)
+			if callback.Type != VTJSFunction {
+				vm.jsThrowTypeError("flatMap callback must be a function")
+				return Value{Type: VTJSUndefined}, true
+			}
+			thisArg := jsArgOrUndefined(args, 1)
+			length := len(target.Arr.Values)
+			out := make([]Value, 0, length)
+			for i := 0; i < length; i++ {
+				item := target.Arr.Values[i]
+				res := vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
+				if res.Type == VTArray && res.Arr != nil {
+					out = append(out, res.Arr.Values...)
+				} else {
+					out = append(out, res)
+				}
+			}
+			return ValueFromVBArray(NewVBArrayFromValues(0, out)), true
+		case strings.EqualFold(member, "toSorted"):
+			length := len(target.Arr.Values)
+			newVals := make([]Value, length)
+			copy(newVals, target.Arr.Values)
+			compareFn := jsArgOrUndefined(args, 0)
+			sort.Slice(newVals, func(i, j int) bool {
+				a := newVals[i]
+				b := newVals[j]
+				if compareFn.Type == VTJSFunction {
+					res := vm.jsCall(compareFn, Value{Type: VTJSUndefined}, []Value{a, b})
+					return vm.jsToNumber(res).Flt < 0
+				}
+				return vm.valueToString(a) < vm.valueToString(b)
+			})
+			return ValueFromVBArray(NewVBArrayFromValues(0, newVals)), true
+		case strings.EqualFold(member, "toReversed"):
+			length := len(target.Arr.Values)
+			newVals := make([]Value, length)
+			for i := 0; i < length; i++ {
+				newVals[i] = target.Arr.Values[length-1-i]
+			}
+			return ValueFromVBArray(NewVBArrayFromValues(0, newVals)), true
+		case strings.EqualFold(member, "toSpliced"):
+			length := len(target.Arr.Values)
+			start := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
+			deleteCount := length - start
+			if len(args) > 1 {
+				deleteCount = int(vm.jsToNumber(args[1]).Flt)
+				if deleteCount < 0 {
+					deleteCount = 0
+				}
+				if deleteCount > length-start {
+					deleteCount = length - start
+				}
+			}
+			insertItems := []Value(nil)
+			if len(args) > 2 {
+				insertItems = args[2:]
+			}
+			newVals := make([]Value, 0, length-deleteCount+len(insertItems))
+			newVals = append(newVals, target.Arr.Values[:start]...)
+			newVals = append(newVals, insertItems...)
+			newVals = append(newVals, target.Arr.Values[start+deleteCount:]...)
+			return ValueFromVBArray(NewVBArrayFromValues(0, newVals)), true
 		case strings.EqualFold(member, "copyWithin"):
 			length := len(target.Arr.Values)
 			to := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
@@ -3078,6 +3217,27 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					}
 				}
 				return NewNull(), true
+			case strings.EqualFold(member, "fromEntries"):
+				if len(args) == 0 || args[0].Type == VTJSUndefined || args[0].Type == VTNull {
+					vm.jsThrowTypeError("Object.fromEntries requires an iterable")
+					return Value{Type: VTJSUndefined}, true
+				}
+				iterable := args[0]
+				objID := vm.allocJSID()
+				obj := make(map[string]Value, 8)
+				vm.jsObjectItems[objID] = obj
+				vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
+				if iterable.Type == VTArray && iterable.Arr != nil {
+					for _, entry := range iterable.Arr.Values {
+						if entry.Type == VTArray && entry.Arr != nil && len(entry.Arr.Values) >= 2 {
+							key := vm.valueToString(entry.Arr.Values[0])
+							val := entry.Arr.Values[1]
+							obj[key] = val
+							vm.jsSetDescriptor(objID, key, jsDefaultPropertyDescriptor(val))
+						}
+					}
+				}
+				return Value{Type: VTJSObject, Num: objID}, true
 			case strings.EqualFold(member, "keys"):
 				if len(args) == 0 || args[0].Type == VTJSUndefined || args[0].Type == VTNull {
 					vm.jsThrowTypeError("Object.keys called on null or undefined")

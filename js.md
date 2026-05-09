@@ -19,27 +19,6 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 
 ---
 
-## 🛠️ PHASE 1: MODERN STANDARD LIBRARY (LOW COMPLEXITY / HIGH VALUE)
-
-**Goal:** Implement modern array and object methods (ES2019–ES2024). These are standard built-ins that require Go helper functions acting on `[]Value` or underlying maps without altering the VM core.
-
-### Tasks:
-
-* [ ] **Intelligent Arrays (ES2019 & ES2022):**
-    * Implement `Array.prototype.flat()` and `flatMap()` to flatten multidimensional arrays.
-    * Implement `Array.prototype.at()` to allow relative indexing (e.g., `arr.at(-1)` for the last item).
-
-
-* [ ] **Immutable Array Methods (ES2024):**
-    * Implement `toSorted()`, `toReversed()`, and `toSpliced()`. Ensure these return a *new* modified array, leaving the original array completely unchanged.
-
-* [ ] **Modern Object Iteration:**
-    * Implement `Object.values()` (returns only values) and `Object.entries()` (returns `[key, value]` arrays).
-    * Implement `Object.fromEntries()` to easily convert iterable key-value pairs back into an object.
-
-
----
-
 ## 🛠️ PHASE 2: MODERN SYNTAX & OPERATORS (MEDIUM COMPLEXITY)
 
 **Goal:** Implement ES11/2020 and ES12/2021 syntactic sugar. Requires updating the AST, parser, and emitting specific OpCodes or conditional jumps.
@@ -49,6 +28,9 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 * [ ] **Optional Chaining (`?.`):** Update the parser and compiler to safely short-circuit and return `undefined` instead of throwing an error when accessing properties on `null` or `undefined`.
 * [ ] **Nullish Coalescing (`??`):** Implement the `??` operator to return the right-hand operand ONLY when the left-hand is strictly `null` or `undefined` (unlike `||` which checks falsy values).
 * [ ] **Logical Assignment (`||=`, `&&=`, `??=`):** Implement these operators, ensuring the left side is only evaluated and reassigned if the logical condition is met.
+* [ ] **Exponentiation Operator (`**`):** Implement the `**` operator for exponentiation, ensuring it correctly handles edge cases (e.g., negative bases, fractional exponents).
+* [ ] **BigInt Support:** Implement the `n` suffix for BigInt literals and ensure arithmetic operations with BigInts are correctly handled without converting to regular numbers.
+* [ ] **Test:** For each operator, write comprehensive test cases covering typical usage, edge cases, and error conditions (e.g., accessing properties on `null` with optional chaining should not throw an error).
 
 ---
 
@@ -56,7 +38,7 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 
 **Goal:** Ensure function calls in the tail position do not increase the execution stack size. Don't allow the `stack []Value` to grow indefinitely with deep recursion. High risk if not implemented correctly, as it can lead to memory leaks or crashes.
 
-* [ ] **Implementation Logic:** Thanks to the procedural `CallFrame` architecture, TCO is highly achievable. Instead of pushing a new `CallFrame`, identify if a call is a tail call. If so, replace the local variables/arguments on the current `stack []Value`, keep the current `CallFrame`, and simply jump the `ip` back to the start of the function's bytecode.
+* [ ] **Implementation Logic:** Thanks to the procedural `CallFrame` architecture, TCO is highly achievable. Instead of pushing a new `CallFrame`, identify if a call is a tail call. If so, replace the local variables/arguments on the current `stack []Value`, keep the current `CallFrame`, and simply jump the `ip` back to the start of the function's bytecode. This way, the stack size remains constant regardless of recursion depth. The compiler must emit a specific OpCode (e.g., OpTailCall) when it detects a tail call during compilation. The VM will then handle this OpCode by performing the TCO logic instead of a normal call. This is a critical optimization for functions that rely on recursion, such as those processing linked lists or performing mathematical computations.
 * [ ] **Test:** Write a test with infinite or deep recursion in a tail-call position to verify it does not trigger a stack overflow or out-of-bounds slice error. This is a critical test to ensure the TCO implementation is correct and memory-safe.
 
 ---
