@@ -152,3 +152,48 @@ func TestJScriptDestructuringArrayNonIterable(t *testing.T) {
 		t.Errorf("expected 'True', got %q", out)
 	}
 }
+
+func TestJScriptDestructuringDefaultValues(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var { a = 10, b = 20 } = { a: 1 };
+		var [x = 100, y = 200] = [1];
+		Response.Write(a + "|" + b + "|" + x + "|" + y);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "1|20|1|200" {
+		t.Errorf("expected '1|20|1|200', got %q", out)
+	}
+}
+
+func TestJScriptDestructuringRest(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var { a, ...rest } = { a: 1, b: 2, c: 3 };
+		var [x, ...arrayRest] = [10, 20, 30];
+		Response.Write(a + "|" + JSON.stringify(rest) + "|" + x + "|" + JSON.stringify(arrayRest));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Object rest: JSON.stringify might vary key order, but here it's likely {"b":2,"c":3}
+	// Array rest: [20, 30]
+	if out != "1|{\"b\":2,\"c\":3}|10|[20,30]" {
+		t.Errorf("expected '1|{\"b\":2,\"c\":3}|10|[20,30]', got %q", out)
+	}
+}
+
+func TestJScriptDestructuringDeeplyNested(t *testing.T) {
+	// Sub-phase 5.5: Deeply nested (depth 10)
+	out, err := runJScript2(t, jscriptSrc(`
+		var nested = { a: { a: { a: { a: { a: { a: { a: { a: { a: { a: 42 } } } } } } } } } };
+		var { a: { a: { a: { a: { a: { a: { a: { a: { a: { a: val } } } } } } } } } } = nested;
+		Response.Write(val);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "42" {
+		t.Errorf("expected '42', got %q", out)
+	}
+}

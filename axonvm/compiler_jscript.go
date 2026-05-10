@@ -1748,7 +1748,10 @@ func jsGetBlockLexicalNames(stmts []jsast.Statement) ([]string, []string) {
 	return letNames, constNames
 }
 
-func (c *Compiler) compileJScriptDestructuring(target jsast.BindingTarget, isConst bool, isLet bool, isVar bool) {
+func (c *Compiler) compileJScriptDestructuring(target jsast.Expression, isConst bool, isLet bool, isVar bool) {
+	if target == nil {
+		return
+	}
 	switch t := target.(type) {
 	case *jsast.Identifier:
 		name := t.Name.String()
@@ -1773,16 +1776,33 @@ func (c *Compiler) compileJScriptDestructuring(target jsast.BindingTarget, isCon
 			// Normal assignment
 			c.emit(OpJSSetName, nameIdx)
 		}
+	case *jsast.AssignExpression:
+		if t.Operator == jstoken.ASSIGN {
+			jump := c.emitJSJump(OpJSJumpIfNotUndefined)
+			c.emit(OpJSPop)
+			c.compileJScriptExpression(t.Right)
+			c.patchJSJump(jump)
+			c.compileJScriptDestructuring(t.Left, isConst, isLet, isVar)
+		} else {
+			c.emit(OpJSPop)
+		}
 	case *jsast.ObjectPattern:
 		c.emit(OpJSRequireObject)
+		var excludedStatic []string
 		for _, prop := range t.Properties {
 			switch p := prop.(type) {
 			case *jsast.PropertyShort:
 				name := p.Name.Name.String()
+				excludedStatic = append(excludedStatic, name)
 				nameIdx := c.addConstant(NewString(name))
 				c.emit(OpJSDup)
 				c.emit(OpJSMemberGet, nameIdx)
-				// TODO Phase 5.4: Default value
+				if p.Initializer != nil {
+					jump := c.emitJSJump(OpJSJumpIfNotUndefined)
+					c.emit(OpJSPop)
+					c.compileJScriptExpression(p.Initializer)
+					c.patchJSJump(jump)
+				}
 				c.compileJScriptDestructuring(&p.Name, isConst, isLet, isVar)
 			case *jsast.PropertyKeyed:
 				c.emit(OpJSDup)
@@ -1796,18 +1816,22 @@ func (c *Compiler) compileJScriptDestructuring(target jsast.BindingTarget, isCon
 					} else if lit, ok := p.Key.(*jsast.StringLiteral); ok {
 						key = lit.Value.String()
 					}
+					excludedStatic = append(excludedStatic, key)
 					c.emit(OpJSMemberGet, c.addConstant(NewString(key)))
 				}
-				// TODO Phase 5.4: Default value
-				if bt, ok := p.Value.(jsast.BindingTarget); ok {
-					c.compileJScriptDestructuring(bt, isConst, isLet, isVar)
-				} else {
-					c.emit(OpJSPop)
-				}
+				c.compileJScriptDestructuring(p.Value, isConst, isLet, isVar)
 			}
 		}
 		if t.Rest != nil {
-			// TODO Phase 5.4: Object Rest
+			c.emit(OpJSDup)
+			c.bytecode = append(c.bytecode, byte(OpJSObjectRest))
+			c.bytecode = append(c.bytecode, byte(len(excludedStatic)>>8), byte(len(excludedStatic)&0xFF))
+			for _, key := range excludedStatic {
+				idx := c.addConstant(NewString(key))
+				c.bytecode = append(c.bytecode, byte(idx>>8), byte(idx&0xFF))
+			}
+			c.bytecode = append(c.bytecode, 0, 0) // 0 dynamic exclusions
+			c.compileJScriptDestructuring(t.Rest, isConst, isLet, isVar)
 		}
 		c.emit(OpJSPop) // Pop the source object
 	case *jsast.ArrayPattern:
@@ -1815,20 +1839,22 @@ func (c *Compiler) compileJScriptDestructuring(target jsast.BindingTarget, isCon
 		for _, elt := range t.Elements {
 			c.emit(OpJSIteratorNext)
 			if elt != nil {
-				if bt, ok := elt.(jsast.BindingTarget); ok {
-					c.compileJScriptDestructuring(bt, isConst, isLet, isVar)
-				} else {
-					c.emit(OpJSPop)
-				}
+				c.compileJScriptDestructuring(elt, isConst, isLet, isVar)
 			} else {
 				// Elision: [,,]
 				c.emit(OpJSPop)
 			}
 		}
 		if t.Rest != nil {
-			// TODO Phase 5.4: Array Rest
+			c.emit(OpJSDup)
+			c.emit(OpJSCollectRest)
+			c.compileJScriptDestructuring(t.Rest, isConst, isLet, isVar)
 		}
 		c.emit(OpJSPop) // Pop the iterator
+	default:
+		// Unsupported pattern element or regular expression (e.g. [a.b])
+		// For now we just pop.
+		c.emit(OpJSPop)
 	}
 }
 

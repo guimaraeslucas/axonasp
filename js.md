@@ -34,64 +34,51 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 
 ---
 
-## 🛠️ PHASE 5: ITERATION PROTOCOL & DESTRUCTURING (HIGH COMPLEXITY)
-
-**Goal:** Standardize iteration mechanics and support `const [a, b] = arr;` and `const {x, y} = obj;` Please proceed step-by-step. Start by implementing Sub-Phase 5.1 and mapping out the compiler AST unrolling strategy for Sub-Phase 5.2, then wait for confirmation before advancing to the next phase. Think carefully about how to represent the temporary RHS object on the execution stack during multi-variable assignments. Mark each sub-phase as complete in this document before moving to the next one.
-**Memory Warning:** Be extremely careful with stack depth. Deeply nested destructuring can exhaust the stack. Always test memory usage with deeply nested patterns (e.g., depth of 10) to ensure the VM handles it gracefully without a Go panic and without excessive heap allocations.
-
-### Tasks:
-
-* 🛠️ SUB-PHASE 5.1: The Iteration Protocol Foundation
-    Before destructuring arrays, the VM must understand Iterables.
-    * [x] **`Symbol.iterator`:** Ensure `Symbol.iterator` is implemented and globally available.
-    * [x] **Built-in Iterators:** Implement native Go functions to return valid Iterator objects for `Array` and `String`. An Iterator object must have a `next()` method. Minimize heap allocations by reusing a single iterator struct for each type and resetting its state on each new iteration.
-    * [x] **The Iterator Result:** The `next()` method must return a standard JScript object: `{ value: any, done: boolean }`. Ensure no unnecessary heap allocations occur when generating this struct in hot loops.
-        * [x] **Testing:** Write tests to confirm that `for...of` loops and manual iterator usage work correctly with arrays and strings.
-
-
-* 🛠️ SUB-PHASE 5.2: Object Destructuring (Property-Based) [x]
-    Implement object destructuring first, as it does not rely on the iteration protocol.
-    * [x] **Compiler (`ObjectPattern`):** Update `compileJScriptLexicalDeclaration` and `compileJScriptAssignment` to recognize `ObjectPattern`.
-    * [x] **Null/Undefined Check:** The compiled bytecode MUST perform a check before attempting to read properties. If the RHS is `null` or `undefined`, it must throw a `TypeError` immediately, preventing any further property access attempts.
-    * [x] **Nested Objects:** Handle nested patterns like `const { a: { b } } = obj` by chaining property loads recursively *during compilation*, emitting a flat sequence of opcodes that first loads `a`, checks it for null/undefined, then loads `b`.
-    * [x] **Linear Unrolling:** For `const {x, y} = obj`, compile this into: Evaluate RHS -> Store in temporary VM register/stack -> Load `x` from temp -> Store in scope -> Load `y` from temp -> Store in scope. This approach avoids recursion in the VM and keeps memory usage predictable.
-    * [x] **Null/Undefined Check:** The compiled bytecode MUST perform a check. If the RHS is `null` or `undefined`, it must throw a `TypeError` *before* attempting to read properties.
-        * [x] **Testing:** Write tests for various object patterns, including nested destructuring and edge cases (e.g., missing properties, null/undefined RHS).
-
-* 🛠️ SUB-PHASE 5.3: Array Destructuring (Iterator-Based) [x]
-    Now integrate the Iteration Protocol with destructuring.
-    * [x] **Compiler (`ArrayPattern`):** Update the compiler to recognize `ArrayPattern`.
-    * [x] **Execution Flow:** For `const [a, b] = iterable`, the compiler must emit instructions to:
-        1. Get `Symbol.iterator` from the RHS.
-        2. Call it to get the iterator object.
-        3. Call `.next()` on the iterator. If `done: true`, assign `undefined` to `a`. Else, assign `value` to `a`.
-        4. Repeat step 3 for `b`.
-    * [x] **Fallback:** Throw a `TypeError` if the RHS is not iterable (i.e., `[Symbol.iterator]` is undefined).
-        * [x] **Testing:** Write tests for array destructuring with various iterables (arrays, strings, custom iterables) and edge cases (e.g., non-iterable RHS).
-
-* 🛠️ SUB-PHASE 5.4: Default Values & Rest Elements (`...`)
-    * [ ] **Default Values:** Support `const {x = 10} = obj`. If the loaded property is strictly `undefined`, evaluate and assign the default value.
-    * [ ] **Object Rest (`...rest`):** Create a new object containing all enumerable properties of the RHS *except* those explicitly destructured.
-    * [ ] **Array Rest (`...rest`):** Call `.next()` continuously until `done: true`, pushing all yielded values into a new Array instance.
-        * [ ] **Testing:** Write tests for default values and rest elements in both object and array destructuring contexts.
-        
-* 🛠️ SUB-PHASE 5.5: Validation & AST Memory Safety
-    * [ ] **No Go Recursion in VM:** Verify that `vm_jscript.go` does not call itself to resolve nested patterns.
-    * [ ] **Tests:** Write comprehensive tests in `axonvm/jscript_es6_test.go` and `./www/tests/test_destructuring.asp`. Test deeply nested destructuring (e.g., depth of 10) to ensure the VM stack handles it gracefully without a Go panic.
-* [ ] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
-
----
-
 ## 🛠️ PHASE 6: ES6 CLASSES (HIGH COMPLEXITY)
 
 **Goal:** Support `class C extends B { constructor() { super(); } method() {} }`
 
-### Tasks:
 
-* [ ] **Compiler Update:** Implement `compileJScriptClassDeclaration`.
-* [ ] **Logic:** Classes are NOT hoisted, execute in Strict Mode, map `constructor` to a function, and map methods to the `.prototype`.
-* [ ] **Super Binding:** Implement the `super` keyword by tracking the "Home Object" of methods to correctly resolve the prototype chain.
-* [ ] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
+### Tasks:
+Core Architecture Note for the Agent: Under the hood, ES6 Classes in JScript are "syntactic sugar" over JavaScript's existing prototype-based inheritance. However, they introduce strict semantics (e.g., they must be called with new, they are not hoisted, and all code inside them runs in Strict Mode). The implementation should leverage existing VTJSFunction and VTJSObject types, manipulating their internal properties (like __proto__ and prototype) via bytecode generation, rather than introducing entirely new Go structs. The compiler will need to generate bytecode that sets up the prototype chain correctly, handles the `super` keyword by tracking the "Home Object" of methods, and ensures that the constructor function is properly defined and linked to the class prototype. This will require careful management of the call stack and execution context to ensure that method calls and property accesses resolve correctly according to ES6 semantics.
+    * SUBPHASE 6.1: Parser & AST Verification
+        * [ ] **AST Nodes:** Verify or add AST nodes in `jscript/ast` for `ClassDeclaration`, `ClassExpression`, `MethodDefinition` (kinds: `constructor`, `method`, `get`, `set`), and `Super`.
+        * [ ] **Parser Update:** Ensure the parser correctly handles the `class`, `extends`, and `super` keywords.
+        * [ ] **Validation:** Add pure parser tests ensuring `class A extends B { constructor() { super(); } method() {} }` parses into the correct AST tree without VM execution.
+    * SUBPHASE 6.2: Basic Class Compilation (The Constructor)
+        * [ ] **Compiler Update:** Implement `compileJScriptClassDeclaration` in `axonvm/compiler_jscript.go`.
+        * [ ] **TDZ Binding:** Treat the class declaration similarly to a `let` binding. Classes are NOT hoisted and must reside in the Temporal Dead Zone until evaluated.
+        * [ ] **Constructor Logic:** Extract the `constructor` method and compile it as a standard `VTJSFunction`, tagging it internally with a flag (e.g., `IsClassConstructor: true`).
+        * [ ] **VM Enforcement:** If a `VTJSFunction` tagged as a class constructor is invoked without the `new` operator (via `OpCall` instead of `OpNew`), the VM MUST throw a `TypeError` ("Class constructor cannot be invoked without 'new'").
+        * [ ] **Validation:** Create `test_class_basic.asp` testing instantiation with `new` (success) and without `new` (throws TypeError).
+    * SUBPHASE 6.3: Instance Methods & Strict Mode Enforcement
+        * [ ] **Strict Mode:** Ensure the compiler sets the `StrictMode` flag for the constructor and all methods generated within the class block, as class bodies implicitly run in Strict Mode.
+        * [ ] **Method Compilation:** Modify `compileJScriptClassDeclaration` to iterate over all `MethodDefinition` AST nodes where `static` is false, compiling each as a `VTJSFunction`.
+        * [ ] **Prototype Binding:** Generate bytecode to assign these compiled methods to the constructor's `prototype` object (Equivalent to: `OpPush <Constructor>` -> `OpPush "prototype"` -> `OpMemberGet` -> `OpPush <MethodClosure>` -> `OpPush "<MethodName>"` -> `OpMemberSet`).
+        * [ ] **Validation:** Create `test_class_methods.asp` to verify method calls, correct `this` context, and strict mode enforcement.
+    * SUBPHASE 6.4: Static Methods and Accessors (Getters/Setters)
+        * [ ] **Static Methods:** If a `MethodDefinition` is marked `static`, bind it directly to the constructor function object instead of its `prototype`.
+        * [ ] **Accessors:** For `get` and `set` methods, use or implement the VM equivalent of `Object.defineProperty` using a specialized opcode (e.g., `OpJSDefineProperty`) to define descriptors on the `VTJSObject`.
+        * [ ] **Validation:** Create `test_class_static_accessors.asp`. Test `Class.staticMethod()` and `instance.getterProp`.
+    * SUBPHASE 6.5: Inheritance (`extends`) & Prototype Chaining
+        * [ ] **SuperClass Evaluation:** If `extends <SuperClass>` is present, evaluate it. The evaluated `<SuperClass>` must be a valid constructor (`VTJSFunction`) or `null`. If not, throw a `TypeError`.
+        * [ ] **Prototype Wiring:** Set the internal `__proto__` of the subclass's `prototype` object to `<SuperClass>.prototype`.
+        * [ ] **Static Inheritance:** Set the internal `__proto__` of the subclass constructor itself to `<SuperClass>` to allow inheritance of static methods. Use internal VM assignments (e.g., `vm.jsSetProto`) to avoid Go heap allocation.
+        * [ ] **Validation:** Create `test_class_extends.asp`. Check if instances inherit methods from the superclass prototype and if the subclass inherits static methods.
+    * SUBPHASE 6.6: The `super()` Call in Constructors
+        * [ ] **TDZ for `this`:** In a derived class constructor, `this` is uninitialized until `super()` is called. If `this` is accessed before `super()` completes, the VM must throw a `ReferenceError`.
+        * [ ] **Super Invocation:** Compile `super(...)` as a special call that invokes the parent constructor using `Reflect.construct` logic via `OpNew`, explicitly targeting the extended class.
+        * [ ] **Validation:** Create `test_class_super_constructor.asp`. Test constructor argument passing and verify `ReferenceError` if `this` is used prematurely.
+    * SUBPHASE 6.7: The `super.method()` Call & Home Object Binding
+        * [ ] **Home Object Assignment:** When attaching methods to the prototype, attach a hidden internal VM property `[[HomeObject]]` to the `VTJSFunction` pointing to the object it was bound to. Store this as an integer ID pointing to the VM's `jsObjectItems` array to strictly avoid reflection and Go heap escape.
+        * [ ] **Super Resolution:** Translate `super.foo` to: Get `[[HomeObject]]` -> Get its prototype -> Lookup property `"foo"` -> Call with current `this` context.
+        * [ ] **Validation:** Create `test_class_super_method.asp`. Test complex prototype chains (e.g., `C extends B extends A`).
+    * SUBPHASE 6.8: Final Agent Checklist
+        * [ ] **Gofmt:** Run `gofmt` on all modified files.
+        * [ ] **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure strictly zero regressions on the VBScript side.
+        * [ ] **Memory Profile:** Run `go test -bench . -benchmem` to guarantee no new allocations were introduced in the JScript execution path (Zero-Allocation axiom).
+        * [ ] **Error Codes:** Ensure correct use of error codes from `jscripterrorcodes.go` for syntax/runtime failures.
+        * [ ] **Documentation:** Update `jscript-es6-support.md` reflecting the new capabilities and any limitations.
 
 ---
 
@@ -145,4 +132,4 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 6. **Documentation:** Did you update `jscript-es6-support.md` with the new features and any limitations or known issues?
 7. **Testing:** Did you add comprehensive test cases for each new feature in both Go and ASP test files?
 8. **Code Review:** Before finalizing, review the code for any potential performance pitfalls, memory leaks, or edge cases that could arise from the new features.
-9. **Check complete:** [x] Phase 5.3 Array Destructuring task is marked as complete in this file
+9. **Check complete:** [x] Phase 5 Iteration Protocol & Destructuring task is marked as complete in this file

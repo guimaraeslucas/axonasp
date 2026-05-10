@@ -245,6 +245,60 @@ func (vm *VM) jsGetIterator(source Value) Value {
 	return itObj
 }
 
+// jsCollectRest consumes all remaining values from an iterator and returns them as a JS Array.
+func (vm *VM) jsCollectRest(itObj Value) Value {
+	values := make([]Value, 0)
+	for {
+		result, handled := vm.jsCallMember(itObj, "next", nil)
+		if !handled || result.Type != VTJSObject {
+			break
+		}
+		doneVal, _ := vm.jsMemberGet(result, "done")
+		if vm.jsTruthy(doneVal) {
+			break
+		}
+		val, _ := vm.jsMemberGet(result, "value")
+		values = append(values, val)
+	}
+	return ValueFromVBArray(NewVBArrayFromValues(0, values))
+}
+
+// jsObjectRest creates a new object with all enumerable properties of source EXCEPT excluded keys.
+func (vm *VM) jsObjectRest(source Value, excluded map[string]struct{}) Value {
+	targetID := vm.allocJSID()
+	targetObj := make(map[string]Value, 8)
+	targetProps := make(map[string]jsPropertyDescriptor, 8)
+
+	// In ES spec, source is coerced to object.
+	// For now we handle VTJSObject enumerable own properties.
+	if source.Type == VTJSObject {
+		// Use jsObjectOwnEnumerableKeys to correctly respect property descriptors
+		keys := vm.jsObjectOwnEnumerableKeys(source.Num)
+		for _, k := range keys {
+			if _, isExcluded := excluded[k]; isExcluded {
+				continue
+			}
+			val, _ := vm.jsMemberGet(source, k)
+			targetObj[k] = val
+			targetProps[k] = jsDefaultPropertyDescriptor(val)
+		}
+	} else if source.Type == VTArray && source.Arr != nil {
+		// Special case: internal arrays are somewhat object-like in destructuring
+		for i, v := range source.Arr.Values {
+			k := strconv.Itoa(source.Arr.Lower + i)
+			if _, isExcluded := excluded[k]; isExcluded {
+				continue
+			}
+			targetObj[k] = v
+			targetProps[k] = jsDefaultPropertyDescriptor(v)
+		}
+	}
+
+	vm.jsObjectItems[targetID] = targetObj
+	vm.jsPropertyItems[targetID] = targetProps
+	return Value{Type: VTJSObject, Num: targetID}
+}
+
 // jsIteratorNextValue calls .next() on an iterator and returns the yielded value.
 // If the iterator is done, returns undefined.
 func (vm *VM) jsIteratorNextValue(itObj Value) Value {

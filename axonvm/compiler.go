@@ -1308,7 +1308,7 @@ func usesWideJumpOperand(op OpCode) bool {
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel:
 		fallthrough
 	case OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter, OpJSBreak, OpJSContinue, OpJSForInCleanup, OpJSForOfCleanup,
-		OpJSJumpIfNullish, OpJSJumpIfNotNullish:
+		OpJSJumpIfNullish, OpJSJumpIfNotNullish, OpJSJumpIfNotUndefined:
 		return true
 	default:
 		return false

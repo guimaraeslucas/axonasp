@@ -2601,6 +2601,28 @@ aspExecLoop:
 			itObj := vm.stack[vm.sp]
 			vm.push(vm.jsIteratorNextValue(itObj))
 
+		case OpJSCollectRest:
+			itObj := vm.pop()
+			vm.push(vm.jsCollectRest(itObj))
+
+		case OpJSObjectRest:
+			staticCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			excluded := make(map[string]struct{}, staticCount+4)
+			for i := 0; i < staticCount; i++ {
+				keyIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				vm.ip += 2
+				excluded[vm.constants[keyIdx].Str] = struct{}{}
+			}
+			dynamicCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			for i := 0; i < dynamicCount; i++ {
+				keyVal := vm.pop()
+				excluded[vm.jsPropertyKeyFromValue(keyVal)] = struct{}{}
+			}
+			source := vm.pop()
+			vm.push(vm.jsObjectRest(source, excluded))
+
 		case OpJSPop:
 			vm.pop()
 
@@ -2687,6 +2709,20 @@ aspExecLoop:
 				if !vm.jsTruthy(vm.jsLess(varVal, limit)) {
 					vm.ip = exitTarget
 				}
+			}
+
+		case OpJSJumpIfNotUndefined:
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+			v := vm.stack[vm.sp]
+			if v.Type != VTJSUndefined {
+				if target < vm.ip {
+					jsBackJumpCount++
+					if jsBackJumpCount > jsBackJumpLimit {
+						return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+					}
+				}
+				vm.ip = target
 			}
 
 		case OpJSLoadCatchError:
