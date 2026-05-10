@@ -1091,8 +1091,105 @@ func extractScriptLanguageValue(attr string) (string, bool) {
 
 // findScriptEndFrom finds the end index immediately after the corresponding </script> tag.
 func (l *Lexer) findScriptEndFrom(openTagEnd int) (int, int, bool) {
+	inSingleQuote := false
+	inDoubleQuote := false
+	inTemplateQuote := false
+	inLineComment := false
+	inBlockComment := false
+	escaped := false
+
 	for i := openTagEnd; i < l.Length; i++ {
-		if l.getChar(i) != '<' || l.getChar(i+1) != '/' {
+		ch := l.getChar(i)
+		next := l.getChar(i + 1)
+
+		if inLineComment {
+			if ch == '\r' || ch == '\n' {
+				inLineComment = false
+			}
+			continue
+		}
+
+		if inBlockComment {
+			if ch == '*' && next == '/' {
+				inBlockComment = false
+				i++
+			}
+			continue
+		}
+
+		if inSingleQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '\'' {
+				inSingleQuote = false
+			}
+			continue
+		}
+
+		if inDoubleQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inDoubleQuote = false
+			}
+			continue
+		}
+
+		if inTemplateQuote {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '`' {
+				inTemplateQuote = false
+			}
+			continue
+		}
+
+		if ch == '/' && next == '/' {
+			inLineComment = true
+			i++
+			continue
+		}
+
+		if ch == '/' && next == '*' {
+			inBlockComment = true
+			i++
+			continue
+		}
+
+		if ch == '\'' {
+			inSingleQuote = true
+			continue
+		}
+
+		if ch == '"' {
+			inDoubleQuote = true
+			continue
+		}
+
+		if ch == '`' {
+			inTemplateQuote = true
+			continue
+		}
+
+		if ch != '<' || next != '/' {
 			continue
 		}
 		closeTag := l.sliceString(i, i+9)

@@ -348,6 +348,8 @@ type VM struct {
 	jsArgumentsItems               map[int64]*jsArgumentsBinding
 	jsSetItems                     map[int64]map[string]Value
 	jsMapItems                     map[int64]map[string]Value
+	jsArrayIterators               map[int64]*jsArrayIterator
+	jsStringIterators              map[int64]*jsStringIterator
 	jsArrayBuffers                 map[int64][]byte // backing byte slices for ArrayBuffer objects
 	jsSymbolGlobalRegistry         map[string]Value // Symbol.for global registry: description -> Symbol Value
 	jsNextSymbolID                 int64
@@ -556,6 +558,8 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsArgumentsItems:               make(map[int64]*jsArgumentsBinding),
 		jsSetItems:                     make(map[int64]map[string]Value),
 		jsMapItems:                     make(map[int64]map[string]Value),
+		jsArrayIterators:               make(map[int64]*jsArrayIterator),
+		jsStringIterators:              make(map[int64]*jsStringIterator),
 		jsArrayBuffers:                 make(map[int64][]byte),
 		jsSymbolGlobalRegistry:         make(map[string]Value),
 		jsNextSymbolID:                 1,
@@ -2436,53 +2440,23 @@ aspExecLoop:
 			member := vm.constants[nameIdx].Str
 			if result, handled := vm.jsCallMember(target, member, args); handled {
 				vm.push(result)
-				continue
+			} else {
+				vm.push(Value{Type: VTJSUndefined})
 			}
-			switch target.Type {
-			case VTNativeObject:
-				vm.push(vm.dispatchNativeCall(target.Num, member, args))
-			case VTJSFunction:
-				switch {
-				case strings.EqualFold(member, "call"):
-					callThis := Value{Type: VTJSUndefined}
-					callArgs := args[:0]
-					if len(args) > 0 {
-						callThis = args[0]
-						callArgs = args[1:]
-					}
-					vm.push(vm.jsCall(target, callThis, callArgs))
-				case strings.EqualFold(member, "apply"):
-					applyThis := Value{Type: VTJSUndefined}
-					var applyArgs []Value
-					if len(args) > 0 {
-						applyThis = args[0]
-					}
-					if len(args) > 1 {
-						applyArgs = vm.jsExtractApplyArgs(args[1])
-					}
-					vm.push(vm.jsCall(target, applyThis, applyArgs))
-				case strings.EqualFold(member, "bind"):
-					bindThis := Value{Type: VTJSUndefined}
-					bindArgs := args[:0]
-					if len(args) > 0 {
-						bindThis = args[0]
-						bindArgs = args[1:]
-					}
-					vm.push(vm.jsBindFunction(target, bindThis, bindArgs))
-				default:
-					callee, deferred := vm.jsMemberGet(target, member)
-					if deferred {
-						continue
-					}
-					vm.push(vm.jsCall(callee, target, args))
-				}
-			case VTJSObject, VTArray, VTString, VTDate:
-				callee, deferred := vm.jsMemberGet(target, member)
-				if deferred {
-					continue
-				}
-				vm.push(vm.jsCall(callee, target, args))
-			default:
+
+		case OpJSCallComputedMember:
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			keyVal := vm.pop()
+			target := vm.pop()
+			key := vm.jsPropertyKeyFromValue(keyVal)
+			if result, handled := vm.jsCallMember(target, key, args); handled {
+				vm.push(result)
+			} else {
 				vm.push(Value{Type: VTJSUndefined})
 			}
 
@@ -2499,76 +2473,25 @@ aspExecLoop:
 			member := vm.constants[nameIdx].Str
 			if result, handled := vm.jsCallMember(target, member, args); handled {
 				vm.jsReturn(result)
-				continue
-			}
-
-			thisArg := target
-			callee := Value{Type: VTJSUndefined}
-			canTailCall := false
-
-			switch target.Type {
-			case VTNativeObject:
-				vm.jsReturn(vm.dispatchNativeCall(target.Num, member, args))
-				continue
-			case VTJSFunction:
-				switch {
-				case strings.EqualFold(member, "call"):
-					callThis := Value{Type: VTJSUndefined}
-					callArgs := args[:0]
-					if len(args) > 0 {
-						callThis = args[0]
-						callArgs = args[1:]
-					}
-					callee = target
-					thisArg = callThis
-					args = callArgs
-					canTailCall = true
-				case strings.EqualFold(member, "apply"):
-					applyThis := Value{Type: VTJSUndefined}
-					var applyArgs []Value
-					if len(args) > 0 {
-						applyThis = args[0]
-					}
-					if len(args) > 1 {
-						applyArgs = vm.jsExtractApplyArgs(args[1])
-					}
-					callee = target
-					thisArg = applyThis
-					args = applyArgs
-					canTailCall = true
-				case strings.EqualFold(member, "bind"):
-					bindThis := Value{Type: VTJSUndefined}
-					bindArgs := args[:0]
-					if len(args) > 0 {
-						bindThis = args[0]
-						bindArgs = args[1:]
-					}
-					vm.jsReturn(vm.jsBindFunction(target, bindThis, bindArgs))
-					continue
-				default:
-					var deferred bool
-					callee, deferred = vm.jsMemberGet(target, member)
-					if deferred {
-						continue
-					}
-					canTailCall = true
-				}
-			case VTJSObject, VTArray, VTString, VTDate:
-				var deferred bool
-				callee, deferred = vm.jsMemberGet(target, member)
-				if deferred {
-					continue
-				}
-				canTailCall = true
-			default:
+			} else {
 				vm.jsReturn(Value{Type: VTJSUndefined})
-				continue
 			}
 
-			if canTailCall && vm.jsTailCallValue(callee, thisArg, args) {
-				continue
+		case OpJSTailCallComputedMember:
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
 			}
-			vm.jsReturn(vm.jsCall(callee, thisArg, args))
+			keyVal := vm.pop()
+			target := vm.pop()
+			key := vm.jsPropertyKeyFromValue(keyVal)
+			if result, handled := vm.jsCallMember(target, key, args); handled {
+				vm.jsReturn(result)
+			} else {
+				vm.jsReturn(Value{Type: VTJSUndefined})
+			}
 
 		case OpJSCreateClosure:
 			templateIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -2661,6 +2584,13 @@ aspExecLoop:
 		case OpJSDup:
 			v := vm.pop()
 			vm.push(v)
+			vm.push(v)
+
+		case OpJSRequireObject:
+			v := vm.pop()
+			if v.Type == VTNull || v.Type == VTJSUndefined {
+				vm.jsThrowTypeError("Cannot destructure null or undefined")
+			}
 			vm.push(v)
 
 		case OpJSPop:

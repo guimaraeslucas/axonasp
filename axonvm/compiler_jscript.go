@@ -233,15 +233,15 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		c.emit(OpJSPop)
 	case *jsast.VariableStatement:
 		for _, binding := range node.List {
-			name, ok := jsBindingIdentifierName(binding.Target)
-			if !ok {
-				continue
-			}
-			nameIdx := c.addConstant(NewString(name))
-			c.emit(OpJSDeclareName, nameIdx)
 			if binding.Initializer != nil {
 				c.compileJScriptExpression(binding.Initializer)
-				c.emit(OpJSSetName, nameIdx)
+				c.compileJScriptDestructuring(binding.Target, false, false, true)
+			} else {
+				// var x; -> declare x
+				if id, ok := binding.Target.(*jsast.Identifier); ok {
+					nameIdx := c.addConstant(NewString(id.Name.String()))
+					c.emit(OpJSDeclareName, nameIdx)
+				}
 			}
 		}
 	case *jsast.LexicalDeclaration:
@@ -1305,9 +1305,12 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		}
 		nameIdx := c.addConstant(NewString(name))
 		c.compileJScriptExpression(node.Right)
-		switch node.Operator {
-		case jstoken.ASSIGN:
+		if node.Operator == jstoken.ASSIGN {
+			c.emit(OpJSDup)
 			c.emit(OpJSSetName, nameIdx)
+			return
+		}
+		switch node.Operator {
 		case jstoken.ADD_ASSIGN, jstoken.PLUS:
 			c.emit(OpJSAddAssign, nameIdx)
 		case jstoken.SUBTRACT_ASSIGN, jstoken.MINUS:
@@ -1330,11 +1333,23 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		case jstoken.COALESCE_ASSIGN:
 			c.emit(OpJSCoalesceAssign, nameIdx)
 			return
-			// Return now to avoid OpJSLoadUndefined
 		default:
 			c.emit(OpJSSetName, nameIdx)
 		}
+		// Compound assignments in AxonASP currently don't return the value on stack after OpJSXXXAssign?
+		// Let's check OpJSAddAssign etc.
 		c.emit(OpJSLoadUndefined)
+	case *jsast.ObjectPattern, *jsast.ArrayPattern:
+		if node.Operator != jstoken.ASSIGN {
+			jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
+			if c.sourceName != "" {
+				jsErr.WithFile(c.sourceName)
+			}
+			panic(jsErr)
+		}
+		c.compileJScriptExpression(node.Right)
+		c.emit(OpJSDup)
+		c.compileJScriptDestructuring(left.(jsast.BindingTarget), false, false, false)
 	case *jsast.DotExpression:
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(node.Right)
@@ -1462,6 +1477,13 @@ func (c *Compiler) compileJScriptCall(node *jsast.CallExpression) {
 			c.compileJScriptExpression(node.ArgumentList[i])
 		}
 		c.emit(OpJSCallMember, c.addConstant(NewString(callee.Identifier.Name.String())), len(node.ArgumentList))
+	case *jsast.BracketExpression:
+		c.compileJScriptExpression(callee.Left)
+		c.compileJScriptExpression(callee.Member)
+		for i := range node.ArgumentList {
+			c.compileJScriptExpression(node.ArgumentList[i])
+		}
+		c.emit(OpJSCallComputedMember, len(node.ArgumentList))
 	default:
 		c.compileJScriptExpression(node.Callee)
 		for i := range node.ArgumentList {
@@ -1485,6 +1507,13 @@ func (c *Compiler) compileJScriptTailReturn(argument jsast.Expression) bool {
 			c.compileJScriptExpression(callExpr.ArgumentList[i])
 		}
 		c.emit(OpJSTailCallMember, c.addConstant(NewString(callee.Identifier.Name.String())), len(callExpr.ArgumentList))
+	case *jsast.BracketExpression:
+		c.compileJScriptExpression(callee.Left)
+		c.compileJScriptExpression(callee.Member)
+		for i := range callExpr.ArgumentList {
+			c.compileJScriptExpression(callExpr.ArgumentList[i])
+		}
+		c.emit(OpJSTailCallComputedMember, len(callExpr.ArgumentList))
 	default:
 		c.compileJScriptExpression(callExpr.Callee)
 		for i := range callExpr.ArgumentList {
@@ -1649,6 +1678,45 @@ func (c *Compiler) compileJScriptUpdateExpression(node *jsast.UnaryExpression) b
 	return false
 }
 
+func jsExtractBindingNames(target jsast.BindingTarget, names *[]string) {
+	if target == nil {
+		return
+	}
+	switch t := target.(type) {
+	case *jsast.Identifier:
+		*names = append(*names, t.Name.String())
+	case *jsast.ObjectPattern:
+		for _, prop := range t.Properties {
+			switch p := prop.(type) {
+			case *jsast.PropertyShort:
+				jsExtractBindingNames(&p.Name, names)
+			case *jsast.PropertyKeyed:
+				if bt, ok := p.Value.(jsast.BindingTarget); ok {
+					jsExtractBindingNames(bt, names)
+				}
+			}
+		}
+		if t.Rest != nil {
+			if bt, ok := t.Rest.(jsast.BindingTarget); ok {
+				jsExtractBindingNames(bt, names)
+			}
+		}
+	case *jsast.ArrayPattern:
+		for _, elt := range t.Elements {
+			if elt != nil {
+				if bt, ok := elt.(jsast.BindingTarget); ok {
+					jsExtractBindingNames(bt, names)
+				}
+			}
+		}
+		if t.Rest != nil {
+			if bt, ok := t.Rest.(jsast.BindingTarget); ok {
+				jsExtractBindingNames(bt, names)
+			}
+		}
+	}
+}
+
 func jsBindingIdentifierName(target jsast.BindingTarget) (string, bool) {
 	if id, ok := target.(*jsast.Identifier); ok {
 		return id.Name.String(), true
@@ -1669,12 +1737,10 @@ func jsGetBlockLexicalNames(stmts []jsast.Statement) ([]string, []string) {
 	for _, s := range stmts {
 		if decl, ok := s.(*jsast.LexicalDeclaration); ok {
 			for _, binding := range decl.List {
-				if name, ok := jsBindingIdentifierName(binding.Target); ok {
-					if decl.Token == jstoken.CONST {
-						constNames = append(constNames, name)
-					} else {
-						letNames = append(letNames, name)
-					}
+				if decl.Token == jstoken.CONST {
+					jsExtractBindingNames(binding.Target, &constNames)
+				} else {
+					jsExtractBindingNames(binding.Target, &letNames)
 				}
 			}
 		}
@@ -1682,15 +1748,10 @@ func jsGetBlockLexicalNames(stmts []jsast.Statement) ([]string, []string) {
 	return letNames, constNames
 }
 
-// compileJScriptLexicalDeclaration emits block-scoped let/const declarations.
-func (c *Compiler) compileJScriptLexicalDeclaration(node *jsast.LexicalDeclaration) {
-	isConst := node.Token == jstoken.CONST
-	for _, binding := range node.List {
-		name, ok := jsBindingIdentifierName(binding.Target)
-		if !ok {
-			continue
-		}
-		// Restricted identifiers (eval, arguments) are not allowed in strict mode
+func (c *Compiler) compileJScriptDestructuring(target jsast.BindingTarget, isConst bool, isLet bool, isVar bool) {
+	switch t := target.(type) {
+	case *jsast.Identifier:
+		name := t.Name.String()
 		if c.jsStrictMode && jsIsRestrictedIdentifier(name) {
 			jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
 			jsErr.WithASPDescription(fmt.Sprintf("cannot use '%s' as a variable name in strict mode", name))
@@ -1700,18 +1761,89 @@ func (c *Compiler) compileJScriptLexicalDeclaration(node *jsast.LexicalDeclarati
 			panic(jsErr)
 		}
 		nameIdx := c.addConstant(NewString(name))
+		if isVar {
+			c.emit(OpJSDeclareName, nameIdx)
+			c.emit(OpJSSetName, nameIdx)
+		} else if isConst {
+			c.emitConstInitialize(nameIdx)
+		} else if isLet {
+			c.emit(OpJSLetDeclare, nameIdx)
+			c.emit(OpJSSetName, nameIdx)
+		} else {
+			// Normal assignment
+			c.emit(OpJSSetName, nameIdx)
+		}
+	case *jsast.ObjectPattern:
+		c.emit(OpJSRequireObject)
+		for _, prop := range t.Properties {
+			switch p := prop.(type) {
+			case *jsast.PropertyShort:
+				name := p.Name.Name.String()
+				nameIdx := c.addConstant(NewString(name))
+				c.emit(OpJSDup)
+				c.emit(OpJSMemberGet, nameIdx)
+				// TODO Phase 5.4: Default value
+				c.compileJScriptDestructuring(&p.Name, isConst, isLet, isVar)
+			case *jsast.PropertyKeyed:
+				c.emit(OpJSDup)
+				if p.Computed {
+					c.compileJScriptExpression(p.Key)
+					c.emit(OpJSIndexGet)
+				} else {
+					key := ""
+					if id, ok := p.Key.(*jsast.Identifier); ok {
+						key = id.Name.String()
+					} else if lit, ok := p.Key.(*jsast.StringLiteral); ok {
+						key = lit.Value.String()
+					}
+					c.emit(OpJSMemberGet, c.addConstant(NewString(key)))
+				}
+				// TODO Phase 5.4: Default value
+				if bt, ok := p.Value.(jsast.BindingTarget); ok {
+					c.compileJScriptDestructuring(bt, isConst, isLet, isVar)
+				} else {
+					c.emit(OpJSPop)
+				}
+			}
+		}
+		if t.Rest != nil {
+			// TODO Phase 5.4: Object Rest
+		}
+		c.emit(OpJSPop) // Pop the source object
+	case *jsast.ArrayPattern:
+		// Phase 5.3: Array Destructuring
+		c.emit(OpJSPop)
+	}
+}
+
+// compileJScriptLexicalDeclaration emits block-scoped let/const declarations.
+func (c *Compiler) compileJScriptLexicalDeclaration(node *jsast.LexicalDeclaration) {
+	isConst := node.Token == jstoken.CONST
+	for _, binding := range node.List {
 		if isConst {
 			if binding.Initializer != nil {
 				c.compileJScriptExpression(binding.Initializer)
-				c.emitConstInitialize(nameIdx)
+				c.compileJScriptDestructuring(binding.Target, true, false, false)
+			} else {
+				// const without initializer is a SyntaxError per spec
+				jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, 0, 0)
+				jsErr.WithASPDescription("missing initializer in const declaration")
+				if c.sourceName != "" {
+					jsErr.WithFile(c.sourceName)
+				}
+				panic(jsErr)
 			}
-			// const without initializer is a SyntaxError per spec, but parser may allow it;
-			// if initializer is nil, the const stays in TDZ indefinitely.
 		} else {
-			c.emit(OpJSLetDeclare, nameIdx)
+			// let
 			if binding.Initializer != nil {
 				c.compileJScriptExpression(binding.Initializer)
-				c.emit(OpJSSetName, nameIdx)
+				c.compileJScriptDestructuring(binding.Target, false, true, false)
+			} else {
+				// let x; -> declare x
+				if id, ok := binding.Target.(*jsast.Identifier); ok {
+					nameIdx := c.addConstant(NewString(id.Name.String()))
+					c.emit(OpJSLetDeclare, nameIdx)
+				}
 			}
 		}
 	}

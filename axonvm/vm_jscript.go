@@ -630,6 +630,7 @@ func (vm *VM) ensureJSRootEnv() {
 	vm.jsEnvItems[rootID] = &jsEnvFrame{parentID: 0, bindings: bindings}
 	vm.jsActiveEnvID = rootID
 	vm.jsThisValue = Value{Type: VTJSUndefined}
+	vm.jsPopulatePrototypes(bindings)
 }
 
 // jsCreateMathObject allocates the global Math object with immutable constants.
@@ -725,7 +726,7 @@ func (vm *VM) jsCreateIntrinsicObject(typeName string, ctorName string) Value {
 }
 
 func (vm *VM) jsObjectStringProperty(obj Value, key string) string {
-	if obj.Type != VTJSObject {
+	if obj.Type != VTJSObject && obj.Type != VTJSFunction {
 		return ""
 	}
 	items, ok := vm.jsObjectItems[obj.Num]
@@ -2240,6 +2241,20 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				boundArgs = args[1:]
 			}
 			return vm.jsBindFunction(target, bindThis, boundArgs), true
+		}
+	}
+
+	if target.Type == VTJSObject {
+		class := vm.jsObjectStringProperty(target, "__js_type")
+		switch class {
+		case "Array Iterator":
+			if strings.EqualFold(member, "next") {
+				return vm.jsArrayIteratorNext(target), true
+			}
+		case "String Iterator":
+			if strings.EqualFold(member, "next") {
+				return vm.jsStringIteratorNext(target), true
+			}
 		}
 	}
 
@@ -4088,6 +4103,20 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		}
 	}
 
+	// General fallback: dispatch based on target type
+	switch target.Type {
+	case VTNativeObject:
+		return vm.dispatchNativeCall(target.Num, member, args), true
+	case VTJSObject, VTJSFunction, VTArray, VTString, VTDate:
+		callee, deferred := vm.jsMemberGet(target, member)
+		if deferred {
+			return Value{Type: VTJSUndefined}, true
+		}
+		if callee.Type != VTJSUndefined {
+			return vm.jsCall(callee, target, args), true
+		}
+	}
+
 	return Value{Type: VTJSUndefined}, false
 }
 
@@ -4963,38 +4992,72 @@ func (vm *VM) jsEnumerateForOfValues(source Value) []Value {
 		}
 	}
 
+	// Fallback: ES6 Iteration Protocol
+	itKey := jsSymbolPropertyPrefix + strconv.FormatInt(jsWellKnownSymbolIterator, 10)
+	itFn, _ := vm.jsMemberGet(source, itKey)
+	if itFn.Type == VTJSFunction || itFn.Type == VTJSObject {
+		itObj := vm.jsCall(itFn, source, nil)
+		if itObj.Type == VTJSObject {
+			out := make([]Value, 0)
+			for {
+				result, handled := vm.jsCallMember(itObj, "next", nil)
+				if !handled || result.Type != VTJSObject {
+					break
+				}
+				doneVal, _ := vm.jsMemberGet(result, "done")
+				if vm.jsTruthy(doneVal) {
+					break
+				}
+				val, _ := vm.jsMemberGet(result, "value")
+				out = append(out, val)
+			}
+			return out
+		}
+	}
+
 	return nil
 }
 
 func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 	switch callee.Type {
 	case VTJSFunction:
-		if closure, ok := vm.jsFunctionItems[callee.Num]; ok && closure != nil && closure.isBound {
-			callArgs := closure.boundArgs
-			if len(args) > 0 {
-				merged := make([]Value, 0, len(callArgs)+len(args))
-				merged = append(merged, callArgs...)
-				merged = append(merged, args...)
-				callArgs = merged
-			}
-			return vm.jsCall(closure.boundFn, closure.boundThis, callArgs)
-		}
-		child := vm.cloneForExecuteLocal(len(vm.bytecode))
-		if child.jsBeginFunctionCall(callee, thisVal, args, Value{Type: VTJSUndefined}, false) {
-			if err := child.Run(); err != nil {
-				vm.syncExecuteGlobalState(child)
-				if vmErr, ok := err.(*VMError); ok {
-					panic(vmErr)
+		if closure, ok := vm.jsFunctionItems[callee.Num]; ok && closure != nil {
+			if closure.isBound {
+				callArgs := closure.boundArgs
+				if len(args) > 0 {
+					merged := make([]Value, 0, len(callArgs)+len(args))
+					merged = append(merged, callArgs...)
+					merged = append(merged, args...)
+					callArgs = merged
 				}
-				vm.raise(vbscript.InternalError, err.Error())
-				return Value{Type: VTJSUndefined}
+				return vm.jsCall(closure.boundFn, closure.boundThis, callArgs)
 			}
-			result := Value{Type: VTJSUndefined}
-			if child.sp >= 0 {
-				result = child.stack[child.sp]
+			child := vm.cloneForExecuteLocal(len(vm.bytecode))
+			if child.jsBeginFunctionCall(callee, thisVal, args, Value{Type: VTJSUndefined}, false) {
+				if err := child.Run(); err != nil {
+					vm.syncExecuteGlobalState(child)
+					if vmErr, ok := err.(*VMError); ok {
+						panic(vmErr)
+					}
+					vm.raise(vbscript.InternalError, err.Error())
+					return Value{Type: VTJSUndefined}
+				}
+				result := Value{Type: VTJSUndefined}
+				if child.sp >= 0 {
+					result = child.stack[child.sp]
+				}
+				vm.syncExecuteGlobalState(child)
+				return result
 			}
-			vm.syncExecuteGlobalState(child)
-			return result
+			return Value{Type: VTJSUndefined}
+		}
+		// Native JScript functions (without closures)
+		ctorName := vm.jsObjectStringProperty(callee, "__js_ctor")
+		switch ctorName {
+		case "ArrayValues":
+			return vm.jsCreateArrayIterator(thisVal, 0)
+		case "StringIteratorFactory":
+			return vm.jsCreateStringIterator(vm.valueToString(thisVal))
 		}
 		return Value{Type: VTJSUndefined}
 	case VTNativeObject:
@@ -5689,6 +5752,11 @@ func (vm *VM) jsMemberDelete(obj Value, member string) bool {
 
 // jsIndexGet implements array[index] access.
 func (vm *VM) jsIndexGet(arr Value, index Value) Value {
+	if index.Type == VTSymbol {
+		key := vm.jsPropertyKeyFromValue(index)
+		val, _ := vm.jsMemberGet(arr, key)
+		return val
+	}
 	switch arr.Type {
 	case VTArray:
 		if arr.Arr == nil {
@@ -5697,7 +5765,10 @@ func (vm *VM) jsIndexGet(arr Value, index Value) Value {
 		indexNum := int(vm.jsToNumber(index).Flt)
 		adjustedIndex := indexNum - arr.Arr.Lower
 		if adjustedIndex < 0 || adjustedIndex >= len(arr.Arr.Values) {
-			return Value{Type: VTJSUndefined}
+			// Fallback to property/prototype lookup (e.g. Symbol.iterator)
+			key := vm.jsPropertyKeyFromValue(index)
+			val, _ := vm.jsMemberGet(arr, key)
+			return val
 		}
 		return arr.Arr.Values[adjustedIndex]
 	case VTJSObject:
@@ -5716,7 +5787,10 @@ func (vm *VM) jsIndexGet(arr Value, index Value) Value {
 		runes := []rune(arr.Str)
 		idx := int(vm.jsToNumber(index).Flt)
 		if idx < 0 || idx >= len(runes) {
-			return Value{Type: VTJSUndefined}
+			// Fallback to property/prototype lookup
+			key := vm.jsPropertyKeyFromValue(index)
+			val, _ := vm.jsMemberGet(arr, key)
+			return val
 		}
 		ch := string(runes[idx])
 		if !vm.jsEnsureStringSize(len(ch)) || !vm.jsChargeStringWork(len(ch)) {

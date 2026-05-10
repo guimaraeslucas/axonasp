@@ -781,6 +781,70 @@ Response.Write(Symbol.keyFor(local) === undefined); // Output: true
 
 ---
 
+## Iteration Protocol — `for...of` and Custom Iterables
+
+The iteration protocol allows JScript objects to define or customize their iteration behavior, such as which values are looped over in a `for...of` construct.
+
+### `for...of` Statement
+
+The `for...of` statement creates a loop iterating over iterable objects, including built-in `Array`, `String`, `Set`, `Map`, and custom iterables.
+
+### Built-in Iterables
+
+- **Array**: Iterates over elements.
+- **String**: Iterates over characters (handling surrogate pairs).
+- **Set**: Iterates over unique values.
+- **Map**: Iterates over `[key, value]` entries.
+
+### Custom Iterables
+
+To make an object iterable, it must implement the `[Symbol.iterator]` method, which returns an **Iterator** object. An iterator is an object that has a `next()` method returning an object with two properties: `value` (the next value) and `done` (a boolean indicating completion).
+
+### Code Example
+
+```javascript
+<script runat="server" language="JScript">
+// 1. Iterate over an Array
+var fruits = ["Apple", "Orange", "Banana"];
+for (var fruit of fruits) {
+    Response.Write(fruit + " "); // Output: Apple Orange Banana 
+}
+
+// 2. Manual Iterator usage
+var it = fruits[Symbol.iterator]();
+var res = it.next();
+while (!res.done) {
+    Response.Write(res.value + " ");
+    res = it.next();
+}
+
+// 3. Custom Iterable
+var range = {
+    from: 1,
+    to: 3,
+    [Symbol.iterator]: function() {
+        return {
+            current: this.from,
+            last: this.to,
+            next: function() {
+                if (this.current <= this.last) {
+                    return { value: this.current++, done: false };
+                } else {
+                    return { value: undefined, done: true };
+                }
+            }
+        };
+    }
+};
+
+for (var n of range) {
+    Response.Write(n + " "); // Output: 1 2 3
+}
+</script>
+```
+
+---
+
 ## Binary Data — ArrayBuffer and Typed Arrays
 
 ### Syntax
@@ -1004,6 +1068,52 @@ Response.Write(api.greet("World")); // Output: Hello, World
 
 ---
 
+## Destructuring Assignment
+
+Destructuring assignment is a syntax that makes it possible to unpack values from arrays, or properties from objects, into distinct variables.
+
+### Object Destructuring
+
+Object destructuring allows you to extract multiple properties from an object and assign them to variables in a single statement.
+
+#### Syntax
+
+```javascript
+var { p1, p2 } = object;
+var { p1: v1, p2: v2 } = object;
+```
+
+#### Remarks
+
+- If a variable name matches a property name, you can use the shorthand `{ p1, p2 }`.
+- You can map a property to a different variable name using `{ property: variable }`.
+- Nested destructuring is supported: `var { a: { b } } = obj;`.
+- Computed property names can be used: `var { [key]: value } = obj;`.
+- **Validation:** Attempting to destructure `null` or `undefined` raises a `TypeError`.
+
+#### Code Example
+
+```javascript
+<script runat="server" language="JScript">
+var user = { id: 1, name: "Alice", details: { age: 25 } };
+
+// Basic destructuring
+var { id, name } = user;
+Response.Write(id + ": " + name + "\n"); // Output: 1: Alice
+
+// Renaming and nested
+var { name: userName, details: { age } } = user;
+Response.Write(userName + " is " + age + "\n"); // Output: Alice is 25
+
+// Assignment without declaration (requires parentheses)
+var x, y;
+({ x, y } = { x: 10, y: 20 });
+Response.Write(x + y); // Output: 30
+</script>
+```
+
+---
+
 ## Optional Chaining (?.)
 
 ### Syntax
@@ -1157,75 +1267,5 @@ try {
 } catch (e) {
     Response.Write("Error: " + e.message); // Output: Error: Cannot mix BigInt and other types...
 }
-</script>
-```
-
----
-
-### Syntax
-
-```javascript
-for (var element of iterable) { /* body */ }
-for (let element of iterable) { /* body */ }
-for (const element of iterable) { /* body */ }
-```
-
-The `for...of` loop iterates over the **values** of an iterable object in sequence.
-
-### Supported Iterables
-
-| Type | Behavior |
-|---|---|
-| Array (JS) | Yields each element by index in order. |
-| String | Yields each character as a single-character string. |
-| Set | Yields each unique member. |
-| Map | Yields each `[key, value]` pair as a two-element array. |
-
-### Remarks
-
-- `var`, `let`, and `const` declarations are all supported in the loop header.
-- `break` exits the loop immediately and discards the iterator.
-- `continue` advances to the next value without executing the rest of the body.
-- Nested `for...of` loops are supported.
-- Iterating over an empty array or an empty string executes the body zero times.
-- The source iterable is evaluated once before the first iteration; mutations to the source after the loop starts do not affect the values being iterated.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// Array
-var total = 0;
-for (var n of [10, 20, 30]) {
-    total += n;
-}
-Response.Write(total);
-// Output: 60
-
-// String
-var chars = "";
-for (var ch of "Hello") {
-    chars += ch + "-";
-}
-Response.Write(chars);
-// Output: H-e-l-l-o-
-
-// Break
-var found = false;
-for (let x of [1, 2, 3, 4, 5]) {
-    if (x === 3) { found = true; break; }
-}
-Response.Write(found);
-// Output: true
-
-// Set
-var s = new Set();
-s.add("a"); s.add("b"); s.add("c");
-var setResult = "";
-for (const v of s) {
-    setResult += v;
-}
-Response.Write(setResult.length);
-// Output: 3 (order may vary)
 </script>
 ```

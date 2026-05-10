@@ -1128,3 +1128,105 @@ func TestJScriptTailCallInsideTryCatchBypassesTCO(t *testing.T) {
 		t.Errorf("expected '128', got %q", out)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ES6 Iteration Protocol (Sub-Phase 5.1)
+// ---------------------------------------------------------------------------
+
+func TestJScriptIterationProtocol(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		Response.Write(typeof Array.prototype + "|");
+		Response.Write(typeof Array.prototype.values + "|");
+		Response.Write(typeof Array.prototype["__js_sym__-1"] + "|");
+		var arr = [1, 2, 3];
+		var s = Symbol.iterator;
+		Response.Write(typeof arr[s]);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "object|function|function|function" {
+		t.Errorf("expected 'object|function|function|function', got %q", out)
+	}
+}
+
+func TestJScriptIterationProtocolFull(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var arr = [1, 2, 3];
+		var it = arr[Symbol.iterator]();
+		Response.Write(typeof it + "|");
+		var res = it.next();
+		Response.Write(typeof res + "|");
+		Response.Write(res.value + "|");
+		Response.Write(res.done);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "object|object|1|False" {
+		t.Errorf("expected 'object|object|1|False', got %q", out)
+	}
+}
+
+func TestJScriptStringIterationProtocol(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var s = "ABC";
+		var it = s[Symbol.iterator]();
+		Response.Write(it.next().value + "|");
+		Response.Write(it.next().value + "|");
+		Response.Write(it.next().value + "|");
+		Response.Write(it.next().done);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "A|B|C|True" {
+		t.Errorf("expected 'A|B|C|True', got %q", out)
+	}
+}
+
+func TestJScriptForOfCustomIterable(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var myIterable = {
+			[Symbol.iterator]: function() {
+				var count = 0;
+				return {
+					next: function() {
+						if (count < 3) {
+							return { value: ++count, done: false };
+						}
+						return { value: undefined, done: true };
+					}
+				};
+			}
+		};
+		var result = "";
+		for (var x of myIterable) {
+			result += x;
+		}
+		Response.Write(result);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "123" {
+		t.Errorf("expected '123', got %q", out)
+	}
+}
+
+func TestJScriptForOfArray(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var arr = [10, 20, 30];
+		var result = "";
+		for (var x of arr) {
+			result += x + "|";
+		}
+		Response.Write(result);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "10|20|30|" {
+		t.Errorf("expected '10|20|30|', got %q", out)
+	}
+}

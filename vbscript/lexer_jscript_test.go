@@ -120,3 +120,37 @@ afterDirective:
 		t.Fatalf("unexpected converted expression content: %q", block.Content)
 	}
 }
+
+func TestLexerJScriptRunatServerAllowsScriptTagInsideDoubleQuotedString(t *testing.T) {
+	lex := NewLexer(`<script runat="server" language="JScript">var l = "<script></script>"; Response.Write(l);</script>`)
+	lex.Mode = ModeASP
+	lex.InASPBlock = false
+
+	tok := lex.NextToken()
+	block, ok := tok.(*ASPJScriptBlockToken)
+	if !ok {
+		t.Fatalf("expected ASPJScriptBlockToken, got %T", tok)
+	}
+
+	expected := `var l = "<script></script>"; Response.Write(l);`
+	if block.Content != expected {
+		t.Fatalf("unexpected block content: got %q want %q", block.Content, expected)
+	}
+}
+
+func TestLexerJScriptRunatServerAllowsScriptTagInsideSingleQuotedString(t *testing.T) {
+	lex := NewLexer(`<script runat="server" language="JScript">Response.Write('<script></script>');</script>`)
+	lex.Mode = ModeASP
+	lex.InASPBlock = false
+
+	tok := lex.NextToken()
+	block, ok := tok.(*ASPJScriptBlockToken)
+	if !ok {
+		t.Fatalf("expected ASPJScriptBlockToken, got %T", tok)
+	}
+
+	expected := `Response.Write('<script></script>');`
+	if block.Content != expected {
+		t.Fatalf("unexpected block content: got %q want %q", block.Content, expected)
+	}
+}
