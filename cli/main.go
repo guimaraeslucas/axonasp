@@ -285,7 +285,7 @@ func main() {
 func startTUI() {
 	app := tview.NewApplication()
 	app.EnableMouse(mouseEnabled)
-	autoRunEnabled := true
+	autoRunEnabled := false
 	app.SetTitle("G3pix ❖ AxonASP CLI")
 
 	// Theme and Colors

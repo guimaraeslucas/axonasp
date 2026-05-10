@@ -1535,6 +1535,10 @@ aspExecLoop:
 			}
 			vm.push(v)
 
+		case OpAxonASP:
+			// Push the AxonASP VBScript engine identification string.
+			vm.push(NewString("G3pix AxonASP VBScript Engine"))
+
 		case OpGetLocal:
 			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
@@ -2577,6 +2581,10 @@ aspExecLoop:
 
 		case OpJSLoadUndefined:
 			vm.push(Value{Type: VTJSUndefined})
+
+		case JsOpAxonAsp:
+			// Push the AxonASP JavaScript engine identification string.
+			vm.push(NewString("G3pix AxonASP JavaScript Engine"))
 
 		case OpJSLoadThis:
 			vm.push(vm.jsThisValue)

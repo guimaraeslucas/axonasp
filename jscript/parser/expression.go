@@ -94,7 +94,9 @@ func (self *_parser) parsePrimaryExpression() ast.Expression {
 	case token.FUNCTION:
 		return self.parseFunction(false, false, idx)
 	case token.CLASS:
-		return self.parseClass(false)
+		return &ast.ClassExpression{
+			Class: self.parseClass(false),
+		}
 	}
 
 	if self.isBindingId(self.token) {

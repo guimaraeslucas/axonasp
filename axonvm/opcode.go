@@ -177,6 +177,12 @@ const (
 	// [OpCode]
 	OpCoerceToValue
 
+	// OpAxonASP pushes the string "G3pix AxonASP VBScript Engine" onto the stack.
+	// This is a special bytecode accessible via the VMENGINE global constant
+	// to test and identify the AxonASP VBScript engine.
+	// [OpCode]
+	OpAxonASP
+
 	// JScript opcodes (isolated execution path)
 	OpJSDeclareName            // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSGetName                // [OpCode, NameConstIdxHigh, NameConstIdxLow]
@@ -292,12 +298,18 @@ const (
 	OpJSConstInitialize  // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pop value, set const, clear TDZ
 	OpJSForIterEnter     // [OpCode, NumVarsHigh, NumVarsLow, NameIdx1Hi, NameIdx1Lo, ...] - per-iteration env enter
 	OpJSForIterExit      // [OpCode, NumVarsHigh, NumVarsLow, NameIdx1Hi, NameIdx1Lo, ...] - per-iteration env exit+writeback
+
+	// JsOpAxonAsp pushes the string "G3pix AxonASP JavaScript Engine" onto the stack.
+	// This is a special bytecode accessible via the __VMENGINE__ global constant
+	// to test and identify the AxonASP JavaScript engine.
+	// [OpCode]
+	JsOpAxonAsp
 )
 
 const (
 	// OpIncLocalInt increments one local numeric slot in place.
 	// [OpCode, OffsetHigh, OffsetLow]
-	OpIncLocalInt OpCode = iota + OpJSForIterExit + 1
+	OpIncLocalInt OpCode = iota + JsOpAxonAsp + 1
 	// OpDecLocalInt decrements one local numeric slot in place.
 	// [OpCode, OffsetHigh, OffsetLow]
 	OpDecLocalInt
@@ -472,6 +484,8 @@ func (op OpCode) String() string {
 		return "OpDecLocalInt"
 	case OpCoerceToValue:
 		return "OpCoerceToValue"
+	case OpAxonASP:
+		return "OpAxonASP"
 	case OpJSDeclareName:
 		return "OpJSDeclareName"
 	case OpJSGetName:
@@ -692,6 +706,8 @@ func (op OpCode) String() string {
 		return "OpJSForIterEnter"
 	case OpJSForIterExit:
 		return "OpJSForIterExit"
+	case JsOpAxonAsp:
+		return "JsOpAxonAsp"
 	case OpNop:
 		return "OpNop"
 	case OpForNextFastInt:

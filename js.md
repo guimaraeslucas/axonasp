@@ -41,16 +41,17 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 
 ### Tasks:
 Core Architecture Note for the Agent: Under the hood, ES6 Classes in JScript are "syntactic sugar" over JavaScript's existing prototype-based inheritance. However, they introduce strict semantics (e.g., they must be called with new, they are not hoisted, and all code inside them runs in Strict Mode). The implementation should leverage existing VTJSFunction and VTJSObject types, manipulating their internal properties (like __proto__ and prototype) via bytecode generation, rather than introducing entirely new Go structs. The compiler will need to generate bytecode that sets up the prototype chain correctly, handles the `super` keyword by tracking the "Home Object" of methods, and ensures that the constructor function is properly defined and linked to the class prototype. This will require careful management of the call stack and execution context to ensure that method calls and property accesses resolve correctly according to ES6 semantics.
-    * SUBPHASE 6.1: Parser & AST Verification
-        * [ ] **AST Nodes:** Verify or add AST nodes in `jscript/ast` for `ClassDeclaration`, `ClassExpression`, `MethodDefinition` (kinds: `constructor`, `method`, `get`, `set`), and `Super`.
-        * [ ] **Parser Update:** Ensure the parser correctly handles the `class`, `extends`, and `super` keywords.
-        * [ ] **Validation:** Add pure parser tests ensuring `class A extends B { constructor() { super(); } method() {} }` parses into the correct AST tree without VM execution.
-    * SUBPHASE 6.2: Basic Class Compilation (The Constructor)
-        * [ ] **Compiler Update:** Implement `compileJScriptClassDeclaration` in `axonvm/compiler_jscript.go`.
-        * [ ] **TDZ Binding:** Treat the class declaration similarly to a `let` binding. Classes are NOT hoisted and must reside in the Temporal Dead Zone until evaluated.
-        * [ ] **Constructor Logic:** Extract the `constructor` method and compile it as a standard `VTJSFunction`, tagging it internally with a flag (e.g., `IsClassConstructor: true`).
-        * [ ] **VM Enforcement:** If a `VTJSFunction` tagged as a class constructor is invoked without the `new` operator (via `OpCall` instead of `OpNew`), the VM MUST throw a `TypeError` ("Class constructor cannot be invoked without 'new'").
-        * [ ] **Validation:** Create `test_class_basic.asp` testing instantiation with `new` (success) and without `new` (throws TypeError).
+    - [x] **SUB-PHASE 6.1: Parser & AST Verification**
+        - [x] **AST Nodes:** Verify or add AST nodes in `jscript/ast` for `ClassDeclaration`, `ClassExpression`, `MethodDefinition` (kinds: `constructor`, `method`, `get`, `set`), and `Super`.
+        - [x] **Parser Update:** Ensure the parser correctly handles the `class`, `extends`, and `super` keywords.
+        - [x] **Validation:** Add pure parser tests ensuring `class A extends B { constructor() { super(); } method() {} }` parses into the correct AST tree without VM execution.
+    - [x] **SUB-PHASE 6.2: Basic Class Compilation (The Constructor)**
+        - [x] **Compiler Update:** Implement `compileJScriptClassDeclaration` in `axonvm/compiler_jscript.go`.
+        - [x] **TDZ Binding:** Treat the class declaration similarly to a `let` binding. Classes are NOT hoisted and must reside in the Temporal Dead Zone until evaluated.
+        - [x] **Constructor Logic:** Extract the `constructor` method and compile it as a standard `VTJSFunction`, tagging it internally with a flag (e.g., `IsClassConstructor: true`).
+        - [x] **VM Enforcement:** If a `VTJSFunction` tagged as a class constructor is invoked without the `new` operator (via `OpCall` instead of `OpNew`), the VM MUST throw a `TypeError` ("Class constructor cannot be invoked without 'new'").
+        - [x] **Syntax Validation:** Ensure the compiler checks for syntax errors such as multiple constructors, invalid method definitions, and misuse of `super`, these errors should throw appropriate `SyntaxError` with correct messages.
+        - [x] **Validation:** Create `test_class_basic.asp` testing instantiation with `new` (success) and without `new` (throws TypeError).
     * SUBPHASE 6.3: Instance Methods & Strict Mode Enforcement
         * [ ] **Strict Mode:** Ensure the compiler sets the `StrictMode` flag for the constructor and all methods generated within the class block, as class bodies implicitly run in Strict Mode.
         * [ ] **Method Compilation:** Modify `compileJScriptClassDeclaration` to iterate over all `MethodDefinition` AST nodes where `static` is false, compiling each as a `VTJSFunction`.

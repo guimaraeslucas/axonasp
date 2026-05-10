@@ -403,6 +403,7 @@ func (self *_parser) parseClass(declaration bool) *ast.ClassLiteral {
 					} else if generator {
 						self.error(value.Idx0(), "Class constructor may not be a generator")
 					}
+					kind = ast.PropertyKindConstructor
 				} else if private {
 					self.error(value.Idx0(), "Class constructor may not be a private method")
 				}

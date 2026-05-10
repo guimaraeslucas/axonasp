@@ -53,6 +53,13 @@ const (
 // when it resolves to a zero-argument callable member.
 func (c *Compiler) emitIdentifierValue(name string) {
 	trimmedName := strings.TrimSpace(name)
+
+	// Check for VMENGINE global constant - returns AxonASP engine identification string.
+	if strings.EqualFold(trimmedName, "VMENGINE") {
+		c.emit(OpAxonASP)
+		return
+	}
+
 	if c.isLocal && c.currentFunctionName != "" && strings.EqualFold(trimmedName, c.currentFunctionName) {
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
 			if idx, exists := c.Globals.Get(trimmedName); exists {

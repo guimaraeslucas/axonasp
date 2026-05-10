@@ -17,10 +17,11 @@ import (
 type PropertyKind string
 
 const (
-	PropertyKindValue  PropertyKind = "value"
-	PropertyKindGet    PropertyKind = "get"
-	PropertyKindSet    PropertyKind = "set"
-	PropertyKindMethod PropertyKind = "method"
+	PropertyKindValue       PropertyKind = "value"
+	PropertyKindGet         PropertyKind = "get"
+	PropertyKindSet         PropertyKind = "set"
+	PropertyKindMethod      PropertyKind = "method"
+	PropertyKindConstructor PropertyKind = "constructor"
 )
 
 // All nodes implement the Node interface.
@@ -64,6 +65,10 @@ type (
 	AwaitExpression struct {
 		Await    file.Idx
 		Argument Expression
+	}
+
+	ClassExpression struct {
+		Class *ClassLiteral
 	}
 
 	ArrayLiteral struct {
@@ -318,6 +323,7 @@ func (*DotExpression) _expressionNode()         {}
 func (*PrivateDotExpression) _expressionNode()  {}
 func (*FunctionLiteral) _expressionNode()       {}
 func (*ClassLiteral) _expressionNode()          {}
+func (*ClassExpression) _expressionNode()       {}
 func (*ArrowFunctionLiteral) _expressionNode()  {}
 func (*Identifier) _expressionNode()            {}
 func (*NewExpression) _expressionNode()         {}
@@ -658,6 +664,7 @@ func (self *DotExpression) Idx0() file.Idx         { return self.Left.Idx0() }
 func (self *PrivateDotExpression) Idx0() file.Idx  { return self.Left.Idx0() }
 func (self *FunctionLiteral) Idx0() file.Idx       { return self.Function }
 func (self *ClassLiteral) Idx0() file.Idx          { return self.Class }
+func (self *ClassExpression) Idx0() file.Idx       { return self.Class.Idx0() }
 func (self *ArrowFunctionLiteral) Idx0() file.Idx  { return self.Start }
 func (self *Identifier) Idx0() file.Idx            { return self.Idx }
 func (self *NewExpression) Idx0() file.Idx         { return self.New }
@@ -740,6 +747,7 @@ func (self *DotExpression) Idx1() file.Idx         { return self.Identifier.Idx1
 func (self *PrivateDotExpression) Idx1() file.Idx  { return self.Identifier.Idx1() }
 func (self *FunctionLiteral) Idx1() file.Idx       { return self.Body.Idx1() }
 func (self *ClassLiteral) Idx1() file.Idx          { return self.RightBrace + 1 }
+func (self *ClassExpression) Idx1() file.Idx       { return self.Class.Idx1() }
 func (self *ArrowFunctionLiteral) Idx1() file.Idx  { return self.Body.Idx1() }
 func (self *Identifier) Idx1() file.Idx            { return file.Idx(int(self.Idx) + len(self.Name)) }
 func (self *NewExpression) Idx1() file.Idx {

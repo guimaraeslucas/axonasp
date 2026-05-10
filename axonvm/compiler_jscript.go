@@ -260,8 +260,10 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		}
 		nameIdx := c.addConstant(NewString(name))
 		c.emit(OpJSDeclareName, nameIdx)
-		c.compileJScriptFunctionLiteral(node.Function, name)
+		c.compileJScriptFunctionLiteral(node.Function, name, false)
 		c.emit(OpJSSetName, nameIdx)
+	case *jsast.ClassDeclaration:
+		c.compileJScriptClassDeclaration(node)
 	case *jsast.ReturnStatement:
 		c.emitJSLeaveWithScopes(c.withDepth)
 		if c.jsTryDepth == 0 && c.compileJScriptTailReturn(node.Argument) {
@@ -993,11 +995,18 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 	case *jsast.NullLiteral:
 		c.emit(OpConstant, c.addConstant(NewNull()))
 	case *jsast.Identifier:
-		c.emit(OpJSGetName, c.addConstant(NewString(node.Name.String())))
+		// Check for VMENGINE global constant - returns AxonASP engine identification string.
+		if node.Name.String() == "VMENGINE" {
+			c.emit(JsOpAxonAsp)
+		} else {
+			c.emit(OpJSGetName, c.addConstant(NewString(node.Name.String())))
+		}
 	case *jsast.ThisExpression:
 		c.emit(OpJSGetName, c.addConstant(NewString("this")))
 	case *jsast.FunctionLiteral:
-		c.compileJScriptFunctionLiteral(node, "")
+		c.compileJScriptFunctionLiteral(node, "", false)
+	case *jsast.ClassExpression:
+		c.compileJScriptClassLiteral(node.Class)
 	case *jsast.BinaryExpression:
 		switch node.Operator {
 		case jstoken.LOGICAL_OR:
@@ -1525,7 +1534,7 @@ func (c *Compiler) compileJScriptTailReturn(argument jsast.Expression) bool {
 	return true
 }
 
-func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fallbackName string) {
+func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fallbackName string, isClassConstructor bool) {
 	jumpOverBody := c.emitJSJump(OpJSJump)
 	bodyStart := len(c.bytecode)
 
@@ -1604,6 +1613,10 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 				params = append(params, jsRestParamTemplatePrefix+restName)
 			}
 		}
+	}
+
+	if isClassConstructor {
+		params = append(params, jsClassConstructorFlag)
 	}
 
 	templateIdx := c.addConstant(Value{
@@ -1742,6 +1755,10 @@ func jsGetBlockLexicalNames(stmts []jsast.Statement) ([]string, []string) {
 				} else {
 					jsExtractBindingNames(binding.Target, &letNames)
 				}
+			}
+		} else if decl, ok := s.(*jsast.ClassDeclaration); ok {
+			if decl.Class != nil && decl.Class.Name != nil {
+				letNames = append(letNames, decl.Class.Name.Name.String())
 			}
 		}
 	}
@@ -2015,6 +2032,76 @@ func (c *Compiler) compileJScriptArrowFunctionLiteral(fn *jsast.ArrowFunctionLit
 		Names: params,
 	})
 	c.emit(OpJSCreateClosure, templateIdx)
+}
+
+func (c *Compiler) compileJScriptClassDeclaration(node *jsast.ClassDeclaration) {
+	if node.Class == nil {
+		return
+	}
+
+	name := ""
+	if node.Class.Name != nil {
+		name = node.Class.Name.Name.String()
+	}
+	if name == "" {
+		// Class declarations must have a name
+		jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, 0, 0)
+		jsErr.WithASPDescription("class declarations must have a name")
+		if c.sourceName != "" {
+			jsErr.WithFile(c.sourceName)
+		}
+		panic(jsErr)
+	}
+
+	nameIdx := c.addConstant(NewString(name))
+	// Classes are block-scoped and NOT hoisted. Treat them like 'let'.
+	c.emit(OpJSLetDeclare, nameIdx)
+
+	// Compile class literal (which produces the constructor function)
+	c.compileJScriptClassLiteral(node.Class)
+
+	// Initialize the binding
+	c.emit(OpJSSetName, nameIdx)
+}
+
+func (c *Compiler) compileJScriptClassLiteral(node *jsast.ClassLiteral) {
+	// Basic implementation for 6.2: extract constructor and compile it.
+	// Later phases will handle methods, inheritance, etc.
+
+	var ctor *jsast.MethodDefinition
+	for _, el := range node.Body {
+		if md, ok := el.(*jsast.MethodDefinition); ok && md.Kind == jsast.PropertyKindConstructor {
+			if ctor != nil {
+				// This should have been caught by the parser, but we re-check for safety
+				jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, 0, 0)
+				jsErr.WithASPDescription("A class may only have one constructor")
+				if c.sourceName != "" {
+					jsErr.WithFile(c.sourceName)
+				}
+				panic(jsErr)
+			}
+			ctor = md
+		}
+	}
+
+	className := ""
+	if node.Name != nil {
+		className = node.Name.Name.String()
+	}
+
+	if ctor == nil {
+		// Create default constructor: constructor() {}
+		// TODO: handle inheritance default constructor: constructor(...args) { super(...args); }
+		// For now, simple empty constructor.
+		fn := &jsast.FunctionLiteral{
+			ParameterList: &jsast.ParameterList{},
+			Body:          &jsast.BlockStatement{},
+		}
+		c.compileJScriptFunctionLiteral(fn, className, true)
+	} else {
+		// We reuse compileJScriptFunctionLiteral but with a flag if it's a constructor.
+		c.compileJScriptFunctionLiteral(ctor.Body, className, true)
+	}
 }
 
 // compileJScriptDefaultParamGuards emits bytecode at the beginning of a function

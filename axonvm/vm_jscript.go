@@ -44,6 +44,7 @@ const jsAccessorGetterPrefix = "__js_getter__"
 const jsAccessorSetterPrefix = "__js_setter__"
 const jsSymbolPropertyPrefix = "__js_sym__"
 const jsRestParamPrefix = "__js_rest__:"
+const jsClassConstructorFlag = "__axon_internal__:class_constructor"
 
 type jsObjectState struct {
 	Extensible bool
@@ -93,8 +94,9 @@ type jsFunctionObject struct {
 	boundArgs []Value
 	// isArrow marks this as an ES6 arrow function that captures 'this' lexically.
 	// When true, capturedThis is used as the receiver regardless of call site.
-	isArrow      bool
-	capturedThis Value
+	isArrow            bool
+	capturedThis       Value
+	isClassConstructor bool
 }
 
 type jsCallFrame struct {
@@ -1303,22 +1305,28 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	proto := vm.jsCreatePrototypeObject(fnVal)
 	params := make([]string, 0, len(template.Names))
 	restParam := ""
+	isClassConstructor := false
 	for i := 0; i < len(template.Names); i++ {
 		name := template.Names[i]
 		if strings.HasPrefix(name, jsRestParamPrefix) {
 			restParam = strings.TrimPrefix(name, jsRestParamPrefix)
 			continue
 		}
+		if name == jsClassConstructorFlag {
+			isClassConstructor = true
+			continue
+		}
 		params = append(params, name)
 	}
 	fnObj := &jsFunctionObject{
-		name:      template.Str,
-		params:    params,
-		restParam: restParam,
-		startIP:   int(template.Num),
-		endIP:     int(template.Flt),
-		envID:     vm.jsActiveEnvID,
-		protoID:   proto.Num,
+		name:               template.Str,
+		params:             params,
+		restParam:          restParam,
+		startIP:            int(template.Num),
+		endIP:              int(template.Flt),
+		envID:              vm.jsActiveEnvID,
+		protoID:            proto.Num,
+		isClassConstructor: isClassConstructor,
 	}
 	// Arrow functions capture the current 'this' value lexically at creation time.
 	if template.Type == VTJSArrowFunctionTemplate {
@@ -5022,6 +5030,10 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 	switch callee.Type {
 	case VTJSFunction:
 		if closure, ok := vm.jsFunctionItems[callee.Num]; ok && closure != nil {
+			if closure.isClassConstructor {
+				vm.jsThrowTypeError("Class constructor cannot be invoked without 'new'")
+				return Value{Type: VTJSUndefined}
+			}
 			if closure.isBound {
 				callArgs := closure.boundArgs
 				if len(args) > 0 {
