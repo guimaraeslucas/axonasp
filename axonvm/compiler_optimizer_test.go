@@ -22,6 +22,7 @@ package axonvm
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 )
 
@@ -318,5 +319,115 @@ func TestVBScriptIntegerDivPow2ToShift(t *testing.T) {
 	out := runVBSAndGetOutput(t, source)
 	if out != "16" {
 		t.Fatalf("unexpected integer shift output: got %q, want %q", out, "16")
+	}
+}
+
+func findOpcodeOffset(bytecode []byte, target OpCode) int {
+	for i := 0; i < len(bytecode); {
+		op := OpCode(bytecode[i])
+		if op == target {
+			return i
+		}
+		i += 1 + opcodeOperandSize(op)
+	}
+	return -1
+}
+
+// TestVBScriptDeadIfFalseElimination verifies optimizer removes unreachable true branch
+// bytes for compile-time false conditions.
+func TestVBScriptDeadIfFalseElimination(t *testing.T) {
+	source := `<%
+If False Then
+	Response.Write "A"
+	Response.Write "B"
+End If
+Response.Write "Z"
+%>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	out := runVBSAndGetOutput(t, source)
+	if out != "Z" {
+		t.Fatalf("unexpected output: got %q, want %q", out, "Z")
+	}
+
+	jumpPos := findOpcodeOffset(compiler.Bytecode(), OpJumpIfFalse)
+	if jumpPos < 0 {
+		t.Fatalf("expected OpJumpIfFalse in bytecode")
+	}
+	target := int(binary.BigEndian.Uint32(compiler.Bytecode()[jumpPos+1 : jumpPos+5]))
+	for i := jumpPos + 5; i < target; i++ {
+		if OpCode(compiler.Bytecode()[i]) != OpNop {
+			t.Fatalf("expected unreachable branch byte %d to be OpNop, got %v", i, OpCode(compiler.Bytecode()[i]))
+		}
+	}
+}
+
+// TestOptimizeRedundantContiguousLoadWithPop verifies redundant contiguous load pattern
+// is eliminated by local-copy propagation pass.
+func TestOptimizeRedundantContiguousLoadWithPop(t *testing.T) {
+	compiler := NewCompiler("")
+	compiler.bytecode = []byte{
+		byte(OpGetLocal), 0, 1,
+		byte(OpGetLocal), 0, 1,
+		byte(OpPop),
+		byte(OpHalt),
+	}
+	if !compiler.optimizeLocalCopyPropagationPass() {
+		t.Fatalf("expected optimizeLocalCopyPropagationPass to report changes")
+	}
+	if OpCode(compiler.bytecode[3]) != OpNop || OpCode(compiler.bytecode[4]) != OpNop || OpCode(compiler.bytecode[5]) != OpNop {
+		t.Fatalf("expected second OpGetLocal bytes to be NOP-filled")
+	}
+	if OpCode(compiler.bytecode[6]) != OpNop {
+		t.Fatalf("expected trailing OpPop to be NOP-filled")
+	}
+}
+
+// TestVBScriptCallMemberInlineCachePopulation verifies OpCallMember reserve bytes are
+// populated by the VM after first run.
+func TestVBScriptCallMemberInlineCachePopulation(t *testing.T) {
+	source := `<%
+Class CacheProbe
+	Public Function Val()
+		Val = 7
+	End Function
+End Class
+Dim o, i
+Set o = New CacheProbe
+For i = 1 To 3
+	Response.Write o.Val()
+Next
+%>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	callPos := findOpcodeOffset(compiler.Bytecode(), OpCallMember)
+	if callPos < 0 {
+		t.Fatalf("expected OpCallMember in bytecode")
+	}
+	cachePos := callPos + 1 + 2 + 2
+	if binary.BigEndian.Uint32(compiler.Bytecode()[cachePos:cachePos+4]) != 0 {
+		t.Fatalf("expected cold cache slot to be zero before execution")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if buf.String() != "777" {
+		t.Fatalf("unexpected output: got %q, want %q", buf.String(), "777")
+	}
+	if binary.BigEndian.Uint32(vm.bytecode[cachePos:cachePos+4]) == 0 {
+		t.Fatalf("expected inline cache slot to be populated after execution")
 	}
 }

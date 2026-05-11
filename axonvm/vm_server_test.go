@@ -257,6 +257,52 @@ func TestVMServerG3MDProcess(t *testing.T) {
 	}
 }
 
+// TestVMServerCreateObjectG3StringBuilder verifies CreateObject for G3STRINGBUILDER native library.
+func TestVMServerCreateObjectG3StringBuilder(t *testing.T) {
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	obj := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("G3STRINGBUILDER")})
+	if obj.Type != VTNativeObject {
+		t.Fatalf("expected VTNativeObject, got %#v", obj)
+	}
+
+	vm.dispatchNativeCall(obj.Num, "Append", []Value{NewString("A")})
+	vm.dispatchNativeCall(obj.Num, "append", []Value{NewInteger(2)})
+	vm.dispatchNativeCall(obj.Num, "Append", []Value{NewString("C")})
+
+	result := vm.dispatchNativeCall(obj.Num, "ToString", nil)
+	if result.Type != VTString || result.Str != "A2C" {
+		t.Fatalf("unexpected ToString result: %#v", result)
+	}
+}
+
+// TestVMServerG3StringBuilderEmptyBehavior verifies default/empty argument behavior.
+func TestVMServerG3StringBuilderEmptyBehavior(t *testing.T) {
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	obj := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("g3stringbuilder")})
+	if obj.Type != VTNativeObject {
+		t.Fatalf("expected VTNativeObject, got %#v", obj)
+	}
+
+	_ = vm.dispatchNativeCall(obj.Num, "Append", nil)
+
+	initial := vm.dispatchNativeCall(obj.Num, "ToString", nil)
+	if initial.Type != VTString || initial.Str != "" {
+		t.Fatalf("expected empty builder result, got %#v", initial)
+	}
+
+	vm.dispatchNativeCall(obj.Num, "Append", []Value{NewString("hello")})
+	viaPropertyGet := vm.dispatchMemberGet(obj, "ToString")
+	if viaPropertyGet.Type != VTString || viaPropertyGet.Str != "hello" {
+		t.Fatalf("unexpected property-style ToString result: %#v", viaPropertyGet)
+	}
+}
+
 // TestVMServerCreateObjectG3Search verifies CreateObject and property dispatch for G3SEARCH.
 func TestVMServerCreateObjectG3Search(t *testing.T) {
 	vm := NewVM(nil, nil, 5)

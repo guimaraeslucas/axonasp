@@ -45,6 +45,7 @@ Supported disable tags:
 - lib_g3md_disabled
 - lib_g3pdf_disabled
 - lib_g3search_disabled
+- lib_g3stringbuilder_disabled
 - lib_g3tar_disabled
 - lib_g3template_disabled
 - lib_g3test_disabled

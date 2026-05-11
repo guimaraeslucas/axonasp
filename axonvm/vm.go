@@ -255,6 +255,23 @@ type RuntimeClassInstance struct {
 	terminated bool // True if Class_Terminate has already been called
 }
 
+type callMemberICKind uint8
+
+const (
+	callMemberICNone callMemberICKind = iota
+	callMemberICClassMethod
+	callMemberICClassPropertyGet
+	callMemberICNativeMember
+)
+
+type callMemberICEntry struct {
+	kind         callMemberICKind
+	expectedType ValueType
+	expectedNum  int64
+	target       Value
+	nativeMember string
+}
+
 // nativeObjectProxy represents a property access that requires parameters (e.g. dict.Key(idx)).
 type nativeObjectProxy struct {
 	ParentID int64
@@ -276,6 +293,7 @@ type VM struct {
 	aspErrorItems                  map[int64]*asp.ASPError
 	g3mdItems                      map[int64]*G3MD
 	g3searchItems                  map[int64]*G3Search
+	g3stringBuilderItems           map[int64]*G3StringBuilder
 	g3testItems                    map[int64]*G3Test
 	g3cryptoItems                  map[int64]*G3Crypto
 	g3jsonItems                    map[int64]*G3JSON
@@ -453,6 +471,9 @@ type VM struct {
 	pooledSlot      chan struct{}
 	comInitialized  bool
 	comThreadLocked bool
+
+	nextCallMemberICID uint32
+	callMemberIC       map[uint32]callMemberICEntry
 }
 
 // NewVM creates and initializes a new VM instance.
@@ -487,6 +508,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		aspErrorItems:                  make(map[int64]*asp.ASPError),
 		g3mdItems:                      make(map[int64]*G3MD),
 		g3searchItems:                  make(map[int64]*G3Search),
+		g3stringBuilderItems:           make(map[int64]*G3StringBuilder),
 		g3testItems:                    make(map[int64]*G3Test),
 		g3cryptoItems:                  make(map[int64]*G3Crypto),
 		g3jsonItems:                    make(map[int64]*G3JSON),
@@ -582,6 +604,8 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsErrStack:         make([]Value, 0, 4),
 		jsThisValue:        Value{Type: VTJSUndefined},
 		terminateCursor:    -1,
+		nextCallMemberICID: 1,
+		callMemberIC:       make(map[uint32]callMemberICEntry, 32),
 	}
 
 	// 1. Inject ASP Native Objects (Indices 0-7)
@@ -858,8 +882,11 @@ func opcodeOperandSize(op OpCode) int {
 	case OpJSSetProto, OpJSSetThis, OpJSSuperIndexGet, OpJSSuperIndexSet:
 		return 0
 	// 4-byte operands
-	case OpLine, OpCallMember, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember, OpJSDefineProperty, OpJSSuperCallMember:
+	case OpLine, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember, OpJSDefineProperty, OpJSSuperCallMember:
 		return 4
+	// 8-byte operands
+	case OpCallMember:
+		return 8
 	// 6-byte operands: classNameIdx(2) + fieldNameIdx(2) + isPublic(2)
 	case OpRegisterClassField:
 		return 6
@@ -927,7 +954,11 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 		case OpCallMember, OpArraySet, OpJSCallMember, OpJSTailCallMember, OpJSSuperCallMember:
 			memberIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(memberIdx))
-			ip += 4
+			if op == OpCallMember {
+				ip += 8
+			} else {
+				ip += 4
+			}
 		case OpJSForIn:
 			// EnumVarIdx(2) + LoopStartTarget(4)
 			enumVarIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
@@ -1163,6 +1194,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.aspErrorItems = child.aspErrorItems
 	vm.g3mdItems = child.g3mdItems
 	vm.g3searchItems = child.g3searchItems
+	vm.g3stringBuilderItems = child.g3stringBuilderItems
 	vm.g3cryptoItems = child.g3cryptoItems
 	vm.g3jsonItems = child.g3jsonItems
 	vm.g3httpItems = child.g3httpItems
@@ -2167,6 +2199,9 @@ aspExecLoop:
 			vm.ip += 2
 			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
+			cacheOffset := vm.ip
+			cacheID := binary.BigEndian.Uint32(vm.bytecode[cacheOffset:])
+			vm.ip += 4
 
 			memberArgs := vm.ensureArgBuffer(argCount)
 			hasArgRefMember := false
@@ -2181,6 +2216,42 @@ aspExecLoop:
 			}
 
 			target := vm.pop()
+			if cacheID != 0 {
+				if cacheEntry, exists := vm.callMemberIC[cacheID]; exists && cacheEntry.expectedType == target.Type && cacheEntry.expectedNum == target.Num {
+					switch cacheEntry.kind {
+					case callMemberICClassMethod:
+						if cacheEntry.target.UserSubParamCount() != argCount {
+							vm.raise(vbscript.WrongNumberOfParameters, "Wrong number of parameters or invalid property assignment")
+						}
+						var memberByRefs []byRefWriteback
+						if hasArgRefMember {
+							memberByRefs = vm.collectByRefsAndUnwrap(memberArgs, cacheEntry.target.UserSubByRefMask())
+						}
+						if vm.beginUserSubCall(cacheEntry.target, memberArgs, false, target.Num, memberByRefs) {
+							continue
+						}
+					case callMemberICClassPropertyGet:
+						var propByRefs []byRefWriteback
+						if hasArgRefMember {
+							propByRefs = vm.collectByRefsAndUnwrap(memberArgs, cacheEntry.target.UserSubByRefMask())
+						}
+						if vm.beginUserSubCall(cacheEntry.target, memberArgs, false, target.Num, propByRefs) {
+							continue
+						}
+					case callMemberICNativeMember:
+						var nativeByRefs []byRefWriteback
+						if hasArgRefMember {
+							nativeByRefs = vm.collectByRefsAndUnwrap(memberArgs, vm.nativeByRefMask(target.Num, cacheEntry.nativeMember))
+						}
+						result := vm.dispatchNativeCall(target.Num, cacheEntry.nativeMember, memberArgs)
+						if len(nativeByRefs) > 0 {
+							vm.applyByRefWritebacksFromArgs(nativeByRefs, memberArgs)
+						}
+						vm.push(result)
+						continue
+					}
+				}
+			}
 			switch target.Type {
 			case VTObject:
 				if target.Num == 0 {
@@ -2191,6 +2262,15 @@ aspExecLoop:
 				requirePublic := target.Num != vm.activeClassObjectID
 				methodTarget, ok := vm.resolveRuntimeClassMethod(target, vm.constants[memberIdx].Str, requirePublic)
 				if ok {
+					if cacheID == 0 {
+						cacheID = vm.allocateCallMemberIC(callMemberICEntry{
+							kind:         callMemberICClassMethod,
+							expectedType: target.Type,
+							expectedNum:  target.Num,
+							target:       methodTarget,
+						})
+						binary.BigEndian.PutUint32(vm.bytecode[cacheOffset:], cacheID)
+					}
 					if methodTarget.UserSubParamCount() != argCount {
 						vm.raise(vbscript.WrongNumberOfParameters, "Wrong number of parameters or invalid property assignment")
 					}
@@ -2204,6 +2284,15 @@ aspExecLoop:
 				}
 				propertyTarget, ok := vm.resolveRuntimeClassPropertyGet(target, vm.constants[memberIdx].Str, argCount, requirePublic)
 				if ok {
+					if cacheID == 0 {
+						cacheID = vm.allocateCallMemberIC(callMemberICEntry{
+							kind:         callMemberICClassPropertyGet,
+							expectedType: target.Type,
+							expectedNum:  target.Num,
+							target:       propertyTarget,
+						})
+						binary.BigEndian.PutUint32(vm.bytecode[cacheOffset:], cacheID)
+					}
 					var propByRefs []byRefWriteback
 					if hasArgRefMember {
 						propByRefs = vm.collectByRefsAndUnwrap(memberArgs, propertyTarget.UserSubByRefMask())
@@ -2243,6 +2332,15 @@ aspExecLoop:
 				vm.push(Value{Type: VTEmpty})
 			case VTNativeObject:
 				memberName := vm.constants[memberIdx].Str
+				if cacheID == 0 {
+					cacheID = vm.allocateCallMemberIC(callMemberICEntry{
+						kind:         callMemberICNativeMember,
+						expectedType: target.Type,
+						expectedNum:  target.Num,
+						nativeMember: memberName,
+					})
+					binary.BigEndian.PutUint32(vm.bytecode[cacheOffset:], cacheID)
+				}
 				var nativeByRefs []byRefWriteback
 				if hasArgRefMember {
 					nativeByRefs = vm.collectByRefsAndUnwrap(memberArgs, vm.nativeByRefMask(target.Num, memberName))
@@ -4047,6 +4145,10 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return g3searchObject.DispatchMethod(member, args)
 	}
 
+	if g3stringBuilderObject, exists := vm.g3stringBuilderItems[objID]; exists {
+		return g3stringBuilderObject.DispatchMethod(member, args)
+	}
+
 	if g3cryptoObject, exists := vm.g3cryptoItems[objID]; exists {
 		return g3cryptoObject.DispatchMethod(member, args)
 	}
@@ -4663,6 +4765,9 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		case strings.EqualFold(member, "CreateObject"):
 			if len(args) >= 1 {
 				progID := strings.TrimSpace(args[0].String())
+				if strings.EqualFold(progID, "G3STRINGBUILDER") {
+					return vm.newG3StringBuilderObject()
+				}
 				if strings.EqualFold(progID, "G3SEARCH") {
 					return vm.newG3SearchObject()
 				}
@@ -5223,6 +5328,10 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 		return g3searchObject.DispatchPropertyGet(member)
 	}
 
+	if g3stringBuilderObject, exists := vm.g3stringBuilderItems[target.Num]; exists {
+		return g3stringBuilderObject.DispatchPropertyGet(member)
+	}
+
 	if g3testObject, exists := vm.g3testItems[target.Num]; exists {
 		return g3testObject.DispatchPropertyGet(member)
 	}
@@ -5635,6 +5744,11 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 		return
 	}
 
+	if g3stringBuilderObject, exists := vm.g3stringBuilderItems[objID]; exists {
+		g3stringBuilderObject.DispatchPropertySet(member, val)
+		return
+	}
+
 	if g3testObject, exists := vm.g3testItems[objID]; exists {
 		g3testObject.DispatchPropertySet(member, val)
 		return
@@ -5811,6 +5925,14 @@ func (vm *VM) newG3SearchObject() Value {
 	objID := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
 	vm.g3searchItems[objID] = NewG3Search(vm)
+	return Value{Type: VTNativeObject, Num: objID}
+}
+
+// newG3StringBuilderObject creates a native G3STRINGBUILDER object used by Server.CreateObject("G3STRINGBUILDER").
+func (vm *VM) newG3StringBuilderObject() Value {
+	objID := vm.nextDynamicNativeID
+	vm.nextDynamicNativeID++
+	vm.g3stringBuilderItems[objID] = NewG3StringBuilder()
 	return Value{Type: VTNativeObject, Num: objID}
 }
 
@@ -6208,6 +6330,9 @@ func (vm *VM) materializeStaticObjectFromMarker(marker string) Value {
 	}
 	if strings.EqualFold(progID, "G3SEARCH") {
 		return vm.newG3SearchObject()
+	}
+	if strings.EqualFold(progID, "G3STRINGBUILDER") {
+		return vm.newG3StringBuilderObject()
 	}
 	if strings.EqualFold(progID, "G3TestSuite") || strings.EqualFold(progID, "G3Test") {
 		return vm.newG3TestObject()
@@ -6745,6 +6870,26 @@ func (vm *VM) applyByRefWritebacksFromArgs(byRefs []byRefWriteback, args []Value
 			vm.stack[callerSlot] = writeVal
 		}
 	}
+}
+
+// allocateCallMemberIC stores one call-site cache entry and returns a stable 32-bit cache ID.
+func (vm *VM) allocateCallMemberIC(entry callMemberICEntry) uint32 {
+	if vm == nil {
+		return 0
+	}
+	if vm.callMemberIC == nil {
+		vm.callMemberIC = make(map[uint32]callMemberICEntry, 32)
+	}
+	id := vm.nextCallMemberICID
+	if id == 0 {
+		id = 1
+	}
+	vm.callMemberIC[id] = entry
+	vm.nextCallMemberICID = id + 1
+	if vm.nextCallMemberICID == 0 {
+		vm.nextCallMemberICID = 1
+	}
+	return id
 }
 
 // bytesToVBByteString converts raw bytes to a VB-compatible byte-string representation.

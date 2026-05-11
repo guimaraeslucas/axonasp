@@ -1365,6 +1365,11 @@ func (c *Compiler) emit(op OpCode, operands ...int) int {
 		c.bytecode = append(c.bytecode, buf...)
 	}
 
+	if op == OpCallMember {
+		// Inline cache slot reserved for VM monomorphic call-site caching.
+		c.bytecode = append(c.bytecode, 0, 0, 0, 0)
+	}
+
 	return pos
 }
 

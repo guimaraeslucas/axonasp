@@ -437,6 +437,13 @@
             * [IndexPath](md/libraries/g3search/properties/indexpath.md)
             * [DocsPath](md/libraries/g3search/properties/docspath.md)
             * [Extension](md/libraries/g3search/properties/extension.md)
+    * G3STRINGBUILDER
+        * [Overview](md/libraries/g3stringbuilder/overview.md)
+        * [Methods](md/libraries/g3stringbuilder/methods.md)
+        * [Properties](md/libraries/g3stringbuilder/properties.md)
+        * Methods Detail
+            * [Append](md/libraries/g3stringbuilder/methods/append.md)
+            * [ToString](md/libraries/g3stringbuilder/methods/tostring.md)
     * G3PDF
         * [Overview](md/libraries/g3pdf/overview.md)
         * [Methods](md/libraries/g3pdf/methods.md)

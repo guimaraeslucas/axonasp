@@ -37,10 +37,116 @@ func (c *Compiler) optimizePeephole() {
 		folded := c.optimizePeepholePass()
 		propagated := c.optimizeLocalCopyPropagationPass()
 		intOptimized := c.optimizeIntegerArithmeticPass()
-		if !folded && !propagated && !intOptimized {
+		deadCode := c.optimizeDeadConditionalJumpPass()
+		if !folded && !propagated && !intOptimized && !deadCode {
 			break
 		}
 	}
+}
+
+// optimizeDeadConditionalJumpPass removes unreachable true-branches for compile-time
+// false conditions in `OpJumpIfFalse` patterns by NOP-filling bytes up to jump target.
+func (c *Compiler) optimizeDeadConditionalJumpPass() bool {
+	if c == nil || len(c.bytecode) == 0 {
+		return false
+	}
+
+	targets := collectJumpTargets(c.bytecode)
+	changed := false
+
+	for ip := 0; ip < len(c.bytecode); {
+		op := OpCode(c.bytecode[ip])
+		size := opcodeOperandSize(op)
+		instrEnd := ip + 1 + size
+		if instrEnd > len(c.bytecode) {
+			break
+		}
+
+		if op != OpJumpIfFalse {
+			ip = instrEnd
+			continue
+		}
+
+		target := int(binary.BigEndian.Uint32(c.bytecode[ip+1 : ip+5]))
+		if target <= instrEnd || target > len(c.bytecode) || target <= ip {
+			ip = instrEnd
+			continue
+		}
+
+		condStart := findPreviousInstructionStart(c.bytecode, ip)
+		for condStart >= 0 && OpCode(c.bytecode[condStart]) == OpNop {
+			condStart = findPreviousInstructionStart(c.bytecode, condStart)
+		}
+		if condStart < 0 || OpCode(c.bytecode[condStart]) != OpConstant || condStart+3 > len(c.bytecode) {
+			ip = instrEnd
+			continue
+		}
+
+		constIdx := int(binary.BigEndian.Uint16(c.bytecode[condStart+1 : condStart+3]))
+		if constIdx < 0 || constIdx >= len(c.constants) {
+			ip = instrEnd
+			continue
+		}
+		if !isCompileTimeFalseValue(c.constants[constIdx]) {
+			ip = instrEnd
+			continue
+		}
+
+		if hasTargetInRange(targets, instrEnd, target-1) {
+			ip = instrEnd
+			continue
+		}
+
+		mutated := false
+		for p := instrEnd; p < target; p++ {
+			if OpCode(c.bytecode[p]) != OpNop {
+				c.bytecode[p] = byte(OpNop)
+				mutated = true
+			}
+		}
+		if mutated {
+			changed = true
+		}
+		ip = target
+	}
+
+	return changed
+}
+
+func isCompileTimeFalseValue(v Value) bool {
+	switch v.Type {
+	case VTBool:
+		return v.Num == 0
+	case VTInteger:
+		return v.Num == 0
+	case VTDouble:
+		return v.Flt == 0
+	case VTEmpty, VTNull:
+		return true
+	case VTString:
+		return v.Str == ""
+	case VTObject:
+		return v.Num == 0
+	default:
+		return false
+	}
+}
+
+func findPreviousInstructionStart(bytecode []byte, before int) int {
+	if before <= 0 || len(bytecode) == 0 {
+		return -1
+	}
+	prev := -1
+	for ip := 0; ip < len(bytecode) && ip < before; {
+		size := opcodeOperandSize(OpCode(bytecode[ip]))
+		next := ip + 1 + size
+		if next > before {
+			break
+		}
+		prev = ip
+		ip = next
+	}
+	return prev
 }
 
 type intStackValue struct {
@@ -286,9 +392,11 @@ func (c *Compiler) optimizeLocalCopyPropagationPass() bool {
 		case OpGetLocal:
 			local := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
 			if src, ok := alias[local]; ok {
-				binary.BigEndian.PutUint16(c.bytecode[ip+1:ip+3], src)
-				local = src
-				changed = true
+				if src != local {
+					binary.BigEndian.PutUint16(c.bytecode[ip+1:ip+3], src)
+					local = src
+					changed = true
+				}
 			}
 
 			// Detect direct copy pattern: OpGetLocal src [OpNop*] OpLetLocal dst.
@@ -306,7 +414,62 @@ func (c *Compiler) optimizeLocalCopyPropagationPass() bool {
 					}
 					resolved = up
 				}
-				alias[dst] = resolved
+				if dst != resolved {
+					alias[dst] = resolved
+				} else {
+					delete(alias, dst)
+				}
+			}
+
+			// Eliminate one redundant load pattern:
+			//   OpGetLocal X [OpNop*] OpGetLocal X [OpNop*] OpPop
+			// where no jump target lands inside the removed bytes.
+			nextLoad := instrEnd
+			for nextLoad < len(c.bytecode) && OpCode(c.bytecode[nextLoad]) == OpNop {
+				nextLoad++
+			}
+			if nextLoad+2 < len(c.bytecode) && OpCode(c.bytecode[nextLoad]) == OpGetLocal {
+				other := binary.BigEndian.Uint16(c.bytecode[nextLoad+1 : nextLoad+3])
+				if other == local {
+					nextAfterSecond := nextLoad + 3
+					for nextAfterSecond < len(c.bytecode) && OpCode(c.bytecode[nextAfterSecond]) == OpNop {
+						nextAfterSecond++
+					}
+					if nextAfterSecond < len(c.bytecode) && OpCode(c.bytecode[nextAfterSecond]) == OpPop {
+						if !hasTargetInRange(targets, nextLoad, nextAfterSecond) {
+							for p := nextLoad; p < nextLoad+3; p++ {
+								c.bytecode[p] = byte(OpNop)
+							}
+							c.bytecode[nextAfterSecond] = byte(OpNop)
+							changed = true
+						}
+					}
+				}
+			}
+
+		case OpGetGlobal:
+			global := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			nextLoad := instrEnd
+			for nextLoad < len(c.bytecode) && OpCode(c.bytecode[nextLoad]) == OpNop {
+				nextLoad++
+			}
+			if nextLoad+2 < len(c.bytecode) && OpCode(c.bytecode[nextLoad]) == OpGetGlobal {
+				other := binary.BigEndian.Uint16(c.bytecode[nextLoad+1 : nextLoad+3])
+				if other == global {
+					nextAfterSecond := nextLoad + 3
+					for nextAfterSecond < len(c.bytecode) && OpCode(c.bytecode[nextAfterSecond]) == OpNop {
+						nextAfterSecond++
+					}
+					if nextAfterSecond < len(c.bytecode) && OpCode(c.bytecode[nextAfterSecond]) == OpPop {
+						if !hasTargetInRange(targets, nextLoad, nextAfterSecond) {
+							for p := nextLoad; p < nextLoad+3; p++ {
+								c.bytecode[p] = byte(OpNop)
+							}
+							c.bytecode[nextAfterSecond] = byte(OpNop)
+							changed = true
+						}
+					}
+				}
 			}
 
 		case OpLetLocal, OpSetLocal, OpIncLocalInt, OpDecLocalInt:

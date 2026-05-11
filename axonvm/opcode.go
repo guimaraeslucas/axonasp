@@ -131,8 +131,11 @@ const (
 	OpMemberGet
 	OpMemberSet
 	OpMemberSetSet
-	OpMe          // Pushes the current class instance (activeClassObjectID) as VTObject
-	OpCallMember  // [OpCode, ConstMemberIdxHigh, ConstMemberIdxLow, ArgCountHigh, ArgCountLow]
+	OpMe // Pushes the current class instance (activeClassObjectID) as VTObject
+	// OpCallMember now carries one inline 32-bit cache slot populated by the VM
+	// on first execution for monomorphic call-site fast paths.
+	// [OpCode, ConstMemberIdxHigh, ConstMemberIdxLow, ArgCountHigh, ArgCountLow, CacheB3, CacheB2, CacheB1, CacheB0]
+	OpCallMember
 	OpCallBuiltin // [OpCode, RegistryIdxHigh, RegistryIdxLow, ArgCountHigh, ArgCountLow]
 	OpCall
 	OpNewClass // [OpCode, ClassNameConstIdxHigh, ClassNameConstIdxLow]

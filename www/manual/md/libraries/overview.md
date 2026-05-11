@@ -20,6 +20,7 @@ Set obj = Server.CreateObject("ProgID")
 |---|---|---|
 | Core functions | `G3AXON.FUNCTIONS` | `G3AXON` |
 | Markdown | `G3MD` | None |
+| String builder | `G3STRINGBUILDER` | None |
 | Crypto | `G3CRYPTO` | None |
 | JSON | `G3JSON` | None |
 | Database helper | `G3DB` | None |
