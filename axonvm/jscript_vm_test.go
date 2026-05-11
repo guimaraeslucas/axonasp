@@ -216,19 +216,19 @@ func TestJScriptForLoopBytecodeContainsUpdateOpcodes(t *testing.T) {
 	}
 
 	bytecode := compiler.Bytecode()
-	hasPostIncrement := false
+	hasFastInc := false
 	hasAddAssign := false
 	for i := 0; i < len(bytecode); i++ {
 		switch OpCode(bytecode[i]) {
-		case OpJSPostIncrement:
-			hasPostIncrement = true
+		case OpJSIncLocalInt:
+			hasFastInc = true
 		case OpJSAddAssign:
 			hasAddAssign = true
 		}
 	}
 
-	if !hasPostIncrement {
-		t.Fatalf("expected OpJSPostIncrement in bytecode, got %v", bytecode)
+	if !hasFastInc {
+		t.Fatalf("expected OpJSIncLocalInt in bytecode, got %v", bytecode)
 	}
 	if !hasAddAssign {
 		t.Fatalf("expected OpJSAddAssign in bytecode, got %v", bytecode)
@@ -247,20 +247,47 @@ func TestJScriptForLoopAssignmentUpdateUsesIncrementFastPath(t *testing.T) {
 	}
 
 	bytecode := compiler.Bytecode()
-	hasPreIncrement := false
+	hasFastInc := false
 	for i := 0; i < len(bytecode); i++ {
-		if OpCode(bytecode[i]) == OpJSPreIncrement {
-			hasPreIncrement = true
+		if OpCode(bytecode[i]) == OpJSIncLocalInt {
+			hasFastInc = true
 			break
 		}
 	}
-	if !hasPreIncrement {
-		t.Fatalf("expected OpJSPreIncrement in bytecode, got %v", bytecode)
+	if !hasFastInc {
+		t.Fatalf("expected OpJSIncLocalInt in bytecode, got %v", bytecode)
 	}
 
 	out := runASPSourceForTest(t, source)
 	if out != "6" {
 		t.Fatalf("unexpected for-loop output: %q", out)
+	}
+}
+
+func TestJScriptForLoopFastUpdateAvoidsStackPop(t *testing.T) {
+	source := `<script runat="server" language="JScript">for (var i = 0; i < 2; i++) {}</script>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+	hasFastInc := false
+	hasPop := false
+	for i := 0; i < len(bytecode); i++ {
+		switch OpCode(bytecode[i]) {
+		case OpJSIncLocalInt:
+			hasFastInc = true
+		case OpJSPop:
+			hasPop = true
+		}
+	}
+
+	if !hasFastInc {
+		t.Fatalf("expected OpJSIncLocalInt in bytecode, got %v", bytecode)
+	}
+	if hasPop {
+		t.Fatalf("expected no OpJSPop for fast for-update path, got %v", bytecode)
 	}
 }
 
@@ -1382,5 +1409,33 @@ func TestJScriptObjectToStringInternalTags(t *testing.T) {
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor)
 	if got := vm.jsObjectToStringTag(Value{Type: VTJSObject, Num: objID}); got != "[object RegExp]" {
 		t.Fatalf("unexpected regexp tag: %s", got)
+	}
+}
+
+func TestJScriptIntegerFastPathArithmeticPreservesIntegerType(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+
+	add := vm.jsAdd(NewInteger(7), NewInteger(5))
+	if add.Type != VTInteger || add.Num != 12 {
+		t.Fatalf("expected integer add result 12, got %#v", add)
+	}
+
+	sub := vm.jsSubtract(NewInteger(12), NewInteger(9))
+	if sub.Type != VTInteger || sub.Num != 3 {
+		t.Fatalf("expected integer subtract result 3, got %#v", sub)
+	}
+}
+
+func TestJScriptIncrementDecrementHelpersPreserveIntegerType(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+
+	next := vm.jsIncrementNumberValue(NewInteger(41))
+	if next.Type != VTInteger || next.Num != 42 {
+		t.Fatalf("expected integer increment result 42, got %#v", next)
+	}
+
+	prev := vm.jsDecrementNumberValue(NewInteger(41))
+	if prev.Type != VTInteger || prev.Num != 40 {
+		t.Fatalf("expected integer decrement result 40, got %#v", prev)
 	}
 }

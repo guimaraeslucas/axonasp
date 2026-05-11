@@ -206,6 +206,10 @@ const (
 	OpJSDeclareName            // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSGetName                // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSSetName                // [OpCode, NameConstIdxHigh, NameConstIdxLow]
+	OpJSGetLocal               // [OpCode, OffsetHigh, OffsetLow]
+	OpJSSetLocal               // [OpCode, OffsetHigh, OffsetLow]
+	OpJSIncLocal               // [OpCode, OffsetHigh, OffsetLow]
+	OpJSDecLocal               // [OpCode, OffsetHigh, OffsetLow]
 	OpJSMemberGet              // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSMemberSet              // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSCall                   // [OpCode, ArgCountHigh, ArgCountLow]
@@ -350,6 +354,45 @@ const (
 	// OpDecGlobalInt decrements one global numeric slot in place.
 	// [OpCode, IdxHigh, IdxLow]
 	OpDecGlobalInt
+	// OpJSIncLocalInt increments one JScript identifier in place without stack push.
+	// [OpCode, NameConstIdxHigh, NameConstIdxLow]
+	OpJSIncLocalInt
+	// OpJSDecLocalInt decrements one JScript identifier in place without stack push.
+	// [OpCode, NameConstIdxHigh, NameConstIdxLow]
+	OpJSDecLocalInt
+	// OpJSForFastIntEnter validates once (pre-loop) that both local slots used by
+	// OpJSForFastInt contain VTInteger values. This keeps the hot-path type-blind.
+	// [OpCode, CounterSlotHigh, CounterSlotLow, LimitSlotHigh, LimitSlotLow]
+	OpJSForFastIntEnter
+
+	// OpJSForFastInt is a fused super-instruction for JScript `for (let i = 0; i < N; i++)`
+	// loops backed by local slots. It atomically increments the counter slot, compares the
+	// updated value against the local limit slot, and performs a contiguous in-dispatch
+	// relative back-jump when the loop is still in range.
+	//
+	// Stack: unchanged — no values pushed or popped.
+	// Format: [OpCode(1), counterSlotH(1), counterSlotL(1), limitSlotH(1), limitSlotL(1),
+	//          jumpOffsetB3(1), jumpOffsetB2(1), jumpOffsetB1(1), jumpOffsetB0(1)]
+	// Total: 9 bytes (1 opcode + 8 operand bytes).
+	OpJSForFastInt
+	// OpJSForIterEnterFast enters a lexical for-loop iteration without allocating a
+	// child environment frame. It is only emitted when closure capture analysis proves
+	// loop bindings do not escape.
+	// [OpCode]
+	OpJSForIterEnterFast
+	// OpJSForIterExitFast exits a lexical for-loop iteration for the non-capturing fast path.
+	// [OpCode]
+	OpJSForIterExitFast
+
+	// OpJSRootFrameEnter reserves one contiguous root-frame local area for top-level
+	// JScript local-slot lowered identifiers. It initializes each slot with undefined.
+	// [OpCode, LocalCountHigh, LocalCountLow]
+	OpJSRootFrameEnter
+
+	// OpJSRootFrameLeave releases one top-level JScript root-frame local area and
+	// restores the stack pointer to the pre-reservation depth.
+	// [OpCode, LocalCountHigh, LocalCountLow]
+	OpJSRootFrameLeave
 
 	// OpNop is a no-operation placeholder emitted by the peephole optimizer to
 	// fill bytes that were made redundant by constant folding.  The VM advances
@@ -572,6 +615,22 @@ func (op OpCode) String() string {
 		return "OpIncGlobalInt"
 	case OpDecGlobalInt:
 		return "OpDecGlobalInt"
+	case OpJSIncLocalInt:
+		return "OpJSIncLocalInt"
+	case OpJSDecLocalInt:
+		return "OpJSDecLocalInt"
+	case OpJSForFastIntEnter:
+		return "OpJSForFastIntEnter"
+	case OpJSForFastInt:
+		return "OpJSForFastInt"
+	case OpJSForIterEnterFast:
+		return "OpJSForIterEnterFast"
+	case OpJSForIterExitFast:
+		return "OpJSForIterExitFast"
+	case OpJSRootFrameEnter:
+		return "OpJSRootFrameEnter"
+	case OpJSRootFrameLeave:
+		return "OpJSRootFrameLeave"
 	case OpCoerceToValue:
 		return "OpCoerceToValue"
 	case OpAxonASP:
@@ -582,6 +641,14 @@ func (op OpCode) String() string {
 		return "OpJSGetName"
 	case OpJSSetName:
 		return "OpJSSetName"
+	case OpJSGetLocal:
+		return "OpJSGetLocal"
+	case OpJSSetLocal:
+		return "OpJSSetLocal"
+	case OpJSIncLocal:
+		return "OpJSIncLocal"
+	case OpJSDecLocal:
+		return "OpJSDecLocal"
 	case OpJSMemberGet:
 		return "OpJSMemberGet"
 	case OpJSMemberSet:

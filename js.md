@@ -34,65 +34,43 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 
 ---
 
-## 🛠️ PHASE 6: ES6 CLASSES (HIGH COMPLEXITY)
-
-**Goal:** Support `class C extends B { constructor() { super(); } method() {} }`
-
-
-### Tasks:
-Core Architecture Note for the Agent: Under the hood, ES6 Classes in JScript are "syntactic sugar" over JavaScript's existing prototype-based inheritance. However, they introduce strict semantics (e.g., they must be called with new, they are not hoisted, and all code inside them runs in Strict Mode). The implementation should leverage existing VTJSFunction and VTJSObject types, manipulating their internal properties (like __proto__ and prototype) via bytecode generation, rather than introducing entirely new Go structs. The compiler will need to generate bytecode that sets up the prototype chain correctly, handles the `super` keyword by tracking the "Home Object" of methods, and ensures that the constructor function is properly defined and linked to the class prototype. This will require careful management of the call stack and execution context to ensure that method calls and property accesses resolve correctly according to ES6 semantics.
-    - [x] **SUB-PHASE 6.1: Parser & AST Verification**
-        - [x] **AST Nodes:** Verify or add AST nodes in `jscript/ast` for `ClassDeclaration`, `ClassExpression`, `MethodDefinition` (kinds: `constructor`, `method`, `get`, `set`), and `Super`.
-        - [x] **Parser Update:** Ensure the parser correctly handles the `class`, `extends`, and `super` keywords.
-        - [x] **Validation:** Add pure parser tests ensuring `class A extends B { constructor() { super(); } method() {} }` parses into the correct AST tree without VM execution.
-    - [x] **SUB-PHASE 6.2: Basic Class Compilation (The Constructor)**
-        - [x] **Compiler Update:** Implement `compileJScriptClassDeclaration` in `axonvm/compiler_jscript.go`.
-        - [x] **TDZ Binding:** Treat the class declaration similarly to a `let` binding. Classes are NOT hoisted and must reside in the Temporal Dead Zone until evaluated.
-        - [x] **Constructor Logic:** Extract the `constructor` method and compile it as a standard `VTJSFunction`, tagging it internally with a flag (e.g., `IsClassConstructor: true`).
-        - [x] **VM Enforcement:** If a `VTJSFunction` tagged as a class constructor is invoked without the `new` operator (via `OpCall` instead of `OpNew`), the VM MUST throw a `TypeError` ("Class constructor cannot be invoked without 'new'").
-        - [x] **Syntax Validation:** Ensure the compiler checks for syntax errors such as multiple constructors, invalid method definitions, and misuse of `super`, these errors should throw appropriate `SyntaxError` with correct messages.
-        - [x] **Validation:** Create `test_class_basic.asp` testing instantiation with `new` (success) and without `new` (throws TypeError).
-    * SUBPHASE 6.3: Instance Methods & Strict Mode Enforcement
-        * [x] **Strict Mode:** Ensure the compiler sets the `StrictMode` flag for the constructor and all methods generated within the class block, as class bodies implicitly run in Strict Mode.
-        * [x] **Method Compilation:** Modify `compileJScriptClassDeclaration` to iterate over all `MethodDefinition` AST nodes where `static` is false, compiling each as a `VTJSFunction`.
-        * [x] **Prototype Binding:** Generate bytecode to assign these compiled methods to the constructor's `prototype` object (Equivalent to: `OpPush <Constructor>` -> `OpPush "prototype"` -> `OpMemberGet` -> `OpPush <MethodClosure>` -> `OpPush "<MethodName>"` -> `OpMemberSet`).
-        * [x] **Validation:** Create `test_class_methods.asp` to verify method calls, correct `this` context, and strict mode enforcement.
-    * SUBPHASE 6.4: Static Methods and Accessors (Getters/Setters)
-        * [x] **Static Methods:** If a `MethodDefinition` is marked `static`, bind it directly to the constructor function object instead of its `prototype`.
-        * [x] **Accessors:** For `get` and `set` methods, use or implement the VM equivalent of `Object.defineProperty` using a specialized opcode (e.g., `OpJSDefineProperty`) to define descriptors on the `VTJSObject`.
-        * [x] **Validation:** Create `test_class_static_accessors.asp`. Test `Class.staticMethod()` and `instance.getterProp`.
-    * SUBPHASE 6.5: Inheritance (`extends`) & Prototype Chaining
-        * [x] **SuperClass Evaluation:** If `extends <SuperClass>` is present, evaluate it. The evaluated `<SuperClass>` must be a valid constructor (`VTJSFunction`) or `null`. If not, throw a `TypeError`.
-            * [x] **Prototype Wiring:** Set the internal `__proto__` of the subclass's `prototype` object to `<SuperClass>.prototype`.
-            * [x] **Static Inheritance:** Set the internal `__proto__` of the subclass constructor itself to `<SuperClass>` to allow inheritance of static methods. Use internal VM assignments (e.g., `vm.jsSetProto`) to avoid Go heap allocation.
-            * [x] **Validation:** Create `test_class_extends.asp`. Check if instances inherit methods from the superclass prototype and if the subclass inherits static methods.
-    * SUBPHASE 6.6: The `super()` Call in Constructors
-        * [x] **TDZ for `this`:** In a derived class constructor, `this` is uninitialized until `super()` is called. If `this` is accessed before `super()` completes, the VM must throw a `ReferenceError`.
-        * [x] **Super Invocation:** Compile `super(...)` as a special call that invokes the parent constructor using `Reflect.construct` logic via `OpNew`, explicitly targeting the extended class.
-        * [x] **Validation:** Create `test_class_super_constructor.asp`. Test constructor argument passing and verify `ReferenceError` if `this` is used prematurely.
-    * SUBPHASE 6.7: The `super.method()` Call & Home Object Binding
-        * [x] **Home Object Assignment:** When attaching methods to the prototype, attach a hidden internal VM property `[[HomeObject]]` to the `VTJSFunction` pointing to the object it was bound to. Store this as an integer ID pointing to the VM's `jsObjectItems` array to strictly avoid reflection and Go heap escape.
-        * [x] **Super Resolution:** Translate `super.foo` to: Get `[[HomeObject]]` -> Get its prototype -> Lookup property `"foo"` -> Call with current `this` context.
-        * [x] **Validation:** Create `test_class_super_method.asp`. Test complex prototype chains (e.g., `C extends B extends A`).
-    * SUBPHASE 6.8: Final Agent Checklist
-        * [x] **Gofmt:** Run `gofmt` on all modified files.
-        * [x] **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure strictly zero regressions on the VBScript side.
-        * [x] **Memory Profile:** Run `go test -bench . -benchmem` to guarantee no new allocations were introduced in the JScript execution path (Zero-Allocation axiom).
-        * [x] **Error Codes:** Ensure correct use of error codes from `jscripterrorcodes.go` for syntax/runtime failures.
-        * [x] all go tests must pass to ensure no regressions and correc behavior of the old and new features.
-        * [x] **Documentation:** Update `jscript-es6-support.md` reflecting the new capabilities and any limitations.
-
----
-
 ## 🛠️ PHASE 7: PROXIES & REFLECTION (HIGH COMPLEXITY)
 
 **Goal:** Introduce metaprogramming capabilities.
 
 ### Tasks:
-
-* [ ] **Proxy Object:** Intercept fundamental operations (`get`, `set`, `apply`, `construct`). Requires deep hooks into the JScript member dispatch engine (`jsMemberGet`, `jsMemberSet`).
-* [ ] **Reflect Object:** Expose the global `Reflect` API for programmatic object manipulation, ensuring parity with `Proxy` traps.
-* [ ] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
+Follow the subphase breakdown below for a structured implementation of Proxies and the Reflect API:
+    * SUBPHASE 7.1: Core Types & Global Built-ins Setup
+        * [ ] **Internal Representation:** Define the internal memory model for Proxies without breaking the `Value` struct. Either introduce a `VTJSProxy` type or utilize `VTJSObject` with hidden internal properties (e.g., `[[ProxyTarget]]` and `[[ProxyHandler]]`).
+        * [ ] **Global Registration:** Inject the `Proxy` constructor and the `Reflect` namespace object into the global JScript environment upon VM initialization.
+        * [ ] **Constructor Logic:** Implement the `new Proxy(target, handler)` built-in function. Ensure it throws a `TypeError` if `target` or `handler` are not valid objects (`VTJSObject` or `VTJSFunction`).
+        * [ ] **Validation:** Create `test_proxy_init.asp` to verify `Proxy` and `Reflect` exist globally and that `new Proxy()` correctly validates its arguments.
+    * SUBPHASE 7.2: Intercepting Property Access (`get` & `set` Traps)
+        * [ ] **Get Trap:** Deeply hook into `vm.jsMemberGet`. If the object is a Proxy, inspect the `[[ProxyHandler]]` for a `"get"` property. If present, invoke it as a function with `(target, property, receiver)`. If not, forward the operation to the `[[ProxyTarget]]`.
+        * [ ] **Set Trap:** Hook into `vm.jsMemberSet` and `vm.jsIndexSet`. Check the handler for a `"set"` property. Invoke it with `(target, property, value, receiver)`. 
+        * [ ] **Strict Mode Enforcement:** In strict mode, if a `set` trap returns a falsy value, the VM MUST throw a `TypeError`.
+        * [ ] **Validation:** Create `test_proxy_get_set.asp` to ensure properties can be dynamically intercepted, modified, or blocked without leaking memory or escaping the VM stack.
+    * SUBPHASE 7.3: Intercepting Execution (`apply` & `construct` Traps)
+        * [ ] **Callable Proxies:** A Proxy is only callable if its `[[ProxyTarget]]` is a `VTJSFunction`. Enforce this during instantiation.
+        * [ ] **Apply Trap:** Hook into the VM's `OpCall` handler. If the callee is a Proxy, check for an `"apply"` trap. If present, invoke it with `(target, thisArg, argumentsList)`.
+        * [ ] **Construct Trap:** Hook into the VM's `OpNew` handler. Check for a `"construct"` trap. Invoke it with `(target, argumentsList, newTarget)`. Ensure the return value is an object, otherwise throw a `TypeError`.
+        * [ ] **Validation:** Create `test_proxy_apply_construct.asp` to test intercepting function calls and constructor invocations.
+    * SUBPHASE 7.4: Intercepting Object Operations (`has`, `deleteProperty`, `ownKeys`)
+        * [ ] **Has Trap:** Hook into the `in` operator logic (e.g., `OpJSIn`). Route to the `"has"` trap if defined.
+        * [ ] **Delete Trap:** Hook into the `delete` operator logic. Route to the `"deleteProperty"` trap. Enforce strict mode throwing if the trap returns `false`.
+        * [ ] **Keys/Enumeration:** Hook into `OpForIn` and `Object.keys()` internal logic to support the `"ownKeys"` trap, ensuring it returns a valid Array or iterable of strings/symbols.
+        * [ ] **Validation:** Create `test_proxy_operations.asp` to verify operator interception works flawlessly.
+    * SUBPHASE 7.5: The `Reflect` API Implementation
+        * [ ] **Reflect Methods:** Implement `Reflect.get()`, `Reflect.set()`, `Reflect.apply()`, `Reflect.construct()`, `Reflect.has()`, `Reflect.deleteProperty()`, and `Reflect.ownKeys()`.
+        * [ ] **Parity & Invocation:** Ensure these methods directly map to the internal VM dispatch mechanics (the exact same internal methods used when traps forward to the target).
+        * [ ] **Return Semantics:** Unlike standard operators which might throw in strict mode, ensure `Reflect.set()` and `Reflect.deleteProperty()` return boolean success flags as dictated by the ES6 spec.
+        * [ ] **Validation:** Create `test_reflect_api.asp` to verify parity between Proxy traps and Reflect invocations.
+    * SUBPHASE 7.6: Final Agent Checklist
+        * [ ] **Gofmt:** Run `gofmt` on all modified files.
+        * [ ] **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure deep VM hooks into member resolution did NOT break VBScript `.` access.
+        * [ ] **Memory Profile:** Run `go test -bench . -benchmem`. Proxy traps involve nested VM calls; ensure `CallFrame` allocations remain strictly stack-bound (Zero-Allocation axiom).
+        * [ ] **Error Codes:** Ensure correct use of error codes from `jscripterrorcodes.go` for trap violations and TypeErrors.
+        * [ ] **Documentation:** Update `jscript-es6-support.md` detailing the supported Proxy traps and the `Reflect` API features.
 
 ---
 
@@ -134,4 +112,5 @@ Core Architecture Note for the Agent: Under the hood, ES6 Classes in JScript are
 6. **Documentation:** Did you update `jscript-es6-support.md` with the new features and any limitations or known issues?
 7. **Testing:** Did you add comprehensive test cases for each new feature in both Go and ASP test files?
 8. **Code Review:** Before finalizing, review the code for any potential performance pitfalls, memory leaks, or edge cases that could arise from the new features.
-9. **Check complete:** [x] Phase 5 Iteration Protocol & Destructuring task is marked as complete in this file; [x] Phase 3 VBScript execution and memory optimization task is marked as complete in this file
+9. **Check complete:** [x] JScript VM deep optimization Phase 3 (Unsafe Fast-Path) and Phase 4 (Escape Analysis/GC Thrashing elimination) are marked as complete in this file.
+

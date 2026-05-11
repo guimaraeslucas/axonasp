@@ -148,6 +148,9 @@ type Compiler struct {
 	jsBlockScopeStack     []map[string]bool // Stack of declared block-scoped variables (let/const)
 	jsForIterScopes       []jsForIterScope  // Stack of active per-iteration for-let scopes
 	jsOptionalChainExits  []int             // Stack of placeholder positions for ?. short-circuiting
+	jsLocalScopeStack     []jsLocalScope    // Lexical stack for JScript local slot resolution
+	jsLocalEnabled        bool              // True when local slot lowering is enabled for current function
+	jsLocalSlotCount      int               // Number of local slots allocated for current function
 	// withDepth tracks nesting level of With...End With blocks at compile time.
 	// A value > 0 enables the leading-dot '.' statement and expression syntax.
 	withDepth          int
@@ -180,6 +183,15 @@ type jsBreakContext struct {
 // jsForIterScope records the per-iteration env scope context for a for-let loop.
 type jsForIterScope struct {
 	nameIdxs []int // constant indices for loop variable names
+	fast     bool  // true when using non-alloc fast enter/exit opcodes
+}
+
+// jsLocalScope holds compiler-time name resolution data for JScript local slots.
+// entries maps one identifier to either a local slot index (>=0) or a lexical
+// barrier marker (-1) that blocks outer local-slot capture.
+type jsLocalScope struct {
+	entries    map[string]int
+	isFunction bool
 }
 
 type definitionTokenBound struct {
@@ -425,6 +437,9 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		jsStrictMode:          false,
 		jsFunctionStrictModes: make(map[int]bool),
 		jsBlockScopeStack:     make([]map[string]bool, 0, 32),
+		jsLocalScopeStack:     make([]jsLocalScope, 0, 16),
+		jsLocalEnabled:        false,
+		jsLocalSlotCount:      0,
 		activeVBSConstants:    make([]VBSConstant, 0, len(VBSConstants)),
 	}
 	c.activeVBSConstants = append(c.activeVBSConstants, VBSConstants...)

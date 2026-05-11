@@ -52,6 +52,25 @@ func (c *Compiler) compileJScriptBlock(source string) {
 		panic(c.newJScriptCompileErrorFromParse(err, "jscript parse error"))
 	}
 
+	prevLocalEnabled := c.jsLocalEnabled
+	prevLocalSlotCount := c.jsLocalSlotCount
+	prevLocalScopeStack := c.jsLocalScopeStack
+	c.jsLocalEnabled = !jsProgramContainsNestedFunction(program.Body)
+	c.jsLocalSlotCount = 0
+	c.jsLocalScopeStack = make([]jsLocalScope, 0, 8)
+	if c.jsLocalEnabled {
+		c.jsPushLocalScope(false)
+	}
+	rootFrameEnterPos := -1
+	if c.jsLocalEnabled {
+		rootFrameEnterPos = c.emit(OpJSRootFrameEnter, 0)
+	}
+	defer func() {
+		c.jsLocalEnabled = prevLocalEnabled
+		c.jsLocalSlotCount = prevLocalSlotCount
+		c.jsLocalScopeStack = prevLocalScopeStack
+	}()
+
 	// Detect "use strict" directive at the beginning of the program
 	hasStrictMode, _ := c.detectUseStrictDirective(program.Body)
 	if hasStrictMode {
@@ -63,6 +82,13 @@ func (c *Compiler) compileJScriptBlock(source string) {
 
 	for i := range program.Body {
 		c.compileJScriptStatement(program.Body[i])
+	}
+
+	if c.jsLocalEnabled {
+		if rootFrameEnterPos >= 0 {
+			binary.BigEndian.PutUint16(c.bytecode[rootFrameEnterPos+1:], uint16(c.jsLocalSlotCount))
+		}
+		c.emit(OpJSRootFrameLeave, c.jsLocalSlotCount)
 	}
 
 	if hasStrictMode {
@@ -226,6 +252,96 @@ func (c *Compiler) currentJSBreakContext() *jsBreakContext {
 	return c.jsBreakContexts[len(c.jsBreakContexts)-1]
 }
 
+func (c *Compiler) jsPushLocalScope(isFunction bool) {
+	if !c.jsLocalEnabled {
+		return
+	}
+	scope := jsLocalScope{entries: make(map[string]int, 8), isFunction: isFunction}
+	c.jsLocalScopeStack = append(c.jsLocalScopeStack, scope)
+}
+
+func (c *Compiler) jsPopLocalScope() {
+	if !c.jsLocalEnabled || len(c.jsLocalScopeStack) == 0 {
+		return
+	}
+	c.jsLocalScopeStack = c.jsLocalScopeStack[:len(c.jsLocalScopeStack)-1]
+}
+
+func (c *Compiler) jsAddLocalBarrier(name string) {
+	if !c.jsLocalEnabled || len(c.jsLocalScopeStack) == 0 {
+		return
+	}
+	c.jsLocalScopeStack[len(c.jsLocalScopeStack)-1].entries[name] = -1
+}
+
+func (c *Compiler) jsDeclareFunctionLocal(name string) int {
+	if !c.jsLocalEnabled {
+		return -1
+	}
+	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
+		scope := &c.jsLocalScopeStack[i]
+		if !scope.isFunction {
+			continue
+		}
+		if slot, exists := scope.entries[name]; exists && slot >= 0 {
+			return slot
+		}
+		slot := c.jsLocalSlotCount
+		c.jsLocalSlotCount++
+		scope.entries[name] = slot
+		return slot
+	}
+	return -1
+}
+
+func (c *Compiler) jsDeclareCurrentLocal(name string) int {
+	if !c.jsLocalEnabled || len(c.jsLocalScopeStack) == 0 {
+		return -1
+	}
+	scope := &c.jsLocalScopeStack[len(c.jsLocalScopeStack)-1]
+	if slot, exists := scope.entries[name]; exists && slot >= 0 {
+		return slot
+	}
+	if c.jsHasFunctionLocalScope() {
+		slot := c.jsLocalSlotCount
+		c.jsLocalSlotCount++
+		scope.entries[name] = slot
+		return slot
+	}
+
+	// Root JScript bytecode has no dedicated call frame, so reserve one stable
+	// offset relative to vm.fp. Root slot memory is provisioned by OpJSRootFrameEnter.
+	slot := c.jsLocalSlotCount
+	c.jsLocalSlotCount++
+	scope.entries[name] = slot
+	return slot
+}
+
+func (c *Compiler) jsHasFunctionLocalScope() bool {
+	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
+		if c.jsLocalScopeStack[i].isFunction {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Compiler) jsResolveLocalSlot(name string) (int, bool) {
+	if !c.jsLocalEnabled {
+		return 0, false
+	}
+	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
+		scope := c.jsLocalScopeStack[i]
+		if slot, exists := scope.entries[name]; exists {
+			if slot < 0 {
+				return 0, false
+			}
+			return slot, true
+		}
+	}
+	return 0, false
+}
+
 func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 	switch node := stmt.(type) {
 	case *jsast.ExpressionStatement:
@@ -239,6 +355,15 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 			} else {
 				// var x; -> declare x
 				if id, ok := binding.Target.(*jsast.Identifier); ok {
+					if slot, hasLocal := c.jsResolveLocalSlot(id.Name.String()); hasLocal {
+						_ = slot
+						continue
+					}
+					if c.jsLocalEnabled {
+						if slot := c.jsDeclareFunctionLocal(id.Name.String()); slot >= 0 {
+							continue
+						}
+					}
 					nameIdx := c.addConstant(NewString(id.Name.String()))
 					c.emit(OpJSDeclareName, nameIdx)
 				}
@@ -287,6 +412,15 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		// Check if block contains let/const declarations requiring a block scope
 		letNames, constNames := jsGetBlockLexicalNames(node.List)
 		hasLexical := len(letNames) > 0 || len(constNames) > 0
+		if c.jsLocalEnabled {
+			c.jsPushLocalScope(false)
+			for _, name := range letNames {
+				c.jsAddLocalBarrier(name)
+			}
+			for _, name := range constNames {
+				c.jsAddLocalBarrier(name)
+			}
+		}
 		if hasLexical {
 			c.emit(OpJSBlockScopeEnter)
 			for _, name := range letNames {
@@ -302,6 +436,9 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		if hasLexical {
 			c.emit(OpJSBlockScopeExit)
 		}
+		if c.jsLocalEnabled {
+			c.jsPopLocalScope()
+		}
 	case *jsast.TryStatement:
 		c.jsTryDepth++
 		tryPos := c.emit(OpJSTryEnter, 0)
@@ -311,12 +448,21 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		c.patchJSJumpTo(tryPos+1, len(c.bytecode))
 		if node.Catch != nil {
 			if id, ok := node.Catch.Parameter.(*jsast.Identifier); ok {
+				if c.jsLocalEnabled {
+					c.jsPushLocalScope(false)
+					c.jsAddLocalBarrier(id.Name.String())
+				}
 				nameIdx := c.addConstant(NewString(id.Name.String()))
 				c.emit(OpJSDeclareName, nameIdx)
 				c.emit(OpJSLoadCatchError)
 				c.emit(OpJSSetName, nameIdx)
+				c.compileJScriptStatement(node.Catch.Body)
+				if c.jsLocalEnabled {
+					c.jsPopLocalScope()
+				}
+			} else {
+				c.compileJScriptStatement(node.Catch.Body)
 			}
-			c.compileJScriptStatement(node.Catch.Body)
 		}
 		if node.Finally != nil {
 			c.compileJScriptStatement(node.Finally)
@@ -383,7 +529,11 @@ func (c *Compiler) emitJSLeaveWithScopes(count int) {
 // above targetDepth (the depth at the start of the enclosing loop/break context).
 func (c *Compiler) emitJSLeaveForIterScopes(targetDepth int) {
 	for i := len(c.jsForIterScopes) - 1; i >= targetDepth; i-- {
-		c.emitForIterExit(c.jsForIterScopes[i].nameIdxs)
+		if c.jsForIterScopes[i].fast {
+			c.emitForIterExitFast()
+		} else {
+			c.emitForIterExit(c.jsForIterScopes[i].nameIdxs)
+		}
 	}
 }
 
@@ -405,6 +555,16 @@ func (c *Compiler) emitForIterExit(nameIdxs []int) {
 	for _, idx := range nameIdxs {
 		c.bytecode = append(c.bytecode, byte(idx>>8), byte(idx&0xFF))
 	}
+}
+
+// emitForIterEnterFast emits OpJSForIterEnterFast for non-capturing lexical loops.
+func (c *Compiler) emitForIterEnterFast() {
+	c.bytecode = append(c.bytecode, byte(OpJSForIterEnterFast))
+}
+
+// emitForIterExitFast emits OpJSForIterExitFast for non-capturing lexical loops.
+func (c *Compiler) emitForIterExitFast() {
+	c.bytecode = append(c.bytecode, byte(OpJSForIterExitFast))
 }
 
 // compileJScriptWithStatement compiles a non-strict ES5 with-statement.
@@ -503,57 +663,127 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 	loopCtx := c.pushJSLoopContext()
 	breakCtx := c.pushJSBreakContext()
 
+	fastIntCounterName, fastIntLimitValue, fastIntEnabled := c.detectJSForFastIntLoop(node)
+	fastIntCounterSlot := -1
+	fastIntLimitSlot := -1
+	if fastIntEnabled {
+		c.jsPushLocalScope(false)
+		counterHiddenName := fmt.Sprintf("__js_for_fast_counter__%d_%d", len(c.bytecode), c.jsLocalSlotCount)
+		fastIntCounterSlot = c.jsDeclareCurrentLocal(counterHiddenName)
+		if fastIntCounterSlot >= 0 && len(c.jsLocalScopeStack) > 0 {
+			c.jsLocalScopeStack[len(c.jsLocalScopeStack)-1].entries[fastIntCounterName] = fastIntCounterSlot
+			limitHiddenName := fmt.Sprintf("__js_for_fast_limit__%d_%d", len(c.bytecode), c.jsLocalSlotCount)
+			fastIntLimitSlot = c.jsDeclareCurrentLocal(limitHiddenName)
+			if fastIntLimitSlot < 0 {
+				fastIntEnabled = false
+			}
+		} else {
+			fastIntEnabled = false
+		}
+		if !fastIntEnabled {
+			c.jsPopLocalScope()
+			fastIntCounterSlot = -1
+			fastIntLimitSlot = -1
+		}
+	}
+
 	// Track whether we have a lexical (let/const) for-loop declaration
 	var forIterNameIdxs []int
+	var forIterNames []string
 	isLexicalFor := false
+	lexicalOuterScopeEntered := false
+	forIterFastPath := false
 
 	// Compile init expression
 	if node.Initializer != nil {
-		switch init := node.Initializer.(type) {
-		case *jsast.ForLoopInitializerExpression:
-			c.compileJScriptExpression(init.Expression)
-			c.emit(OpJSPop)
-		case *jsast.ForLoopInitializerVarDeclList:
-			for _, binding := range init.List {
-				name, ok := jsBindingIdentifierName(binding.Target)
-				if !ok {
-					continue
-				}
-				nameIdx := c.addConstant(NewString(name))
-				c.emit(OpJSDeclareName, nameIdx)
-				if binding.Initializer != nil {
+		if fastIntEnabled {
+			if init, ok := node.Initializer.(*jsast.ForLoopInitializerLexicalDecl); ok && len(init.LexicalDeclaration.List) == 1 {
+				binding := init.LexicalDeclaration.List[0]
+				if name, ok := jsBindingIdentifierName(binding.Target); ok && name == fastIntCounterName && binding.Initializer != nil && jsIsNumericZeroLiteral(binding.Initializer) {
 					c.compileJScriptExpression(binding.Initializer)
-					c.emit(OpJSSetName, nameIdx)
-				}
-			}
-		case *jsast.ForLoopInitializerLexicalDecl:
-			// ES6 let/const for-loop: create outer block scope for the loop variable
-			lexDecl := init.LexicalDeclaration
-			isLexicalFor = lexDecl.Token == jstoken.LET
-			c.emit(OpJSBlockScopeEnter)
-			c.jsBlockScopeStack = append(c.jsBlockScopeStack, make(map[string]bool))
-			for _, binding := range lexDecl.List {
-				name, ok := jsBindingIdentifierName(binding.Target)
-				if !ok {
-					continue
-				}
-				nameIdx := c.addConstant(NewString(name))
-				if lexDecl.Token == jstoken.CONST {
-					c.emit(OpJSTDZRegisterConst, nameIdx)
-					if binding.Initializer != nil {
-						c.compileJScriptExpression(binding.Initializer)
-						c.emitConstInitialize(nameIdx)
-					}
+					c.emit(OpJSSetLocal, fastIntCounterSlot)
+					c.emit(OpConstant, c.addConstant(NewInteger(fastIntLimitValue)))
+					c.emit(OpJSSetLocal, fastIntLimitSlot)
 				} else {
-					c.emit(OpJSTDZRegisterLet, nameIdx)
-					c.emit(OpJSLetDeclare, nameIdx)
+					fastIntEnabled = false
+					c.jsPopLocalScope()
+					fastIntCounterSlot = -1
+					fastIntLimitSlot = -1
+				}
+			} else {
+				fastIntEnabled = false
+				c.jsPopLocalScope()
+				fastIntCounterSlot = -1
+				fastIntLimitSlot = -1
+			}
+		}
+
+		if !fastIntEnabled {
+			switch init := node.Initializer.(type) {
+			case *jsast.ForLoopInitializerExpression:
+				c.compileJScriptExpression(init.Expression)
+				c.emit(OpJSPop)
+			case *jsast.ForLoopInitializerVarDeclList:
+				for _, binding := range init.List {
+					name, ok := jsBindingIdentifierName(binding.Target)
+					if !ok {
+						continue
+					}
+					nameIdx := c.addConstant(NewString(name))
+					localSlot := -1
+					if c.jsLocalEnabled {
+						localSlot = c.jsDeclareFunctionLocal(name)
+					}
+					if localSlot < 0 {
+						c.emit(OpJSDeclareName, nameIdx)
+					}
 					if binding.Initializer != nil {
 						c.compileJScriptExpression(binding.Initializer)
-						c.emit(OpJSSetName, nameIdx)
+						if localSlot >= 0 {
+							c.emit(OpJSSetLocal, localSlot)
+						} else {
+							c.emit(OpJSSetName, nameIdx)
+						}
 					}
 				}
-				if isLexicalFor {
-					forIterNameIdxs = append(forIterNameIdxs, nameIdx)
+			case *jsast.ForLoopInitializerLexicalDecl:
+				// ES6 let/const for-loop: create outer block scope for the loop variable
+				lexDecl := init.LexicalDeclaration
+				isLexicalFor = lexDecl.Token == jstoken.LET
+				c.emit(OpJSBlockScopeEnter)
+				lexicalOuterScopeEntered = true
+				c.jsBlockScopeStack = append(c.jsBlockScopeStack, make(map[string]bool))
+				for _, binding := range lexDecl.List {
+					name, ok := jsBindingIdentifierName(binding.Target)
+					if !ok {
+						continue
+					}
+					nameIdx := c.addConstant(NewString(name))
+					if lexDecl.Token == jstoken.CONST {
+						c.emit(OpJSTDZRegisterConst, nameIdx)
+						if binding.Initializer != nil {
+							c.compileJScriptExpression(binding.Initializer)
+							c.emitConstInitialize(nameIdx)
+						}
+					} else {
+						c.emit(OpJSTDZRegisterLet, nameIdx)
+						c.emit(OpJSLetDeclare, nameIdx)
+						if binding.Initializer != nil {
+							c.compileJScriptExpression(binding.Initializer)
+							c.emit(OpJSSetName, nameIdx)
+						}
+					}
+					if isLexicalFor {
+						forIterNameIdxs = append(forIterNameIdxs, nameIdx)
+						forIterNames = append(forIterNames, name)
+					}
+				}
+				if isLexicalFor && len(forIterNames) > 0 {
+					captureNames := make(map[string]struct{}, len(forIterNames))
+					for _, n := range forIterNames {
+						captureNames[n] = struct{}{}
+					}
+					forIterFastPath = !jsStatementCapturesLoopNames(node.Body, captureNames)
 				}
 			}
 		}
@@ -568,47 +798,108 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 	// it to the stored constant without touching the stack.
 	var jumpExit int
 	if node.Test != nil {
-		if fastNameIdx, fastLimitIdx, ok := c.detectJSForFastLessTest(node.Test); ok {
-			jumpExit = c.emitJSJumpIfLessFast(fastNameIdx, fastLimitIdx)
-		} else {
-			c.compileJScriptExpression(node.Test)
+		if fastIntEnabled {
+			c.bytecode = append(c.bytecode,
+				byte(OpJSForFastIntEnter),
+				byte(fastIntCounterSlot>>8), byte(fastIntCounterSlot),
+				byte(fastIntLimitSlot>>8), byte(fastIntLimitSlot),
+			)
+			c.emit(OpJSGetLocal, fastIntCounterSlot)
+			c.emit(OpJSGetLocal, fastIntLimitSlot)
+			c.emit(OpJSLess)
 			jumpExit = c.emitJSJump(OpJSJumpIfFalse)
+		} else {
+			if bin, ok := node.Test.(*jsast.BinaryExpression); ok && bin.Operator == jstoken.LESS {
+				if id, ok := bin.Left.(*jsast.Identifier); ok {
+					if slot, hasLocal := c.jsResolveLocalSlot(id.Name.String()); hasLocal {
+						if num, isNum := bin.Right.(*jsast.NumberLiteral); isNum {
+							c.emit(OpJSGetLocal, slot)
+							switch v := num.Value.(type) {
+							case int64:
+								c.emit(OpConstant, c.addConstant(NewInteger(v)))
+							case int:
+								c.emit(OpConstant, c.addConstant(NewInteger(int64(v))))
+							case float64:
+								c.emit(OpConstant, c.addConstant(NewDouble(v)))
+							default:
+								c.compileJScriptExpression(node.Test)
+								jumpExit = c.emitJSJump(OpJSJumpIfFalse)
+								goto jsForTestDone
+							}
+							c.emit(OpJSLess)
+							jumpExit = c.emitJSJump(OpJSJumpIfFalse)
+							goto jsForTestDone
+						}
+					}
+				}
+			}
+			if fastNameIdx, fastLimitIdx, ok := c.detectJSForFastLessTest(node.Test); ok {
+				jumpExit = c.emitJSJumpIfLessFast(fastNameIdx, fastLimitIdx)
+			} else {
+				c.compileJScriptExpression(node.Test)
+				jumpExit = c.emitJSJump(OpJSJumpIfFalse)
+			}
 		}
+	jsForTestDone:
 	}
 
+	bodyStart := len(c.bytecode)
+
 	// For let loops: enter per-iteration scope by copying loop vars into a child env frame
-	if isLexicalFor && len(forIterNameIdxs) > 0 {
-		c.emitForIterEnter(forIterNameIdxs)
-		c.jsForIterScopes = append(c.jsForIterScopes, jsForIterScope{nameIdxs: forIterNameIdxs})
+	if !fastIntEnabled && isLexicalFor && len(forIterNameIdxs) > 0 {
+		if forIterFastPath {
+			c.emitForIterEnterFast()
+			c.jsForIterScopes = append(c.jsForIterScopes, jsForIterScope{fast: true})
+		} else {
+			c.emitForIterEnter(forIterNameIdxs)
+			c.jsForIterScopes = append(c.jsForIterScopes, jsForIterScope{nameIdxs: forIterNameIdxs})
+		}
 	}
 
 	// Compile loop body
 	if node.Body != nil {
 		c.compileJScriptStatement(node.Body)
 	}
+	if fastIntEnabled && len(c.bytecode) == bodyStart {
+		c.emit(OpNop)
+	}
 
 	// For let loops: exit per-iteration scope (write back updated vars to outer block scope).
 	// This must be emitted BEFORE setting updateTarget so that continue statements (which
 	// also emit ForIterExit via emitJSLeaveForIterScopes) jump to AFTER the ForIterExit
 	// rather than triggering a double exit.
-	if isLexicalFor && len(forIterNameIdxs) > 0 {
+	if !fastIntEnabled && isLexicalFor && len(forIterNameIdxs) > 0 {
 		c.jsForIterScopes = c.jsForIterScopes[:len(c.jsForIterScopes)-1]
-		c.emitForIterExit(forIterNameIdxs)
+		if forIterFastPath {
+			c.emitForIterExitFast()
+		} else {
+			c.emitForIterExit(forIterNameIdxs)
+		}
+	}
+	if fastIntEnabled {
+		c.jsPopLocalScope()
 	}
 
 	// Mark update target: continue statements jump here (after per-iteration scope exit).
 	updateTarget := len(c.bytecode)
 
 	// Compile update expression
-	if node.Update != nil {
-		if !c.compileJScriptForUpdateFastPath(node.Update) {
+	if fastIntEnabled {
+		updateTarget = c.emitJSForFastInt(fastIntCounterSlot, fastIntLimitSlot, bodyStart)
+	} else if node.Update != nil {
+		handled, pushesResult := c.compileJScriptForUpdateFastPath(node.Update)
+		if !handled {
 			c.compileJScriptExpression(node.Update)
+			c.emit(OpJSPop)
+		} else if pushesResult {
+			c.emit(OpJSPop)
 		}
-		c.emit(OpJSPop)
 	}
 
 	// Jump back to test
-	c.emitJSJumpTo(OpJSJump, loopCtx.loopStart)
+	if !fastIntEnabled {
+		c.emitJSJumpTo(OpJSJump, loopCtx.loopStart)
+	}
 
 	// Patch exit jump
 	if node.Test != nil {
@@ -628,13 +919,11 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 	c.popJSBreakContext()
 
 	// Exit outer block scope for lexical for-loop variables
-	if node.Initializer != nil {
-		if _, ok := node.Initializer.(*jsast.ForLoopInitializerLexicalDecl); ok {
-			if len(c.jsBlockScopeStack) > 0 {
-				c.jsBlockScopeStack = c.jsBlockScopeStack[:len(c.jsBlockScopeStack)-1]
-			}
-			c.emit(OpJSBlockScopeExit)
+	if lexicalOuterScopeEntered {
+		if len(c.jsBlockScopeStack) > 0 {
+			c.jsBlockScopeStack = c.jsBlockScopeStack[:len(c.jsBlockScopeStack)-1]
 		}
+		c.emit(OpJSBlockScopeExit)
 	}
 }
 
@@ -999,7 +1288,11 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 		if node.Name.String() == "VMENGINE" {
 			c.emit(JsOpAxonAsp)
 		} else {
-			c.emit(OpJSGetName, c.addConstant(NewString(node.Name.String())))
+			if slot, ok := c.jsResolveLocalSlot(node.Name.String()); ok {
+				c.emit(OpJSGetLocal, slot)
+			} else {
+				c.emit(OpJSGetName, c.addConstant(NewString(node.Name.String())))
+			}
 		}
 	case *jsast.ThisExpression:
 		c.emit(OpJSLoadThis)
@@ -1118,7 +1411,11 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 				if prop.Initializer != nil {
 					c.compileJScriptExpression(prop.Initializer)
 				} else {
-					c.emit(OpJSGetName, c.addConstant(NewString(key)))
+					if slot, ok := c.jsResolveLocalSlot(key); ok {
+						c.emit(OpJSGetLocal, slot)
+					} else {
+						c.emit(OpJSGetName, c.addConstant(NewString(key)))
+					}
 				}
 				c.emit(OpJSMemberSet, c.addConstant(NewString(key)))
 			case *jsast.PropertyKeyed:
@@ -1322,10 +1619,15 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 			panic(jsErr)
 		}
 		nameIdx := c.addConstant(NewString(name))
+		localSlot, hasLocal := c.jsResolveLocalSlot(name)
 		c.compileJScriptExpression(node.Right)
 		if node.Operator == jstoken.ASSIGN {
 			c.emit(OpJSDup)
-			c.emit(OpJSSetName, nameIdx)
+			if hasLocal {
+				c.emit(OpJSSetLocal, localSlot)
+			} else {
+				c.emit(OpJSSetName, nameIdx)
+			}
 			return
 		}
 		switch node.Operator {
@@ -1420,60 +1722,120 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 
 // compileJScriptForUpdateFastPath emits optimized update bytecode for common loop
 // forms that increment or decrement one identifier by one.
-func (c *Compiler) compileJScriptForUpdateFastPath(expr jsast.Expression) bool {
+// Return values are (handled, pushesResult).
+func (c *Compiler) compileJScriptForUpdateFastPath(expr jsast.Expression) (bool, bool) {
+	if update, ok := expr.(*jsast.UnaryExpression); ok {
+		if ident, ok := update.Operand.(*jsast.Identifier); ok {
+			if slot, hasLocal := c.jsResolveLocalSlot(ident.Name.String()); hasLocal {
+				switch update.Operator {
+				case jstoken.INCREMENT:
+					c.emit(OpJSIncLocal, slot)
+					return true, false
+				case jstoken.DECREMENT:
+					c.emit(OpJSDecLocal, slot)
+					return true, false
+				}
+			}
+			nameIdx := c.addConstant(NewString(ident.Name.String()))
+			switch update.Operator {
+			case jstoken.INCREMENT:
+				c.emit(OpJSIncLocalInt, nameIdx)
+				return true, false
+			case jstoken.DECREMENT:
+				c.emit(OpJSDecLocalInt, nameIdx)
+				return true, false
+			}
+		}
+	}
+
 	assign, ok := expr.(*jsast.AssignExpression)
 	if !ok {
-		return false
+		return false, false
 	}
 
 	leftID, ok := assign.Left.(*jsast.Identifier)
 	if !ok {
-		return false
+		return false, false
 	}
 
 	name := leftID.Name.String()
 	nameIdx := c.addConstant(NewString(name))
+	if slot, hasLocal := c.jsResolveLocalSlot(name); hasLocal {
+		if assign.Operator == jstoken.ADD_ASSIGN || assign.Operator == jstoken.SUBTRACT_ASSIGN {
+			if !jsIsNumericOneLiteral(assign.Right) {
+				return false, false
+			}
+			if assign.Operator == jstoken.ADD_ASSIGN {
+				c.emit(OpJSIncLocal, slot)
+			} else {
+				c.emit(OpJSDecLocal, slot)
+			}
+			return true, false
+		}
+
+		if assign.Operator == jstoken.ASSIGN {
+			rightBin, ok := assign.Right.(*jsast.BinaryExpression)
+			if !ok {
+				return false, false
+			}
+			rightLeftID, ok := rightBin.Left.(*jsast.Identifier)
+			if !ok || rightLeftID.Name.String() != name {
+				return false, false
+			}
+			if !jsIsNumericOneLiteral(rightBin.Right) {
+				return false, false
+			}
+			if rightBin.Operator == jstoken.PLUS {
+				c.emit(OpJSIncLocal, slot)
+				return true, false
+			}
+			if rightBin.Operator == jstoken.MINUS {
+				c.emit(OpJSDecLocal, slot)
+				return true, false
+			}
+		}
+	}
 
 	// i += 1 / i -= 1
 	if assign.Operator == jstoken.ADD_ASSIGN || assign.Operator == jstoken.SUBTRACT_ASSIGN {
 		if !jsIsNumericOneLiteral(assign.Right) {
-			return false
+			return false, false
 		}
 		if assign.Operator == jstoken.ADD_ASSIGN {
-			c.emit(OpJSPreIncrement, nameIdx)
+			c.emit(OpJSIncLocalInt, nameIdx)
 		} else {
-			c.emit(OpJSPreDecrement, nameIdx)
+			c.emit(OpJSDecLocalInt, nameIdx)
 		}
-		return true
+		return true, false
 	}
 
 	// i = i + 1 / i = i - 1
 	if assign.Operator != jstoken.ASSIGN {
-		return false
+		return false, false
 	}
 
 	rightBin, ok := assign.Right.(*jsast.BinaryExpression)
 	if !ok {
-		return false
+		return false, false
 	}
 	rightLeftID, ok := rightBin.Left.(*jsast.Identifier)
 	if !ok || rightLeftID.Name.String() != name {
-		return false
+		return false, false
 	}
 	if !jsIsNumericOneLiteral(rightBin.Right) {
-		return false
+		return false, false
 	}
 
 	if rightBin.Operator == jstoken.PLUS {
-		c.emit(OpJSPreIncrement, nameIdx)
-		return true
+		c.emit(OpJSIncLocalInt, nameIdx)
+		return true, false
 	}
 	if rightBin.Operator == jstoken.MINUS {
-		c.emit(OpJSPreDecrement, nameIdx)
-		return true
+		c.emit(OpJSDecLocalInt, nameIdx)
+		return true, false
 	}
 
-	return false
+	return false, false
 }
 
 // jsIsNumericOneLiteral returns true when expr is a numeric literal with value 1.
@@ -1496,6 +1858,104 @@ func jsIsNumericOneLiteral(expr jsast.Expression) bool {
 	default:
 		return false
 	}
+}
+
+// jsNumericLiteralInt64 returns the integer value of a numeric literal when it is
+// representable as an int64 without loss.
+func jsNumericLiteralInt64(expr jsast.Expression) (int64, bool) {
+	num, ok := expr.(*jsast.NumberLiteral)
+	if !ok {
+		return 0, false
+	}
+	switch v := num.Value.(type) {
+	case int:
+		return int64(v), true
+	case int32:
+		return int64(v), true
+	case int64:
+		return v, true
+	case float32:
+		if float64(int64(v)) == float64(v) {
+			return int64(v), true
+		}
+	case float64:
+		if math.Trunc(v) == v {
+			return int64(v), true
+		}
+	case *big.Int:
+		if v.IsInt64() {
+			return v.Int64(), true
+		}
+	}
+	return 0, false
+}
+
+// jsIsNumericZeroLiteral returns true when expr is a numeric literal with value 0.
+func jsIsNumericZeroLiteral(expr jsast.Expression) bool {
+	value, ok := jsNumericLiteralInt64(expr)
+	return ok && value == 0
+}
+
+// detectJSForFastIntLoop checks whether a JScript for-loop matches the canonical
+// `for (let i = 0; i < N; i++)` shape that can use the fused local-slot opcode.
+func (c *Compiler) detectJSForFastIntLoop(node *jsast.ForStatement) (counterName string, limitValue int64, ok bool) {
+	if node == nil || !c.jsLocalEnabled || node.Initializer == nil || node.Test == nil || node.Update == nil {
+		return "", 0, false
+	}
+	if jsStatementContainsNestedFunction(node.Body) {
+		return "", 0, false
+	}
+	init, isLexical := node.Initializer.(*jsast.ForLoopInitializerLexicalDecl)
+	if !isLexical || init.LexicalDeclaration.Token != jstoken.LET {
+		return "", 0, false
+	}
+	if len(init.LexicalDeclaration.List) != 1 {
+		return "", 0, false
+	}
+	binding := init.LexicalDeclaration.List[0]
+	name, isName := jsBindingIdentifierName(binding.Target)
+	if !isName || binding.Initializer == nil || !jsIsNumericZeroLiteral(binding.Initializer) {
+		return "", 0, false
+	}
+	bin, isBin := node.Test.(*jsast.BinaryExpression)
+	if !isBin || bin.Operator != jstoken.LESS {
+		return "", 0, false
+	}
+	leftID, isLeftID := bin.Left.(*jsast.Identifier)
+	if !isLeftID || leftID.Name.String() != name {
+		return "", 0, false
+	}
+	limit, isLimit := jsNumericLiteralInt64(bin.Right)
+	if !isLimit {
+		return "", 0, false
+	}
+	update, isUpdate := node.Update.(*jsast.UnaryExpression)
+	if !isUpdate || update.Operator != jstoken.INCREMENT {
+		return "", 0, false
+	}
+	updateID, isUpdateID := update.Operand.(*jsast.Identifier)
+	if !isUpdateID || updateID.Name.String() != name {
+		return "", 0, false
+	}
+	return name, limit, true
+}
+
+// emitJSForFastInt appends the fused JScript integer for-loop opcode and returns the
+// byte offset of the opcode start so continue targets can jump to it.
+// The encoded jump operand is a relative back-jump distance from the instruction end.
+func (c *Compiler) emitJSForFastInt(counterSlot, limitSlot, bodyTarget int) int {
+	pos := len(c.bytecode)
+	jumpOffset := (pos + 9) - bodyTarget
+	if jumpOffset < 0 {
+		jumpOffset = 0
+	}
+	c.bytecode = append(c.bytecode,
+		byte(OpJSForFastInt),
+		byte(counterSlot>>8), byte(counterSlot),
+		byte(limitSlot>>8), byte(limitSlot),
+		byte(jumpOffset>>24), byte(jumpOffset>>16), byte(jumpOffset>>8), byte(jumpOffset),
+	)
+	return pos
 }
 
 func (c *Compiler) compileJScriptCall(node *jsast.CallExpression) {
@@ -1589,9 +2049,689 @@ func (c *Compiler) compileJScriptTailReturn(argument jsast.Expression) bool {
 	return true
 }
 
+func jsFunctionContainsNestedFunction(fn *jsast.FunctionLiteral) bool {
+	if fn == nil || fn.Body == nil {
+		return false
+	}
+	for i := range fn.Body.List {
+		if jsStatementContainsNestedFunction(fn.Body.List[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsProgramContainsNestedFunction(stmts []jsast.Statement) bool {
+	for i := range stmts {
+		if jsStatementContainsNestedFunction(stmts[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsStatementContainsNestedFunction(stmt jsast.Statement) bool {
+	if stmt == nil {
+		return false
+	}
+	switch node := stmt.(type) {
+	case *jsast.FunctionDeclaration:
+		return true
+	case *jsast.BlockStatement:
+		for i := range node.List {
+			if jsStatementContainsNestedFunction(node.List[i]) {
+				return true
+			}
+		}
+	case *jsast.ExpressionStatement:
+		return jsExpressionContainsNestedFunction(node.Expression)
+	case *jsast.IfStatement:
+		if jsExpressionContainsNestedFunction(node.Test) {
+			return true
+		}
+		if jsStatementContainsNestedFunction(node.Consequent) {
+			return true
+		}
+		if jsStatementContainsNestedFunction(node.Alternate) {
+			return true
+		}
+	case *jsast.ForStatement:
+		if node.Initializer != nil {
+			switch init := node.Initializer.(type) {
+			case *jsast.ForLoopInitializerExpression:
+				if jsExpressionContainsNestedFunction(init.Expression) {
+					return true
+				}
+			case *jsast.ForLoopInitializerVarDeclList:
+				for _, b := range init.List {
+					if b != nil && jsExpressionContainsNestedFunction(b.Initializer) {
+						return true
+					}
+				}
+			case *jsast.ForLoopInitializerLexicalDecl:
+				for _, b := range init.LexicalDeclaration.List {
+					if b != nil && jsExpressionContainsNestedFunction(b.Initializer) {
+						return true
+					}
+				}
+			}
+		}
+		if jsExpressionContainsNestedFunction(node.Test) || jsExpressionContainsNestedFunction(node.Update) {
+			return true
+		}
+		return jsStatementContainsNestedFunction(node.Body)
+	case *jsast.ReturnStatement:
+		return jsExpressionContainsNestedFunction(node.Argument)
+	case *jsast.ThrowStatement:
+		return jsExpressionContainsNestedFunction(node.Argument)
+	case *jsast.WhileStatement:
+		return jsExpressionContainsNestedFunction(node.Test) || jsStatementContainsNestedFunction(node.Body)
+	case *jsast.DoWhileStatement:
+		return jsExpressionContainsNestedFunction(node.Test) || jsStatementContainsNestedFunction(node.Body)
+	case *jsast.SwitchStatement:
+		if jsExpressionContainsNestedFunction(node.Discriminant) {
+			return true
+		}
+		for i := range node.Body {
+			clause := node.Body[i]
+			if clause == nil {
+				continue
+			}
+			if jsExpressionContainsNestedFunction(clause.Test) {
+				return true
+			}
+			for j := range clause.Consequent {
+				if jsStatementContainsNestedFunction(clause.Consequent[j]) {
+					return true
+				}
+			}
+		}
+	case *jsast.TryStatement:
+		if jsStatementContainsNestedFunction(node.Body) {
+			return true
+		}
+		if node.Catch != nil && jsStatementContainsNestedFunction(node.Catch.Body) {
+			return true
+		}
+		if node.Finally != nil && jsStatementContainsNestedFunction(node.Finally) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsExpressionContainsNestedFunction(expr jsast.Expression) bool {
+	if expr == nil {
+		return false
+	}
+	switch node := expr.(type) {
+	case *jsast.FunctionLiteral, *jsast.ArrowFunctionLiteral:
+		return true
+	case *jsast.AssignExpression:
+		return jsExpressionContainsNestedFunction(node.Left) || jsExpressionContainsNestedFunction(node.Right)
+	case *jsast.BinaryExpression:
+		return jsExpressionContainsNestedFunction(node.Left) || jsExpressionContainsNestedFunction(node.Right)
+	case *jsast.UnaryExpression:
+		return jsExpressionContainsNestedFunction(node.Operand)
+	case *jsast.DotExpression:
+		return jsExpressionContainsNestedFunction(node.Left)
+	case *jsast.BracketExpression:
+		return jsExpressionContainsNestedFunction(node.Left) || jsExpressionContainsNestedFunction(node.Member)
+	case *jsast.CallExpression:
+		if jsExpressionContainsNestedFunction(node.Callee) {
+			return true
+		}
+		for i := range node.ArgumentList {
+			if jsExpressionContainsNestedFunction(node.ArgumentList[i]) {
+				return true
+			}
+		}
+	case *jsast.NewExpression:
+		if jsExpressionContainsNestedFunction(node.Callee) {
+			return true
+		}
+		for i := range node.ArgumentList {
+			if jsExpressionContainsNestedFunction(node.ArgumentList[i]) {
+				return true
+			}
+		}
+	case *jsast.ObjectLiteral:
+		for i := range node.Value {
+			switch p := node.Value[i].(type) {
+			case *jsast.PropertyShort:
+				if jsExpressionContainsNestedFunction(p.Initializer) {
+					return true
+				}
+			case *jsast.PropertyKeyed:
+				if jsExpressionContainsNestedFunction(p.Key) || jsExpressionContainsNestedFunction(p.Value) {
+					return true
+				}
+			}
+		}
+	case *jsast.ArrayLiteral:
+		for i := range node.Value {
+			if jsExpressionContainsNestedFunction(node.Value[i]) {
+				return true
+			}
+		}
+	case *jsast.ConditionalExpression:
+		return jsExpressionContainsNestedFunction(node.Test) || jsExpressionContainsNestedFunction(node.Consequent) || jsExpressionContainsNestedFunction(node.Alternate)
+	case *jsast.TemplateLiteral:
+		for i := range node.Expressions {
+			if jsExpressionContainsNestedFunction(node.Expressions[i]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsStatementCapturesLoopNames(stmt jsast.Statement, names map[string]struct{}) bool {
+	if stmt == nil || len(names) == 0 {
+		return false
+	}
+	switch node := stmt.(type) {
+	case *jsast.FunctionDeclaration:
+		return jsFunctionCapturesLoopNames(node.Function, names)
+	case *jsast.BlockStatement:
+		for i := range node.List {
+			if jsStatementCapturesLoopNames(node.List[i], names) {
+				return true
+			}
+		}
+	case *jsast.ExpressionStatement:
+		return jsExpressionCapturesLoopNames(node.Expression, names)
+	case *jsast.IfStatement:
+		return jsExpressionCapturesLoopNames(node.Test, names) || jsStatementCapturesLoopNames(node.Consequent, names) || jsStatementCapturesLoopNames(node.Alternate, names)
+	case *jsast.ForStatement:
+		if node.Initializer != nil {
+			switch init := node.Initializer.(type) {
+			case *jsast.ForLoopInitializerExpression:
+				if jsExpressionCapturesLoopNames(init.Expression, names) {
+					return true
+				}
+			case *jsast.ForLoopInitializerVarDeclList:
+				for _, b := range init.List {
+					if b != nil && jsExpressionCapturesLoopNames(b.Initializer, names) {
+						return true
+					}
+				}
+			case *jsast.ForLoopInitializerLexicalDecl:
+				for _, b := range init.LexicalDeclaration.List {
+					if b != nil && jsExpressionCapturesLoopNames(b.Initializer, names) {
+						return true
+					}
+				}
+			}
+		}
+		return jsExpressionCapturesLoopNames(node.Test, names) || jsExpressionCapturesLoopNames(node.Update, names) || jsStatementCapturesLoopNames(node.Body, names)
+	case *jsast.ForInStatement:
+		return jsExpressionCapturesLoopNames(node.Source, names) || jsStatementCapturesLoopNames(node.Body, names)
+	case *jsast.ForOfStatement:
+		return jsExpressionCapturesLoopNames(node.Source, names) || jsStatementCapturesLoopNames(node.Body, names)
+	case *jsast.ReturnStatement:
+		return jsExpressionCapturesLoopNames(node.Argument, names)
+	case *jsast.ThrowStatement:
+		return jsExpressionCapturesLoopNames(node.Argument, names)
+	case *jsast.WhileStatement:
+		return jsExpressionCapturesLoopNames(node.Test, names) || jsStatementCapturesLoopNames(node.Body, names)
+	case *jsast.DoWhileStatement:
+		return jsExpressionCapturesLoopNames(node.Test, names) || jsStatementCapturesLoopNames(node.Body, names)
+	case *jsast.SwitchStatement:
+		if jsExpressionCapturesLoopNames(node.Discriminant, names) {
+			return true
+		}
+		for i := range node.Body {
+			clause := node.Body[i]
+			if clause == nil {
+				continue
+			}
+			if jsExpressionCapturesLoopNames(clause.Test, names) {
+				return true
+			}
+			for j := range clause.Consequent {
+				if jsStatementCapturesLoopNames(clause.Consequent[j], names) {
+					return true
+				}
+			}
+		}
+	case *jsast.TryStatement:
+		if jsStatementCapturesLoopNames(node.Body, names) {
+			return true
+		}
+		if node.Catch != nil && jsStatementCapturesLoopNames(node.Catch.Body, names) {
+			return true
+		}
+		if node.Finally != nil && jsStatementCapturesLoopNames(node.Finally, names) {
+			return true
+		}
+	case *jsast.VariableStatement:
+		for _, b := range node.List {
+			if b != nil && jsExpressionCapturesLoopNames(b.Initializer, names) {
+				return true
+			}
+		}
+	case *jsast.LexicalDeclaration:
+		for _, b := range node.List {
+			if b != nil && jsExpressionCapturesLoopNames(b.Initializer, names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsExpressionCapturesLoopNames(expr jsast.Expression, names map[string]struct{}) bool {
+	if expr == nil || len(names) == 0 {
+		return false
+	}
+	switch node := expr.(type) {
+	case *jsast.FunctionLiteral:
+		return jsFunctionCapturesLoopNames(node, names)
+	case *jsast.ArrowFunctionLiteral:
+		return jsArrowFunctionCapturesLoopNames(node, names)
+	case *jsast.ClassExpression:
+		if node.Class == nil {
+			return false
+		}
+		return jsClassCapturesLoopNames(node.Class, names)
+	case *jsast.AssignExpression:
+		return jsExpressionCapturesLoopNames(node.Left, names) || jsExpressionCapturesLoopNames(node.Right, names)
+	case *jsast.BinaryExpression:
+		return jsExpressionCapturesLoopNames(node.Left, names) || jsExpressionCapturesLoopNames(node.Right, names)
+	case *jsast.UnaryExpression:
+		return jsExpressionCapturesLoopNames(node.Operand, names)
+	case *jsast.DotExpression:
+		return jsExpressionCapturesLoopNames(node.Left, names)
+	case *jsast.BracketExpression:
+		return jsExpressionCapturesLoopNames(node.Left, names) || jsExpressionCapturesLoopNames(node.Member, names)
+	case *jsast.CallExpression:
+		if jsExpressionCapturesLoopNames(node.Callee, names) {
+			return true
+		}
+		for i := range node.ArgumentList {
+			if jsExpressionCapturesLoopNames(node.ArgumentList[i], names) {
+				return true
+			}
+		}
+	case *jsast.NewExpression:
+		if jsExpressionCapturesLoopNames(node.Callee, names) {
+			return true
+		}
+		for i := range node.ArgumentList {
+			if jsExpressionCapturesLoopNames(node.ArgumentList[i], names) {
+				return true
+			}
+		}
+	case *jsast.ObjectLiteral:
+		for i := range node.Value {
+			switch p := node.Value[i].(type) {
+			case *jsast.PropertyShort:
+				if p.Initializer != nil {
+					if jsExpressionCapturesLoopNames(p.Initializer, names) {
+						return true
+					}
+				}
+			case *jsast.PropertyKeyed:
+				if jsExpressionCapturesLoopNames(p.Key, names) || jsExpressionCapturesLoopNames(p.Value, names) {
+					return true
+				}
+			}
+		}
+	case *jsast.ArrayLiteral:
+		for i := range node.Value {
+			if jsExpressionCapturesLoopNames(node.Value[i], names) {
+				return true
+			}
+		}
+	case *jsast.ConditionalExpression:
+		return jsExpressionCapturesLoopNames(node.Test, names) || jsExpressionCapturesLoopNames(node.Consequent, names) || jsExpressionCapturesLoopNames(node.Alternate, names)
+	case *jsast.TemplateLiteral:
+		for i := range node.Expressions {
+			if jsExpressionCapturesLoopNames(node.Expressions[i], names) {
+				return true
+			}
+		}
+	case *jsast.SequenceExpression:
+		for i := range node.Sequence {
+			if jsExpressionCapturesLoopNames(node.Sequence[i], names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsFunctionCapturesLoopNames(fn *jsast.FunctionLiteral, names map[string]struct{}) bool {
+	if fn == nil || fn.Body == nil || len(names) == 0 {
+		return false
+	}
+	visible := jsVisibleCaptureNamesForFunction(names, fn.Name, fn.ParameterList)
+	if len(visible) == 0 {
+		return false
+	}
+	for i := range fn.Body.List {
+		if jsStatementReferencesLoopNames(fn.Body.List[i], visible) {
+			return true
+		}
+	}
+	return false
+}
+
+func jsArrowFunctionCapturesLoopNames(fn *jsast.ArrowFunctionLiteral, names map[string]struct{}) bool {
+	if fn == nil || len(names) == 0 {
+		return false
+	}
+	visible := jsVisibleCaptureNamesForFunction(names, nil, fn.ParameterList)
+	if len(visible) == 0 {
+		return false
+	}
+	switch body := fn.Body.(type) {
+	case *jsast.ExpressionBody:
+		return jsExpressionReferencesLoopNames(body.Expression, visible)
+	case *jsast.BlockStatement:
+		for i := range body.List {
+			if jsStatementReferencesLoopNames(body.List[i], visible) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsClassCapturesLoopNames(class *jsast.ClassLiteral, names map[string]struct{}) bool {
+	if class == nil || len(names) == 0 {
+		return false
+	}
+	if jsExpressionCapturesLoopNames(class.SuperClass, names) {
+		return true
+	}
+	for i := range class.Body {
+		switch el := class.Body[i].(type) {
+		case *jsast.FieldDefinition:
+			if jsExpressionCapturesLoopNames(el.Key, names) || jsExpressionCapturesLoopNames(el.Initializer, names) {
+				return true
+			}
+		case *jsast.MethodDefinition:
+			if jsExpressionCapturesLoopNames(el.Key, names) || jsFunctionCapturesLoopNames(el.Body, names) {
+				return true
+			}
+		case *jsast.ClassStaticBlock:
+			if el.Block != nil {
+				for j := range el.Block.List {
+					if jsStatementCapturesLoopNames(el.Block.List[j], names) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+func jsVisibleCaptureNamesForFunction(names map[string]struct{}, fnName *jsast.Identifier, params *jsast.ParameterList) map[string]struct{} {
+	if len(names) == 0 {
+		return nil
+	}
+	visible := make(map[string]struct{}, len(names))
+	for name := range names {
+		visible[name] = struct{}{}
+	}
+	if fnName != nil {
+		delete(visible, fnName.Name.String())
+	}
+	if params != nil {
+		for _, b := range params.List {
+			if b == nil || b.Target == nil {
+				continue
+			}
+			paramNames := make([]string, 0, 2)
+			jsExtractBindingNames(b.Target, &paramNames)
+			for _, n := range paramNames {
+				delete(visible, n)
+			}
+		}
+		if params.Rest != nil {
+			restNames := make([]string, 0, 2)
+			if target, ok := params.Rest.(jsast.BindingTarget); ok {
+				jsExtractBindingNames(target, &restNames)
+			}
+			for _, n := range restNames {
+				delete(visible, n)
+			}
+		}
+	}
+	if len(visible) == 0 {
+		return nil
+	}
+	return visible
+}
+
+func jsStatementReferencesLoopNames(stmt jsast.Statement, names map[string]struct{}) bool {
+	if stmt == nil || len(names) == 0 {
+		return false
+	}
+	switch node := stmt.(type) {
+	case *jsast.FunctionDeclaration:
+		return jsFunctionCapturesLoopNames(node.Function, names)
+	case *jsast.BlockStatement:
+		for i := range node.List {
+			if jsStatementReferencesLoopNames(node.List[i], names) {
+				return true
+			}
+		}
+	case *jsast.ExpressionStatement:
+		return jsExpressionReferencesLoopNames(node.Expression, names)
+	case *jsast.IfStatement:
+		return jsExpressionReferencesLoopNames(node.Test, names) || jsStatementReferencesLoopNames(node.Consequent, names) || jsStatementReferencesLoopNames(node.Alternate, names)
+	case *jsast.ForStatement:
+		if node.Initializer != nil {
+			switch init := node.Initializer.(type) {
+			case *jsast.ForLoopInitializerExpression:
+				if jsExpressionReferencesLoopNames(init.Expression, names) {
+					return true
+				}
+			case *jsast.ForLoopInitializerVarDeclList:
+				for _, b := range init.List {
+					if b != nil && jsExpressionReferencesLoopNames(b.Initializer, names) {
+						return true
+					}
+				}
+			case *jsast.ForLoopInitializerLexicalDecl:
+				for _, b := range init.LexicalDeclaration.List {
+					if b != nil && jsExpressionReferencesLoopNames(b.Initializer, names) {
+						return true
+					}
+				}
+			}
+		}
+		return jsExpressionReferencesLoopNames(node.Test, names) || jsExpressionReferencesLoopNames(node.Update, names) || jsStatementReferencesLoopNames(node.Body, names)
+	case *jsast.ForInStatement:
+		return jsExpressionReferencesLoopNames(node.Source, names) || jsStatementReferencesLoopNames(node.Body, names)
+	case *jsast.ForOfStatement:
+		return jsExpressionReferencesLoopNames(node.Source, names) || jsStatementReferencesLoopNames(node.Body, names)
+	case *jsast.ReturnStatement:
+		return jsExpressionReferencesLoopNames(node.Argument, names)
+	case *jsast.ThrowStatement:
+		return jsExpressionReferencesLoopNames(node.Argument, names)
+	case *jsast.WhileStatement:
+		return jsExpressionReferencesLoopNames(node.Test, names) || jsStatementReferencesLoopNames(node.Body, names)
+	case *jsast.DoWhileStatement:
+		return jsExpressionReferencesLoopNames(node.Test, names) || jsStatementReferencesLoopNames(node.Body, names)
+	case *jsast.SwitchStatement:
+		if jsExpressionReferencesLoopNames(node.Discriminant, names) {
+			return true
+		}
+		for i := range node.Body {
+			clause := node.Body[i]
+			if clause == nil {
+				continue
+			}
+			if jsExpressionReferencesLoopNames(clause.Test, names) {
+				return true
+			}
+			for j := range clause.Consequent {
+				if jsStatementReferencesLoopNames(clause.Consequent[j], names) {
+					return true
+				}
+			}
+		}
+	case *jsast.TryStatement:
+		if jsStatementReferencesLoopNames(node.Body, names) {
+			return true
+		}
+		if node.Catch != nil && jsStatementReferencesLoopNames(node.Catch.Body, names) {
+			return true
+		}
+		if node.Finally != nil && jsStatementReferencesLoopNames(node.Finally, names) {
+			return true
+		}
+	case *jsast.VariableStatement:
+		for _, b := range node.List {
+			if b != nil && jsExpressionReferencesLoopNames(b.Initializer, names) {
+				return true
+			}
+		}
+	case *jsast.LexicalDeclaration:
+		for _, b := range node.List {
+			if b != nil && jsExpressionReferencesLoopNames(b.Initializer, names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func jsExpressionReferencesLoopNames(expr jsast.Expression, names map[string]struct{}) bool {
+	if expr == nil || len(names) == 0 {
+		return false
+	}
+	switch node := expr.(type) {
+	case *jsast.Identifier:
+		_, ok := names[node.Name.String()]
+		return ok
+	case *jsast.FunctionLiteral:
+		return jsFunctionCapturesLoopNames(node, names)
+	case *jsast.ArrowFunctionLiteral:
+		return jsArrowFunctionCapturesLoopNames(node, names)
+	case *jsast.ClassExpression:
+		if node.Class == nil {
+			return false
+		}
+		return jsClassCapturesLoopNames(node.Class, names)
+	case *jsast.AssignExpression:
+		return jsExpressionReferencesLoopNames(node.Left, names) || jsExpressionReferencesLoopNames(node.Right, names)
+	case *jsast.BinaryExpression:
+		return jsExpressionReferencesLoopNames(node.Left, names) || jsExpressionReferencesLoopNames(node.Right, names)
+	case *jsast.UnaryExpression:
+		return jsExpressionReferencesLoopNames(node.Operand, names)
+	case *jsast.DotExpression:
+		return jsExpressionReferencesLoopNames(node.Left, names)
+	case *jsast.BracketExpression:
+		return jsExpressionReferencesLoopNames(node.Left, names) || jsExpressionReferencesLoopNames(node.Member, names)
+	case *jsast.CallExpression:
+		if jsExpressionReferencesLoopNames(node.Callee, names) {
+			return true
+		}
+		for i := range node.ArgumentList {
+			if jsExpressionReferencesLoopNames(node.ArgumentList[i], names) {
+				return true
+			}
+		}
+	case *jsast.NewExpression:
+		if jsExpressionReferencesLoopNames(node.Callee, names) {
+			return true
+		}
+		for i := range node.ArgumentList {
+			if jsExpressionReferencesLoopNames(node.ArgumentList[i], names) {
+				return true
+			}
+		}
+	case *jsast.ObjectLiteral:
+		for i := range node.Value {
+			switch p := node.Value[i].(type) {
+			case *jsast.PropertyShort:
+				if p.Initializer != nil {
+					if jsExpressionReferencesLoopNames(p.Initializer, names) {
+						return true
+					}
+				} else {
+					if _, ok := names[p.Name.Name.String()]; ok {
+						return true
+					}
+				}
+			case *jsast.PropertyKeyed:
+				if jsExpressionReferencesLoopNames(p.Key, names) || jsExpressionReferencesLoopNames(p.Value, names) {
+					return true
+				}
+			}
+		}
+	case *jsast.ArrayLiteral:
+		for i := range node.Value {
+			if jsExpressionReferencesLoopNames(node.Value[i], names) {
+				return true
+			}
+		}
+	case *jsast.ConditionalExpression:
+		return jsExpressionReferencesLoopNames(node.Test, names) || jsExpressionReferencesLoopNames(node.Consequent, names) || jsExpressionReferencesLoopNames(node.Alternate, names)
+	case *jsast.TemplateLiteral:
+		for i := range node.Expressions {
+			if jsExpressionReferencesLoopNames(node.Expressions[i], names) {
+				return true
+			}
+		}
+	case *jsast.SequenceExpression:
+		for i := range node.Sequence {
+			if jsExpressionReferencesLoopNames(node.Sequence[i], names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fallbackName string, isClassConstructor bool) {
 	jumpOverBody := c.emitJSJump(OpJSJump)
 	bodyStart := len(c.bytecode)
+
+	prevLocalEnabled := c.jsLocalEnabled
+	prevLocalSlotCount := c.jsLocalSlotCount
+	prevLocalScopeStack := c.jsLocalScopeStack
+	canUseLocalSlots := !jsFunctionContainsNestedFunction(fn)
+	c.jsLocalEnabled = canUseLocalSlots
+	c.jsLocalSlotCount = 0
+	c.jsLocalScopeStack = make([]jsLocalScope, 0, 8)
+	if c.jsLocalEnabled {
+		c.jsPushLocalScope(true)
+	}
+
+	if fn != nil && fn.ParameterList != nil {
+		for _, b := range fn.ParameterList.List {
+			if b == nil || b.Target == nil {
+				continue
+			}
+			if p, ok := b.Target.(*jsast.Identifier); ok {
+				if c.jsLocalEnabled {
+					slot := c.jsDeclareFunctionLocal(p.Name.String())
+					if slot >= 0 {
+						nameIdx := c.addConstant(NewString(p.Name.String()))
+						c.emit(OpJSGetName, nameIdx)
+						c.emit(OpJSSetLocal, slot)
+					}
+				}
+			}
+		}
+		if fn.ParameterList.Rest != nil {
+			if restID, ok := fn.ParameterList.Rest.(*jsast.Identifier); ok && c.jsLocalEnabled {
+				slot := c.jsDeclareFunctionLocal(restID.Name.String())
+				if slot >= 0 {
+					nameIdx := c.addConstant(NewString(restID.Name.String()))
+					c.emit(OpJSGetName, nameIdx)
+					c.emit(OpJSSetLocal, slot)
+				}
+			}
+		}
+	}
 
 	// Emit default parameter guards before the function body.
 	c.compileJScriptDefaultParamGuards(fn.ParameterList)
@@ -1609,6 +2749,13 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 	c.emit(OpJSLoadUndefined)
 	c.emit(OpJSReturn)
 	bodyEnd := len(c.bytecode)
+	localCount := c.jsLocalSlotCount
+	if c.jsLocalEnabled {
+		c.jsPopLocalScope()
+	}
+	c.jsLocalEnabled = prevLocalEnabled
+	c.jsLocalSlotCount = prevLocalSlotCount
+	c.jsLocalScopeStack = prevLocalScopeStack
 	c.patchJSJump(jumpOverBody)
 
 	name := fallbackName
@@ -1683,6 +2830,9 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 	}
 	if c.jsStrictMode {
 		params = append(params, jsStrictModeFlag)
+	}
+	if localCount > 0 {
+		params = append(params, "__js_local_count__:"+strconv.Itoa(localCount))
 	}
 
 	templateIdx := c.addConstant(Value{
@@ -1848,16 +2998,33 @@ func (c *Compiler) compileJScriptDestructuring(target jsast.Expression, isConst 
 		}
 		nameIdx := c.addConstant(NewString(name))
 		if isVar {
+			if c.jsLocalEnabled {
+				slot := c.jsDeclareFunctionLocal(name)
+				if slot >= 0 {
+					c.emit(OpJSSetLocal, slot)
+					break
+				}
+			}
 			c.emit(OpJSDeclareName, nameIdx)
 			c.emit(OpJSSetName, nameIdx)
 		} else if isConst {
+			if c.jsLocalEnabled {
+				c.jsAddLocalBarrier(name)
+			}
 			c.emitConstInitialize(nameIdx)
 		} else if isLet {
+			if c.jsLocalEnabled {
+				c.jsAddLocalBarrier(name)
+			}
 			c.emit(OpJSLetDeclare, nameIdx)
 			c.emit(OpJSSetName, nameIdx)
 		} else {
 			// Normal assignment
-			c.emit(OpJSSetName, nameIdx)
+			if slot, ok := c.jsResolveLocalSlot(name); ok {
+				c.emit(OpJSSetLocal, slot)
+			} else {
+				c.emit(OpJSSetName, nameIdx)
+			}
 		}
 	case *jsast.AssignExpression:
 		if t.Operator == jstoken.ASSIGN {
@@ -1966,6 +3133,9 @@ func (c *Compiler) compileJScriptLexicalDeclaration(node *jsast.LexicalDeclarati
 			} else {
 				// let x; -> declare x
 				if id, ok := binding.Target.(*jsast.Identifier); ok {
+					if c.jsLocalEnabled {
+						c.jsAddLocalBarrier(id.Name.String())
+					}
 					nameIdx := c.addConstant(NewString(id.Name.String()))
 					c.emit(OpJSLetDeclare, nameIdx)
 				}

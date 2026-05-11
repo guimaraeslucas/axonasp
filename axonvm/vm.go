@@ -858,9 +858,10 @@ func opcodeOperandSize(op OpCode) int {
 		OpRegisterClass,
 		OpGetGlobal, OpSetGlobal, OpEraseGlobal, OpGetLocal, OpSetLocal, OpEraseLocal,
 		OpArgGlobalRef, OpArgLocalRef,
-		OpLetGlobal, OpLetLocal, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt,
+		OpLetGlobal, OpLetLocal, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt, OpJSIncLocalInt, OpJSDecLocalInt,
 		OpCall,
-		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSMemberGet, OpJSMemberSet,
+		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSGetLocal, OpJSSetLocal, OpJSIncLocal, OpJSDecLocal, OpJSMemberGet, OpJSMemberSet,
+		OpJSRootFrameEnter, OpJSRootFrameLeave,
 		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSDelete, OpJSSuperCall,
 		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
@@ -878,6 +879,10 @@ func opcodeOperandSize(op OpCode) int {
 		return 4
 	case OpForNextFastInt, OpForNextFastGlobalInt:
 		return 9
+	case OpJSForFastIntEnter:
+		return 4
+	case OpJSForFastInt:
+		return 8
 	// 1-byte opcodes (none)
 	case OpJSSetProto, OpJSSetThis, OpJSSuperIndexGet, OpJSSuperIndexSet:
 		return 0
@@ -928,7 +933,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
 			OpJSMemberIndexGet, OpJSMemberIndexSet,
 			OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
-			OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize,
+			OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize, OpJSIncLocalInt, OpJSDecLocalInt,
 			OpJSSuperMemberGet, OpJSSuperMemberSet:
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
@@ -975,6 +980,13 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			foExitTarget := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
 			binary.BigEndian.PutUint32(bytecode[ip:], uint32(foExitTarget))
 			ip += 4
+		case OpJSForFastIntEnter:
+			// counterSlot(2) + limitSlot(2)
+			ip += 4
+		case OpJSForFastInt:
+			// counterSlot(2) + limitSlot(2) + jumpOffset(4)
+			ip += 4
+			ip += 4
 		case OpRegisterClass:
 			classIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(classIdx))
@@ -1014,7 +1026,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			userSubIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(userSubIdx))
 			ip += 6
-		case OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal, OpLabel, OpArgGlobalRef, OpArgLocalRef, OpLetGlobal, OpLetLocal, OpCall, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt, OpWriteN:
+		case OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal, OpLabel, OpArgGlobalRef, OpArgLocalRef, OpLetGlobal, OpLetLocal, OpCall, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt, OpWriteN, OpJSGetLocal, OpJSSetLocal, OpJSIncLocal, OpJSDecLocal, OpJSRootFrameEnter, OpJSRootFrameLeave:
 			ip += 2
 		case OpForNextFastInt:
 			// varLocalIdx(2) + endLocalIdx(2) + stepSign(1): local indices, no remapping needed.
@@ -1606,33 +1618,43 @@ aspExecLoop:
 			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			slot := vm.fp + int(offset)
-			current := vm.stack[slot]
+			current := &vm.stack[slot]
 			switch current.Type {
 			case VTInteger:
 				current.Num++
-				vm.stack[slot] = current
 			case VTDouble:
 				current.Flt++
-				vm.stack[slot] = current
 			default:
-				vm.stack[slot] = vm.addValues(current, NewInteger(1))
+				vm.stack[slot] = vm.addValues(*current, NewInteger(1))
 			}
 
 		case OpDecLocalInt:
 			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			slot := vm.fp + int(offset)
-			current := vm.stack[slot]
+			current := &vm.stack[slot]
 			switch current.Type {
 			case VTInteger:
 				current.Num--
-				vm.stack[slot] = current
 			case VTDouble:
 				current.Flt--
-				vm.stack[slot] = current
 			default:
-				vm.stack[slot] = vm.subtractValues(current, NewInteger(1))
+				vm.stack[slot] = vm.subtractValues(*current, NewInteger(1))
 			}
+
+		case OpJSIncLocalInt:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			current := vm.jsGetName(nameStr)
+			vm.jsSetName(nameStr, vm.jsIncrementNumberValue(current))
+
+		case OpJSDecLocalInt:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			nameStr := vm.constants[nameIdx].Str
+			current := vm.jsGetName(nameStr)
+			vm.jsSetName(nameStr, vm.jsDecrementNumberValue(current))
 
 		case OpIncGlobalInt:
 			idx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -1737,6 +1759,39 @@ aspExecLoop:
 				if vm.asFloat(curr) >= vm.asFloat(limit) {
 					vm.ip = bodyTarget
 				}
+			}
+
+		case OpJSForFastInt:
+			bc := vm.bytecode
+			counterOffset := int(uint16(bc[vm.ip])<<8 | uint16(bc[vm.ip+1]))
+			limitOffset := int(uint16(bc[vm.ip+2])<<8 | uint16(bc[vm.ip+3]))
+			jumpOffset := int(uint32(bc[vm.ip+4])<<24 | uint32(bc[vm.ip+5])<<16 | uint32(bc[vm.ip+6])<<8 | uint32(bc[vm.ip+7]))
+			vm.ip += 8
+
+			counter := &vm.stack[vm.fp+counterOffset]
+			limit := &vm.stack[vm.fp+limitOffset]
+
+			// Hot-path is intentionally type-blind: OpJSForFastIntEnter establishes VTInteger contract.
+			counter.Num++
+			if counter.Num < limit.Num {
+				jsBackJumpCount++
+				if jsBackJumpCount > jsBackJumpLimit {
+					return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+				}
+				vm.ip -= jumpOffset
+				continue
+			}
+
+		case OpJSForFastIntEnter:
+			counterOffset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			limitOffset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+
+			counter := vm.stack[vm.fp+counterOffset]
+			limit := vm.stack[vm.fp+limitOffset]
+			if counter.Type != VTInteger || limit.Type != VTInteger {
+				vm.jsThrowTypeError("Fast integer loop requires VTInteger counter and limit")
 			}
 
 		case OpForNextFastGlobalInt:
@@ -2721,6 +2776,70 @@ aspExecLoop:
 			value := vm.pop()
 			vm.jsSetName(vm.constants[nameIdx].Str, value)
 
+		case OpJSRootFrameEnter:
+			localCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			if localCount > 0 {
+				base := vm.fp
+				if base < 0 {
+					base = 0
+				}
+				end := base + localCount - 1
+				if end >= len(vm.stack) {
+					vm.raise(vbscript.StackOverflow, "JScript root local frame exceeds VM stack capacity")
+				}
+				for i := base; i <= end; i++ {
+					vm.stack[i] = Value{Type: VTJSUndefined}
+				}
+				vm.sp = end
+			}
+
+		case OpJSRootFrameLeave:
+			localCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			if localCount > 0 {
+				vm.sp = vm.fp - 1
+			}
+
+		case OpJSGetLocal:
+			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			vm.push(vm.stack[vm.fp+int(offset)])
+
+		case OpJSSetLocal:
+			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			slot := vm.fp + int(offset)
+			vm.stack[slot] = vm.pop()
+
+		case OpJSIncLocal:
+			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			slot := vm.fp + int(offset)
+			v := &vm.stack[slot]
+			switch v.Type {
+			case VTInteger:
+				v.Num++
+			case VTDouble:
+				v.Flt++
+			default:
+				vm.stack[slot] = vm.jsIncrementNumberValue(*v)
+			}
+
+		case OpJSDecLocal:
+			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			slot := vm.fp + int(offset)
+			v := &vm.stack[slot]
+			switch v.Type {
+			case VTInteger:
+				v.Num--
+			case VTDouble:
+				v.Flt--
+			default:
+				vm.stack[slot] = vm.jsDecrementNumberValue(*v)
+			}
+
 		case OpJSMemberGet:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
@@ -3447,8 +3566,7 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsToNumber(oldVal)
-			newVal.Flt++
+			newVal := vm.jsIncrementNumberValue(oldVal)
 			vm.jsSetName(nameStr, newVal)
 			vm.push(oldVal)
 
@@ -3457,8 +3575,7 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsToNumber(oldVal)
-			newVal.Flt--
+			newVal := vm.jsDecrementNumberValue(oldVal)
 			vm.jsSetName(nameStr, newVal)
 			vm.push(oldVal)
 
@@ -3467,8 +3584,7 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsToNumber(oldVal)
-			newVal.Flt++
+			newVal := vm.jsIncrementNumberValue(oldVal)
 			vm.jsSetName(nameStr, newVal)
 			vm.push(newVal)
 
@@ -3477,8 +3593,7 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsToNumber(oldVal)
-			newVal.Flt--
+			newVal := vm.jsDecrementNumberValue(oldVal)
 			vm.jsSetName(nameStr, newVal)
 			vm.push(newVal)
 
@@ -3821,6 +3936,12 @@ aspExecLoop:
 			// Restore the outer env without deleting the per-iteration frame: closures hold a
 			// reference to it and must still be able to read the captured loop variable.
 			vm.jsActiveEnvID = parentID
+
+		case OpJSForIterEnterFast:
+			// Non-capturing lexical iteration path: no child env allocation needed.
+
+		case OpJSForIterExitFast:
+			// Non-capturing lexical iteration path: no env write-back needed.
 
 		case OpRet:
 			retVal := vm.pop()

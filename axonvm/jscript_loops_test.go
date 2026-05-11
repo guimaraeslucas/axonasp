@@ -20,7 +20,33 @@
  */
 package axonvm
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
+
+func benchmarkASPExecutionOnly(b *testing.B, source string) {
+	b.Helper()
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		b.Fatalf("compile failed: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+		host := NewMockHost()
+		var output bytes.Buffer
+		host.SetOutput(&output)
+		host.Response().SetBuffer(false)
+		vm.SetHost(host)
+		if err := vm.Run(); err != nil {
+			b.Fatalf("vm run failed: %v", err)
+		}
+	}
+}
 
 func TestJScriptLoopOnlyCases(t *testing.T) {
 	testCases := []struct {
@@ -219,4 +245,173 @@ func TestJScriptForInLoopInsideFunctionCanReturnFromBody(t *testing.T) {
 	if out != "hit:a" {
 		t.Fatalf("unexpected for-in body return output: %q", out)
 	}
+}
+
+func TestJScriptTopLevelForLetUsesFastIntOpcode(t *testing.T) {
+	source := `<%@ Language="JScript" %><%` +
+		`var sum = 0;` +
+		`for (let i = 0; i < 100; i++) { sum = sum + i; }` +
+		`Response.Write(sum);` +
+		`%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	hasFastInt := false
+	hasIterEnter := false
+	for i := 0; i < len(compiler.Bytecode()); i++ {
+		switch OpCode(compiler.Bytecode()[i]) {
+		case OpJSForFastInt:
+			hasFastInt = true
+		case OpJSForIterEnter:
+			hasIterEnter = true
+		}
+	}
+	if !hasFastInt {
+		t.Fatalf("expected OpJSForFastInt in bytecode, got %v", compiler.Bytecode())
+	}
+	if hasIterEnter {
+		t.Fatalf("did not expect OpJSForIterEnter for top-level fast-int loop, got %v", compiler.Bytecode())
+	}
+
+	out := runASPSourceForTest(t, source)
+	if out != "4950" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestJScriptTopLevelFastIntUsesRootFrameOpcodes(t *testing.T) {
+	source := `<%@ Language="JScript" %><%` +
+		`var sum = 0;` +
+		`for (let i = 0; i < 8; i++) { sum = sum + i; }` +
+		`Response.Write(sum);` +
+		`%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	hasRootEnter := false
+	hasRootLeave := false
+	for i := 0; i < len(compiler.Bytecode()); i++ {
+		switch OpCode(compiler.Bytecode()[i]) {
+		case OpJSRootFrameEnter:
+			hasRootEnter = true
+		case OpJSRootFrameLeave:
+			hasRootLeave = true
+		}
+	}
+	if !hasRootEnter || !hasRootLeave {
+		t.Fatalf("expected root frame opcodes in bytecode, got %v", compiler.Bytecode())
+	}
+
+	out := runASPSourceForTest(t, source)
+	if out != "28" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestJScriptTopLevelVarRemainsGlobalWithLoopLet(t *testing.T) {
+	source := `<%@ Language="JScript" %><%` +
+		`var i = 99;` +
+		`for (let i = 0; i < 3; i++) {}` +
+		`Response.Write(i);` +
+		`%>`
+
+	out := runASPSourceForTest(t, source)
+	if out != "99" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestJScriptForLetNoCaptureUsesFastIterOpcodes(t *testing.T) {
+	source := `<%@ Language="JScript" %><%` +
+		`var sum = 0;` +
+		`for (let i = 0; i < 10; i = i + 1) { sum = sum + i; }` +
+		`Response.Write(sum);` +
+		`%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	hasFastIterEnter := false
+	hasFastIterExit := false
+	hasSlowIterEnter := false
+	for i := 0; i < len(compiler.Bytecode()); i++ {
+		switch OpCode(compiler.Bytecode()[i]) {
+		case OpJSForIterEnterFast:
+			hasFastIterEnter = true
+		case OpJSForIterExitFast:
+			hasFastIterExit = true
+		case OpJSForIterEnter:
+			hasSlowIterEnter = true
+		}
+	}
+	if !hasFastIterEnter || !hasFastIterExit {
+		t.Fatalf("expected fast iter opcodes in bytecode, got %v", compiler.Bytecode())
+	}
+	if hasSlowIterEnter {
+		t.Fatalf("did not expect slow iter enter opcode in non-capturing loop, got %v", compiler.Bytecode())
+	}
+
+	out := runASPSourceForTest(t, source)
+	if out != "45" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestJScriptForLetCaptureUsesSlowIterOpcode(t *testing.T) {
+	source := `<%@ Language="JScript" %><%` +
+		`var funcs = [];` +
+		`for (let i = 0; i < 4; i = i + 1) { funcs.push(function(){ return i; }); }` +
+		`Response.Write(funcs[0]() + "," + funcs[1]() + "," + funcs[2]() + "," + funcs[3]());` +
+		`%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	hasSlowIterEnter := false
+	for i := 0; i < len(compiler.Bytecode()); i++ {
+		if OpCode(compiler.Bytecode()[i]) == OpJSForIterEnter {
+			hasSlowIterEnter = true
+			break
+		}
+	}
+	if !hasSlowIterEnter {
+		t.Fatalf("expected slow iter opcode for capturing loop, got %v", compiler.Bytecode())
+	}
+}
+
+func BenchmarkJScriptTopLevelFastInt1M(b *testing.B) {
+	source := `<%@ Language="JScript" %><%` +
+		`var sum = 0;` +
+		`for (let i = 0; i < 1000000; i++) { sum = sum + i; }` +
+		`Response.Write(sum);` +
+		`%>`
+	benchmarkASPExecutionOnly(b, source)
+}
+
+func BenchmarkJScriptTopLevelFallbackNoCapture1M(b *testing.B) {
+	source := `<%@ Language="JScript" %><%` +
+		`var sum = 0;` +
+		`for (let i = 0; i < 1000000; i = i + 1) { sum = sum + i; }` +
+		`Response.Write(sum);` +
+		`%>`
+	benchmarkASPExecutionOnly(b, source)
+}
+
+func BenchmarkJScriptTopLevelFallbackCapture100K(b *testing.B) {
+	source := `<%@ Language="JScript" %><%` +
+		`var funcs = [];` +
+		`for (let i = 0; i < 100000; i = i + 1) { funcs.push(function(){ return i; }); }` +
+		`Response.Write(funcs[0]());` +
+		`%>`
+	benchmarkASPExecutionOnly(b, source)
 }

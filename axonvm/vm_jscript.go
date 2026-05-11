@@ -89,17 +89,18 @@ type jsDefinePropertySpec struct {
 }
 
 type jsFunctionObject struct {
-	name      string
-	params    []string
-	restParam string
-	startIP   int
-	endIP     int
-	envID     int64
-	protoID   int64
-	isBound   bool
-	boundFn   Value
-	boundThis Value
-	boundArgs []Value
+	name       string
+	params     []string
+	restParam  string
+	localCount int
+	startIP    int
+	endIP      int
+	envID      int64
+	protoID    int64
+	isBound    bool
+	boundFn    Value
+	boundThis  Value
+	boundArgs  []Value
 	// isArrow marks this as an ES6 arrow function that captures 'this' lexically.
 	// When true, capturedThis is used as the receiver regardless of call site.
 	isArrow            bool
@@ -113,6 +114,7 @@ type jsFunctionObject struct {
 type jsCallFrame struct {
 	returnIP     int
 	envID        int64
+	savedFP      int
 	fn           Value
 	thisVal      Value
 	newTarget    Value
@@ -1317,6 +1319,50 @@ func (vm *VM) jsTypeOf(v Value) string {
 	}
 }
 
+// jsAddIntegersNoOverflow adds two int64 values and reports if the result is representable as int64.
+func jsAddIntegersNoOverflow(a int64, b int64) (int64, bool) {
+	sum := a + b
+	if (b > 0 && sum < a) || (b < 0 && sum > a) {
+		return 0, false
+	}
+	return sum, true
+}
+
+// jsSubtractIntegersNoOverflow subtracts two int64 values and reports if the result is representable as int64.
+func jsSubtractIntegersNoOverflow(a int64, b int64) (int64, bool) {
+	diff := a - b
+	if (b < 0 && diff < a) || (b > 0 && diff > a) {
+		return 0, false
+	}
+	return diff, true
+}
+
+// jsIncrementNumberValue increments a numeric value preserving VTInteger whenever possible.
+func (vm *VM) jsIncrementNumberValue(v Value) Value {
+	if v.Type == VTInteger {
+		if next, ok := jsAddIntegersNoOverflow(v.Num, 1); ok {
+			return NewInteger(next)
+		}
+		return NewDouble(float64(v.Num) + 1)
+	}
+	next := vm.jsToNumber(v)
+	next.Flt++
+	return next
+}
+
+// jsDecrementNumberValue decrements a numeric value preserving VTInteger whenever possible.
+func (vm *VM) jsDecrementNumberValue(v Value) Value {
+	if v.Type == VTInteger {
+		if next, ok := jsSubtractIntegersNoOverflow(v.Num, 1); ok {
+			return NewInteger(next)
+		}
+		return NewDouble(float64(v.Num) - 1)
+	}
+	next := vm.jsToNumber(v)
+	next.Flt--
+	return next
+}
+
 // jsAddValues implements JScript '+' behavior for string concatenation and numeric addition.
 func (vm *VM) jsAddValues(a Value, b Value) Value {
 	a = resolveCallable(vm, a)
@@ -1329,6 +1375,12 @@ func (vm *VM) jsAddValues(a Value, b Value) Value {
 			return Value{Type: VTJSUndefined}
 		}
 		return NewString(sa + sb)
+	}
+	if a.Type == VTInteger && b.Type == VTInteger {
+		if sum, ok := jsAddIntegersNoOverflow(a.Num, b.Num); ok {
+			return NewInteger(sum)
+		}
+		return NewDouble(float64(a.Num) + float64(b.Num))
 	}
 	return NewDouble(vm.jsToNumber(a).Flt + vm.jsToNumber(b).Flt)
 }
@@ -1424,11 +1476,18 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	proto := vm.jsCreatePrototypeObject(fnVal)
 	params := make([]string, 0, len(template.Names))
 	restParam := ""
+	localCount := 0
 	isClassConstructor := false
 	isStrict := false
 	isDerived := false
 	for i := 0; i < len(template.Names); i++ {
 		name := template.Names[i]
+		if strings.HasPrefix(name, "__js_local_count__:") {
+			if n, err := strconv.Atoi(strings.TrimPrefix(name, "__js_local_count__:")); err == nil && n > 0 {
+				localCount = n
+			}
+			continue
+		}
 		if strings.HasPrefix(name, jsRestParamPrefix) {
 			restParam = strings.TrimPrefix(name, jsRestParamPrefix)
 			continue
@@ -1451,6 +1510,7 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 		name:               template.Str,
 		params:             params,
 		restParam:          restParam,
+		localCount:         localCount,
 		startIP:            int(template.Num),
 		endIP:              int(template.Flt),
 		envID:              vm.jsActiveEnvID,
@@ -1477,6 +1537,26 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	return fnVal
 }
 
+func (vm *VM) jsPrepareLocalFrame(localCount int, savedSP int) bool {
+	if localCount <= 0 {
+		vm.fp = savedSP + 1
+		vm.sp = savedSP
+		return true
+	}
+	base := savedSP + 1
+	end := base + localCount - 1
+	if end >= len(vm.stack) {
+		vm.raise(vbscript.StackOverflow, "JScript local frame exceeds VM stack capacity")
+		return false
+	}
+	for i := base; i <= end; i++ {
+		vm.stack[i] = Value{Type: VTJSUndefined}
+	}
+	vm.fp = base
+	vm.sp = end
+	return true
+}
+
 func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj Value, isCtor bool, newTarget Value, isSuperCall bool) bool {
 	// Debug:
 	// fmt.Printf("jsBeginFunctionCall: fn=%v, isCtor=%v, isSuper=%v\n", fn, isCtor, isSuperCall)
@@ -1491,6 +1571,7 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 	frame := jsCallFrame{
 		returnIP:     vm.ip,
 		envID:        vm.jsActiveEnvID,
+		savedFP:      vm.fp,
 		fn:           fn,
 		thisVal:      vm.jsThisValue,
 		newTarget:    vm.jsNewTarget,
@@ -1527,6 +1608,16 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 	vm.jsEnvItems[envID] = &jsEnvFrame{parentID: closure.envID, bindings: bindings}
 	vm.jsActiveEnvID = envID
 	vm.jsThisValue = thisVal
+	if !vm.jsPrepareLocalFrame(closure.localCount, frame.savedSP) {
+		vm.jsCallStack = vm.jsCallStack[:len(vm.jsCallStack)-1]
+		vm.jsActiveEnvID = frame.envID
+		vm.jsThisValue = frame.thisVal
+		vm.jsNewTarget = frame.newTarget
+		vm.jsStrictMode = frame.jsStrictMode
+		vm.fp = frame.savedFP
+		vm.sp = frame.savedSP
+		return false
+	}
 	vm.ip = closure.startIP
 	return true
 }
@@ -1667,7 +1758,16 @@ func (vm *VM) jsTailCallValue(callee Value, thisVal Value, args []Value) bool {
 	vm.jsActiveEnvID = envID
 	vm.jsThisValue = thisVal
 	vm.ip = closure.startIP
-	vm.sp = frame.savedSP
+	if !vm.jsPrepareLocalFrame(closure.localCount, frame.savedSP) {
+		vm.jsActiveEnvID = frame.envID
+		vm.jsThisValue = frame.thisVal
+		vm.jsNewTarget = frame.newTarget
+		vm.jsStrictMode = frame.jsStrictMode
+		vm.fp = frame.savedFP
+		vm.sp = frame.savedSP
+		vm.ip = frame.returnIP
+		return false
+	}
 	return true
 }
 
@@ -2221,6 +2321,7 @@ func (vm *VM) jsReturn(retVal Value) {
 	vm.jsNewTarget = frame.newTarget
 	vm.jsStrictMode = frame.jsStrictMode
 	vm.ip = frame.returnIP
+	vm.fp = frame.savedFP
 	vm.sp = frame.savedSP
 	if frame.isSuperCall {
 		// This was a super() call in a constructor. Assign the result to 'this'.
@@ -5458,6 +5559,12 @@ func (vm *VM) jsSubtract(a Value, b Value) Value {
 	if a.Type == VTJSBigInt || b.Type == VTJSBigInt {
 		vm.jsThrowTypeError("Cannot mix BigInt and other types, use explicit conversions")
 		return Value{Type: VTJSUndefined}
+	}
+	if a.Type == VTInteger && b.Type == VTInteger {
+		if diff, ok := jsSubtractIntegersNoOverflow(a.Num, b.Num); ok {
+			return NewInteger(diff)
+		}
+		return NewDouble(float64(a.Num) - float64(b.Num))
 	}
 	aNum := vm.jsToNumber(a).Flt
 	bNum := vm.jsToNumber(b).Flt
