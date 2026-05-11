@@ -1002,7 +1002,7 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 			c.emit(OpJSGetName, c.addConstant(NewString(node.Name.String())))
 		}
 	case *jsast.ThisExpression:
-		c.emit(OpJSGetName, c.addConstant(NewString("this")))
+		c.emit(OpJSLoadThis)
 	case *jsast.FunctionLiteral:
 		c.compileJScriptFunctionLiteral(node, "", false)
 	case *jsast.ClassExpression:
@@ -1093,9 +1093,18 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 	case *jsast.AssignExpression:
 		c.compileJScriptAssignment(node)
 	case *jsast.DotExpression:
+		if _, ok := node.Left.(*jsast.SuperExpression); ok {
+			c.emit(OpJSSuperMemberGet, c.addConstant(NewString(node.Identifier.Name.String())))
+			return
+		}
 		c.compileJScriptExpression(node.Left)
 		c.emit(OpJSMemberGet, c.addConstant(NewString(node.Identifier.Name.String())))
 	case *jsast.BracketExpression:
+		if _, ok := node.Left.(*jsast.SuperExpression); ok {
+			c.compileJScriptExpression(node.Member)
+			c.emit(OpJSSuperIndexGet)
+			return
+		}
 		c.compileJScriptExpression(node.Left)
 		c.compileJScriptExpression(node.Member)
 		c.emit(OpJSIndexGet)
@@ -1360,11 +1369,22 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		c.emit(OpJSDup)
 		c.compileJScriptDestructuring(left.(jsast.BindingTarget), false, false, false)
 	case *jsast.DotExpression:
+		if _, ok := left.Left.(*jsast.SuperExpression); ok {
+			c.compileJScriptExpression(node.Right)
+			c.emit(OpJSSuperMemberSet, c.addConstant(NewString(left.Identifier.Name.String())))
+			return
+		}
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(node.Right)
 		c.emit(OpJSMemberSet, c.addConstant(NewString(left.Identifier.Name.String())))
 		c.emit(OpJSLoadUndefined)
 	case *jsast.BracketExpression:
+		if _, ok := left.Left.(*jsast.SuperExpression); ok {
+			c.compileJScriptExpression(node.Right)
+			c.compileJScriptExpression(left.Member)
+			c.emit(OpJSSuperIndexSet)
+			return
+		}
 		c.compileJScriptExpression(node.Right)
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(left.Member)
@@ -1480,13 +1500,48 @@ func jsIsNumericOneLiteral(expr jsast.Expression) bool {
 
 func (c *Compiler) compileJScriptCall(node *jsast.CallExpression) {
 	switch callee := node.Callee.(type) {
+	case *jsast.SuperExpression:
+		if !c.jsIsDerivedConstructor {
+			jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, 0, 0)
+			jsErr.WithASPDescription("super() keyword unexpected here")
+			if c.sourceName != "" {
+				jsErr.WithFile(c.sourceName)
+			}
+			panic(jsErr)
+		}
+		for i := range node.ArgumentList {
+			c.compileJScriptExpression(node.ArgumentList[i])
+		}
+		c.emit(OpJSSuperCall, len(node.ArgumentList))
+		c.emit(OpJSDup)
+		c.emit(OpJSSetThis)
+
+		// Inject field initialization for derived class constructors
+		c.compileJScriptClassFields()
 	case *jsast.DotExpression:
+		if _, ok := callee.Left.(*jsast.SuperExpression); ok {
+			// super.method(...)
+			for i := range node.ArgumentList {
+				c.compileJScriptExpression(node.ArgumentList[i])
+			}
+			c.emit(OpJSSuperCallMember, c.addConstant(NewString(callee.Identifier.Name.String())), len(node.ArgumentList))
+			return
+		}
 		c.compileJScriptExpression(callee.Left)
 		for i := range node.ArgumentList {
 			c.compileJScriptExpression(node.ArgumentList[i])
 		}
 		c.emit(OpJSCallMember, c.addConstant(NewString(callee.Identifier.Name.String())), len(node.ArgumentList))
 	case *jsast.BracketExpression:
+		if _, ok := callee.Left.(*jsast.SuperExpression); ok {
+			// super[index](...)
+			for i := range node.ArgumentList {
+				c.compileJScriptExpression(node.ArgumentList[i])
+			}
+			c.compileJScriptExpression(callee.Member)
+			c.emit(OpJSSuperCallComputedMember, len(node.ArgumentList))
+			return
+		}
 		c.compileJScriptExpression(callee.Left)
 		c.compileJScriptExpression(callee.Member)
 		for i := range node.ArgumentList {
@@ -1540,6 +1595,11 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 
 	// Emit default parameter guards before the function body.
 	c.compileJScriptDefaultParamGuards(fn.ParameterList)
+
+	// Inject field initialization for base class constructors
+	if isClassConstructor && !c.jsIsDerivedConstructor {
+		c.compileJScriptClassFields()
+	}
 
 	if fn.Body != nil {
 		for i := range fn.Body.List {
@@ -1617,6 +1677,12 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 
 	if isClassConstructor {
 		params = append(params, jsClassConstructorFlag)
+	}
+	if c.jsIsDerivedConstructor {
+		params = append(params, jsDerivedConstructorFlag)
+	}
+	if c.jsStrictMode {
+		params = append(params, jsStrictModeFlag)
 	}
 
 	templateIdx := c.addConstant(Value{
@@ -2065,8 +2131,33 @@ func (c *Compiler) compileJScriptClassDeclaration(node *jsast.ClassDeclaration) 
 }
 
 func (c *Compiler) compileJScriptClassLiteral(node *jsast.ClassLiteral) {
-	// Basic implementation for 6.2: extract constructor and compile it.
-	// Later phases will handle methods, inheritance, etc.
+	// ES6 classes implicitly run in Strict Mode
+	oldStrict := c.jsStrictMode
+	c.jsStrictMode = true
+	defer func() { c.jsStrictMode = oldStrict }()
+
+	hasSuperClass := node.SuperClass != nil
+	isNullHeritage := false
+	if hasSuperClass {
+		if _, ok := node.SuperClass.(*jsast.NullLiteral); ok {
+			isNullHeritage = true
+		}
+	}
+	isDerived := hasSuperClass && !isNullHeritage
+	if hasSuperClass {
+		// Evaluate superclass expression
+		c.compileJScriptExpression(node.SuperClass)
+	}
+
+	// Collect instance fields to be initialized in the constructor
+	oldFields := c.jsClassFields
+	c.jsClassFields = nil
+	for _, el := range node.Body {
+		if field, ok := el.(*jsast.FieldDefinition); ok && !field.Static {
+			c.jsClassFields = append(c.jsClassFields, field)
+		}
+	}
+	defer func() { c.jsClassFields = oldFields }()
 
 	var ctor *jsast.MethodDefinition
 	for _, el := range node.Body {
@@ -2089,18 +2180,120 @@ func (c *Compiler) compileJScriptClassLiteral(node *jsast.ClassLiteral) {
 		className = node.Name.Name.String()
 	}
 
+	// Compile the constructor
+	oldIsDerived := c.jsIsDerivedConstructor
+	c.jsIsDerivedConstructor = isDerived
+	defer func() { c.jsIsDerivedConstructor = oldIsDerived }()
+
 	if ctor == nil {
-		// Create default constructor: constructor() {}
-		// TODO: handle inheritance default constructor: constructor(...args) { super(...args); }
-		// For now, simple empty constructor.
+		// Create default constructor
 		fn := &jsast.FunctionLiteral{
 			ParameterList: &jsast.ParameterList{},
 			Body:          &jsast.BlockStatement{},
+		}
+		if isDerived {
+			// default derived constructor: constructor(...args) { super(...args); }
+			// Simplified for now: just call super()
+			fn.Body.List = []jsast.Statement{
+				&jsast.ExpressionStatement{
+					Expression: &jsast.CallExpression{
+						Callee:       &jsast.SuperExpression{},
+						ArgumentList: nil,
+					},
+				},
+			}
 		}
 		c.compileJScriptFunctionLiteral(fn, className, true)
 	} else {
 		// We reuse compileJScriptFunctionLiteral but with a flag if it's a constructor.
 		c.compileJScriptFunctionLiteral(ctor.Body, className, true)
+	}
+
+	// Constructor function is now on top of the stack.
+	// 1. Static Inheritance: if derived, wire constructor.__proto__ = SuperClass
+	if hasSuperClass {
+		c.emit(OpJSClassInherit)
+	}
+
+	for _, el := range node.Body {
+		md, ok := el.(*jsast.MethodDefinition)
+		if !ok || md.Kind == jsast.PropertyKindConstructor {
+			continue
+		}
+
+		c.emit(OpJSDup) // Duplicate the constructor
+
+		if !md.Static {
+			// Instance method: bind to constructor.prototype
+			c.emit(OpJSMemberGet, c.addConstant(NewString("prototype")))
+		}
+
+		// Compile the method/accessor body
+		c.compileJScriptFunctionLiteral(md.Body, "", false)
+
+		// Get property name
+		var name string
+		if id, ok := md.Key.(*jsast.Identifier); ok {
+			name = id.Name.String()
+		} else if lit, ok := md.Key.(*jsast.StringLiteral); ok {
+			name = lit.Value.String()
+		} else if lit, ok := md.Key.(*jsast.NumberLiteral); ok {
+			name = fmt.Sprintf("%v", lit.Value)
+		}
+
+		nameIdx := c.addConstant(NewString(name))
+		kind := jsPropertyKindMethod
+		switch md.Kind {
+		case jsast.PropertyKindGet:
+			kind = jsPropertyKindGet
+		case jsast.PropertyKindSet:
+			kind = jsPropertyKindSet
+		}
+
+		c.emit(OpJSDefineProperty, nameIdx, kind)
+	}
+
+	// 3. Static Fields
+	for _, el := range node.Body {
+		if field, ok := el.(*jsast.FieldDefinition); ok && field.Static {
+			c.emit(OpJSDup) // constructor
+			if field.Initializer != nil {
+				c.compileJScriptExpression(field.Initializer)
+			} else {
+				c.emit(OpJSLoadUndefined)
+			}
+			name := ""
+			if id, ok := field.Key.(*jsast.Identifier); ok {
+				name = id.Name.String()
+			} else if lit, ok := field.Key.(*jsast.StringLiteral); ok {
+				name = lit.Value.String()
+			}
+			if name != "" {
+				c.emit(OpJSMemberSet, c.addConstant(NewString(name)))
+			}
+		}
+	}
+}
+
+func (c *Compiler) compileJScriptClassFields() {
+	for _, el := range c.jsClassFields {
+		if field, ok := el.(*jsast.FieldDefinition); ok {
+			c.emit(OpJSLoadThis)
+			if field.Initializer != nil {
+				c.compileJScriptExpression(field.Initializer)
+			} else {
+				c.emit(OpJSLoadUndefined)
+			}
+			name := ""
+			if id, ok := field.Key.(*jsast.Identifier); ok {
+				name = id.Name.String()
+			} else if lit, ok := field.Key.(*jsast.StringLiteral); ok {
+				name = lit.Value.String()
+			}
+			if name != "" {
+				c.emit(OpJSMemberSet, c.addConstant(NewString(name)))
+			}
+		}
 	}
 }
 

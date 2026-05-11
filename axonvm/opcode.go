@@ -211,6 +211,7 @@ const (
 	OpJSReturn                 // [OpCode]
 	OpJSLoadUndefined          // [OpCode]
 	OpJSLoadThis               // [OpCode]
+	OpJSSetThis                // [OpCode] ; pops RHS, assigns to 'this'
 	OpJSDup                    // [OpCode]
 	OpJSRequireObject          // [OpCode] ; throws TypeError if TOS is null or undefined
 	OpJSGetIterator            // [OpCode] ; pops RHS, pushes iterator (RHS[Symbol.iterator]())
@@ -218,6 +219,7 @@ const (
 	OpJSCollectRest            // [OpCode] ; pops iterator, pushes array of remaining values
 	OpJSObjectRest             // [OpCode, StaticCountH, StaticCountL, ..., DynamicCountH, DynamicCountL] ; pops obj and DynamicCount keys, pushes rest object
 	OpJSPop                    // [OpCode]
+	OpJSRot                    // [OpCode, Count] ; rotates top N elements of the stack
 
 	OpJSJump               // [OpCode, Target3, Target2, Target1, Target0]
 	OpJSJumpIfFalse        // [OpCode, Target3, Target2, Target1, Target0]
@@ -225,67 +227,77 @@ const (
 	OpJSJumpIfNotUndefined // [OpCode, Target3, Target2, Target1, Target0]
 	OpJSLoadCatchError     // [OpCode]
 
-	OpJSStoreCatchError     // [OpCode]
-	OpJSBreak               // [OpCode] - Break from loop (jump target managed by compiler)
-	OpJSContinue            // [OpCode] - Continue to next iteration (jump target managed by compiler)
-	OpJSForIn               // [OpCode, EnumVarIdxHigh, EnumVarIdxLow, LoopStartTarget3, LoopStartTarget2, LoopStartTarget1, LoopStartTarget0] - for...in setup
-	OpJSForInCleanup        // [OpCode, ForInPos3, ForInPos2, ForInPos1, ForInPos0] - clears for...in enumerator state and source value
-	OpJSSwitch              // [OpCode] - switch statement (value already on stack)
-	OpJSCase                // [OpCode, Target3, Target2, Target1, Target0] - case label with jump target
-	OpJSDefault             // [OpCode, Target3, Target2, Target1, Target0] - default label with jump target
-	OpJSSubtract            // [OpCode] - JScript binary subtraction (for type coercion compatibility)
-	OpJSMultiply            // [OpCode] - JScript binary multiplication
-	OpJSDivide              // [OpCode] - JScript binary division
-	OpJSModulo              // [OpCode] - JScript binary modulo
-	OpJSNegate              // [OpCode] - JScript unary negation
-	OpJSBitwiseAnd          // [OpCode] - JScript bitwise AND
-	OpJSBitwiseOr           // [OpCode] - JScript bitwise OR
-	OpJSBitwiseXor          // [OpCode] - JScript bitwise XOR
-	OpJSBitwiseNot          // [OpCode] - JScript bitwise NOT
-	OpJSLeftShift           // [OpCode] - JScript left shift
-	OpJSRightShift          // [OpCode] - JScript right shift
-	OpJSUnsignedRightShift  // [OpCode] - JScript unsigned right shift
-	OpJSLess                // [OpCode] - JScript less than
-	OpJSGreater             // [OpCode] - JScript greater than
-	OpJSLessEqual           // [OpCode] - JScript less than or equal
-	OpJSGreaterEqual        // [OpCode] - JScript greater than or equal
-	OpJSLooseEqual          // [OpCode] - JScript == (loose equality)
-	OpJSLooseNotEqual       // [OpCode] - JScript != (loose inequality)
-	OpJSLogicalAnd          // [OpCode] - JScript && (logical AND)
-	OpJSLogicalOr           // [OpCode] - JScript || (logical OR)
-	OpJSLogicalNot          // [OpCode] - JScript ! (logical NOT)
-	OpJSNew                 // [OpCode, ArgCountHigh, ArgCountLow] - new constructor call
-	OpJSMemberDelete        // [OpCode, NameConstIdxHigh, NameConstIdxLow] - delete property
-	OpJSIndexGet            // [OpCode] - array/object index access (bracket notation)
-	OpJSIndexSet            // [OpCode] - array/object index assignment
-	OpJSComma               // [OpCode] - comma operator
-	OpJSPostIncrement       // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-increment (var++)
-	OpJSPostDecrement       // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-decrement (var--)
-	OpJSPreIncrement        // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-increment (++var)
-	OpJSPreDecrement        // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-decrement (--var)
-	OpJSAddAssign           // [OpCode, NameConstIdxHigh, NameConstIdxLow] - +=
-	OpJSSubtractAssign      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - -=
-	OpJSMultiplyAssign      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - *=
-	OpJSDivideAssign        // [OpCode, NameConstIdxHigh, NameConstIdxLow] - /=
-	OpJSModuloAssign        // [OpCode, NameConstIdxHigh, NameConstIdxLow] - %=
-	OpJSMemberIndexGet      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - member[index] get
-	OpJSMemberIndexSet      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - member[index] set
-	OpJSPostMemberIncrement // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-increment (obj.prop++)
-	OpJSPostMemberDecrement // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-decrement (obj.prop--)
-	OpJSPreMemberIncrement  // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-increment (++obj.prop)
-	OpJSPreMemberDecrement  // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-decrement (--obj.prop)
-	OpJSPostIndexIncrement  // [OpCode] - post-increment (obj[idx]++)
-	OpJSPostIndexDecrement  // [OpCode] - post-decrement (obj[idx]--)
-	OpJSPreIndexIncrement   // [OpCode] - pre-increment (++obj[idx])
-	OpJSPreIndexDecrement   // [OpCode] - pre-decrement (--obj[idx])
-	OpJSExponent            // [OpCode] - JScript exponentiation (**)
-	OpJSCoalesce            // [OpCode] - JScript ??
-	OpJSJumpIfNullish       // [OpCode, Target3, Target2, Target1, Target0] - jump if null or undefined
-	OpJSJumpIfNotNullish    // [OpCode, Target3, Target2, Target1, Target0] - jump if not null and not undefined
-	OpJSExponentAssign      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - **=
-	OpJSLogicalAndAssign    // [OpCode, NameConstIdxHigh, NameConstIdxLow] - &&=
-	OpJSLogicalOrAssign     // [OpCode, NameConstIdxHigh, NameConstIdxLow] - ||=
-	OpJSCoalesceAssign      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - ??=
+	OpJSStoreCatchError         // [OpCode]
+	OpJSBreak                   // [OpCode] - Break from loop (jump target managed by compiler)
+	OpJSContinue                // [OpCode] - Continue to next iteration (jump target managed by compiler)
+	OpJSForIn                   // [OpCode, EnumVarIdxHigh, EnumVarIdxLow, LoopStartTarget3, LoopStartTarget2, LoopStartTarget1, LoopStartTarget0] - for...in setup
+	OpJSForInCleanup            // [OpCode, ForInPos3, ForInPos2, ForInPos1, ForInPos0] - clears for...in enumerator state and source value
+	OpJSSwitch                  // [OpCode] - switch statement (value already on stack)
+	OpJSCase                    // [OpCode, Target3, Target2, Target1, Target0] - case label with jump target
+	OpJSDefault                 // [OpCode, Target3, Target2, Target1, Target0] - default label with jump target
+	OpJSSubtract                // [OpCode] - JScript binary subtraction (for type coercion compatibility)
+	OpJSMultiply                // [OpCode] - JScript binary multiplication
+	OpJSDivide                  // [OpCode] - JScript binary division
+	OpJSModulo                  // [OpCode] - JScript binary modulo
+	OpJSNegate                  // [OpCode] - JScript unary negation
+	OpJSBitwiseAnd              // [OpCode] - JScript bitwise AND
+	OpJSBitwiseOr               // [OpCode] - JScript bitwise OR
+	OpJSBitwiseXor              // [OpCode] - JScript bitwise XOR
+	OpJSBitwiseNot              // [OpCode] - JScript bitwise NOT
+	OpJSLeftShift               // [OpCode] - JScript left shift
+	OpJSRightShift              // [OpCode] - JScript right shift
+	OpJSUnsignedRightShift      // [OpCode] - JScript unsigned right shift
+	OpJSLess                    // [OpCode] - JScript less than
+	OpJSGreater                 // [OpCode] - JScript greater than
+	OpJSLessEqual               // [OpCode] - JScript less than or equal
+	OpJSGreaterEqual            // [OpCode] - JScript greater than or equal
+	OpJSLooseEqual              // [OpCode] - JScript == (loose equality)
+	OpJSLooseNotEqual           // [OpCode] - JScript != (loose inequality)
+	OpJSLogicalAnd              // [OpCode] - JScript && (logical AND)
+	OpJSLogicalOr               // [OpCode] - JScript || (logical OR)
+	OpJSLogicalNot              // [OpCode] - JScript ! (logical NOT)
+	OpJSNew                     // [OpCode, ArgCountHigh, ArgCountLow] - new constructor call
+	OpJSMemberDelete            // [OpCode, NameConstIdxHigh, NameConstIdxLow] - delete property
+	OpJSIndexGet                // [OpCode] - array/object index access (bracket notation)
+	OpJSIndexSet                // [OpCode] - array/object index assignment
+	OpJSComma                   // [OpCode] - comma operator
+	OpJSPostIncrement           // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-increment (var++)
+	OpJSPostDecrement           // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-decrement (var--)
+	OpJSPreIncrement            // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-increment (++var)
+	OpJSPreDecrement            // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-decrement (--var)
+	OpJSAddAssign               // [OpCode, NameConstIdxHigh, NameConstIdxLow] - +=
+	OpJSSubtractAssign          // [OpCode, NameConstIdxHigh, NameConstIdxLow] - -=
+	OpJSMultiplyAssign          // [OpCode, NameConstIdxHigh, NameConstIdxLow] - *=
+	OpJSDivideAssign            // [OpCode, NameConstIdxHigh, NameConstIdxLow] - /=
+	OpJSModuloAssign            // [OpCode, NameConstIdxHigh, NameConstIdxLow] - %=
+	OpJSMemberIndexGet          // [OpCode, NameConstIdxHigh, NameConstIdxLow] - member[index] get
+	OpJSMemberIndexSet          // [OpCode, NameConstIdxHigh, NameConstIdxLow] - member[index] set
+	OpJSPostMemberIncrement     // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-increment (obj.prop++)
+	OpJSPostMemberDecrement     // [OpCode, NameConstIdxHigh, NameConstIdxLow] - post-decrement (obj.prop--)
+	OpJSPreMemberIncrement      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-increment (++obj.prop)
+	OpJSPreMemberDecrement      // [OpCode, NameConstIdxHigh, NameConstIdxLow] - pre-decrement (--obj.prop)
+	OpJSPostIndexIncrement      // [OpCode] - post-increment (obj[idx]++)
+	OpJSPostIndexDecrement      // [OpCode] - post-decrement (obj[idx]--)
+	OpJSPreIndexIncrement       // [OpCode] - pre-increment (++obj[idx])
+	OpJSPreIndexDecrement       // [OpCode] - pre-decrement (--obj[idx])
+	OpJSExponent                // [OpCode] - JScript exponentiation (**)
+	OpJSCoalesce                // [OpCode] - JScript ??
+	OpJSJumpIfNullish           // [OpCode, Target3, Target2, Target1, Target0] - jump if null or undefined
+	OpJSJumpIfNotNullish        // [OpCode, Target3, Target2, Target1, Target0] - jump if not null and not undefined
+	OpJSExponentAssign          // [OpCode, NameConstIdxHigh, NameConstIdxLow] - **=
+	OpJSLogicalAndAssign        // [OpCode, NameConstIdxHigh, NameConstIdxLow] - &&=
+	OpJSLogicalOrAssign         // [OpCode, NameConstIdxHigh, NameConstIdxLow] - ||=
+	OpJSCoalesceAssign          // [OpCode, NameConstIdxHigh, NameConstIdxLow] - ??=
+	OpJSDefineProperty          // [OpCode, NameConstIdxHigh, NameConstIdxLow, KindHigh, KindLow] ; stack: [..., target, value]
+	OpJSSetProto                // [OpCode] ; stack: [..., target, proto]
+	OpJSClassInherit            // [OpCode] ; stack: [..., superclass, subclass]
+	OpJSSuperCall               // [OpCode, ArgCountHigh, ArgCountLow] ; stack: [..., arg1, arg2, ...]
+	OpJSSuperMemberGet          // [OpCode, NameConstIdxHigh, NameConstIdxLow]
+	OpJSSuperMemberSet          // [OpCode, NameConstIdxHigh, NameConstIdxLow] ; stack: [..., value]
+	OpJSSuperCallMember         // [OpCode, NameConstIdxHigh, NameConstIdxLow, ArgCountHigh, ArgCountLow] ; stack: [..., arg1, arg2, ...]
+	OpJSSuperIndexGet           // [OpCode] ; stack: [..., index]
+	OpJSSuperIndexSet           // [OpCode] ; stack: [..., value, index]
+	OpJSSuperCallComputedMember // [OpCode, ArgCountHigh, ArgCountLow] ; stack: [..., index, arg1, arg2, ...]
 
 	// Strict Mode & Block Scoping
 	OpJSStrictModeEnter  // [OpCode] - enter strict mode scope
@@ -540,6 +552,8 @@ func (op OpCode) String() string {
 		return "OpJSLoadUndefined"
 	case OpJSLoadThis:
 		return "OpJSLoadThis"
+	case OpJSSetThis:
+		return "OpJSSetThis"
 	case OpJSDup:
 		return "OpJSDup"
 	case OpJSRequireObject:
@@ -554,6 +568,8 @@ func (op OpCode) String() string {
 		return "OpJSObjectRest"
 	case OpJSPop:
 		return "OpJSPop"
+	case OpJSRot:
+		return "OpJSRot"
 	case OpJSJump:
 		return "OpJSJump"
 	case OpJSJumpIfFalse:
@@ -684,6 +700,14 @@ func (op OpCode) String() string {
 		return "OpJSLogicalOrAssign"
 	case OpJSCoalesceAssign:
 		return "OpJSCoalesceAssign"
+	case OpJSDefineProperty:
+		return "OpJSDefineProperty"
+	case OpJSSetProto:
+		return "OpJSSetProto"
+	case OpJSClassInherit:
+		return "OpJSClassInherit"
+	case OpJSSuperCall:
+		return "OpJSSuperCall"
 	case OpJSMemberIndexSet:
 		return "OpJSMemberIndexSet"
 	case OpJSStrictModeEnter:

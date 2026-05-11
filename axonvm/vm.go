@@ -384,6 +384,7 @@ type VM struct {
 	jsErrStack    []Value
 	jsActiveEnvID int64
 	jsThisValue   Value
+	jsNewTarget   Value
 
 	onResumeNext bool
 	// executeGlobalResumeGuard preserves caller Resume Next semantics for top-level
@@ -835,22 +836,26 @@ func opcodeOperandSize(op OpCode) int {
 		OpLetGlobal, OpLetLocal, OpIncLocalInt, OpDecLocalInt,
 		OpCall,
 		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSMemberGet, OpJSMemberSet,
-		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSDelete,
+		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSDelete, OpJSSuperCall,
 		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 		OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
 		OpJSMemberIndexGet, OpJSMemberIndexSet,
 		OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
-		OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize:
+		OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize, OpJSRot,
+		OpJSSuperMemberGet, OpJSSuperMemberSet, OpJSSuperCallComputedMember:
 		return 2
 	// 4-byte operands (for jump targets)
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
 		OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,
-		OpJSJumpIfNullish, OpJSJumpIfNotNullish,
+		OpJSJumpIfNullish, OpJSJumpIfNotNullish, OpJSJumpIfNotUndefined,
 		OpJSCase, OpJSDefault, OpJSBreak, OpJSContinue, OpJSForInCleanup, OpJSForOfCleanup:
 		return 4
+	// 1-byte opcodes (none)
+	case OpJSSetProto, OpJSSetThis, OpJSSuperIndexGet, OpJSSuperIndexSet:
+		return 0
 	// 4-byte operands
-	case OpLine, OpCallMember, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember:
+	case OpLine, OpCallMember, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember, OpJSDefineProperty, OpJSSuperCallMember:
 		return 4
 	// 6-byte operands: classNameIdx(2) + fieldNameIdx(2) + isPublic(2)
 	case OpRegisterClassField:
@@ -896,12 +901,19 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
 			OpJSMemberIndexGet, OpJSMemberIndexSet,
 			OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
-			OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize:
+			OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize,
+			OpJSSuperMemberGet, OpJSSuperMemberSet:
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
 			ip += 2
+		case OpJSRot, OpJSSuperCall, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSSuperCallComputedMember:
+			ip += 2
+		case OpJSDefineProperty:
+			nameIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(nameIdx))
+			ip += 4
 		case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel, OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter, OpJSCase, OpJSDefault, OpJSBreak, OpJSContinue, OpJSForInCleanup, OpJSForOfCleanup,
-			OpJSJumpIfNullish, OpJSJumpIfNotNullish:
+			OpJSJumpIfNullish, OpJSJumpIfNotNullish, OpJSJumpIfNotUndefined:
 			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
 			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
 			ip += 4
@@ -912,7 +924,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			valueIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(valueIdx))
 			ip += 2
-		case OpCallMember, OpArraySet, OpJSCallMember, OpJSTailCallMember:
+		case OpCallMember, OpArraySet, OpJSCallMember, OpJSTailCallMember, OpJSSuperCallMember:
 			memberIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(memberIdx))
 			ip += 4
@@ -1329,20 +1341,7 @@ aspExecLoop:
 		// skip compound-statement blocks (e.g. If/Then body). OpRet and OpHalt fall through
 		// so function returns and program termination work normally during skip mode.
 		if vm.skipToNextStmt {
-			switch op {
-			case OpLine, OpHalt, OpRet:
-				// Fall through to the main switch handler below.
-			case OpJumpIfFalse:
-				// Take the jump unconditionally: this skips the guarded block (If/Then body, loop).
-				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
-				vm.ip = target
-				vm.sp = vm.stmtSP
-				vm.skipToNextStmt = false
-				continue
-			default:
-				vm.ip += opcodeOperandSize(op)
-				continue
-			}
+			// ... (rest of skip logic)
 		}
 
 		switch op {
@@ -2415,8 +2414,11 @@ aspExecLoop:
 				args[i] = vm.pop()
 			}
 			callee := vm.pop()
+			stackLen := len(vm.jsCallStack)
 			result := vm.jsCall(callee, Value{Type: VTJSUndefined}, args)
-			vm.push(result)
+			if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
+				vm.push(result)
+			}
 
 		case OpJSTailCall:
 			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
@@ -2442,8 +2444,11 @@ aspExecLoop:
 			}
 			target := vm.pop()
 			member := vm.constants[nameIdx].Str
+			stackLen := len(vm.jsCallStack)
 			if result, handled := vm.jsCallMember(target, member, args); handled {
-				vm.push(result)
+				if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
+					vm.push(result)
+				}
 			} else {
 				vm.push(Value{Type: VTJSUndefined})
 			}
@@ -2458,8 +2463,11 @@ aspExecLoop:
 			keyVal := vm.pop()
 			target := vm.pop()
 			key := vm.jsPropertyKeyFromValue(keyVal)
+			stackLen := len(vm.jsCallStack)
 			if result, handled := vm.jsCallMember(target, key, args); handled {
-				vm.push(result)
+				if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
+					vm.push(result)
+				}
 			} else {
 				vm.push(Value{Type: VTJSUndefined})
 			}
@@ -2501,6 +2509,98 @@ aspExecLoop:
 			templateIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			vm.push(vm.jsCreateClosure(vm.constants[templateIdx]))
+
+		case OpJSDefineProperty:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			kind := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			val := vm.pop()
+			target := vm.pop()
+			name := vm.constants[nameIdx].Str
+
+			// Set homeObjID for functions to support super member access
+			if val.Type == VTJSFunction {
+				if fn := vm.jsFunctionItems[val.Num]; fn != nil {
+					fn.homeObjID = target.Num
+				}
+			}
+
+			vm.jsDefineProperty(target, name, int(kind), val)
+
+		case OpJSSetProto:
+			proto := vm.pop()
+			target := vm.pop()
+			vm.jsSetProto(target, proto)
+
+		case OpJSClassInherit:
+			subclass := vm.pop()
+			superclass := vm.pop()
+			vm.push(vm.jsClassInherit(subclass, superclass))
+
+		case OpJSSuperCall:
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			stackLen := len(vm.jsCallStack)
+			result := vm.jsSuperCall(args)
+			if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
+				vm.push(result)
+			}
+
+		case OpJSSuperMemberGet:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			vm.push(vm.jsSuperGet(vm.constants[nameIdx].Str))
+
+		case OpJSSuperMemberSet:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			val := vm.pop()
+			vm.jsSuperSet(vm.constants[nameIdx].Str, val)
+			vm.push(val)
+
+		case OpJSSuperCallMember:
+			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			stackLen := len(vm.jsCallStack)
+			result := vm.jsSuperCallMember(vm.constants[nameIdx].Str, args)
+			if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
+				vm.push(result)
+			}
+
+		case OpJSSuperIndexGet:
+			index := vm.pop()
+			vm.push(vm.jsSuperIndexGet(index))
+
+		case OpJSSuperIndexSet:
+			index := vm.pop()
+			val := vm.pop()
+			vm.jsSuperIndexSet(index, val)
+			vm.push(val)
+
+		case OpJSSuperCallComputedMember:
+			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			args := vm.ensureArgBuffer(argCount)
+			for i := argCount - 1; i >= 0; i-- {
+				args[i] = vm.pop()
+			}
+			index := vm.pop()
+			stackLen := len(vm.jsCallStack)
+			result := vm.jsSuperCallMember(vm.jsPropertyKeyFromValue(index), args)
+			if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
+				vm.push(result)
+			}
 
 		case OpJSAdd:
 			b, a := vm.pop(), vm.pop()
@@ -2587,7 +2687,22 @@ aspExecLoop:
 			vm.push(NewString("G3pix AxonASP JavaScript Engine"))
 
 		case OpJSLoadThis:
-			vm.push(vm.jsThisValue)
+			if vm.jsThisValue.Type == VTJSUninitialized {
+				vm.jsThrowReferenceError("OpJSLoadThis: Must call super constructor in derived class before accessing 'this'")
+				vm.push(Value{Type: VTJSUndefined})
+			} else {
+				vm.push(vm.jsThisValue)
+			}
+
+		case OpJSSetThis:
+			v := vm.pop()
+			vm.jsThisValue = v
+			if len(vm.jsCallStack) > 0 {
+				vm.jsCallStack[len(vm.jsCallStack)-1].thisVal = v
+				if vm.jsCallStack[len(vm.jsCallStack)-1].ctorObj.Type == VTJSUninitialized {
+					vm.jsCallStack[len(vm.jsCallStack)-1].ctorObj = v
+				}
+			}
 
 		case OpJSDup:
 			v := vm.pop()
@@ -2633,6 +2748,15 @@ aspExecLoop:
 
 		case OpJSPop:
 			vm.pop()
+
+		case OpJSRot:
+			n := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			if n > 1 && vm.sp >= n-1 {
+				top := vm.stack[vm.sp]
+				copy(vm.stack[vm.sp-n+2:vm.sp+1], vm.stack[vm.sp-n+1:vm.sp])
+				vm.stack[vm.sp-n+1] = top
+			}
 
 		case OpJSJump:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
@@ -3221,8 +3345,9 @@ aspExecLoop:
 				args[i] = vm.pop()
 			}
 			constructor := vm.pop()
+			stackLen := len(vm.jsCallStack)
 			result := vm.jsNew(constructor, args)
-			if len(vm.jsCallStack) == 0 || result.Type != VTJSUndefined {
+			if len(vm.jsCallStack) == stackLen || result.Type != VTJSUndefined {
 				vm.push(result)
 			}
 

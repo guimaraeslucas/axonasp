@@ -1173,6 +1173,80 @@ Response.Write(key + "=" + val + "\n"); // Output: id=42
 
 ---
 
+## ES6 Classes
+
+AxonASP supports ES6 classes for object-oriented programming. Under the hood, classes are built upon JScript's existing prototype-based inheritance model but with modern syntax and strict semantics.
+
+### Syntax
+
+```javascript
+class MyClass [extends BaseClass] {
+    constructor(...args) {
+        [super(...args);]
+        // initialization
+    }
+    
+    method() { ... }
+    
+    static staticMethod() { ... }
+    
+    get property() { ... }
+    set property(value) { ... }
+}
+```
+
+### Remarks
+
+- **Strict Mode:** All code within a `class` body (including methods and the constructor) implicitly runs in **Strict Mode**.
+- **No Hoisting:** Unlike function declarations, classes are not hoisted. You must declare a class before you can use it (Temporal Dead Zone applies).
+- **Instantiation:** Classes must be instantiated with the `new` operator. Calling a class constructor as a normal function (without `new`) throws a `TypeError`.
+- **Instance Methods:** Methods defined inside the class are attached to the class's `prototype`.
+- **Static Methods:** Methods marked with the `static` keyword are attached directly to the class constructor function.
+- **Inheritance:** When a class uses `extends`, AxonASP evaluates the superclass, validates that it is a constructor or `null`, and wires both the constructor chain and the prototype chain.
+- **Null Heritage:** `extends null` is supported. In that case, the class prototype chain terminates at `null`.
+- **Accessors:** `get` and `set` syntax is supported for defining property getters and setters.
+
+### Code Example
+
+```javascript
+<script runat="server" language="JScript">
+class Person {
+    constructor(name) {
+        this._name = name;
+    }
+
+    // Instance method
+    greet() {
+        return "Hello, I'm " + this._name;
+    }
+
+    // Static method
+    static species() {
+        return "Homo Sapiens";
+    }
+
+    // Accessors
+    get name() {
+        return this._name.toUpperCase();
+    }
+    
+    set name(value) {
+        this._name = value;
+    }
+}
+
+var p = new Person("Alice");
+Response.Write(p.greet() + "<br>");       // Output: Hello, I'm Alice
+Response.Write(Person.species() + "<br>"); // Output: Homo Sapiens
+Response.Write(p.name + "<br>");           // Output: ALICE
+
+p.name = "Bob";
+Response.Write(p.name);                   // Output: BOB
+</script>
+```
+
+---
+
 ## Optional Chaining (?.)
 
 ### Syntax

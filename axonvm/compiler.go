@@ -31,6 +31,7 @@ import (
 	"sync/atomic"
 
 	"g3pix.com.br/axonasp/jscript"
+	jsast "g3pix.com.br/axonasp/jscript/ast"
 	"g3pix.com.br/axonasp/vbscript"
 )
 
@@ -138,12 +139,15 @@ type Compiler struct {
 	loopContexts            []loopContext
 	jsLoopContexts          []*jsLoopContext // Loop contexts for JScript
 	jsBreakContexts         []*jsBreakContext
-	jsStrictMode            bool              // Current JScript strict mode state
-	jsTryDepth              int               // Current JScript try/catch/finally nesting depth
-	jsFunctionStrictModes   map[int]bool      // Maps function start IP to strict mode
-	jsBlockScopeStack       []map[string]bool // Stack of declared block-scoped variables (let/const)
-	jsForIterScopes         []jsForIterScope  // Stack of active per-iteration for-let scopes
-	jsOptionalChainExits    []int             // Stack of placeholder positions for ?. short-circuiting
+	jsStrictMode            bool // Current JScript strict mode state
+	jsIsDerivedConstructor  bool // True if currently compiling a derived class constructor
+	jsTryDepth              int  // Current JScript try/catch/finally nesting depth
+	jsClassFields           []jsast.ClassElement
+
+	jsFunctionStrictModes map[int]bool      // Maps function start IP to strict mode
+	jsBlockScopeStack     []map[string]bool // Stack of declared block-scoped variables (let/const)
+	jsForIterScopes       []jsForIterScope  // Stack of active per-iteration for-let scopes
+	jsOptionalChainExits  []int             // Stack of placeholder positions for ?. short-circuiting
 	// withDepth tracks nesting level of With...End With blocks at compile time.
 	// A value > 0 enables the leading-dot '.' statement and expression syntax.
 	withDepth          int

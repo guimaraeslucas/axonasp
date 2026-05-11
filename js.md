@@ -53,19 +53,19 @@ Core Architecture Note for the Agent: Under the hood, ES6 Classes in JScript are
         - [x] **Syntax Validation:** Ensure the compiler checks for syntax errors such as multiple constructors, invalid method definitions, and misuse of `super`, these errors should throw appropriate `SyntaxError` with correct messages.
         - [x] **Validation:** Create `test_class_basic.asp` testing instantiation with `new` (success) and without `new` (throws TypeError).
     * SUBPHASE 6.3: Instance Methods & Strict Mode Enforcement
-        * [ ] **Strict Mode:** Ensure the compiler sets the `StrictMode` flag for the constructor and all methods generated within the class block, as class bodies implicitly run in Strict Mode.
-        * [ ] **Method Compilation:** Modify `compileJScriptClassDeclaration` to iterate over all `MethodDefinition` AST nodes where `static` is false, compiling each as a `VTJSFunction`.
-        * [ ] **Prototype Binding:** Generate bytecode to assign these compiled methods to the constructor's `prototype` object (Equivalent to: `OpPush <Constructor>` -> `OpPush "prototype"` -> `OpMemberGet` -> `OpPush <MethodClosure>` -> `OpPush "<MethodName>"` -> `OpMemberSet`).
-        * [ ] **Validation:** Create `test_class_methods.asp` to verify method calls, correct `this` context, and strict mode enforcement.
+        * [x] **Strict Mode:** Ensure the compiler sets the `StrictMode` flag for the constructor and all methods generated within the class block, as class bodies implicitly run in Strict Mode.
+        * [x] **Method Compilation:** Modify `compileJScriptClassDeclaration` to iterate over all `MethodDefinition` AST nodes where `static` is false, compiling each as a `VTJSFunction`.
+        * [x] **Prototype Binding:** Generate bytecode to assign these compiled methods to the constructor's `prototype` object (Equivalent to: `OpPush <Constructor>` -> `OpPush "prototype"` -> `OpMemberGet` -> `OpPush <MethodClosure>` -> `OpPush "<MethodName>"` -> `OpMemberSet`).
+        * [x] **Validation:** Create `test_class_methods.asp` to verify method calls, correct `this` context, and strict mode enforcement.
     * SUBPHASE 6.4: Static Methods and Accessors (Getters/Setters)
-        * [ ] **Static Methods:** If a `MethodDefinition` is marked `static`, bind it directly to the constructor function object instead of its `prototype`.
-        * [ ] **Accessors:** For `get` and `set` methods, use or implement the VM equivalent of `Object.defineProperty` using a specialized opcode (e.g., `OpJSDefineProperty`) to define descriptors on the `VTJSObject`.
-        * [ ] **Validation:** Create `test_class_static_accessors.asp`. Test `Class.staticMethod()` and `instance.getterProp`.
+        * [x] **Static Methods:** If a `MethodDefinition` is marked `static`, bind it directly to the constructor function object instead of its `prototype`.
+        * [x] **Accessors:** For `get` and `set` methods, use or implement the VM equivalent of `Object.defineProperty` using a specialized opcode (e.g., `OpJSDefineProperty`) to define descriptors on the `VTJSObject`.
+        * [x] **Validation:** Create `test_class_static_accessors.asp`. Test `Class.staticMethod()` and `instance.getterProp`.
     * SUBPHASE 6.5: Inheritance (`extends`) & Prototype Chaining
-        * [ ] **SuperClass Evaluation:** If `extends <SuperClass>` is present, evaluate it. The evaluated `<SuperClass>` must be a valid constructor (`VTJSFunction`) or `null`. If not, throw a `TypeError`.
-        * [ ] **Prototype Wiring:** Set the internal `__proto__` of the subclass's `prototype` object to `<SuperClass>.prototype`.
-        * [ ] **Static Inheritance:** Set the internal `__proto__` of the subclass constructor itself to `<SuperClass>` to allow inheritance of static methods. Use internal VM assignments (e.g., `vm.jsSetProto`) to avoid Go heap allocation.
-        * [ ] **Validation:** Create `test_class_extends.asp`. Check if instances inherit methods from the superclass prototype and if the subclass inherits static methods.
+        * [x] **SuperClass Evaluation:** If `extends <SuperClass>` is present, evaluate it. The evaluated `<SuperClass>` must be a valid constructor (`VTJSFunction`) or `null`. If not, throw a `TypeError`.
+            * [x] **Prototype Wiring:** Set the internal `__proto__` of the subclass's `prototype` object to `<SuperClass>.prototype`.
+            * [x] **Static Inheritance:** Set the internal `__proto__` of the subclass constructor itself to `<SuperClass>` to allow inheritance of static methods. Use internal VM assignments (e.g., `vm.jsSetProto`) to avoid Go heap allocation.
+            * [x] **Validation:** Create `test_class_extends.asp`. Check if instances inherit methods from the superclass prototype and if the subclass inherits static methods.
     * SUBPHASE 6.6: The `super()` Call in Constructors
         * [ ] **TDZ for `this`:** In a derived class constructor, `this` is uninitialized until `super()` is called. If `this` is accessed before `super()` completes, the VM must throw a `ReferenceError`.
         * [ ] **Super Invocation:** Compile `super(...)` as a special call that invokes the parent constructor using `Reflect.construct` logic via `OpNew`, explicitly targeting the extended class.
@@ -79,6 +79,7 @@ Core Architecture Note for the Agent: Under the hood, ES6 Classes in JScript are
         * [ ] **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure strictly zero regressions on the VBScript side.
         * [ ] **Memory Profile:** Run `go test -bench . -benchmem` to guarantee no new allocations were introduced in the JScript execution path (Zero-Allocation axiom).
         * [ ] **Error Codes:** Ensure correct use of error codes from `jscripterrorcodes.go` for syntax/runtime failures.
+        * [ ] all go tests must pass to ensure no regressions and correc behavior of the old and new features.
         * [ ] **Documentation:** Update `jscript-es6-support.md` reflecting the new capabilities and any limitations.
 
 ---

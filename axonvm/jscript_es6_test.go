@@ -1230,3 +1230,244 @@ func TestJScriptForOfArray(t *testing.T) {
 		t.Errorf("expected '10|20|30|', got %q", out)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ES6 Classes (Phase 6)
+// ---------------------------------------------------------------------------
+
+func TestJScriptClassInstanceMethods(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Calculator {
+			constructor(x) {
+				this.x = x;
+			}
+			add(y) {
+				return this.x + y;
+			}
+			multiply(y) {
+				return this.x * y;
+			}
+		}
+		var calc = new Calculator(10);
+		Response.Write(calc.add(5) + "|" + calc.multiply(3));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "15|30" {
+		t.Errorf("expected '15|30', got %q", out)
+	}
+}
+
+func TestJScriptClassStaticMethods(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Utils {
+			static square(x) {
+				return x * x;
+			}
+			static cube(x) {
+				return x * x * x;
+			}
+		}
+		Response.Write(Utils.square(4) + "|" + Utils.cube(3));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "16|27" {
+		t.Errorf("expected '16|27', got %q", out)
+	}
+}
+
+func TestJScriptClassAccessors(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Person {
+			constructor(name) {
+				this._name = name;
+			}
+			get name() {
+				return this._name.toUpperCase();
+			}
+			set name(value) {
+				this._name = value;
+			}
+		}
+		var p = new Person("alice");
+		Response.Write(p.name + "|");
+		p.name = "bob";
+		Response.Write(p.name);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "ALICE|BOB" {
+		t.Errorf("expected 'ALICE|BOB', got %q", out)
+	}
+}
+
+func TestJScriptClassStrictModeEnforcement(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class StrictTest {
+			constructor() {
+				// In strict mode, assigning to undeclared variable throws ReferenceError
+				try {
+					undeclared = 1;
+				} catch(e) {
+					Response.Write("catch");
+				}
+			}
+			method() {
+				try {
+					undeclared = 2;
+				} catch(e) {
+					Response.Write("|catch");
+				}
+			}
+		}
+		var s = new StrictTest();
+		s.method();
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "catch|catch" {
+		t.Errorf("expected 'catch|catch', got %q", out)
+	}
+}
+
+func TestJScriptClassInheritance(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Animal {}
+		class Dog extends Animal {}
+		Response.Write("ok");
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "ok" {
+		t.Errorf("expected 'ok', got %q", out)
+	}
+}
+
+func TestJScriptClassExtendsNull(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class NullBase extends null {}
+		var instance = new NullBase();
+		Response.Write(instance instanceof NullBase);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "True" {
+		t.Errorf("expected 'True', got %q", out)
+	}
+}
+
+func TestJScriptClassExtendsRejectsInvalidSuperclass(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		try {
+			class Broken extends 123 {}
+			Response.Write("FAIL");
+		} catch (e) {
+			Response.Write(String(e).indexOf("TypeError") !== -1);
+		}
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "True" {
+		t.Errorf("expected invalid superclass to raise TypeError, got %q", out)
+	}
+}
+
+func TestJScriptClassStaticInheritance(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Base {
+			static staticMethod() {
+				return "static";
+			}
+		}
+		class Derived extends Base {}
+		Response.Write(Derived.staticMethod());
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "static" {
+		t.Errorf("expected 'static', got %q", out)
+	}
+}
+
+func TestJScriptClassSuperConstructorTDZ(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Base {
+			constructor() { this.x = 1; }
+		}
+		class Derived extends Base {
+			constructor() {
+				super();
+			}
+		}
+		var d = new Derived();
+		Response.Write(d.x);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "1" {
+		t.Errorf("expected '1', got %q", out)
+	}
+}
+
+func TestJScriptClassSuperDelegation(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Base {
+			foo() { return "base"; }
+			static staticFoo() { return "static base"; }
+		}
+		class Derived extends Base {
+			foo() {
+				return super.foo() + " derived";
+			}
+			static staticFoo() {
+				return super.staticFoo() + " static derived";
+			}
+			setX(val) {
+				super.x = val;
+			}
+		}
+		var d = new Derived();
+		d.setX(42);
+		Response.Write(d.foo() + " | " + Derived.staticFoo() + " | x=" + d.x);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "base derived | static base static derived | x=42" {
+		t.Errorf("expected 'base derived | static base static derived | x=42', got %q", out)
+	}
+}
+
+func TestJScriptClassFields(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		class Base {
+			x = 1;
+			static s = "static";
+		}
+		class Derived extends Base {
+			y = 2;
+			constructor() {
+				super();
+				this.z = 3;
+			}
+		}
+		var d = new Derived();
+		Response.Write("x=" + d.x + ", y=" + d.y + ", z=" + d.z + ", s=" + Base.s);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "x=1, y=2, z=3, s=static" {
+		t.Errorf("expected 'x=1, y=2, z=3, s=static', got %q", out)
+	}
+}

@@ -49,6 +49,8 @@ const (
 	VTJSObject
 	// VTJSFunction points to one dynamic JS closure ID in VM jsFunctionItems.
 	VTJSFunction
+	// VTJSUninitialized represents uninitialized 'this' in derived constructors.
+	VTJSUninitialized
 	// VTJSFunctionTemplate is a compile-time constant describing one JS function body.
 	VTJSFunctionTemplate
 	// VTJSArrowFunctionTemplate is a compile-time constant describing one JS arrow function body.
@@ -108,6 +110,8 @@ func (v Value) String() string {
 		return "[UserSub]"
 	case VTJSUndefined:
 		return "undefined"
+	case VTJSUninitialized:
+		return "[Uninitialized]"
 	case VTJSObject:
 		return fmt.Sprintf("[JSObject:%d]", v.Num)
 	case VTJSFunction:

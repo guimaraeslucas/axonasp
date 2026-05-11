@@ -45,6 +45,14 @@ const jsAccessorSetterPrefix = "__js_setter__"
 const jsSymbolPropertyPrefix = "__js_sym__"
 const jsRestParamPrefix = "__js_rest__:"
 const jsClassConstructorFlag = "__axon_internal__:class_constructor"
+const jsStrictModeFlag = "__axon_internal__:strict_mode"
+const jsDerivedConstructorFlag = "__axon_internal__:derived_constructor"
+
+const (
+	jsPropertyKindMethod = 0
+	jsPropertyKindGet    = 1
+	jsPropertyKindSet    = 2
+)
 
 type jsObjectState struct {
 	Extensible bool
@@ -97,16 +105,23 @@ type jsFunctionObject struct {
 	isArrow            bool
 	capturedThis       Value
 	isClassConstructor bool
+	isStrict           bool
+	isDerived          bool
+	homeObjID          int64
 }
 
 type jsCallFrame struct {
-	returnIP int
-	envID    int64
-	thisVal  Value
-	tryDepth int
-	savedSP  int
-	isCtor   bool
-	ctorObj  Value
+	returnIP     int
+	envID        int64
+	fn           Value
+	thisVal      Value
+	newTarget    Value
+	tryDepth     int
+	savedSP      int
+	isCtor       bool
+	ctorObj      Value
+	jsStrictMode bool
+	isSuperCall  bool
 }
 
 type jsForInEnumerator struct {
@@ -310,6 +325,103 @@ func jsDefaultPropertyDescriptor(v Value) jsPropertyDescriptor {
 	return jsPropertyDescriptor{Value: v, HasValue: true, Enumerable: true, Configurable: true, Writable: true}
 }
 
+func (vm *VM) jsSetProto(target Value, proto Value) {
+	if target.Type != VTJSObject && target.Type != VTJSFunction {
+		return
+	}
+	id := target.Num
+	obj := vm.jsObjectItems[id]
+	if obj == nil {
+		obj = make(map[string]Value, 2)
+		vm.jsObjectItems[id] = obj
+	}
+	obj["__js_proto"] = proto
+}
+
+// jsClassInherit wires a derived class to its superclass and returns the subclass.
+func (vm *VM) jsClassInherit(subclass Value, superclass Value) Value {
+	if subclass.Type != VTJSFunction && subclass.Type != VTJSObject {
+		vm.jsThrowTypeError("Class constructor cannot be used as a base value")
+		return Value{Type: VTJSUndefined}
+	}
+
+	if superclass.Type == VTNull {
+		proto, deferred := vm.jsMemberGet(subclass, "prototype")
+		if !deferred && proto.Type == VTJSObject {
+			vm.jsSetProto(proto, NewNull())
+		}
+		return subclass
+	}
+
+	if superclass.Type != VTJSFunction && superclass.Type != VTJSObject {
+		vm.jsThrowTypeError("Class extends value is not a constructor or null")
+		return Value{Type: VTJSUndefined}
+	}
+
+	if superclass.Type == VTJSObject {
+		if ctorName := vm.jsObjectStringProperty(superclass, "__js_ctor"); ctorName == "" {
+			vm.jsThrowTypeError("Class extends value is not a constructor or null")
+			return Value{Type: VTJSUndefined}
+		}
+	}
+
+	vm.jsSetProto(subclass, superclass)
+
+	derivedProto, deferred := vm.jsMemberGet(subclass, "prototype")
+	if deferred || derivedProto.Type != VTJSObject {
+		vm.jsThrowTypeError("Class prototype is not available")
+		return Value{Type: VTJSUndefined}
+	}
+
+	superProto, deferred := vm.jsMemberGet(superclass, "prototype")
+	if deferred {
+		vm.jsThrowTypeError("Class extends value is not a constructor or null")
+		return Value{Type: VTJSUndefined}
+	}
+	if superProto.Type != VTJSObject && superProto.Type != VTNull {
+		vm.jsThrowTypeError("Superclass prototype is not an object or null")
+		return Value{Type: VTJSUndefined}
+	}
+
+	vm.jsSetProto(derivedProto, superProto)
+	return subclass
+}
+
+func (vm *VM) jsDefineProperty(target Value, name string, kind int, val Value) {
+	if target.Type != VTJSObject && target.Type != VTJSFunction {
+		return
+	}
+	id := target.Num
+	props := vm.jsEnsurePropertyMap(id)
+	desc, ok := props[name]
+	if !ok {
+		desc = jsPropertyDescriptor{
+			Enumerable:   false,
+			Configurable: true,
+			Writable:     true,
+		}
+	}
+
+	switch kind {
+	case jsPropertyKindMethod:
+		desc.Value = val
+		desc.HasValue = true
+		desc.Writable = true
+	case jsPropertyKindGet:
+		desc.Getter = val
+		desc.HasGetter = true
+		desc.HasValue = false
+		desc.Writable = false
+	case jsPropertyKindSet:
+		desc.Setter = val
+		desc.HasSetter = true
+		desc.HasValue = false
+		desc.Writable = false
+	}
+
+	vm.jsSetDescriptor(id, name, desc)
+}
+
 func (vm *VM) jsGetDescriptor(objID int64, key string) (jsPropertyDescriptor, bool) {
 	props, ok := vm.jsPropertyItems[objID]
 	if ok {
@@ -372,16 +484,18 @@ func jsCtorNeedsPrototype(ctorName string) bool {
 }
 
 func (vm *VM) jsGetPrototypeValue(v Value) Value {
-	switch v.Type {
-	case VTJSObject:
+	if v.Type == VTJSObject || v.Type == VTJSFunction {
 		if obj, ok := vm.jsObjectItems[v.Num]; ok {
 			if proto, exists := obj["__js_proto"]; exists {
 				return proto
 			}
 		}
-	case VTJSFunction:
+	}
+	if v.Type == VTJSFunction {
 		if fn, ok := vm.jsFunctionItems[v.Num]; ok && fn != nil && fn.protoID != 0 {
-			return Value{Type: VTJSObject, Num: fn.protoID}
+			// Fallback: this is usually the prototype object for instances,
+			// but we prefer __js_proto for actual inheritance chain.
+			// Actually, for functions, __js_proto IS the parent constructor.
 		}
 	}
 	return Value{Type: VTJSUndefined}
@@ -400,7 +514,7 @@ func (vm *VM) jsResolveObjectMember(objID int64, member string, visited map[int6
 		return jsPropertyDescriptor{}, false
 	}
 	proto, exists := obj["__js_proto"]
-	if !exists || proto.Type != VTJSObject {
+	if !exists || (proto.Type != VTJSObject && proto.Type != VTJSFunction) {
 		return jsPropertyDescriptor{}, false
 	}
 	return vm.jsResolveObjectMember(proto.Num, member, visited)
@@ -950,7 +1064,8 @@ func (vm *VM) jsSetName(name string, val Value) {
 
 	// In strict mode, assigning to an undeclared variable is a ReferenceError
 	if vm.jsStrictMode {
-		vm.raise(vbscript.VariableNotDefined, fmt.Sprintf("%s is not defined", name))
+		vm.jsThrowReferenceError(fmt.Sprintf("%s is not defined", name))
+		return
 	}
 
 	// Non-strict mode: create variable in root/current environment
@@ -964,6 +1079,10 @@ func (vm *VM) jsSetName(name string, val Value) {
 func (vm *VM) jsGetName(name string) Value {
 	vm.ensureJSRootEnv()
 	if strings.EqualFold(name, "this") {
+		if vm.jsThisValue.Type == VTJSUninitialized {
+			vm.jsThrowReferenceError("jsGetName: Must call super constructor in derived class before accessing 'this'")
+			return Value{Type: VTJSUndefined}
+		}
 		return vm.jsThisValue
 	}
 	if strings.EqualFold(name, "eval") {
@@ -1306,6 +1425,8 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	params := make([]string, 0, len(template.Names))
 	restParam := ""
 	isClassConstructor := false
+	isStrict := false
+	isDerived := false
 	for i := 0; i < len(template.Names); i++ {
 		name := template.Names[i]
 		if strings.HasPrefix(name, jsRestParamPrefix) {
@@ -1314,6 +1435,14 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 		}
 		if name == jsClassConstructorFlag {
 			isClassConstructor = true
+			continue
+		}
+		if name == jsStrictModeFlag {
+			isStrict = true
+			continue
+		}
+		if name == jsDerivedConstructorFlag {
+			isDerived = true
 			continue
 		}
 		params = append(params, name)
@@ -1327,6 +1456,8 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 		envID:              vm.jsActiveEnvID,
 		protoID:            proto.Num,
 		isClassConstructor: isClassConstructor,
+		isStrict:           isStrict,
+		isDerived:          isDerived,
 	}
 	// Arrow functions capture the current 'this' value lexically at creation time.
 	if template.Type == VTJSArrowFunctionTemplate {
@@ -1346,7 +1477,9 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	return fnVal
 }
 
-func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj Value, isCtor bool) bool {
+func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj Value, isCtor bool, newTarget Value, isSuperCall bool) bool {
+	// Debug:
+	// fmt.Printf("jsBeginFunctionCall: fn=%v, isCtor=%v, isSuper=%v\n", fn, isCtor, isSuperCall)
 	closure, ok := vm.jsFunctionItems[fn.Num]
 	if !ok || closure == nil {
 		return false
@@ -1356,15 +1489,21 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 		thisVal = closure.capturedThis
 	}
 	frame := jsCallFrame{
-		returnIP: vm.ip,
-		envID:    vm.jsActiveEnvID,
-		thisVal:  vm.jsThisValue,
-		tryDepth: len(vm.jsTryStack),
-		savedSP:  vm.sp,
-		isCtor:   isCtor,
-		ctorObj:  ctorObj,
+		returnIP:     vm.ip,
+		envID:        vm.jsActiveEnvID,
+		fn:           fn,
+		thisVal:      vm.jsThisValue,
+		newTarget:    vm.jsNewTarget,
+		tryDepth:     len(vm.jsTryStack),
+		savedSP:      vm.sp,
+		isCtor:       isCtor,
+		ctorObj:      ctorObj,
+		jsStrictMode: vm.jsStrictMode,
+		isSuperCall:  isSuperCall,
 	}
 	vm.jsCallStack = append(vm.jsCallStack, frame)
+	vm.jsStrictMode = closure.isStrict
+	vm.jsNewTarget = newTarget
 	envID := vm.allocJSID()
 	bindings := make(map[string]Value, len(closure.params)+2)
 	for i := 0; i < len(closure.params); i++ {
@@ -2079,8 +2218,27 @@ func (vm *VM) jsReturn(retVal Value) {
 	}
 	vm.jsActiveEnvID = frame.envID
 	vm.jsThisValue = frame.thisVal
+	vm.jsNewTarget = frame.newTarget
+	vm.jsStrictMode = frame.jsStrictMode
 	vm.ip = frame.returnIP
 	vm.sp = frame.savedSP
+	if frame.isSuperCall {
+		// This was a super() call in a constructor. Assign the result to 'this'.
+		newThis := retVal
+		if retVal.Type != VTJSObject && retVal.Type != VTJSFunction && retVal.Type != VTObject && retVal.Type != VTNativeObject && retVal.Type != VTArray {
+			newThis = frame.ctorObj
+		}
+		vm.jsThisValue = newThis
+		if len(vm.jsCallStack) > 0 {
+			vm.jsCallStack[len(vm.jsCallStack)-1].thisVal = newThis
+			if vm.jsCallStack[len(vm.jsCallStack)-1].ctorObj.Type == VTJSUninitialized {
+				vm.jsCallStack[len(vm.jsCallStack)-1].ctorObj = newThis
+			}
+		}
+		vm.push(newThis)
+		return
+	}
+
 	if frame.isCtor {
 		switch retVal.Type {
 		case VTJSObject, VTJSFunction, VTObject, VTNativeObject, VTArray:
@@ -2095,6 +2253,10 @@ func (vm *VM) jsReturn(retVal Value) {
 }
 
 func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
+	if target.Type == VTJSUninitialized {
+		vm.jsThrowReferenceError("Must call super constructor in derived class before accessing 'this'")
+		return Value{Type: VTJSUndefined}, false
+	}
 	switch target.Type {
 	case VTNativeObject:
 		return vm.dispatchMemberGet(target, member), false
@@ -4652,6 +4814,10 @@ func (vm *VM) jsVBArrayGetItem(obj Value, args []Value) Value {
 }
 
 func (vm *VM) jsMemberSet(target Value, member string, val Value) {
+	if target.Type == VTJSUninitialized {
+		vm.jsThrowReferenceError("Must call super constructor in derived class before accessing 'this'")
+		return
+	}
 	switch target.Type {
 	case VTNativeObject:
 		vm.dispatchMemberSet(target.Num, member, val)
@@ -5026,6 +5192,34 @@ func (vm *VM) jsEnumerateForOfValues(source Value) []Value {
 	return nil
 }
 
+func (vm *VM) jsSuperCall(args []Value) Value {
+	if len(vm.jsCallStack) == 0 {
+		vm.jsThrowReferenceError("super() call outside of function")
+		return Value{Type: VTJSUndefined}
+	}
+	currentFrameIdx := len(vm.jsCallStack) - 1
+	currentFrame := &vm.jsCallStack[currentFrameIdx]
+	currentFn := currentFrame.fn
+	if currentFn.Type != VTJSFunction {
+		vm.jsThrowReferenceError("super() call outside of class constructor")
+		return Value{Type: VTJSUndefined}
+	}
+
+	// 1. Get the super constructor
+	superCtor := vm.jsGetPrototypeValue(currentFn)
+	if superCtor.Type != VTJSFunction && superCtor.Type != VTJSObject {
+		vm.jsThrowTypeError("Super constructor is not a constructor")
+		return Value{Type: VTJSUndefined}
+	}
+
+	// 2. Call the super constructor
+	// In ES6, super() call in derived constructor uses new.target
+	newTarget := vm.jsNewTarget
+
+	// Call the constructor as a super call
+	return vm.jsConstruct(superCtor, args, newTarget, true)
+}
+
 func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 	switch callee.Type {
 	case VTJSFunction:
@@ -5045,7 +5239,7 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 				return vm.jsCall(closure.boundFn, closure.boundThis, callArgs)
 			}
 			child := vm.cloneForExecuteLocal(len(vm.bytecode))
-			if child.jsBeginFunctionCall(callee, thisVal, args, Value{Type: VTJSUndefined}, false) {
+			if child.jsBeginFunctionCall(callee, thisVal, args, Value{Type: VTJSUndefined}, false, Value{Type: VTJSUndefined}, false) {
 				if err := child.Run(); err != nil {
 					vm.syncExecuteGlobalState(child)
 					if vmErr, ok := err.(*VMError); ok {
@@ -5555,14 +5749,27 @@ func (vm *VM) jsUpdateIndex(target Value, index Value, delta float64, post bool)
 	return next
 }
 
-// jsNew implements the 'new' operator for constructor calls.
 func (vm *VM) jsNew(constructor Value, args []Value) Value {
+	return vm.jsConstruct(constructor, args, constructor, false)
+}
+
+func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSuper bool) Value {
 	if constructor.Type == VTJSFunction {
+		closure := vm.jsFunctionItems[constructor.Num]
+		if closure != nil && closure.isDerived {
+			// Derived class constructor: 'this' is uninitialized until super() is called.
+			if vm.jsBeginFunctionCall(constructor, Value{Type: VTJSUninitialized}, args, Value{Type: VTJSUninitialized}, true, newTarget, isSuper) {
+				return Value{Type: VTJSUndefined}
+			}
+			return Value{Type: VTJSUninitialized}
+		}
+
 		instanceID := vm.allocJSID()
 		vm.jsObjectItems[instanceID] = make(map[string]Value, 8)
 		vm.jsPropertyItems[instanceID] = make(map[string]jsPropertyDescriptor, 8)
 		instance := Value{Type: VTJSObject, Num: instanceID}
-		proto, deferred := vm.jsMemberGet(constructor, "prototype")
+		// Use prototype from newTarget (which might be the subclass if this is a base constructor call via super())
+		proto, deferred := vm.jsMemberGet(newTarget, "prototype")
 		if !deferred && proto.Type == VTJSObject {
 			vm.jsObjectItems[instanceID]["__js_proto"] = proto
 		} else {
@@ -5571,7 +5778,7 @@ func (vm *VM) jsNew(constructor Value, args []Value) Value {
 				vm.jsObjectItems[instanceID]["__js_proto"] = fallback
 			}
 		}
-		if vm.jsBeginFunctionCall(constructor, instance, args, instance, true) {
+		if vm.jsBeginFunctionCall(constructor, instance, args, instance, true, newTarget, isSuper) {
 			return Value{Type: VTJSUndefined}
 		}
 		return instance
@@ -5861,4 +6068,101 @@ func jsStringLength(s string) int64 {
 		}
 	}
 	return length
+}
+
+func (vm *VM) jsSuperGet(member string) Value {
+	if len(vm.jsCallStack) == 0 {
+		return Value{Type: VTJSUndefined}
+	}
+	currentFn := vm.jsCallStack[len(vm.jsCallStack)-1].fn
+	if currentFn.Type != VTJSFunction {
+		return Value{Type: VTJSUndefined}
+	}
+	closure := vm.jsFunctionItems[currentFn.Num]
+	if closure == nil || closure.homeObjID == 0 {
+		// Not inside a class method
+		vm.jsThrowTypeError("super member access outside of class method")
+		return Value{Type: VTJSUndefined}
+	}
+
+	homeObj := Value{Type: VTJSObject, Num: closure.homeObjID}
+	superProto := vm.jsGetPrototypeValue(homeObj)
+	if superProto.Type == VTJSUndefined {
+		return Value{Type: VTJSUndefined}
+	}
+
+	val, deferred := vm.jsMemberGet(superProto, member)
+	if deferred {
+		// Getter call was initiated
+		return Value{Type: VTJSUndefined}
+	}
+	return val
+}
+
+func (vm *VM) jsSuperSet(member string, val Value) {
+	if len(vm.jsCallStack) == 0 {
+		return
+	}
+	currentFn := vm.jsCallStack[len(vm.jsCallStack)-1].fn
+	if currentFn.Type != VTJSFunction {
+		return
+	}
+	closure := vm.jsFunctionItems[currentFn.Num]
+	if closure == nil || closure.homeObjID == 0 {
+		vm.jsThrowTypeError("super member assignment outside of class method")
+		return
+	}
+
+	homeObj := Value{Type: VTJSObject, Num: closure.homeObjID}
+	superProto := vm.jsGetPrototypeValue(homeObj)
+	if superProto.Type == VTJSUndefined {
+		return
+	}
+
+	// Super assignment receiver is 'this'
+	vm.jsMemberSet(vm.jsThisValue, member, val)
+}
+
+func (vm *VM) jsSuperCallMember(member string, args []Value) Value {
+	if len(vm.jsCallStack) == 0 {
+		return Value{Type: VTJSUndefined}
+	}
+	currentFn := vm.jsCallStack[len(vm.jsCallStack)-1].fn
+	if currentFn.Type != VTJSFunction {
+		return Value{Type: VTJSUndefined}
+	}
+	closure := vm.jsFunctionItems[currentFn.Num]
+	if closure == nil || closure.homeObjID == 0 {
+		vm.jsThrowTypeError("super member call outside of class method")
+		return Value{Type: VTJSUndefined}
+	}
+
+	homeObj := Value{Type: VTJSObject, Num: closure.homeObjID}
+	superProto := vm.jsGetPrototypeValue(homeObj)
+	if superProto.Type == VTJSUndefined {
+		vm.jsThrowTypeError("Super prototype is undefined")
+		return Value{Type: VTJSUndefined}
+	}
+
+	// Resolve the method from superProto
+	method, deferred := vm.jsMemberGet(superProto, member)
+	if deferred {
+		return Value{Type: VTJSUndefined}
+	}
+
+	if method.Type != VTJSFunction && method.Type != VTNativeObject && method.Type != VTBuiltin {
+		vm.jsThrowTypeError(fmt.Sprintf("super.%s is not a function", member))
+		return Value{Type: VTJSUndefined}
+	}
+
+	// Call the method with 'this' set to current instance
+	return vm.jsCall(method, vm.jsThisValue, args)
+}
+
+func (vm *VM) jsSuperIndexGet(index Value) Value {
+	return vm.jsSuperGet(vm.jsPropertyKeyFromValue(index))
+}
+
+func (vm *VM) jsSuperIndexSet(index Value, val Value) {
+	vm.jsSuperSet(vm.jsPropertyKeyFromValue(index), val)
 }
