@@ -346,8 +346,12 @@ func (c *Compiler) parseStatement() {
 
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
 			c.move() // Consume '='
-			c.parseExpression(PrecNone)
 			op, idx := c.resolveSetVar(name)
+			rhsStart := len(c.bytecode)
+			c.parseExpression(PrecNone)
+			if c.tryOptimizeGlobalIncrementAssignment(rhsStart, op, idx) {
+				return
+			}
 			if c.isLocal && c.currentFunctionName != "" && strings.EqualFold(name, c.currentFunctionName) {
 				// Function/Property return slot assignment must always overwrite the
 				// local Variant directly, regardless of its previous runtime subtype.
@@ -453,6 +457,7 @@ func (c *Compiler) parseStatement() {
 				//
 				// Peephole optimisation for Response.Write <expr>:
 				// When the target is the intrinsic Response object (not shadowed by the user)
+
 				// and the method is Write with a single argument that is a top-level &
 				// concatenation chain, flatten the chain into individual stack pushes and
 				// emit OpWriteN(N) instead of the normal OpConcat+OpCallMember sequence.
@@ -603,6 +608,60 @@ func (c *Compiler) parseStatementCallChain() bool {
 		c.emit(OpPop)
 	}
 	return handled
+}
+
+// tryOptimizeGlobalIncrementAssignment rewrites `name = name +/- 1` into the dedicated
+// global increment/decrement opcode when the target resolves to a global slot.
+func (c *Compiler) tryOptimizeGlobalIncrementAssignment(rhsStart int, op OpCode, idx int) bool {
+	if op != OpSetGlobal || rhsStart < 0 || rhsStart >= len(c.bytecode) {
+		return false
+	}
+	code := c.bytecode[rhsStart:]
+	offset := 3
+	if len(code) == 8 && OpCode(code[3]) == OpCoerceToValue {
+		offset = 4
+	} else if len(code) != 7 {
+		return false
+	}
+	if OpCode(code[0]) != OpGetGlobal {
+		return false
+	}
+	if int(binary.BigEndian.Uint16(code[1:3])) != idx {
+		return false
+	}
+	if OpCode(code[offset]) != OpConstant {
+		return false
+	}
+	constIdx := int(binary.BigEndian.Uint16(code[offset+1 : offset+3]))
+	if constIdx < 0 || constIdx >= len(c.constants) {
+		return false
+	}
+	constVal := c.constants[constIdx]
+	if constVal.Type == VTInteger && constVal.Num == 1 {
+		if OpCode(code[len(code)-1]) == OpAdd {
+			c.bytecode = c.bytecode[:rhsStart]
+			c.emit(OpIncGlobalInt, idx)
+			return true
+		}
+		if OpCode(code[len(code)-1]) == OpSub {
+			c.bytecode = c.bytecode[:rhsStart]
+			c.emit(OpDecGlobalInt, idx)
+			return true
+		}
+	}
+	if constVal.Type == VTDouble && constVal.Flt == 1 {
+		if OpCode(code[len(code)-1]) == OpAdd {
+			c.bytecode = c.bytecode[:rhsStart]
+			c.emit(OpIncGlobalInt, idx)
+			return true
+		}
+		if OpCode(code[len(code)-1]) == OpSub {
+			c.bytecode = c.bytecode[:rhsStart]
+			c.emit(OpDecGlobalInt, idx)
+			return true
+		}
+	}
+	return false
 }
 
 // parseSetMemberAssignmentChain compiles Set assignments targeting chained member expressions.
@@ -2325,6 +2384,16 @@ func (c *Compiler) emitForLoopStepUpdate(loopVarName string, hasUnitStep bool, u
 			return
 		}
 	}
+	if hasUnitStep && opLoopGet == OpGetGlobal {
+		if unitStep == 1 {
+			c.emit(OpIncGlobalInt, idxLoopGet)
+			return
+		}
+		if unitStep == -1 {
+			c.emit(OpDecGlobalInt, idxLoopGet)
+			return
+		}
+	}
 
 	c.emit(opLoopGet, idxLoopGet)
 	opStepGet, idxStepGet := c.resolveVar(stepName)
@@ -2346,6 +2415,22 @@ func (c *Compiler) emitForNextFastInt(varLocalIdx, endLocalIdx int, unitStep int
 		byte(OpForNextFastInt),
 		byte(varLocalIdx>>8), byte(varLocalIdx),
 		byte(endLocalIdx>>8), byte(endLocalIdx),
+		stepSign,
+		byte(bodyTarget>>24), byte(bodyTarget>>16), byte(bodyTarget>>8), byte(bodyTarget),
+	)
+}
+
+// emitForNextFastGlobalInt appends the 10-byte OpForNextFastGlobalInt super-instruction directly
+// into the bytecode slice.
+func (c *Compiler) emitForNextFastGlobalInt(varGlobalIdx, endGlobalIdx int, unitStep int64, bodyTarget int) {
+	stepSign := byte(0x01)
+	if unitStep < 0 {
+		stepSign = 0xFF
+	}
+	c.bytecode = append(c.bytecode,
+		byte(OpForNextFastGlobalInt),
+		byte(varGlobalIdx>>8), byte(varGlobalIdx),
+		byte(endGlobalIdx>>8), byte(endGlobalIdx),
 		stepSign,
 		byte(bodyTarget>>24), byte(bodyTarget>>16), byte(bodyTarget>>8), byte(bodyTarget),
 	)
@@ -2536,6 +2621,15 @@ func (c *Compiler) parseForToStatement() {
 		initConst, initIsConst := c.inspectConstantIntEmission(initExprStart, initExprEnd)
 		limitConst, limitIsConst := c.inspectConstantIntEmission(limitExprStart, limitExprEnd)
 		c.parseForToStatementFastPath(
+			loopVarName, idxLoopGet, idxEndGet, unitStep,
+			initConst, initIsConst, limitConst, limitIsConst,
+		)
+		return
+	}
+	if hasUnitStep && opLoopGet == OpGetGlobal && opEndGet == OpGetGlobal {
+		initConst, initIsConst := c.inspectConstantIntEmission(initExprStart, initExprEnd)
+		limitConst, limitIsConst := c.inspectConstantIntEmission(limitExprStart, limitExprEnd)
+		c.parseForToStatementFastPathGlobal(
 			loopVarName, idxLoopGet, idxEndGet, unitStep,
 			initConst, initIsConst, limitConst, limitIsConst,
 		)
@@ -2841,6 +2935,69 @@ func (c *Compiler) expectIdentifier() string {
 //
 // The returned count tells OpWriteN how many stack values to consume.
 // Only the outmost & chain is flattened; nested parenthesised expressions or
+
+// parseForToStatementFastPathGlobal compiles the body of a unit-step For...Next loop whose
+// counter and limit are both global slots.
+func (c *Compiler) parseForToStatementFastPathGlobal(
+	loopVarName string,
+	varGlobalIdx, endGlobalIdx int,
+	unitStep int64,
+	initConst int64, initIsConst bool,
+	limitConst int64, limitIsConst bool,
+) {
+	preLoopStart := len(c.bytecode)
+
+	c.emit(OpGetGlobal, varGlobalIdx)
+	c.emit(OpGetGlobal, endGlobalIdx)
+	if unitStep == 1 {
+		c.emit(OpLte)
+	} else {
+		c.emit(OpGte)
+	}
+	jumpExit := c.emitJump(OpJumpIfFalse)
+
+	bodyStart := len(c.bytecode)
+
+	for !c.matchEof() && !c.checkKeyword(vbscript.KeywordNext) {
+		c.parseStatement()
+	}
+	bodyEnd := len(c.bytecode)
+
+	if isDeadLoopBody(c.bytecode, bodyStart, bodyEnd) && initIsConst && limitIsConst {
+		c.bytecode = c.bytecode[:preLoopStart]
+
+		var finalVal int64
+		loopWillRun := (unitStep == 1 && initConst <= limitConst) ||
+			(unitStep == -1 && initConst >= limitConst)
+		if loopWillRun {
+			finalVal = limitConst + unitStep
+		} else {
+			finalVal = initConst
+		}
+
+		finalIdx := c.addConstant(NewInteger(finalVal))
+		c.emit(OpConstant, finalIdx)
+		c.emit(OpLetGlobal, varGlobalIdx)
+
+		c.expectKeyword(vbscript.KeywordNext)
+		if c.isIdentifierLikeToken(c.next) {
+			c.move()
+		}
+		c.popLoopContextAndPatch(len(c.bytecode))
+		return
+	}
+
+	c.emitForNextFastGlobalInt(varGlobalIdx, endGlobalIdx, unitStep, bodyStart)
+
+	c.patchJump(jumpExit)
+
+	c.expectKeyword(vbscript.KeywordNext)
+	if c.isIdentifierLikeToken(c.next) {
+		c.move()
+	}
+	c.popLoopContextAndPatch(len(c.bytecode))
+}
+
 // sub-expressions with their own & are compiled normally (they still produce a
 // single Value via the regular OpConcat path inside parseExpression).
 func (c *Compiler) parseResponseWriteFlatChain() int {

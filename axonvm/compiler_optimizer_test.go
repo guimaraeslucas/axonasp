@@ -248,3 +248,75 @@ func TestJScriptChainedFolding(t *testing.T) {
 		t.Errorf("JScript chained folding: got %q, want %q", out, "10")
 	}
 }
+
+// TestVBScriptDirectMathOpcodes verifies that hot unary math builtins compile
+// to dedicated opcodes instead of generic OpCall dispatch.
+func TestVBScriptDirectMathOpcodes(t *testing.T) {
+	source := `<% Response.Write Int(3.9) & "|" & Round(2.5) & "|" & Abs(-9) & "|" & Sqr(81) %>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	if !scanBytecodeForOp(compiler.Bytecode(), OpMathInt) {
+		t.Error("expected OpMathInt in bytecode")
+	}
+	if !scanBytecodeForOp(compiler.Bytecode(), OpMathRound) {
+		t.Error("expected OpMathRound in bytecode")
+	}
+	if !scanBytecodeForOp(compiler.Bytecode(), OpMathAbs) {
+		t.Error("expected OpMathAbs in bytecode")
+	}
+	if !scanBytecodeForOp(compiler.Bytecode(), OpMathSqr) {
+		t.Error("expected OpMathSqr in bytecode")
+	}
+
+	out := runVBSAndGetOutput(t, source)
+	if out != "3|2|9|9" {
+		t.Fatalf("unexpected direct-math output: got %q, want %q", out, "3|2|9|9")
+	}
+}
+
+// TestVBScriptIntegerInferenceOpRewrite verifies arithmetic over inferred integer
+// locals is rewritten to integer VM opcodes.
+func TestVBScriptIntegerInferenceOpRewrite(t *testing.T) {
+	source := `<% Dim a, b, c : a = 9 : b = 3 : c = a + b * 2 - 1 : Response.Write c %>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	if !scanBytecodeForOp(compiler.Bytecode(), OpIAdd) {
+		t.Error("expected OpIAdd in bytecode")
+	}
+	if !scanBytecodeForOp(compiler.Bytecode(), OpIMul) {
+		t.Error("expected OpIMul in bytecode")
+	}
+	if !scanBytecodeForOp(compiler.Bytecode(), OpISub) {
+		t.Error("expected OpISub in bytecode")
+	}
+
+	out := runVBSAndGetOutput(t, source)
+	if out != "14" {
+		t.Fatalf("unexpected integer inference output: got %q, want %q", out, "14")
+	}
+}
+
+// TestVBScriptIntegerDivPow2ToShift verifies integer division by a power-of-two
+// constant is rewritten to the dedicated integer right-shift opcode.
+func TestVBScriptIntegerDivPow2ToShift(t *testing.T) {
+	source := `<% Dim x, y : x = 64 : y = x \ 4 : Response.Write y %>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	if !scanBytecodeForOp(compiler.Bytecode(), OpIRightShift) {
+		t.Error("expected OpIRightShift in bytecode")
+	}
+
+	out := runVBSAndGetOutput(t, source)
+	if out != "16" {
+		t.Fatalf("unexpected integer shift output: got %q, want %q", out, "16")
+	}
+}

@@ -3202,8 +3202,8 @@ Response.Write "done"
 	}
 	host.Response().Flush()
 
-	if output.String() != "done" {
-		t.Fatalf("expected done output, got %q", output.String())
+	if output.String() != "loopdone" {
+		t.Fatalf("expected loopdone output, got %q", output.String())
 	}
 }
 

@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -833,7 +834,7 @@ func opcodeOperandSize(op OpCode) int {
 		OpRegisterClass,
 		OpGetGlobal, OpSetGlobal, OpEraseGlobal, OpGetLocal, OpSetLocal, OpEraseLocal,
 		OpArgGlobalRef, OpArgLocalRef,
-		OpLetGlobal, OpLetLocal, OpIncLocalInt, OpDecLocalInt,
+		OpLetGlobal, OpLetLocal, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt,
 		OpCall,
 		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSMemberGet, OpJSMemberSet,
 		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSDelete, OpJSSuperCall,
@@ -851,6 +852,8 @@ func opcodeOperandSize(op OpCode) int {
 		OpJSJumpIfNullish, OpJSJumpIfNotNullish, OpJSJumpIfNotUndefined,
 		OpJSCase, OpJSDefault, OpJSBreak, OpJSContinue, OpJSForInCleanup, OpJSForOfCleanup:
 		return 4
+	case OpForNextFastInt, OpForNextFastGlobalInt:
+		return 9
 	// 1-byte opcodes (none)
 	case OpJSSetProto, OpJSSetThis, OpJSSuperIndexGet, OpJSSuperIndexSet:
 		return 0
@@ -875,9 +878,6 @@ func opcodeOperandSize(op OpCode) int {
 	// 8-byte operands: nameConstIdx(2) + limitConstIdx(2) + exitTarget(4)
 	case OpJSJumpIfLessFast:
 		return 8
-	// 9-byte operands: varLocalIdx(2) + endLocalIdx(2) + stepSign(1) + bodyTarget(4)
-	case OpForNextFastInt:
-		return 9
 	// 10-byte operands: classNameIdx(2) + propertyNameIdx(2) + userSubIdx(2) + paramCount(2) + isPublic(2)
 	case OpRegisterClassPropertyGet, OpRegisterClassPropertyLet, OpRegisterClassPropertySet:
 		return 10
@@ -983,12 +983,23 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			userSubIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(userSubIdx))
 			ip += 6
-		case OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal, OpLabel, OpArgGlobalRef, OpArgLocalRef, OpLetGlobal, OpLetLocal, OpCall, OpIncLocalInt, OpDecLocalInt, OpWriteN:
+		case OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal, OpLabel, OpArgGlobalRef, OpArgLocalRef, OpLetGlobal, OpLetLocal, OpCall, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt, OpWriteN:
 			ip += 2
 		case OpForNextFastInt:
 			// varLocalIdx(2) + endLocalIdx(2) + stepSign(1): local indices, no remapping needed.
 			// bodyTarget(4): absolute bytecode offset that must be rebased.
 			ip += 5
+			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
+			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
+			ip += 4
+		case OpForNextFastGlobalInt:
+			// varGlobalIdx(2) + endGlobalIdx(2) + stepSign(1): global slots that must be rebased.
+			globalIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(globalIdx))
+			ip += 2
+			endIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(endIdx))
+			ip += 3
 			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
 			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
 			ip += 4
@@ -1591,6 +1602,50 @@ aspExecLoop:
 				vm.stack[slot] = vm.subtractValues(current, NewInteger(1))
 			}
 
+		case OpIncGlobalInt:
+			idx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			current := vm.Globals[idx]
+			switch current.Type {
+			case VTInteger:
+				current.Num++
+				vm.Globals[idx] = current
+			case VTDouble:
+				current.Flt++
+				vm.Globals[idx] = current
+			default:
+				next := vm.addValues(current, NewInteger(1))
+				if current.Type == VTObject {
+					vm.decrementObjectRefCount(current)
+				}
+				vm.Globals[idx] = next
+				if next.Type == VTObject {
+					vm.incrementObjectRefCount(next)
+				}
+			}
+
+		case OpDecGlobalInt:
+			idx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			current := vm.Globals[idx]
+			switch current.Type {
+			case VTInteger:
+				current.Num--
+				vm.Globals[idx] = current
+			case VTDouble:
+				current.Flt--
+				vm.Globals[idx] = current
+			default:
+				next := vm.subtractValues(current, NewInteger(1))
+				if current.Type == VTObject {
+					vm.decrementObjectRefCount(current)
+				}
+				vm.Globals[idx] = next
+				if next.Type == VTObject {
+					vm.incrementObjectRefCount(next)
+				}
+			}
+
 		// OpForNextFastInt — fused increment/decrement + bounds-check + conditional back-jump.
 		// The loop variable and limit are both local frame slots; step direction is encoded in
 		// a single sign byte.  The fast integer branch executes with zero heap allocations.
@@ -1652,6 +1707,83 @@ aspExecLoop:
 				}
 			}
 
+		case OpForNextFastGlobalInt:
+			varIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			endIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			stepSign := int8(vm.bytecode[vm.ip])
+			vm.ip++
+			bodyTarget := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+			vm.ip += 4
+
+			curr := vm.Globals[varIdx]
+			limit := vm.Globals[endIdx]
+
+			if curr.Type == VTInteger && limit.Type == VTInteger {
+				if stepSign > 0 {
+					curr.Num++
+					vm.Globals[varIdx] = curr
+					if curr.Num <= limit.Num {
+						vm.ip = bodyTarget
+					}
+				} else {
+					curr.Num--
+					vm.Globals[varIdx] = curr
+					if curr.Num >= limit.Num {
+						vm.ip = bodyTarget
+					}
+				}
+				continue
+			}
+
+			if curr.Type == VTDouble && limit.Type == VTDouble {
+				if stepSign > 0 {
+					curr.Flt++
+					vm.Globals[varIdx] = curr
+					if curr.Flt <= limit.Flt {
+						vm.ip = bodyTarget
+					}
+				} else {
+					curr.Flt--
+					vm.Globals[varIdx] = curr
+					if curr.Flt >= limit.Flt {
+						vm.ip = bodyTarget
+					}
+				}
+				continue
+			}
+
+			if stepSign > 0 {
+				switch curr.Type {
+				case VTDouble:
+					curr.Flt++
+				default:
+					curr = vm.addValues(curr, NewInteger(1))
+				}
+				if curr.Type == VTObject {
+					vm.decrementObjectRefCount(vm.Globals[varIdx])
+				}
+				vm.Globals[varIdx] = curr
+				if vm.asFloat(curr) <= vm.asFloat(limit) {
+					vm.ip = bodyTarget
+				}
+			} else {
+				switch curr.Type {
+				case VTDouble:
+					curr.Flt--
+				default:
+					curr = vm.subtractValues(curr, NewInteger(1))
+				}
+				if curr.Type == VTObject {
+					vm.decrementObjectRefCount(vm.Globals[varIdx])
+				}
+				vm.Globals[varIdx] = curr
+				if vm.asFloat(curr) >= vm.asFloat(limit) {
+					vm.ip = bodyTarget
+				}
+			}
+
 		case OpAdd:
 			// Reduce the top two stack values in-place to avoid extra Value copies.
 			vm.stack[vm.sp-1] = vm.addValues(vm.stack[vm.sp-1], vm.stack[vm.sp])
@@ -1693,6 +1825,106 @@ aspExecLoop:
 			// VBScript integer division: a \ b
 			vm.stack[vm.sp-1] = vm.intDivideValues(vm.stack[vm.sp-1], vm.stack[vm.sp])
 			vm.sp--
+
+		case OpIRightShift:
+			right := vm.coerceInt64(resolveCallable(vm, vm.stack[vm.sp]))
+			left := vm.coerceInt64(resolveCallable(vm, vm.stack[vm.sp-1]))
+			if right <= 0 {
+				vm.stack[vm.sp-1] = NewInteger(left)
+			} else if right >= 63 {
+				if left < 0 {
+					vm.stack[vm.sp-1] = NewInteger(-1)
+				} else {
+					vm.stack[vm.sp-1] = NewInteger(0)
+				}
+			} else {
+				vm.stack[vm.sp-1] = NewInteger(left >> uint(right))
+			}
+			vm.sp--
+
+		case OpMathSin:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Sin(input))
+
+		case OpMathCos:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Cos(input))
+
+		case OpMathTan:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Tan(input))
+
+		case OpMathAtn:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Atan(input))
+
+		case OpMathSqr:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Sqrt(input))
+
+		case OpMathAbs:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			if arg.Type == VTDouble {
+				vm.stack[vm.sp] = NewDouble(math.Abs(arg.Flt))
+			} else {
+				val := arg.Num
+				if val < 0 {
+					val = -val
+				}
+				vm.stack[vm.sp] = NewInteger(val)
+			}
+
+		case OpMathExp:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Exp(input))
+
+		case OpMathLog:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.Log(input))
+
+		case OpMathRound:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewDouble(math.RoundToEven(input))
+
+		case OpMathInt:
+			arg := resolveCallable(vm, vm.stack[vm.sp])
+			input := float64(arg.Num)
+			if arg.Type == VTDouble {
+				input = arg.Flt
+			}
+			vm.stack[vm.sp] = NewInteger(int64(math.Floor(input)))
 
 		case OpNeq:
 			a := vm.stack[vm.sp-1]

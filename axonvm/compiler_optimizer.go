@@ -23,6 +23,7 @@ package axonvm
 import (
 	"encoding/binary"
 	"math"
+	"math/bits"
 	"strconv"
 )
 
@@ -35,10 +36,219 @@ func (c *Compiler) optimizePeephole() {
 	for {
 		folded := c.optimizePeepholePass()
 		propagated := c.optimizeLocalCopyPropagationPass()
-		if !folded && !propagated {
+		intOptimized := c.optimizeIntegerArithmeticPass()
+		if !folded && !propagated && !intOptimized {
 			break
 		}
 	}
+}
+
+type intStackValue struct {
+	isInt      bool
+	isConstInt bool
+	constInt   int64
+	producerIP int
+}
+
+func pushIntStack(stack *[]intStackValue, value intStackValue) {
+	*stack = append(*stack, value)
+}
+
+func popIntStack(stack *[]intStackValue) intStackValue {
+	if len(*stack) == 0 {
+		return intStackValue{}
+	}
+	last := len(*stack) - 1
+	v := (*stack)[last]
+	*stack = (*stack)[:last]
+	return v
+}
+
+func clearIntInference(locals map[uint16]bool, globals map[uint16]bool, stack *[]intStackValue) {
+	clear(locals)
+	clear(globals)
+	*stack = (*stack)[:0]
+}
+
+func rewriteDivisorConstantToShift(constants *[]Value, bytecode []byte, rhs intStackValue) (int64, bool) {
+	if !rhs.isConstInt || rhs.constInt <= 0 {
+		return 0, false
+	}
+	divisor := uint64(rhs.constInt)
+	if divisor == 0 || divisor&(divisor-1) != 0 {
+		return 0, false
+	}
+	shift := int64(bits.TrailingZeros64(divisor))
+	if rhs.producerIP < 0 || rhs.producerIP+2 >= len(bytecode) {
+		return 0, false
+	}
+	if OpCode(bytecode[rhs.producerIP]) != OpConstant {
+		return 0, false
+	}
+	newConstIdx := len(*constants)
+	*constants = append(*constants, NewInteger(shift))
+	binary.BigEndian.PutUint16(bytecode[rhs.producerIP+1:rhs.producerIP+3], uint16(newConstIdx))
+	return shift, true
+}
+
+// optimizeIntegerArithmeticPass performs one linear integer-inference pass over
+// bytecode and rewrites arithmetic opcodes to integer fast paths when safe.
+func (c *Compiler) optimizeIntegerArithmeticPass() bool {
+	if c == nil || len(c.bytecode) == 0 {
+		return false
+	}
+
+	targets := collectJumpTargets(c.bytecode)
+	knownIntLocals := make(map[uint16]bool)
+	knownIntGlobals := make(map[uint16]bool)
+	stack := make([]intStackValue, 0, 32)
+	changed := false
+
+	for ip := 0; ip < len(c.bytecode); {
+		if _, boundary := targets[ip]; boundary {
+			clearIntInference(knownIntLocals, knownIntGlobals, &stack)
+		}
+
+		op := OpCode(c.bytecode[ip])
+		size := opcodeOperandSize(op)
+		instrEnd := ip + 1 + size
+		if instrEnd > len(c.bytecode) {
+			break
+		}
+
+		switch op {
+		case OpConstant:
+			idx := int(binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3]))
+			entry := intStackValue{producerIP: ip}
+			if idx >= 0 && idx < len(c.constants) {
+				v := c.constants[idx]
+				if v.Type == VTInteger {
+					entry.isInt = true
+					entry.isConstInt = true
+					entry.constInt = v.Num
+				}
+			}
+			pushIntStack(&stack, entry)
+
+		case OpGetLocal:
+			idx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			pushIntStack(&stack, intStackValue{isInt: knownIntLocals[idx], producerIP: ip})
+
+		case OpGetGlobal:
+			idx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			pushIntStack(&stack, intStackValue{isInt: knownIntGlobals[idx], producerIP: ip})
+
+		case OpCoerceToValue:
+			// No type information change for numeric inference.
+
+		case OpSetLocal, OpLetLocal:
+			idx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			rhs := popIntStack(&stack)
+			if rhs.isInt {
+				knownIntLocals[idx] = true
+			} else {
+				delete(knownIntLocals, idx)
+			}
+
+		case OpSetGlobal, OpLetGlobal:
+			idx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			rhs := popIntStack(&stack)
+			if rhs.isInt {
+				knownIntGlobals[idx] = true
+			} else {
+				delete(knownIntGlobals, idx)
+			}
+
+		case OpIncLocalInt, OpDecLocalInt:
+			idx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			knownIntLocals[idx] = true
+
+		case OpIncGlobalInt, OpDecGlobalInt:
+			idx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			knownIntGlobals[idx] = true
+
+		case OpForNextFastInt:
+			varIdx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			endIdx := binary.BigEndian.Uint16(c.bytecode[ip+3 : ip+5])
+			knownIntLocals[varIdx] = true
+			knownIntLocals[endIdx] = true
+			stack = stack[:0]
+
+		case OpForNextFastGlobalInt:
+			varIdx := binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3])
+			endIdx := binary.BigEndian.Uint16(c.bytecode[ip+3 : ip+5])
+			knownIntGlobals[varIdx] = true
+			knownIntGlobals[endIdx] = true
+			stack = stack[:0]
+
+		case OpAdd, OpSub, OpMul:
+			rhs := popIntStack(&stack)
+			lhs := popIntStack(&stack)
+			res := intStackValue{producerIP: ip}
+			if lhs.isInt && rhs.isInt {
+				res.isInt = true
+				switch op {
+				case OpAdd:
+					c.bytecode[ip] = byte(OpIAdd)
+				case OpSub:
+					c.bytecode[ip] = byte(OpISub)
+				case OpMul:
+					c.bytecode[ip] = byte(OpIMul)
+				}
+				changed = true
+			}
+			pushIntStack(&stack, res)
+
+		case OpIDiv:
+			rhs := popIntStack(&stack)
+			lhs := popIntStack(&stack)
+			res := intStackValue{producerIP: ip}
+			if lhs.isInt && rhs.isInt {
+				res.isInt = true
+				if _, ok := rewriteDivisorConstantToShift(&c.constants, c.bytecode, rhs); ok {
+					c.bytecode[ip] = byte(OpIRightShift)
+					changed = true
+				}
+			}
+			pushIntStack(&stack, res)
+
+		case OpIAdd, OpISub, OpIMul, OpIRightShift:
+			_ = popIntStack(&stack)
+			_ = popIntStack(&stack)
+			pushIntStack(&stack, intStackValue{isInt: true, producerIP: ip})
+
+		case OpDiv, OpMod, OpPow, OpConcat,
+			OpEq, OpNeq, OpLt, OpGt, OpLte, OpGte, OpIsRef, OpIsNotRef,
+			OpAnd, OpOr, OpXor, OpEqv, OpImp:
+			_ = popIntStack(&stack)
+			_ = popIntStack(&stack)
+			pushIntStack(&stack, intStackValue{producerIP: ip})
+
+		case OpNeg, OpNot:
+			a := popIntStack(&stack)
+			pushIntStack(&stack, intStackValue{isInt: a.isInt, producerIP: ip})
+
+		case OpPop, OpWrite:
+			_ = popIntStack(&stack)
+
+		case OpWriteN:
+			count := int(binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3]))
+			for i := 0; i < count; i++ {
+				_ = popIntStack(&stack)
+			}
+
+		case OpCall, OpCallMember, OpCallBuiltin, OpArraySet, OpMemberGet, OpMemberSet, OpMemberSetSet,
+			OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
+			OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,
+			OpJSBreak, OpJSContinue, OpJSForInCleanup, OpJSJumpIfLessFast,
+			OpJSCall, OpJSCallMember, OpJSTailCall, OpJSTailCallMember, OpJSNew:
+			clearIntInference(knownIntLocals, knownIntGlobals, &stack)
+		}
+
+		ip = instrEnd
+	}
+
+	return changed
 }
 
 // optimizeLocalCopyPropagationPass performs conservative local copy propagation
@@ -119,6 +329,9 @@ func (c *Compiler) optimizeLocalCopyPropagationPass() bool {
 					delete(alias, k)
 				}
 			}
+			clear(alias)
+
+		case OpForNextFastGlobalInt:
 			clear(alias)
 
 		case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
@@ -237,6 +450,12 @@ func collectJumpTargets(bytecode []byte) map[int]struct{} {
 		case OpForNextFastInt:
 			// Body target sits at bytes 6-9 of the operand field
 			// (after varLocalIdx(2), endLocalIdx(2), stepSign(1)).
+			if ip+9 <= len(bytecode) {
+				targets[int(binary.BigEndian.Uint32(bytecode[ip+5:]))] = struct{}{}
+			}
+		case OpForNextFastGlobalInt:
+			// Body target sits at bytes 6-9 of the operand field
+			// (after varGlobalIdx(2), endGlobalIdx(2), stepSign(1)).
 			if ip+9 <= len(bytecode) {
 				targets[int(binary.BigEndian.Uint32(bytecode[ip+5:]))] = struct{}{}
 			}

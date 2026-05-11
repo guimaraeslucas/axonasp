@@ -88,6 +88,69 @@ Next
 	}
 }
 
+// TestForNextFastGlobalIntEmitted verifies that the compiler emits OpForNextFastGlobalInt
+// for a unit-step For...Next loop whose counter and limit both resolve to global slots.
+func TestForNextFastGlobalIntEmitted(t *testing.T) {
+	src := `<%
+Dim g_i, g_sum, g_limit, g_count
+g_sum = 0
+g_limit = 3
+For g_i = 1 To g_limit
+	g_sum = g_sum + g_i
+Next
+g_count = 1
+g_count = g_count + 1
+g_count = g_count - 1
+Response.Write g_sum & "|" & g_i & "|" & g_count
+%>`
+	comp := NewASPCompiler(src)
+	if err := comp.Compile(); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	hasFastGlobal := false
+	hasIncGlobal := false
+	hasDecGlobal := false
+	for _, b := range comp.Bytecode() {
+		switch OpCode(b) {
+		case OpForNextFastGlobalInt:
+			hasFastGlobal = true
+		case OpIncGlobalInt:
+			hasIncGlobal = true
+		case OpDecGlobalInt:
+			hasDecGlobal = true
+		}
+	}
+
+	if !hasFastGlobal {
+		t.Fatal("expected OpForNextFastGlobalInt in bytecode for global unit-step For loop")
+	}
+	if !hasIncGlobal {
+		t.Fatal("expected OpIncGlobalInt in bytecode for global increment assignment")
+	}
+	if !hasDecGlobal {
+		t.Fatal("expected OpDecGlobalInt in bytecode for global decrement assignment")
+	}
+}
+
+// TestForNextFastGlobalIntCorrectness verifies that the new global fast paths
+// still execute with the expected VBScript semantics.
+func TestForNextFastGlobalIntCorrectness(t *testing.T) {
+	src := `<%
+Dim g_i, g_sum, g_limit, g_count
+g_sum = 0
+g_limit = 3
+For g_i = 1 To g_limit
+	g_sum = g_sum + g_i
+Next
+g_count = 1
+g_count = g_count + 1
+g_count = g_count - 1
+Response.Write g_sum & "|" & g_i & "|" & g_count
+%>`
+	runVBAndExpect(t, src, "6|4|1")
+}
+
 // TestForNextFastIntSlowPathForNonUnitStep verifies that a loop with Step 2
 // is NOT compiled with OpForNextFastInt.
 func TestForNextFastIntSlowPathForNonUnitStep(t *testing.T) {

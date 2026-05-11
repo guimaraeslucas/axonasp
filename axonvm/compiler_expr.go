@@ -803,6 +803,10 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 					return
 				}
 
+				if c.tryEmitFastUnaryMathCall(callTargetName, callTargetPos, argExprStart, argCount, callTargetIsGlobal) {
+					return
+				}
+
 				c.emit(OpCall, argCount)
 				if callTargetIsGlobal {
 					c.registerForwardCallPatch(callTargetName, callTargetPos)

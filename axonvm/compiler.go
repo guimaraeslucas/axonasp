@@ -1150,6 +1150,67 @@ func (c *Compiler) resolveConstInitVar(name string) (OpCode, int) {
 	return OpSetGlobal, idx
 }
 
+var vbFastUnaryMathOpcodes = map[string]OpCode{
+	"sin":   OpMathSin,
+	"cos":   OpMathCos,
+	"tan":   OpMathTan,
+	"atn":   OpMathAtn,
+	"sqr":   OpMathSqr,
+	"abs":   OpMathAbs,
+	"exp":   OpMathExp,
+	"log":   OpMathLog,
+	"round": OpMathRound,
+	"int":   OpMathInt,
+}
+
+// isBuiltinGlobalSlot reports whether one global slot still maps to one builtin name.
+func (c *Compiler) isBuiltinGlobalSlot(slot int, builtinLower string) bool {
+	if c == nil || c.Globals == nil || slot < 0 || slot >= len(c.Globals.names) {
+		return false
+	}
+	if slot >= c.userGlobalsStart {
+		return false
+	}
+	globalLower := strings.ToLower(strings.TrimSpace(c.Globals.names[slot]))
+	if globalLower == "" || globalLower != builtinLower {
+		return false
+	}
+	_, exists := BuiltinIndex[builtinLower]
+	return exists
+}
+
+// tryEmitFastUnaryMathCall rewrites one builtin call target + OpCall into one direct math opcode.
+func (c *Compiler) tryEmitFastUnaryMathCall(callTargetName string, callTargetPos int, argExprStart int, argCount int, callTargetIsGlobal bool) bool {
+	if c == nil || !callTargetIsGlobal || argCount != 1 {
+		return false
+	}
+	builtinLower := strings.ToLower(strings.TrimSpace(callTargetName))
+	op, exists := vbFastUnaryMathOpcodes[builtinLower]
+	if !exists {
+		return false
+	}
+	if callTargetPos < 0 || callTargetPos+3 > len(c.bytecode) || argExprStart < 0 || argExprStart > len(c.bytecode) {
+		return false
+	}
+	if OpCode(c.bytecode[callTargetPos]) != OpGetGlobal {
+		return false
+	}
+	if callTargetPos+3 != argExprStart {
+		return false
+	}
+
+	globalSlot := int(binary.BigEndian.Uint16(c.bytecode[callTargetPos+1 : callTargetPos+3]))
+	if !c.isBuiltinGlobalSlot(globalSlot, builtinLower) {
+		return false
+	}
+
+	copy(c.bytecode[callTargetPos:], c.bytecode[argExprStart:])
+	c.bytecode = c.bytecode[:len(c.bytecode)-(argExprStart-callTargetPos)]
+	c.emit(op)
+	c.clearLastCallTarget()
+	return true
+}
+
 func (c *Compiler) emitLine(line int, column int) {
 	if line < 0 {
 		line = 0

@@ -50,6 +50,22 @@ const (
 	OpISub
 	OpIMul
 	OpIDiv
+	// OpIRightShift performs arithmetic right shift on two integer operands.
+	// Stack before: [..., left, right]
+	// Stack after:  [..., left >> right]
+	OpIRightShift
+
+	// Dedicated zero-allocation unary math opcodes for hot VBScript builtins.
+	OpMathSin
+	OpMathCos
+	OpMathTan
+	OpMathAtn
+	OpMathSqr
+	OpMathAbs
+	OpMathExp
+	OpMathLog
+	OpMathRound
+	OpMathInt
 
 	// String & Logical
 	OpConcat
@@ -325,6 +341,12 @@ const (
 	// OpDecLocalInt decrements one local numeric slot in place.
 	// [OpCode, OffsetHigh, OffsetLow]
 	OpDecLocalInt
+	// OpIncGlobalInt increments one global numeric slot in place.
+	// [OpCode, IdxHigh, IdxLow]
+	OpIncGlobalInt
+	// OpDecGlobalInt decrements one global numeric slot in place.
+	// [OpCode, IdxHigh, IdxLow]
+	OpDecGlobalInt
 
 	// OpNop is a no-operation placeholder emitted by the peephole optimizer to
 	// fill bytes that were made redundant by constant folding.  The VM advances
@@ -346,6 +368,17 @@ const (
 	// stepSign: 0x01 = increment (+1), 0xFF = decrement (-1).
 	// Total: 10 bytes (1 opcode + 9 operand bytes).
 	OpForNextFastInt
+
+	// OpForNextFastGlobalInt is a fused super-instruction for global For...Next loops with ±1 step.
+	// It atomically increments or decrements a global counter slot, compares it to a global limit
+	// slot, and jumps directly back to the loop body when still in range.
+	//
+	// Stack: unchanged — no values pushed or popped.
+	// Format: [OpCode(1), varGlobalIdxH(1), varGlobalIdxL(1), endGlobalIdxH(1), endGlobalIdxL(1),
+	//          stepSign(1), bodyTargetB3(1), bodyTargetB2(1), bodyTargetB1(1), bodyTargetB0(1)]
+	// stepSign: 0x01 = increment (+1), 0xFF = decrement (-1).
+	// Total: 10 bytes (1 opcode + 9 operand bytes).
+	OpForNextFastGlobalInt
 
 	// OpJSJumpIfLessFast is a fused test-and-branch super-instruction for JScript numeric
 	// for-loops that use the pattern `identifier < numericLiteral` as their test condition.
@@ -414,8 +447,46 @@ func (op OpCode) String() string {
 		return "OpEraseClassMember"
 	case OpAdd:
 		return "OpAdd"
+	case OpSub:
+		return "OpSub"
+	case OpMul:
+		return "OpMul"
 	case OpDiv:
 		return "OpDiv"
+	case OpMod:
+		return "OpMod"
+	case OpPow:
+		return "OpPow"
+	case OpIAdd:
+		return "OpIAdd"
+	case OpISub:
+		return "OpISub"
+	case OpIMul:
+		return "OpIMul"
+	case OpIDiv:
+		return "OpIDiv"
+	case OpIRightShift:
+		return "OpIRightShift"
+	case OpMathSin:
+		return "OpMathSin"
+	case OpMathCos:
+		return "OpMathCos"
+	case OpMathTan:
+		return "OpMathTan"
+	case OpMathAtn:
+		return "OpMathAtn"
+	case OpMathSqr:
+		return "OpMathSqr"
+	case OpMathAbs:
+		return "OpMathAbs"
+	case OpMathExp:
+		return "OpMathExp"
+	case OpMathLog:
+		return "OpMathLog"
+	case OpMathRound:
+		return "OpMathRound"
+	case OpMathInt:
+		return "OpMathInt"
 	case OpConcat:
 		return "OpConcat"
 	case OpEq:
@@ -494,6 +565,10 @@ func (op OpCode) String() string {
 		return "OpIncLocalInt"
 	case OpDecLocalInt:
 		return "OpDecLocalInt"
+	case OpIncGlobalInt:
+		return "OpIncGlobalInt"
+	case OpDecGlobalInt:
+		return "OpDecGlobalInt"
 	case OpCoerceToValue:
 		return "OpCoerceToValue"
 	case OpAxonASP:
@@ -736,6 +811,8 @@ func (op OpCode) String() string {
 		return "OpNop"
 	case OpForNextFastInt:
 		return "OpForNextFastInt"
+	case OpForNextFastGlobalInt:
+		return "OpForNextFastGlobalInt"
 	case OpJSJumpIfLessFast:
 		return "OpJSJumpIfLessFast"
 	case OpJSComputedPropertySet:

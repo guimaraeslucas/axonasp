@@ -1339,16 +1339,16 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 			c.emit(OpJSDivideAssign, nameIdx)
 		case jstoken.REMAINDER_ASSIGN, jstoken.REMAINDER:
 			c.emit(OpJSModuloAssign, nameIdx)
-		case jstoken.EXPONENT_ASSIGN:
+		case jstoken.EXPONENT_ASSIGN, jstoken.EXPONENT:
 			c.emit(OpJSExponentAssign, nameIdx)
 			return
-		case jstoken.LOGICAL_AND_ASSIGN:
+		case jstoken.LOGICAL_AND_ASSIGN, jstoken.LOGICAL_AND:
 			c.emit(OpJSLogicalAndAssign, nameIdx)
 			return
-		case jstoken.LOGICAL_OR_ASSIGN:
+		case jstoken.LOGICAL_OR_ASSIGN, jstoken.LOGICAL_OR:
 			c.emit(OpJSLogicalOrAssign, nameIdx)
 			return
-		case jstoken.COALESCE_ASSIGN:
+		case jstoken.COALESCE_ASSIGN, jstoken.COALESCE:
 			c.emit(OpJSCoalesceAssign, nameIdx)
 			return
 		default:
