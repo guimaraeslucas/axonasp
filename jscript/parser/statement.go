@@ -95,6 +95,13 @@ func (self *_parser) parseStatement() ast.Statement {
 		return self.parseThrowStatement()
 	case token.TRY:
 		return self.parseTryStatement()
+	case token.KEYWORD:
+		if strings.EqualFold(self.literal, "import") {
+			return self.parseImportDeclaration()
+		}
+		if strings.EqualFold(self.literal, "export") {
+			return self.parseExportDeclaration()
+		}
 	}
 
 	expression := self.parseExpression()
@@ -158,6 +165,133 @@ func (self *_parser) parseTryStatement() ast.Statement {
 	if node.Catch == nil && node.Finally == nil {
 		self.error(node.Try, "Missing catch or finally after try")
 		return &ast.BadStatement{From: node.Try, To: node.Body.Idx1()}
+	}
+
+	return node
+}
+
+func (self *_parser) parseModuleStringLiteral() *ast.StringLiteral {
+	if self.token != token.STRING {
+		self.errorUnexpectedToken(self.token)
+		return nil
+	}
+	lit := &ast.StringLiteral{
+		Idx:     self.idx,
+		Literal: self.literal,
+		Value:   self.parsedLiteral,
+	}
+	self.next()
+	return lit
+}
+
+func (self *_parser) parseImportDeclaration() ast.Statement {
+	idx := self.idx
+	self.next() // import
+
+	node := &ast.ImportDeclaration{Import: idx}
+
+	if self.token == token.STRING {
+		node.Source = self.parseModuleStringLiteral()
+		self.semicolon()
+		return node
+	}
+
+	if self.token == token.LEFT_BRACE {
+		self.next()
+		for self.token != token.RIGHT_BRACE && self.token != token.EOF {
+			self.tokenToBindingId()
+			if !token.IsId(self.token) && self.token != token.KEYWORD {
+				self.errorUnexpectedToken(self.token)
+				break
+			}
+			imported := self.parseIdentifier()
+			local := imported
+			if self.token == token.IDENTIFIER && strings.EqualFold(self.literal, "as") {
+				self.next()
+				self.tokenToBindingId()
+				if !token.IsId(self.token) && self.token != token.KEYWORD {
+					self.errorUnexpectedToken(self.token)
+					break
+				}
+				local = self.parseIdentifier()
+			}
+			node.Specifiers = append(node.Specifiers, ast.JSImportSpecifier{Imported: imported, Local: local})
+			if self.token != token.RIGHT_BRACE {
+				self.expect(token.COMMA)
+			}
+		}
+		self.expect(token.RIGHT_BRACE)
+	} else {
+		self.error(idx, "Unsupported import declaration form")
+		self.nextStatement()
+		return &ast.BadStatement{From: idx, To: self.idx}
+	}
+
+	if !(self.token == token.IDENTIFIER && strings.EqualFold(self.literal, "from")) {
+		self.errorUnexpectedToken(self.token)
+		self.nextStatement()
+		return &ast.BadStatement{From: idx, To: self.idx}
+	}
+	self.next()
+	node.Source = self.parseModuleStringLiteral()
+	self.semicolon()
+	return node
+}
+
+func (self *_parser) parseExportDeclaration() ast.Statement {
+	idx := self.idx
+	self.next() // export
+
+	node := &ast.ExportDeclaration{Export: idx}
+
+	if self.token == token.LEFT_BRACE {
+		self.next()
+		for self.token != token.RIGHT_BRACE && self.token != token.EOF {
+			self.tokenToBindingId()
+			if !token.IsId(self.token) && self.token != token.KEYWORD {
+				self.errorUnexpectedToken(self.token)
+				break
+			}
+			local := self.parseIdentifier()
+			exported := local
+			if self.token == token.IDENTIFIER && strings.EqualFold(self.literal, "as") {
+				self.next()
+				self.tokenToBindingId()
+				if !token.IsId(self.token) && self.token != token.KEYWORD {
+					self.errorUnexpectedToken(self.token)
+					break
+				}
+				exported = self.parseIdentifier()
+			}
+			node.Specifiers = append(node.Specifiers, ast.JSExportSpecifier{Local: local, Exported: exported})
+			if self.token != token.RIGHT_BRACE {
+				self.expect(token.COMMA)
+			}
+		}
+		self.expect(token.RIGHT_BRACE)
+		if self.token == token.IDENTIFIER && strings.EqualFold(self.literal, "from") {
+			self.next()
+			node.Source = self.parseModuleStringLiteral()
+		}
+		self.semicolon()
+		return node
+	}
+
+	switch self.token {
+	case token.VAR:
+		node.Declaration = self.parseVariableStatement()
+	case token.LET:
+		node.Declaration = self.parseLexicalDeclaration(token.LET)
+	case token.CONST:
+		node.Declaration = self.parseLexicalDeclaration(token.CONST)
+	case token.FUNCTION:
+		node.Declaration = &ast.FunctionDeclaration{Function: self.parseFunction(true, false, self.idx)}
+	case token.CLASS:
+		node.Declaration = &ast.ClassDeclaration{Class: self.parseClass(true)}
+	default:
+		self.error(idx, "Unsupported export declaration form")
+		self.nextStatement()
+		return &ast.BadStatement{From: idx, To: self.idx}
 	}
 
 	return node

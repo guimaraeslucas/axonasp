@@ -712,6 +712,9 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.jsArrayBuffers == nil {
 		vm.jsArrayBuffers = make(map[int64][]byte)
 	}
+	if vm.jsModuleInstances == nil {
+		vm.jsModuleInstances = make(map[string]*jsEnvFrame)
+	}
 	if vm.jsPromiseItems == nil {
 		vm.jsPromiseItems = make(map[int64]*jsPromiseObject)
 	}
@@ -795,6 +798,7 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.jsForOfItems)
 	clear(vm.jsEnvItems)
 	clear(vm.jsArrayBuffers)
+	clear(vm.jsModuleInstances)
 	clear(vm.jsPromiseItems)
 	clear(vm.jsGeneratorItems)
 	clear(vm.jsMicrotaskQueue)

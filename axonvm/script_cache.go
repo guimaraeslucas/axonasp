@@ -806,7 +806,12 @@ func (c *ScriptCache) LoadOrCompileWithMode(filePath string, mode ExecutionMode)
 	// Strip UTF-8 BOM if present to prevent parsing errors
 	content = stripUTF8BOM(content)
 
-	compiler := NewASPCompiler(string(content))
+	var compiler *Compiler
+	if strings.HasSuffix(strings.ToLower(cacheKey), ".js") {
+		compiler = NewJSModuleCompiler(string(content))
+	} else {
+		compiler = NewASPCompiler(string(content))
+	}
 	compiler.SetSourceName(cacheKey)
 	if err := compiler.Compile(); err != nil {
 		compileErr = err
@@ -838,7 +843,12 @@ func (c *ScriptCache) compileOnly(filePath string) (CachedProgram, error) {
 	// Strip UTF-8 BOM if present to prevent parsing errors
 	content = stripUTF8BOM(content)
 
-	compiler := NewASPCompiler(string(content))
+	var compiler *Compiler
+	if strings.HasSuffix(strings.ToLower(filePath), ".js") {
+		compiler = NewJSModuleCompiler(string(content))
+	} else {
+		compiler = NewASPCompiler(string(content))
+	}
 	compiler.SetSourceName(filePath)
 	if err := compiler.Compile(); err != nil {
 		return CachedProgram{}, err

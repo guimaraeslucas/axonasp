@@ -494,6 +494,29 @@ type (
 	ClassDeclaration struct {
 		Class *ClassLiteral
 	}
+
+	JSImportSpecifier struct {
+		Imported *Identifier
+		Local    *Identifier
+	}
+
+	ImportDeclaration struct {
+		Import     file.Idx
+		Specifiers []JSImportSpecifier
+		Source     *StringLiteral
+	}
+
+	JSExportSpecifier struct {
+		Local    *Identifier
+		Exported *Identifier
+	}
+
+	ExportDeclaration struct {
+		Export      file.Idx
+		Declaration Statement
+		Specifiers  []JSExportSpecifier
+		Source      *StringLiteral
+	}
 )
 
 // _statementNode
@@ -522,6 +545,8 @@ func (*WithStatement) _statementNode()       {}
 func (*LexicalDeclaration) _statementNode()  {}
 func (*FunctionDeclaration) _statementNode() {}
 func (*ClassDeclaration) _statementNode()    {}
+func (*ImportDeclaration) _statementNode()   {}
+func (*ExportDeclaration) _statementNode()   {}
 
 // =========== //
 // Declaration //
@@ -711,6 +736,8 @@ func (self *WithStatement) Idx0() file.Idx       { return self.With }
 func (self *LexicalDeclaration) Idx0() file.Idx  { return self.Idx }
 func (self *FunctionDeclaration) Idx0() file.Idx { return self.Function.Idx0() }
 func (self *ClassDeclaration) Idx0() file.Idx    { return self.Class.Idx0() }
+func (self *ImportDeclaration) Idx0() file.Idx   { return self.Import }
+func (self *ExportDeclaration) Idx0() file.Idx   { return self.Export }
 func (self *Binding) Idx0() file.Idx             { return self.Target.Idx0() }
 
 func (self *ForLoopInitializerExpression) Idx0() file.Idx  { return self.Expression.Idx0() }
@@ -827,6 +854,24 @@ func (self *WithStatement) Idx1() file.Idx       { return self.Body.Idx1() }
 func (self *LexicalDeclaration) Idx1() file.Idx  { return self.List[len(self.List)-1].Idx1() }
 func (self *FunctionDeclaration) Idx1() file.Idx { return self.Function.Idx1() }
 func (self *ClassDeclaration) Idx1() file.Idx    { return self.Class.Idx1() }
+func (self *ImportDeclaration) Idx1() file.Idx {
+	if self.Source != nil {
+		return self.Source.Idx1()
+	}
+	return self.Import + 6
+}
+func (self *ExportDeclaration) Idx1() file.Idx {
+	if self.Declaration != nil {
+		return self.Declaration.Idx1()
+	}
+	if self.Source != nil {
+		return self.Source.Idx1()
+	}
+	if len(self.Specifiers) > 0 {
+		return self.Specifiers[len(self.Specifiers)-1].Exported.Idx1()
+	}
+	return self.Export + 6
+}
 func (self *Binding) Idx1() file.Idx {
 	if self.Initializer != nil {
 		return self.Initializer.Idx1()

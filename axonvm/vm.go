@@ -375,7 +375,8 @@ type VM struct {
 	jsMapItems                     map[int64]map[string]Value
 	jsArrayIterators               map[int64]*jsArrayIterator
 	jsStringIterators              map[int64]*jsStringIterator
-	jsArrayBuffers                 map[int64][]byte // backing byte slices for ArrayBuffer objects
+	jsArrayBuffers                 map[int64][]byte       // backing byte slices for ArrayBuffer objects
+	jsModuleInstances              map[string]*jsEnvFrame // Subphase 8.3: Request-local module registry
 	jsPromiseItems                 map[int64]*jsPromiseObject
 	jsGeneratorItems               map[int64]*jsGeneratorObject
 	jsMicrotaskQueue               []func()
@@ -600,6 +601,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsArrayIterators:               make(map[int64]*jsArrayIterator),
 		jsStringIterators:              make(map[int64]*jsStringIterator),
 		jsArrayBuffers:                 make(map[int64][]byte),
+		jsModuleInstances:              make(map[string]*jsEnvFrame),
 		jsPromiseItems:                 make(map[int64]*jsPromiseObject),
 		jsGeneratorItems:               make(map[int64]*jsGeneratorObject),
 		jsSymbolGlobalRegistry:         make(map[string]Value),
@@ -904,7 +906,7 @@ func opcodeOperandSize(op OpCode) int {
 	case OpJSSetProto, OpJSSetThis, OpJSSuperIndexGet, OpJSSuperIndexSet:
 		return 0
 	// 4-byte operands
-	case OpLine, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember, OpJSDefineProperty, OpJSSuperCallMember:
+	case OpLine, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember, OpJSDefineProperty, OpJSSuperCallMember, OpJSExport:
 		return 4
 	// 8-byte operands
 	case OpCallMember:
@@ -1095,6 +1097,31 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 				binary.BigEndian.PutUint16(bytecode[ip:], uint16(varIdx))
 				ip += 2
 			}
+		case OpJSImport:
+			// Variable-length: moduleIdx(2) + specCount(2) + (importedIdx(2), localIdx(2))*N
+			if ip+4 > len(bytecode) {
+				break
+			}
+			moduleIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(moduleIdx))
+			ip += 2
+			specCount := int(binary.BigEndian.Uint16(bytecode[ip:]))
+			ip += 2
+			for j := 0; j < specCount && ip+4 <= len(bytecode); j++ {
+				importedIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(importedIdx))
+				ip += 2
+				localIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(localIdx))
+				ip += 2
+			}
+		case OpJSExport:
+			localIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(localIdx))
+			ip += 2
+			exportIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(exportIdx))
+			ip += 2
 		case OpSetOption:
 			ip += 2
 		case OpLine:
@@ -1125,6 +1152,11 @@ func (vm *VM) appendExecuteProgram(globalCount int, constants []Value, bytecode 
 	for i := range appendedConstants {
 		if appendedConstants[i].Type == VTUserSub {
 			appendedConstants[i].Num += int64(bytecodeBase)
+			continue
+		}
+		if appendedConstants[i].Type == VTJSFunctionTemplate {
+			appendedConstants[i].Num += int64(bytecodeBase)
+			appendedConstants[i].Flt += float64(bytecodeBase)
 		}
 	}
 	appendedBytecode := append([]byte(nil), bytecode...)
@@ -2801,6 +2833,44 @@ aspExecLoop:
 			vm.ip += 2
 			value := vm.pop()
 			vm.jsSetName(vm.constants[nameIdx].Str, value)
+
+		case OpJSImport:
+			moduleIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			specCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			moduleEnv, ok := vm.jsImportModule(vm.constants[moduleIdx].Str)
+			if !ok {
+				// Keep bytecode cursor consistent even after import failure.
+				for i := 0; i < specCount; i++ {
+					vm.ip += 4
+				}
+				continue
+			}
+			for i := 0; i < specCount; i++ {
+				importedIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				vm.ip += 2
+				localIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				vm.ip += 2
+				importedName := vm.constants[importedIdx].Str
+				localName := vm.constants[localIdx].Str
+				exportKey := vm.jsModuleExportKey(importedName)
+				value, exists := moduleEnv.bindings[exportKey]
+				if !exists {
+					value = Value{Type: VTJSUndefined}
+				}
+				vm.jsDeclareName(localName)
+				vm.jsSetName(localName, value)
+			}
+
+		case OpJSExport:
+			localIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			exportIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			localName := vm.constants[localIdx].Str
+			exportName := vm.constants[exportIdx].Str
+			vm.jsSetModuleExport(exportName, vm.jsGetName(localName))
 
 		case OpJSRootFrameEnter:
 			localCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))

@@ -1000,6 +1000,12 @@ func (c *Compiler) Compile() (err error) {
 		}
 	}
 
+	if c.isJSModule {
+		c.compileJScriptBlock(c.sourceCode)
+		c.emit(OpHalt)
+		return nil
+	}
+
 	c.resetTokenStream()
 	if c.isEval {
 		c.parseExpression(PrecNone)

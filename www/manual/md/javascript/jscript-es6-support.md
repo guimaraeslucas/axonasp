@@ -8,6 +8,65 @@ All ES6 features described here are available in `<script runat="server" languag
 
 ---
 
+## ECMAScript Modules (import and export)
+
+### Syntax
+
+```javascript
+import "./side-effects.js";
+import { add, mul as multiply } from "./math.js";
+
+export var version = "1.0";
+export function sum(a, b) {
+    return a + b;
+}
+export { sum as add };
+export { sum as addAlias } from "./math.js";
+```
+
+### Remarks
+
+- `import` and `export` are supported for server-side JavaScript modules loaded from `.js` files.
+- Module loading is **synchronous**. The VM resolves and executes imported modules in the same request execution flow.
+- Module instances are stored per request in a request-local module registry. The same module path executes only once per request and subsequent imports reuse the same module environment.
+- Compiled module bytecode uses the global script cache. This avoids recompilation when the source did not change.
+- Circular dependencies are supported with partial initialization semantics. A circular import returns the current partially initialized module environment instead of recursively re-running the same module.
+- Standard ASP objects (`Response`, `Request`, `Session`, `Application`, `Server`) remain available inside module code through normal global resolution.
+
+### Current Limitations
+
+- `import` supports side-effect imports and named imports with braces.
+- `export` supports declaration exports, named exports, and named re-exports from another module.
+- Default imports and default exports are not available in this implementation.
+- Namespace imports (`import * as x from ...`) and wildcard exports (`export * from ...`) are not available in this implementation.
+
+### Code Example
+
+```javascript
+// file: ./module-main.js
+import { bump, getSeed } from "./module-math.js";
+import { render } from "./module-render.js";
+
+Response.Write("seed=" + getSeed());
+bump();
+Response.Write("|seed2=" + getSeed());
+Response.Write("|" + render("ok"));
+
+// file: ./module-math.js
+export var seed = 5;
+export function bump() { seed = seed + 1; }
+export function getSeed() { return seed; }
+
+// file: ./module-render.js
+import { getSeed } from "./module-math.js";
+export function render(label) {
+    Response.Write("bridge");
+    return label + ":" + getSeed();
+}
+```
+
+---
+
 ## Block-Scoped Declarations (let and const)
 
 ### Syntax
@@ -1607,4 +1666,40 @@ calculate(10, 5).then(function(result) {
 });
 </script>
 ```
+
+---
+
+## ECMAScript Modules (ESM)
+
+### Syntax
+
+```javascript
+// math.js
+export const PI = 3.14159;
+export function add(a, b) { return a + b; }
+
+// main.asp
+import { PI, add } from './math.js';
+Response.Write(add(PI, 10));
+```
+
+### Remarks
+
+- AxonASP supports ES Modules via the `import` and `export` statements.
+- **Global AST Cache:** Modules are read and compiled into AST/Bytecode ONCE globally and shared across all requests.
+- **Request-Local Registry:** Each request has its own isolated module execution state. Top-level variables in a module are NOT shared between different users or subsequent requests.
+- **Singleton per Request:** A module is executed only once within a single request, even if imported multiple times.
+- **VM Reset:** Module instances are automatically cleared at the end of each request to prevent memory leaks and state contamination.
+- **Module Resolution:** Imports are resolved relative to the current file path. Absolute paths and standard ASP virtual paths are also supported.
+
+### Code Example
+
+```javascript
+<script runat="server" language="JScript">
+// Assume 'config.js' exists with: export const version = "2.0";
+import { version } from './config.js';
+Response.Write("Application Version: " + version);
+</script>
+```
+
 ```

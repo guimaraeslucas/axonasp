@@ -389,6 +389,10 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		c.emit(OpJSSetName, nameIdx)
 	case *jsast.ClassDeclaration:
 		c.compileJScriptClassDeclaration(node)
+	case *jsast.ImportDeclaration:
+		c.compileJScriptImportDeclaration(node)
+	case *jsast.ExportDeclaration:
+		c.compileJScriptExportDeclaration(node)
 	case *jsast.ReturnStatement:
 		c.emitJSLeaveWithScopes(c.withDepth)
 		if c.jsTryDepth == 0 && c.compileJScriptTailReturn(node.Argument) {
@@ -515,6 +519,126 @@ func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
 		}
 	case *jsast.SwitchStatement:
 		c.compileJScriptSwitchStatement(node)
+	}
+}
+
+func (c *Compiler) compileJScriptImportDeclaration(node *jsast.ImportDeclaration) {
+	if node == nil || node.Source == nil {
+		return
+	}
+	moduleIdx := c.addConstant(NewString(node.Source.Value.String()))
+	c.bytecode = append(c.bytecode, byte(OpJSImport))
+	c.bytecode = append(c.bytecode, byte(moduleIdx>>8), byte(moduleIdx&0xFF))
+	specCount := len(node.Specifiers)
+	c.bytecode = append(c.bytecode, byte(specCount>>8), byte(specCount&0xFF))
+	for i := 0; i < specCount; i++ {
+		importedName := ""
+		localName := ""
+		if node.Specifiers[i].Imported != nil {
+			importedName = node.Specifiers[i].Imported.Name.String()
+		}
+		if node.Specifiers[i].Local != nil {
+			localName = node.Specifiers[i].Local.Name.String()
+		}
+		importedIdx := c.addConstant(NewString(importedName))
+		localIdx := c.addConstant(NewString(localName))
+		c.bytecode = append(c.bytecode, byte(importedIdx>>8), byte(importedIdx&0xFF))
+		c.bytecode = append(c.bytecode, byte(localIdx>>8), byte(localIdx&0xFF))
+	}
+}
+
+func jsCollectDeclarationBindingNames(stmt jsast.Statement) []string {
+	if stmt == nil {
+		return nil
+	}
+	switch decl := stmt.(type) {
+	case *jsast.VariableStatement:
+		names := make([]string, 0, len(decl.List))
+		for i := 0; i < len(decl.List); i++ {
+			if id, ok := decl.List[i].Target.(*jsast.Identifier); ok {
+				names = append(names, id.Name.String())
+			}
+		}
+		return names
+	case *jsast.LexicalDeclaration:
+		names := make([]string, 0, len(decl.List))
+		for i := 0; i < len(decl.List); i++ {
+			if id, ok := decl.List[i].Target.(*jsast.Identifier); ok {
+				names = append(names, id.Name.String())
+			}
+		}
+		return names
+	case *jsast.FunctionDeclaration:
+		if decl.Function != nil && decl.Function.Name != nil {
+			return []string{decl.Function.Name.Name.String()}
+		}
+	case *jsast.ClassDeclaration:
+		if decl.Class != nil && decl.Class.Name != nil {
+			return []string{decl.Class.Name.Name.String()}
+		}
+	}
+	return nil
+}
+
+func (c *Compiler) emitJScriptExport(localName string, exportName string) {
+	localIdx := c.addConstant(NewString(localName))
+	exportIdx := c.addConstant(NewString(exportName))
+	c.emit(OpJSExport, localIdx, exportIdx)
+}
+
+func (c *Compiler) compileJScriptExportDeclaration(node *jsast.ExportDeclaration) {
+	if node == nil {
+		return
+	}
+
+	if node.Declaration != nil {
+		c.compileJScriptStatement(node.Declaration)
+		names := jsCollectDeclarationBindingNames(node.Declaration)
+		for i := 0; i < len(names); i++ {
+			c.emitJScriptExport(names[i], names[i])
+		}
+		return
+	}
+
+	if len(node.Specifiers) == 0 {
+		return
+	}
+
+	if node.Source != nil {
+		for i := 0; i < len(node.Specifiers); i++ {
+			importedName := ""
+			localAlias := ""
+			exportName := ""
+			if node.Specifiers[i].Local != nil {
+				importedName = node.Specifiers[i].Local.Name.String()
+			}
+			if node.Specifiers[i].Exported != nil {
+				exportName = node.Specifiers[i].Exported.Name.String()
+			}
+			localAlias = fmt.Sprintf("__js_export_tmp__%d", c.tempCounter)
+			c.tempCounter++
+			imp := &jsast.ImportDeclaration{
+				Source: node.Source,
+				Specifiers: []jsast.JSImportSpecifier{
+					{Imported: &jsast.Identifier{Name: jsunistring.String(importedName)}, Local: &jsast.Identifier{Name: jsunistring.String(localAlias)}},
+				},
+			}
+			c.compileJScriptImportDeclaration(imp)
+			c.emitJScriptExport(localAlias, exportName)
+		}
+		return
+	}
+
+	for i := 0; i < len(node.Specifiers); i++ {
+		localName := ""
+		exportName := ""
+		if node.Specifiers[i].Local != nil {
+			localName = node.Specifiers[i].Local.Name.String()
+		}
+		if node.Specifiers[i].Exported != nil {
+			exportName = node.Specifiers[i].Exported.Name.String()
+		}
+		c.emitJScriptExport(localName, exportName)
 	}
 }
 

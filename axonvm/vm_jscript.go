@@ -27,6 +27,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -50,6 +51,7 @@ const jsStrictModeFlag = "__axon_internal__:strict_mode"
 const jsGeneratorFlag = "__axon_internal__:generator"
 const jsAsyncFlag = "__axon_internal__:async"
 const jsDerivedConstructorFlag = "__axon_internal__:derived_constructor"
+const jsModuleExportPrefix = "__js_export__:"
 
 const (
 	jsPropertyKindMethod = 0
@@ -169,6 +171,91 @@ type jsPromiseObject struct {
 	result    Value
 	reactions []jsPromiseReaction
 	handled   bool // true if a rejection handler was attached
+}
+
+func (vm *VM) jsModuleExportKey(name string) string {
+	return jsModuleExportPrefix + name
+}
+
+func (vm *VM) jsSetModuleExport(name string, value Value) {
+	vm.ensureJSRootEnv()
+	env := vm.jsEnvItems[vm.jsActiveEnvID]
+	if env == nil {
+		env = &jsEnvFrame{bindings: make(map[string]Value, 8)}
+		vm.jsEnvItems[vm.jsActiveEnvID] = env
+	}
+	env.bindings[vm.jsModuleExportKey(name)] = value
+}
+
+func (vm *VM) jsResolveModulePath(specifier string) (string, error) {
+	trimmed := strings.TrimSpace(specifier)
+	if trimmed == "" {
+		return "", fmt.Errorf("empty module specifier")
+	}
+
+	resolved := trimmed
+	if !filepath.IsAbs(resolved) {
+		baseFile := strings.TrimSpace(vm.sourceName)
+		if baseFile == "" {
+			baseFile = strings.TrimSpace(vm.baseSourceName)
+		}
+		if baseFile == "" {
+			baseFile = "."
+		}
+		resolved = filepath.Join(filepath.Dir(baseFile), resolved)
+	}
+	if filepath.Ext(resolved) == "" {
+		resolved += ".js"
+	}
+	absPath, err := filepath.Abs(resolved)
+	if err != nil {
+		return "", err
+	}
+	return absPath, nil
+}
+
+func (vm *VM) jsImportModule(specifier string) (*jsEnvFrame, bool) {
+	modulePath, err := vm.jsResolveModulePath(specifier)
+	if err != nil {
+		vm.jsThrowReferenceError("Cannot resolve module '" + specifier + "': " + err.Error())
+		return nil, false
+	}
+
+	if env, ok := vm.jsModuleInstances[modulePath]; ok && env != nil {
+		return env, true
+	}
+
+	moduleEnvID := vm.allocJSID()
+	moduleEnv := &jsEnvFrame{parentID: 0, bindings: make(map[string]Value, 16)}
+	vm.jsEnvItems[moduleEnvID] = moduleEnv
+	vm.jsModuleInstances[modulePath] = moduleEnv
+
+	cache := getExecuteScriptCache()
+	program, loadErr := cache.LoadOrCompileWithMode(modulePath, vm.executionMode)
+	if loadErr != nil {
+		delete(vm.jsModuleInstances, modulePath)
+		delete(vm.jsEnvItems, moduleEnvID)
+		vm.jsThrowReferenceError("Cannot load module '" + modulePath + "': " + loadErr.Error())
+		return nil, false
+	}
+
+	startIP := vm.appendExecuteProgram(program.GlobalCount, program.Constants, program.Bytecode)
+	child := vm.cloneForExecuteLocal(startIP)
+	child.sourceName = modulePath
+	child.baseSourceName = modulePath
+	child.jsActiveEnvID = moduleEnvID
+	if runErr := child.Run(); runErr != nil {
+		delete(vm.jsModuleInstances, modulePath)
+		delete(vm.jsEnvItems, moduleEnvID)
+		vm.jsThrowReferenceError("Error executing module '" + modulePath + "': " + runErr.Error())
+		return nil, false
+	}
+
+	vm.syncExecuteGlobalState(child)
+	if finalEnv, ok := vm.jsModuleInstances[modulePath]; ok && finalEnv != nil {
+		return finalEnv, true
+	}
+	return moduleEnv, true
 }
 
 func (vm *VM) jsEval(args []Value) Value {

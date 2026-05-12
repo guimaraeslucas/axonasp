@@ -160,6 +160,7 @@ type Compiler struct {
 	// Only global slots at or above this index are eligible for ByRef argument write-back.
 	userGlobalsStart int
 	isEval           bool // True if compiling a VBScript expression for Eval()
+	isJSModule       bool // True if compiling a pure JScript module
 }
 
 type loopContext struct {
@@ -382,6 +383,14 @@ func (c *Compiler) setClassPropertyDeclaration(className string, property Compil
 // NewCompiler creates a new Compiler instance for pure VBScript.
 func NewCompiler(code string) *Compiler {
 	return createCompiler(code, vbscript.ModeVBScript)
+}
+
+// NewJSModuleCompiler creates a new Compiler instance for pure JScript modules.
+func NewJSModuleCompiler(code string) *Compiler {
+	c := createCompiler(code, vbscript.ModeVBScript)
+	c.isJSModule = true
+	c.sourceCode = code
+	return c
 }
 
 // NewASPCompiler creates a new Compiler instance for ASP files (starting in HTML mode).

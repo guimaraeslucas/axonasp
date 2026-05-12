@@ -206,6 +206,8 @@ const (
 	OpJSDeclareName            // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSGetName                // [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSSetName                // [OpCode, NameConstIdxHigh, NameConstIdxLow]
+	OpJSImport                 // [OpCode, ModuleConstIdxHigh, ModuleConstIdxLow, SpecCountHigh, SpecCountLow, ImportedIdxHigh, ImportedIdxLow, LocalIdxHigh, LocalIdxLow, ...]
+	OpJSExport                 // [OpCode, LocalNameConstIdxHigh, LocalNameConstIdxLow, ExportNameConstIdxHigh, ExportNameConstIdxLow]
 	OpJSGetLocal               // [OpCode, OffsetHigh, OffsetLow]
 	OpJSSetLocal               // [OpCode, OffsetHigh, OffsetLow]
 	OpJSIncLocal               // [OpCode, OffsetHigh, OffsetLow]
@@ -645,6 +647,10 @@ func (op OpCode) String() string {
 		return "OpJSGetName"
 	case OpJSSetName:
 		return "OpJSSetName"
+	case OpJSImport:
+		return "OpJSImport"
+	case OpJSExport:
+		return "OpJSExport"
 	case OpJSGetLocal:
 		return "OpJSGetLocal"
 	case OpJSSetLocal:

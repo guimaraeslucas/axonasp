@@ -99,35 +99,37 @@ Follow the subphase breakdown below for a structured implementation of Proxies a
 
 * [x] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
 
-* 🛠️ SUBPHASE 8.3: ES MODULES (ESM) CACHE & REGISTRY (CRITICAL ARCHITECTURE)
-**Goal:** Implement the split-caching architecture required to support `import` / `export` without destroying performance or leaking memory between concurrent ASP requests.
+* [x] **🛠️ SUBPHASE 8.3: ES MODULES (ESM) CACHE & REGISTRY (CRITICAL ARCHITECTURE)**
+**Goal:** Implement the split-caching architecture required to support `import` / `export` without destroying performance or leaking memory between concurrent ASP requests. This is a critical architectural change that requires careful design to ensure that module state does not leak between requests and that the caching mechanism is efficient and thread-safe. Caution must be taken to ensure that the global AST cache is read-only and shared across all requests, while the request-local registry is properly cleared after each request to prevent state leakage. Memory management is crucial here, as improperly handled module instances could lead to memory leaks or cross-request contamination.
 
-* [ ] **The Global AST Cache (Read-Only):** Modify the existing compiler/cache layer so that when an `import './module.js'` is encountered, the file is read and compiled into AST/Bytecode ONCE globally. Protect this shared cache using Go's `sync.RWMutex`.
-* [ ] **The Request-Local Registry (Execution Memory):** Add a `jsModuleInstances map[string]*jsEnvFrame` (or similar environment pointer) to the `VM` struct. This represents the memory state of the modules *for the current user's request only*.
-* [ ] **Singleton Emulation:** When a script calls `import`, the VM must check its request-local registry. If the module is not there, it retrieves the AST from the Global Cache, executes it to populate the variables, and stores the resulting environment in the local registry. If it is already there, it simply returns the existing environment reference.
-* [ ] **VM Reset Integrity (CRITICAL):** Update `resetDynamicMaps()` in `vm_pool.go` to explicitly clear the request-local module registry (`clear(vm.jsModuleInstances)`). This guarantees that module state (e.g., `let loggedInUser = 'Admin';`) is destroyed when the request ends and does not leak to the next user's VM.
+* [x] **The Global AST Cache (Read-Only):** Modify the existing compiler/cache layer so that when an `import './module.js'` or `import './module.<extension>'` is encountered, the file is read and compiled into AST/Bytecode ONCE globally. Protect this shared cache using Go's `sync.RWMutex`.
+* [x] **The Request-Local Registry (Execution Memory):** Add a `jsModuleInstances map[string]*jsEnvFrame` (or similar environment pointer) to the `VM` struct. This represents the memory state of the modules *for the current user's request only*.
+* [x] **Singleton Emulation:** When a script calls `import`, the VM must check its request-local registry. If the module is not there, it retrieves the AST from the Global Cache, executes it to populate the variables, and stores the resulting environment in the local registry. If it is already there, it simply returns the existing environment reference.
+* [x] **VM Reset Integrity (CRITICAL):** Update `resetDynamicMaps()` in `vm_pool.go` to explicitly clear the request-local module registry (`clear(vm.jsModuleInstances)`). This guarantees that module state (e.g., `let loggedInUser = 'Admin';`) is destroyed when the request ends and does not leak to the next user's VM.
+* [x] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features? Did you ensure that the module caching and registry logic is robust against concurrent requests and does not leak memory or state between them? Did you documented the new caching architecture and its implications in `jscript-es6-support.md`? Did you update this file with the itens completed in this phase?
 
 
 *🛠️ SUBPHASE 8.4: MODULE BINDING & EXECUTION (HIGH COMPLEXITY)
 
 **Goal:** Connect the syntax to the new cache architecture.
 
-* [ ] **AST & OpCodes:** Add support for `jsast.ImportDeclaration` and `jsast.ExportDeclaration`. Introduce specific OpCodes (e.g., `OpJSImport`, `OpJSExport`) to handle the resolution.
-* [ ] **Synchronous Resolution:** Since the VM has a dedicated goroutine, module resolution (reading from disk if not in the global cache) must happen synchronously.
-* [ ] **ASP Context Injection:** Ensure that standard ASP objects (`Response`, `Request`, `Session`) are automatically injected or accessible within the isolated Lexical Environment of the loaded module, preventing `ReferenceError` crashes when modules interact with the server.
+* [x] **AST & OpCodes:** Add support for `jsast.ImportDeclaration` and `jsast.ExportDeclaration`. Introduce specific OpCodes (e.g., `OpJSImport`, `OpJSExport`) to handle the resolution.
+* [x] **Synchronous Resolution:** Since the VM has a dedicated goroutine, module resolution (reading from disk if not in the global cache) must happen synchronously.
+* [x] **ASP Context Injection:** Ensure that standard ASP objects (`Response`, `Request`, `Session`) are automatically injected or accessible within the isolated Lexical Environment of the loaded module, preventing `ReferenceError` crashes when modules interact with the server.
+* [x] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features? Did you update this file with the itens completed in this phase? Did you ensure that the module binding logic correctly handles circular dependencies and does not cause infinite loops or memory leaks? Did you add comprehensive test cases for module loading, execution, and interaction with ASP objects? Did you created a test in ./www/tests/test_module_loading.asp that verifies the correct loading and execution of modules, including edge cases like circular dependencies and error handling? Did you updated the documentation in `jscript-es6-support.md` to explain how module loading works, its limitations, and any special considerations for ASP developers?
+* [x] **Documentation:** Update `jscript-es6-support.md` with detailed explanations of how module loading works, the caching architecture, and any limitations or best practices for ASP developers when using modules.
 
 ---
 
-## 🛠️ PHASE 9: ECMASCRIPT MODULES (EXTREME RISK)
+## 🛠️ PHASE 9: ECMASCRIPT MODULES 
 
-**Goal:** Shift code loading architecture to support `import` / `export`.
+**Goal:** Check and implement full support for `import` / `export`.
 
 ### Tasks:
 
-* [ ] **Dependency Resolution:** Create logic for loading and linking ES Modules. *Note: ASP is traditionally synchronous and based on `#include`.* This requires careful mapping to load ES Modules into isolated scope environments while maintaining the ASP lifecycle.
-* [ ] **Module Caching:** Implement a caching mechanism to prevent reloading the same module multiple times.
-* [ ] **Syntax & Semantics:** Update the parser to recognize `import` and `export` statements, and the compiler to handle module scope and bindings.
-* [ ] **Testing:** This is a high-risk change. Ensure comprehensive and rigorous testing to prevent breaking existing ASP applications.
+* [ ] *Default import/export and namespace import/export:* Default import/export and namespace import/export wildcard forms are currently not fully implemented. Please implement it, ensuring that the compiler correctly transforms these forms into the appropriate AST and bytecode, and that the VM can execute them without errors. For example, `export default function() {}` should be transformed into a named export with a default property, and `import * as ns from './module.js'` should create a namespace object with all exports as properties. Do not hardcode any of the transformations; they should be derived from the AST structure. Do not forget to add comprehensive test cases for these forms in both Go and ASP test files.
+* [ ] *Error handling:* Check if the VM correctly throws syntax errors for invalid module code, and runtime errors for issues during execution (e.g., missing exports, circular dependencies without proper handling) using the jscripterrorcodes.go for the correct error codes. If necessary, implement new error codes specific to module loading and execution errors. Don't hardcode errors.
+* [ ] *The Request-Local Registry (Execution Memory)*: Check if the VM's request-local registry correctly stores and retrieves module instances, ensuring that each HTTP request or VM from the pool has its own isolated module state and that there is no cross-request contamination. Verify that the registry is properly cleared after each request to prevent memory leaks or state leakage between users.
 * [ ] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
 
 ---

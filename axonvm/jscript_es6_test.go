@@ -13,9 +13,248 @@
 package axonvm
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func runJScriptModuleEntry(t *testing.T, entryPath string) (string, error) {
+	t.Helper()
+
+	cache := getExecuteScriptCache()
+	program, err := cache.LoadOrCompile(entryPath)
+	if err != nil {
+		return "", err
+	}
+
+	vm := NewVMFromCachedProgram(program)
+	vm.sourceName = entryPath
+	vm.baseSourceName = entryPath
+	host := NewMockHost()
+	var out bytes.Buffer
+	host.SetOutput(&out)
+	host.Response().SetBuffer(false)
+	vm.SetHost(host)
+
+	err = vm.Run()
+	return out.String(), err
+}
+
+func TestJScriptModuleCache(t *testing.T) {
+	// 1. Create a dummy .js module file
+	jsPath := filepath.Join(t.TempDir(), "test_module.js")
+	jsCode := "var x = 42; Response.Write(x);"
+	if err := os.WriteFile(jsPath, []byte(jsCode), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Get the global execute cache (which we modified to use NewJSModuleCompiler)
+	cache := getExecuteScriptCache()
+
+	// 3. Load or compile it
+	program, err := cache.LoadOrCompile(jsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. Verify it's a "module" by looking at the source name or just running it
+	if program.SourceName != normalizeScriptCacheKey(jsPath) {
+		t.Errorf("expected source name %q, got %q", jsPath, program.SourceName)
+	}
+
+	// 5. Run it
+	vm := NewVMFromCachedProgram(program)
+	host := NewMockHost()
+	var out bytes.Buffer
+	host.SetOutput(&out)
+	host.Response().SetBuffer(false)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != "42" {
+		t.Errorf("expected '42', got %q", out.String())
+	}
+}
+
+func TestJScriptModuleImportExportNamed(t *testing.T) {
+	dir := t.TempDir()
+	depPath := filepath.Join(dir, "dep.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	depSrc := `export var value = 7; export function inc(x) { return x + 1; }`
+	entrySrc := `import { value, inc } from "./dep.js"; Response.Write(inc(value));`
+
+	if err := os.WriteFile(depPath, []byte(depSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(entrySrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "8" {
+		t.Fatalf("expected 8, got %q", out)
+	}
+}
+
+func TestJScriptModuleReExportFrom(t *testing.T) {
+	dir := t.TempDir()
+	aPath := filepath.Join(dir, "a.js")
+	bPath := filepath.Join(dir, "b.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	if err := os.WriteFile(aPath, []byte(`export var n = 10;`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bPath, []byte(`export { n as count } from "./a.js";`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(`import { count } from "./b.js"; Response.Write(count);`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "10" {
+		t.Fatalf("expected 10, got %q", out)
+	}
+}
+
+func TestJScriptModuleCircularImport(t *testing.T) {
+	dir := t.TempDir()
+	aPath := filepath.Join(dir, "a.js")
+	bPath := filepath.Join(dir, "b.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	aSrc := `import { b } from "./b.js"; export var a = "A"; export var fromB = b;`
+	bSrc := `import { a } from "./a.js"; export var b = "B"; export var fromA = a;`
+	entrySrc := `import { a, fromB } from "./a.js"; import { b, fromA } from "./b.js"; Response.Write(a + b + "|" + fromA + "|" + fromB);`
+
+	if err := os.WriteFile(aPath, []byte(aSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bPath, []byte(bSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(entrySrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "AB|undefined|B" {
+		t.Fatalf("expected AB|undefined|B, got %q", out)
+	}
+}
+
+func TestJScriptModuleCanUseASPObjects(t *testing.T) {
+	dir := t.TempDir()
+	depPath := filepath.Join(dir, "dep.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	if err := os.WriteFile(depPath, []byte(`Response.Write("M"); export var ok = 1;`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(`import "./dep.js"; import { ok } from "./dep.js"; Response.Write(ok);`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "M1" {
+		t.Fatalf("expected M1, got %q", out)
+	}
+}
+
+func TestJScriptModuleOpcodeEmission(t *testing.T) {
+	compiler := NewJSModuleCompiler(`import { value } from "./dep.js"; export var x = value;`)
+	if err := compiler.Compile(); err != nil {
+		t.Fatal(err)
+	}
+
+	hasImport := false
+	hasExport := false
+	for ip := 0; ip < len(compiler.bytecode); {
+		op := OpCode(compiler.bytecode[ip])
+		ip++
+		if op == OpJSImport {
+			hasImport = true
+		}
+		if op == OpJSExport {
+			hasExport = true
+		}
+		size := opcodeOperandSize(op)
+		if op == OpJSImport {
+			if ip+4 > len(compiler.bytecode) {
+				t.Fatal("invalid JSImport bytecode")
+			}
+			specCount := int(compiler.bytecode[ip+2])<<8 | int(compiler.bytecode[ip+3])
+			size = 4 + (specCount * 4)
+		}
+		if op == OpJSForIterEnter || op == OpJSForIterExit {
+			if ip+2 > len(compiler.bytecode) {
+				t.Fatal("invalid for-iter bytecode")
+			}
+			count := int(compiler.bytecode[ip])<<8 | int(compiler.bytecode[ip+1])
+			size = 2 + count*2
+		}
+		ip += size
+	}
+
+	if !hasImport {
+		t.Fatal("expected OpJSImport in module bytecode")
+	}
+	if !hasExport {
+		t.Fatal("expected OpJSExport in module bytecode")
+	}
+}
+
+func TestJScriptModuleExportOnlyRuns(t *testing.T) {
+	dir := t.TempDir()
+	entryPath := filepath.Join(dir, "export_only.js")
+	src := `export var value = 7; export function inc(x) { return x + 1; }`
+	if err := os.WriteFile(entryPath, []byte(src), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestJScriptModuleImportSideEffectFromExportModule(t *testing.T) {
+	dir := t.TempDir()
+	depPath := filepath.Join(dir, "dep.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	if err := os.WriteFile(depPath, []byte(`export var value = 7; Response.Write("D");`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(`import "./dep.js"; Response.Write("E");`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "DE" {
+		t.Fatalf("expected DE, got %q", out)
+	}
+}
 
 // ---------------------------------------------------------------------------
 // ES6 Template Literals
