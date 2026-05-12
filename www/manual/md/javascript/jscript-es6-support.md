@@ -15,13 +15,16 @@ All ES6 features described here are available in `<script runat="server" languag
 ```javascript
 import "./side-effects.js";
 import { add, mul as multiply } from "./math.js";
+import square, { PI } from "./math.js"; // Default and named
+import * as ns from "./utils.js"; // Namespace import
 
 export var version = "1.0";
-export function sum(a, b) {
-    return a + b;
-}
+export function sum(a, b) { return a + b; }
+export default function(x) { return x * x; } // Default export
 export { sum as add };
 export { sum as addAlias } from "./math.js";
+export * from "./other.js"; // Wildcard re-export
+export * as ns from "./other.js"; // Namespace re-export
 ```
 
 ### Remarks
@@ -30,40 +33,35 @@ export { sum as addAlias } from "./math.js";
 - Module loading is **synchronous**. The VM resolves and executes imported modules in the same request execution flow.
 - Module instances are stored per request in a request-local module registry. The same module path executes only once per request and subsequent imports reuse the same module environment.
 - Compiled module bytecode uses the global script cache. This avoids recompilation when the source did not change.
-- Circular dependencies are supported with partial initialization semantics. A circular import returns the current partially initialized module environment instead of recursively re-running the same module.
-- Standard ASP objects (`Response`, `Request`, `Session`, `Application`, `Server`) remain available inside module code through normal global resolution.
+- Circular dependencies are supported with partial initialization semantics.
+- Standard ASP objects (`Response`, `Request`, `Session`, `Application`, `Server`) are automatically available inside modules.
+- **ReferenceError:** The VM throws a `ReferenceError` if a requested named export is missing from the source module.
 
-### Current Limitations
+---
 
-- `import` supports side-effect imports and named imports with braces.
-- `export` supports declaration exports, named exports, and named re-exports from another module.
-- Default imports and default exports are not available in this implementation.
-- Namespace imports (`import * as x from ...`) and wildcard exports (`export * from ...`) are not available in this implementation.
+## Weak Collections (WeakMap and WeakSet)
 
-### Code Example
+### Syntax
 
 ```javascript
-// file: ./module-main.js
-import { bump, getSeed } from "./module-math.js";
-import { render } from "./module-render.js";
+var wm = new WeakMap();
+var ws = new WeakSet();
 
-Response.Write("seed=" + getSeed());
-bump();
-Response.Write("|seed2=" + getSeed());
-Response.Write("|" + render("ok"));
+var key = {};
+wm.set(key, "data");
+ws.add(key);
 
-// file: ./module-math.js
-export var seed = 5;
-export function bump() { seed = seed + 1; }
-export function getSeed() { return seed; }
-
-// file: ./module-render.js
-import { getSeed } from "./module-math.js";
-export function render(label) {
-    Response.Write("bridge");
-    return label + ":" + getSeed();
-}
+Response.Write(wm.get(key)); // data
+Response.Write(ws.has(key)); // True
 ```
+
+### Remarks
+
+- `WeakMap` and `WeakSet` provide collections where keys (or values in `WeakSet`) are held weakly.
+- **Memory Safety:** Unlike standard `Map` and `Set`, weak collections do not prevent their keys from being garbage collected. This is critical for preventing memory leaks in long-running scripts where objects are used as temporary keys.
+- **Inverted Storage:** AxonASP uses an efficient "inverted storage" pattern where weak data is stored internally within the key object itself, ensuring that when the key is destroyed, the associated data is automatically reclaimed without GC overhead.
+- **Valid Keys:** Only objects (`{}`) and functions (`function`) can be used as keys. Attempting to use a primitive (string, number, boolean) as a key will throw a `TypeError`.
+- **Non-Iterable:** Weak collections are not iterable. They do not support `for...of` loops, and they do not have `.size`, `.keys()`, `.values()`, or `.entries()` methods.
 
 ---
 

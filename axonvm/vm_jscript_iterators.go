@@ -128,6 +128,52 @@ func (vm *VM) jsPopulatePrototypes(bindings map[string]Value) {
 			})
 		}
 	}
+
+	// Object.prototype methods as callable function objects.
+	if objectCtor, ok := bindings["Object"]; ok {
+		if proto, deferred := vm.jsMemberGet(objectCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			for _, name := range []string{"hasOwnProperty", "propertyIsEnumerable", "isPrototypeOf", "toString", "toLocaleString", "valueOf"} {
+				vm.jsSetDescriptor(proto.Num, name, jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction(name, "ObjectPrototype")))
+			}
+		}
+	}
+
+	// Set.prototype
+	if setCtor, ok := bindings["Set"]; ok {
+		if proto, deferred := vm.jsMemberGet(setCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			for _, name := range []string{"add", "has", "delete", "clear"} {
+				vm.jsSetDescriptor(proto.Num, name, jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction(name, "Set")))
+			}
+		}
+	}
+
+	// Map.prototype
+	if mapCtor, ok := bindings["Map"]; ok {
+		if proto, deferred := vm.jsMemberGet(mapCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			for _, name := range []string{"set", "get", "has", "delete", "clear"} {
+				vm.jsSetDescriptor(proto.Num, name, jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction(name, "Map")))
+			}
+		}
+	}
+
+	// WeakMap.prototype
+	if weakMapCtor, ok := bindings["WeakMap"]; ok {
+		if proto, deferred := vm.jsMemberGet(weakMapCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			vm.jsSetDescriptor(proto.Num, "get", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("get", "WeakMap")))
+			vm.jsSetDescriptor(proto.Num, "set", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("set", "WeakMap")))
+			vm.jsSetDescriptor(proto.Num, "has", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("has", "WeakMap")))
+			vm.jsSetDescriptor(proto.Num, "delete", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("delete", "WeakMap")))
+		}
+	}
+
+	// WeakSet.prototype
+	if weakSetCtor, ok := bindings["WeakSet"]; ok {
+		if proto, deferred := vm.jsMemberGet(weakSetCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			vm.jsSetDescriptor(proto.Num, "add", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("add", "WeakSet")))
+			vm.jsSetDescriptor(proto.Num, "has", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("has", "WeakSet")))
+			vm.jsSetDescriptor(proto.Num, "delete", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("delete", "WeakSet")))
+		}
+	}
 }
 
 // jsCreateNativeFunction creates a dummy JS function object that jsCall redirects to.

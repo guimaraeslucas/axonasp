@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"g3pix.com.br/axonasp/jscript/ftoa"
@@ -59,8 +60,11 @@ const (
 	jsPropertyKindSet    = 2
 )
 
+var jsWeakCollectionNextID atomic.Uint64
+
 type jsObjectState struct {
-	Extensible bool
+	Extensible     bool
+	HiddenWeakData map[uint64]Value
 }
 
 type jsPropertyDescriptor struct {
@@ -116,6 +120,7 @@ type jsFunctionObject struct {
 	homeObjID          int64
 	isAsync            bool
 	isGenerator        bool
+	hiddenWeakData     map[uint64]Value
 }
 
 type jsCallFrame struct {
@@ -310,6 +315,394 @@ func (vm *VM) jsExportAllFromModule(specifier string) {
 		}
 		vm.jsSetModuleExport(exportName, v)
 	}
+}
+
+func (vm *VM) jsWeakSet(key Value, weakID uint64, val Value) {
+	if key.Type != VTJSObject && key.Type != VTJSFunction {
+		vm.jsThrowTypeError("Invalid value used as weak map key")
+		return
+	}
+	if key.Type == VTJSFunction {
+		fn := vm.jsFunctionItems[key.Num]
+		if fn != nil {
+			if fn.hiddenWeakData == nil {
+				fn.hiddenWeakData = make(map[uint64]Value)
+			}
+			fn.hiddenWeakData[weakID] = val
+		}
+		return
+	}
+	// VTJSObject
+	state := vm.jsGetObjectState(key.Num)
+	if state.HiddenWeakData == nil {
+		state.HiddenWeakData = make(map[uint64]Value)
+	}
+	state.HiddenWeakData[weakID] = val
+	vm.jsObjectStateItems[key.Num] = state
+}
+
+func (vm *VM) jsWeakGet(key Value, weakID uint64) Value {
+	if key.Type != VTJSObject && key.Type != VTJSFunction {
+		return Value{Type: VTJSUndefined}
+	}
+	if key.Type == VTJSFunction {
+		fn := vm.jsFunctionItems[key.Num]
+		if fn != nil && fn.hiddenWeakData != nil {
+			if val, ok := fn.hiddenWeakData[weakID]; ok {
+				return val
+			}
+		}
+		return Value{Type: VTJSUndefined}
+	}
+	state, ok := vm.jsObjectStateItems[key.Num]
+	if ok && state.HiddenWeakData != nil {
+		if val, ok := state.HiddenWeakData[weakID]; ok {
+			return val
+		}
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+func (vm *VM) jsWeakHas(key Value, weakID uint64) bool {
+	if key.Type != VTJSObject && key.Type != VTJSFunction {
+		return false
+	}
+	if key.Type == VTJSFunction {
+		fn := vm.jsFunctionItems[key.Num]
+		if fn != nil && fn.hiddenWeakData != nil {
+			_, exists := fn.hiddenWeakData[weakID]
+			return exists
+		}
+		return false
+	}
+	state, ok := vm.jsObjectStateItems[key.Num]
+	if ok && state.HiddenWeakData != nil {
+		_, exists := state.HiddenWeakData[weakID]
+		return exists
+	}
+	return false
+}
+
+func (vm *VM) jsWeakDelete(key Value, weakID uint64) bool {
+	if key.Type != VTJSObject && key.Type != VTJSFunction {
+		return false
+	}
+	if key.Type == VTJSFunction {
+		fn := vm.jsFunctionItems[key.Num]
+		if fn != nil && fn.hiddenWeakData != nil {
+			_, exists := fn.hiddenWeakData[weakID]
+			if exists {
+				delete(fn.hiddenWeakData, weakID)
+			}
+			return exists
+		}
+		return false
+	}
+	state, ok := vm.jsObjectStateItems[key.Num]
+	if ok && state.HiddenWeakData != nil {
+		_, exists := state.HiddenWeakData[weakID]
+		if exists {
+			delete(state.HiddenWeakData, weakID)
+			vm.jsObjectStateItems[key.Num] = state
+		}
+		return exists
+	}
+	return false
+}
+
+// jsWeakCollectionID validates a WeakMap/WeakSet receiver and returns its backing ID.
+func (vm *VM) jsWeakCollectionID(target Value, typeName string, member string) (uint64, bool) {
+	if target.Type != VTJSObject {
+		vm.jsThrowTypeError(fmt.Sprintf("Method %s.prototype.%s called on incompatible receiver", typeName, member))
+		return 0, false
+	}
+	actualType := vm.jsObjectStringProperty(target, "__js_type")
+	if actualType == "" {
+		actualType = vm.jsObjectStringProperty(target, "__js_ctor")
+	}
+	if actualType != typeName {
+		vm.jsThrowTypeError(fmt.Sprintf("Method %s.prototype.%s called on incompatible receiver", typeName, member))
+		return 0, false
+	}
+	weakIDVal, deferred := vm.jsMemberGet(target, "__js_weak_id")
+	if deferred {
+		return 0, false
+	}
+	switch weakIDVal.Type {
+	case VTInteger:
+		return uint64(weakIDVal.Num), true
+	case VTDouble:
+		return uint64(weakIDVal.Flt), true
+	default:
+		vm.jsThrowTypeError(fmt.Sprintf("Method %s.prototype.%s called on incompatible receiver", typeName, member))
+		return 0, false
+	}
+}
+
+// jsCallWeakCollectionMethod executes WeakMap/WeakSet prototype methods with receiver checks.
+func (vm *VM) jsCallWeakCollectionMethod(target Value, typeName string, member string, args []Value) Value {
+	weakID, ok := vm.jsWeakCollectionID(target, typeName, member)
+	if !ok {
+		return Value{Type: VTJSUndefined}
+	}
+	switch typeName {
+	case "WeakMap":
+		switch {
+		case strings.EqualFold(member, "get"):
+			return vm.jsWeakGet(jsArgOrUndefined(args, 0), weakID)
+		case strings.EqualFold(member, "set"):
+			vm.jsWeakSet(jsArgOrUndefined(args, 0), weakID, jsArgOrUndefined(args, 1))
+			return target
+		case strings.EqualFold(member, "has"):
+			return NewBool(vm.jsWeakHas(jsArgOrUndefined(args, 0), weakID))
+		case strings.EqualFold(member, "delete"):
+			return NewBool(vm.jsWeakDelete(jsArgOrUndefined(args, 0), weakID))
+		}
+	case "WeakSet":
+		switch {
+		case strings.EqualFold(member, "add"):
+			vm.jsWeakSet(jsArgOrUndefined(args, 0), weakID, NewBool(true))
+			return target
+		case strings.EqualFold(member, "has"):
+			return NewBool(vm.jsWeakHas(jsArgOrUndefined(args, 0), weakID))
+		case strings.EqualFold(member, "delete"):
+			return NewBool(vm.jsWeakDelete(jsArgOrUndefined(args, 0), weakID))
+		}
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsCallObjectPrototypeMethod executes Object.prototype methods as callable function objects.
+func (vm *VM) jsCallObjectPrototypeMethod(target Value, member string, args []Value) Value {
+	switch {
+	case strings.EqualFold(member, "hasOwnProperty"):
+		return NewBool(vm.jsObjectHasOwnProperty(target, vm.valueToString(jsArgOrUndefined(args, 0))))
+	case strings.EqualFold(member, "propertyIsEnumerable"):
+		return NewBool(vm.jsObjectPropertyIsEnumerable(target, vm.valueToString(jsArgOrUndefined(args, 0))))
+	case strings.EqualFold(member, "isPrototypeOf"):
+		return NewBool(vm.jsObjectIsPrototypeOf(target, jsArgOrUndefined(args, 0)))
+	case strings.EqualFold(member, "toString"):
+		return NewString(vm.jsObjectToStringTag(target))
+	case strings.EqualFold(member, "toLocaleString"):
+		return NewString(vm.jsObjectToStringTag(target))
+	case strings.EqualFold(member, "valueOf"):
+		return target
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsCollectionEntry extracts a [key, value] pair from one Map-like iterable entry.
+func (vm *VM) jsCollectionEntry(entry Value) (Value, Value, bool) {
+	if entry.Type == VTArray {
+		if entry.Arr == nil {
+			return Value{Type: VTJSUndefined}, Value{Type: VTJSUndefined}, true
+		}
+		key := Value{Type: VTJSUndefined}
+		val := Value{Type: VTJSUndefined}
+		if len(entry.Arr.Values) > 0 {
+			key = entry.Arr.Values[0]
+		}
+		if len(entry.Arr.Values) > 1 {
+			val = entry.Arr.Values[1]
+		}
+		return key, val, true
+	}
+	if entry.Type != VTJSObject {
+		vm.jsThrowTypeError("Map iterable value must be an object")
+		return Value{Type: VTJSUndefined}, Value{Type: VTJSUndefined}, false
+	}
+	key, _ := vm.jsArrayLikeGetIndex(entry, 0)
+	val, _ := vm.jsArrayLikeGetIndex(entry, 1)
+	return key, val, true
+}
+
+// jsCollectionStore validates a Set/Map receiver and returns its backing store.
+func (vm *VM) jsCollectionStore(target Value, typeName string, member string) (map[string]Value, bool) {
+	if target.Type != VTJSObject {
+		vm.jsThrowTypeError(fmt.Sprintf("Method %s.prototype.%s called on incompatible receiver", typeName, member))
+		return nil, false
+	}
+	actualType := vm.jsObjectStringProperty(target, "__js_type")
+	if actualType == "" {
+		actualType = vm.jsObjectStringProperty(target, "__js_ctor")
+	}
+	if actualType != typeName {
+		vm.jsThrowTypeError(fmt.Sprintf("Method %s.prototype.%s called on incompatible receiver", typeName, member))
+		return nil, false
+	}
+	var store map[string]Value
+	var ok bool
+	if typeName == "Set" {
+		store, ok = vm.jsSetItems[target.Num]
+	} else {
+		store, ok = vm.jsMapItems[target.Num]
+	}
+	if !ok {
+		vm.jsThrowTypeError(fmt.Sprintf("Method %s.prototype.%s called on incompatible receiver", typeName, member))
+		return nil, false
+	}
+	return store, true
+}
+
+// jsCallKeyedCollectionMethod executes Set/Map prototype methods with receiver checks.
+func (vm *VM) jsCallKeyedCollectionMethod(target Value, typeName string, member string, args []Value) Value {
+	store, ok := vm.jsCollectionStore(target, typeName, member)
+	if !ok {
+		return Value{Type: VTJSUndefined}
+	}
+	switch typeName {
+	case "Set":
+		switch {
+		case strings.EqualFold(member, "add"):
+			arg := jsArgOrUndefined(args, 0)
+			store[vm.jsValueMapKey(arg)] = arg
+			return target
+		case strings.EqualFold(member, "has"):
+			_, exists := store[vm.jsValueMapKey(jsArgOrUndefined(args, 0))]
+			return NewBool(exists)
+		case strings.EqualFold(member, "delete"):
+			key := vm.jsValueMapKey(jsArgOrUndefined(args, 0))
+			_, exists := store[key]
+			if exists {
+				delete(store, key)
+			}
+			return NewBool(exists)
+		case strings.EqualFold(member, "clear"):
+			clear(store)
+			return Value{Type: VTJSUndefined}
+		}
+	case "Map":
+		switch {
+		case strings.EqualFold(member, "set"):
+			store[vm.jsValueMapKey(jsArgOrUndefined(args, 0))] = jsArgOrUndefined(args, 1)
+			return target
+		case strings.EqualFold(member, "get"):
+			val, exists := store[vm.jsValueMapKey(jsArgOrUndefined(args, 0))]
+			if !exists {
+				return Value{Type: VTJSUndefined}
+			}
+			return val
+		case strings.EqualFold(member, "has"):
+			_, exists := store[vm.jsValueMapKey(jsArgOrUndefined(args, 0))]
+			return NewBool(exists)
+		case strings.EqualFold(member, "delete"):
+			key := vm.jsValueMapKey(jsArgOrUndefined(args, 0))
+			_, exists := store[key]
+			if exists {
+				delete(store, key)
+			}
+			return NewBool(exists)
+		case strings.EqualFold(member, "clear"):
+			clear(store)
+			return Value{Type: VTJSUndefined}
+		}
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsWeakMapEntry extracts a [key, value] pair from one iterable entry.
+func (vm *VM) jsWeakMapEntry(entry Value) (Value, Value, bool) {
+	if entry.Type != VTArray && entry.Type != VTJSObject {
+		vm.jsThrowTypeError("WeakMap iterable value must be an object")
+		return Value{Type: VTJSUndefined}, Value{Type: VTJSUndefined}, false
+	}
+	return vm.jsCollectionEntry(entry)
+}
+
+// jsInitSetFromIterable populates a Set from an ES iterable source.
+func (vm *VM) jsInitSetFromIterable(source Value, store map[string]Value) bool {
+	itObj := vm.jsGetIterator(source)
+	if itObj.Type != VTJSObject {
+		return false
+	}
+	for {
+		result, handled := vm.jsCallMember(itObj, "next", nil)
+		if !handled || result.Type != VTJSObject {
+			vm.jsThrowTypeError("Iterator result is not an object")
+			return false
+		}
+		doneVal, _ := vm.jsMemberGet(result, "done")
+		if vm.jsTruthy(doneVal) {
+			break
+		}
+		entry, _ := vm.jsMemberGet(result, "value")
+		store[vm.jsValueMapKey(entry)] = entry
+	}
+	return true
+}
+
+// jsInitMapFromIterable populates a Map from an ES iterable source.
+func (vm *VM) jsInitMapFromIterable(source Value, store map[string]Value) bool {
+	itObj := vm.jsGetIterator(source)
+	if itObj.Type != VTJSObject {
+		return false
+	}
+	for {
+		result, handled := vm.jsCallMember(itObj, "next", nil)
+		if !handled || result.Type != VTJSObject {
+			vm.jsThrowTypeError("Iterator result is not an object")
+			return false
+		}
+		doneVal, _ := vm.jsMemberGet(result, "done")
+		if vm.jsTruthy(doneVal) {
+			break
+		}
+		entry, _ := vm.jsMemberGet(result, "value")
+		key, val, ok := vm.jsCollectionEntry(entry)
+		if !ok {
+			return false
+		}
+		store[vm.jsValueMapKey(key)] = val
+	}
+	return true
+}
+
+// jsInitWeakMapFromIterable populates a WeakMap from an ES iterable source.
+func (vm *VM) jsInitWeakMapFromIterable(source Value, weakID uint64) bool {
+	itObj := vm.jsGetIterator(source)
+	if itObj.Type != VTJSObject {
+		return false
+	}
+	for {
+		result, handled := vm.jsCallMember(itObj, "next", nil)
+		if !handled || result.Type != VTJSObject {
+			vm.jsThrowTypeError("Iterator result is not an object")
+			return false
+		}
+		doneVal, _ := vm.jsMemberGet(result, "done")
+		if vm.jsTruthy(doneVal) {
+			break
+		}
+		entry, _ := vm.jsMemberGet(result, "value")
+		key, val, ok := vm.jsWeakMapEntry(entry)
+		if !ok {
+			return false
+		}
+		vm.jsWeakSet(key, weakID, val)
+	}
+	return true
+}
+
+// jsInitWeakSetFromIterable populates a WeakSet from an ES iterable source.
+func (vm *VM) jsInitWeakSetFromIterable(source Value, weakID uint64) bool {
+	itObj := vm.jsGetIterator(source)
+	if itObj.Type != VTJSObject {
+		return false
+	}
+	for {
+		result, handled := vm.jsCallMember(itObj, "next", nil)
+		if !handled || result.Type != VTJSObject {
+			vm.jsThrowTypeError("Iterator result is not an object")
+			return false
+		}
+		doneVal, _ := vm.jsMemberGet(result, "done")
+		if vm.jsTruthy(doneVal) {
+			break
+		}
+		entry, _ := vm.jsMemberGet(result, "value")
+		vm.jsWeakSet(entry, weakID, NewBool(true))
+	}
+	return true
 }
 
 func (vm *VM) jsEval(args []Value) Value {
@@ -799,7 +1192,7 @@ func (vm *VM) jsCreatePrototypeObject(owner Value) Value {
 
 func jsCtorNeedsPrototype(ctorName string) bool {
 	switch ctorName {
-	case "Array", "Object", "String", "Date", "RegExp", "Enumerator", "VBArray", "Set", "Map", "Promise",
+	case "Array", "Object", "String", "Date", "RegExp", "Enumerator", "VBArray", "Set", "Map", "WeakMap", "WeakSet", "Promise",
 		"ArrayBuffer", "DataView",
 		"Int8Array", "Uint8Array", "Uint8ClampedArray",
 		"Int16Array", "Uint16Array",
@@ -1049,6 +1442,8 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["Symbol"] = vm.jsCreateSymbolObject()
 	bindings["Set"] = vm.jsCreateIntrinsicObject("", "Set")
 	bindings["Map"] = vm.jsCreateIntrinsicObject("", "Map")
+	bindings["WeakMap"] = vm.jsCreateIntrinsicObject("", "WeakMap")
+	bindings["WeakSet"] = vm.jsCreateIntrinsicObject("", "WeakSet")
 	// ES6 Binary Data constructors
 	bindings["ArrayBuffer"] = vm.jsCreateIntrinsicObject("", "ArrayBuffer")
 	bindings["DataView"] = vm.jsCreateIntrinsicObject("", "DataView")
@@ -2496,7 +2891,7 @@ func (vm *VM) jsObjectToStringTag(v Value) string {
 			tag = vm.jsObjectStringProperty(v, "__js_ctor")
 		}
 		switch tag {
-		case "Array", "Date", "Function", "RegExp", "Math", "JSON", "Enumerator", "VBArray", "String", "Number", "Boolean", "Object", "Set", "Map",
+		case "Array", "Date", "Function", "RegExp", "Math", "JSON", "Enumerator", "VBArray", "String", "Number", "Boolean", "Object", "Set", "Map", "WeakMap", "WeakSet",
 			"ArrayBuffer", "DataView",
 			"Int8Array", "Uint8Array", "Uint8ClampedArray",
 			"Int16Array", "Uint16Array",
@@ -4600,6 +4995,10 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				}
 				return Value{Type: VTJSUndefined}, true
 			}
+		case "WeakMap":
+			return vm.jsCallWeakCollectionMethod(target, "WeakMap", member, args), true
+		case "WeakSet":
+			return vm.jsCallWeakCollectionMethod(target, "WeakSet", member, args), true
 		case "Number":
 			// ES6 Number static methods.
 			switch {
@@ -5835,6 +6234,16 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsPromiseCatch(thisVal, args)
 		case "PromisePrototypeFinally":
 			return vm.jsPromiseFinally(thisVal, args)
+		case "ObjectPrototype":
+			return vm.jsCallObjectPrototypeMethod(thisVal, vm.jsObjectStringProperty(callee, "name"), args)
+		case "Set":
+			return vm.jsCallKeyedCollectionMethod(thisVal, "Set", vm.jsObjectStringProperty(callee, "name"), args)
+		case "Map":
+			return vm.jsCallKeyedCollectionMethod(thisVal, "Map", vm.jsObjectStringProperty(callee, "name"), args)
+		case "WeakMap":
+			return vm.jsCallWeakCollectionMethod(thisVal, "WeakMap", vm.jsObjectStringProperty(callee, "name"), args)
+		case "WeakSet":
+			return vm.jsCallWeakCollectionMethod(thisVal, "WeakSet", vm.jsObjectStringProperty(callee, "name"), args)
 		case "GeneratorPrototypeNext":
 			return vm.jsHandleGeneratorNext(thisVal, args)
 		case "GeneratorPrototypeThrow":
@@ -5866,7 +6275,7 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 				return vm.jsNew(callee, args)
 			}
 			return Value{Type: VTJSUndefined}
-		case "Set", "Map":
+		case "Set", "Map", "WeakMap", "WeakSet":
 			vm.jsThrowTypeError(fmt.Sprintf("Constructor %s requires 'new'", ctorName))
 			return Value{Type: VTJSUndefined}
 		case "ArrayBuffer", "DataView",
@@ -6530,16 +6939,8 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 			vm.jsSetItems[objID] = make(map[string]Value, 8)
 			setObj := Value{Type: VTJSObject, Num: objID}
 			if len(args) > 0 && args[0].Type != VTJSUndefined && args[0].Type != VTNull {
-				length, hasLength, deferred := vm.jsArrayLikeLength(args[0])
-				if deferred {
+				if !vm.jsInitSetFromIterable(args[0], vm.jsSetItems[objID]) {
 					return Value{Type: VTJSUndefined}
-				}
-				if hasLength {
-					for i := 0; i < length; i++ {
-						if v, ok := vm.jsArrayLikeGetIndex(args[0], i); ok {
-							vm.jsSetItems[objID][vm.jsValueMapKey(v)] = v
-						}
-					}
 				}
 			}
 			return setObj
@@ -6556,21 +6957,49 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 			vm.jsMapItems[objID] = make(map[string]Value, 8)
 			mapObj := Value{Type: VTJSObject, Num: objID}
 			if len(args) > 0 && args[0].Type != VTJSUndefined && args[0].Type != VTNull {
-				length, hasLength, deferred := vm.jsArrayLikeLength(args[0])
-				if deferred {
+				if !vm.jsInitMapFromIterable(args[0], vm.jsMapItems[objID]) {
 					return Value{Type: VTJSUndefined}
-				}
-				if hasLength {
-					for i := 0; i < length; i++ {
-						entry, ok := vm.jsArrayLikeGetIndex(args[0], i)
-						if !ok || entry.Type != VTArray || entry.Arr == nil || len(entry.Arr.Values) < 2 {
-							continue
-						}
-						vm.jsMapItems[objID][vm.jsValueMapKey(entry.Arr.Values[0])] = entry.Arr.Values[1]
-					}
 				}
 			}
 			return mapObj
+		case "WeakMap":
+			objID := vm.allocJSID()
+			obj := make(map[string]Value, 4)
+			obj["__js_type"] = NewString("WeakMap")
+			obj["__js_ctor"] = NewString("WeakMap")
+			weakID := jsWeakCollectionNextID.Add(1)
+			obj["__js_weak_id"] = NewDouble(float64(weakID))
+			if proto := vm.jsGetIntrinsicPrototype("WeakMap"); proto.Type == VTJSObject {
+				obj["__js_proto"] = proto
+			}
+			vm.jsObjectItems[objID] = obj
+			vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+			weakMapObj := Value{Type: VTJSObject, Num: objID}
+			if len(args) > 0 && args[0].Type != VTJSUndefined && args[0].Type != VTNull {
+				if !vm.jsInitWeakMapFromIterable(args[0], weakID) {
+					return Value{Type: VTJSUndefined}
+				}
+			}
+			return weakMapObj
+		case "WeakSet":
+			objID := vm.allocJSID()
+			obj := make(map[string]Value, 4)
+			obj["__js_type"] = NewString("WeakSet")
+			obj["__js_ctor"] = NewString("WeakSet")
+			weakID := jsWeakCollectionNextID.Add(1)
+			obj["__js_weak_id"] = NewDouble(float64(weakID))
+			if proto := vm.jsGetIntrinsicPrototype("WeakSet"); proto.Type == VTJSObject {
+				obj["__js_proto"] = proto
+			}
+			vm.jsObjectItems[objID] = obj
+			vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+			weakSetObj := Value{Type: VTJSObject, Num: objID}
+			if len(args) > 0 && args[0].Type != VTJSUndefined && args[0].Type != VTNull {
+				if !vm.jsInitWeakSetFromIterable(args[0], weakID) {
+					return Value{Type: VTJSUndefined}
+				}
+			}
+			return weakSetObj
 		case "Promise":
 			return vm.jsNewPromise(args)
 		case "ArrayBuffer":

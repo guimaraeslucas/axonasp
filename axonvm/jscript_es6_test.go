@@ -830,6 +830,114 @@ func TestJScriptSetForOfIteratesValues(t *testing.T) {
 	}
 }
 
+func TestJScriptSetIterableInitialization(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var src = {
+			[Symbol.iterator]: function() {
+				var index = 0;
+				return {
+					next: function() {
+						index = index + 1;
+						if (index === 1) {
+							return { value: "a", done: false };
+						}
+						if (index === 2) {
+							return { value: "b", done: false };
+						}
+						return { value: undefined, done: true };
+					}
+				};
+			}
+		};
+		var s = new Set(src);
+		Response.Write(s.has("a") + "|" + s.has("b"));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "True|True" {
+		t.Errorf("expected 'True|True', got %q", out)
+	}
+}
+
+func TestJScriptMapIterableInitialization(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var src = {
+			[Symbol.iterator]: function() {
+				var index = 0;
+				return {
+					next: function() {
+						index = index + 1;
+						if (index === 1) {
+							return { value: ["k1", 10], done: false };
+						}
+						if (index === 2) {
+							return { value: ["k2", 20], done: false };
+						}
+						return { value: undefined, done: true };
+					}
+				};
+			}
+		};
+		var m = new Map(src);
+		Response.Write(m.get("k1") + "|" + m.get("k2"));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "10|20" {
+		t.Errorf("expected '10|20', got %q", out)
+	}
+}
+
+func TestJScriptSetDetachedPrototypeMethods(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var s = new Set();
+		var add = Set.prototype.add;
+		var has = Set.prototype.has;
+		add.call(s, "ok");
+		Response.Write(has.call(s, "ok"));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "True" {
+		t.Errorf("expected 'True', got %q", out)
+	}
+
+	_, err = runJScript2(t, jscriptSrc(`
+		var has = Set.prototype.has;
+		has.call({}, "ok");
+	`))
+	if err == nil {
+		t.Fatal("expected TypeError for Set.prototype.has with incompatible receiver, got nil")
+	}
+}
+
+func TestJScriptMapDetachedPrototypeMethods(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var m = new Map();
+		var set = Map.prototype.set;
+		var get = Map.prototype.get;
+		set.call(m, "k", "ok");
+		Response.Write(get.call(m, "k"));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "ok" {
+		t.Errorf("expected 'ok', got %q", out)
+	}
+
+	_, err = runJScript2(t, jscriptSrc(`
+		var get = Map.prototype.get;
+		get.call({}, "k");
+	`))
+	if err == nil {
+		t.Fatal("expected TypeError for Map.prototype.get with incompatible receiver, got nil")
+	}
+}
+
 func TestJScriptTDZ(t *testing.T) {
 	code := `
 		let a = 1;
