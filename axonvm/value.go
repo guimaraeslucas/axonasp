@@ -63,6 +63,10 @@ const (
 	VTSymbol
 	// VTJSBigInt represents the JavaScript BigInt primitive.
 	VTJSBigInt
+	// VTJSPromise points to one dynamic Promise ID in VM jsPromiseItems.
+	VTJSPromise
+	// VTJSGenerator points to one dynamic Generator ID in VM jsGeneratorItems.
+	VTJSGenerator
 )
 
 type Value struct {
@@ -130,6 +134,8 @@ func (v Value) String() string {
 			return "0"
 		}
 		return v.Big.String()
+	case VTJSPromise:
+		return fmt.Sprintf("[object Promise]")
 	default:
 		return "Unknown"
 	}

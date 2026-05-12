@@ -712,6 +712,15 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.jsArrayBuffers == nil {
 		vm.jsArrayBuffers = make(map[int64][]byte)
 	}
+	if vm.jsPromiseItems == nil {
+		vm.jsPromiseItems = make(map[int64]*jsPromiseObject)
+	}
+	if vm.jsGeneratorItems == nil {
+		vm.jsGeneratorItems = make(map[int64]*jsGeneratorObject)
+	}
+	if vm.jsMicrotaskQueue == nil {
+		vm.jsMicrotaskQueue = make([]func(), 0, 8)
+	}
 	if vm.jsSymbolGlobalRegistry == nil {
 		vm.jsSymbolGlobalRegistry = make(map[string]Value)
 	}
@@ -786,6 +795,10 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.jsForOfItems)
 	clear(vm.jsEnvItems)
 	clear(vm.jsArrayBuffers)
+	clear(vm.jsPromiseItems)
+	clear(vm.jsGeneratorItems)
+	clear(vm.jsMicrotaskQueue)
+	vm.jsMicrotaskQueue = vm.jsMicrotaskQueue[:0]
 	clear(vm.jsSymbolGlobalRegistry)
 	clear(vm.jsCallStack)
 	vm.jsCallStack = vm.jsCallStack[:0]

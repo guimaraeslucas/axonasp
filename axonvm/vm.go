@@ -376,6 +376,9 @@ type VM struct {
 	jsArrayIterators               map[int64]*jsArrayIterator
 	jsStringIterators              map[int64]*jsStringIterator
 	jsArrayBuffers                 map[int64][]byte // backing byte slices for ArrayBuffer objects
+	jsPromiseItems                 map[int64]*jsPromiseObject
+	jsGeneratorItems               map[int64]*jsGeneratorObject
+	jsMicrotaskQueue               []func()
 	jsSymbolGlobalRegistry         map[string]Value // Symbol.for global registry: description -> Symbol Value
 	jsNextSymbolID                 int64
 	jsStrictMode                   bool                  // Current strict mode state
@@ -597,6 +600,8 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsArrayIterators:               make(map[int64]*jsArrayIterator),
 		jsStringIterators:              make(map[int64]*jsStringIterator),
 		jsArrayBuffers:                 make(map[int64][]byte),
+		jsPromiseItems:                 make(map[int64]*jsPromiseObject),
+		jsGeneratorItems:               make(map[int64]*jsGeneratorObject),
 		jsSymbolGlobalRegistry:         make(map[string]Value),
 		jsNextSymbolID:                 1,
 		jsFunctionStrictModes:          make(map[int64]bool),
@@ -1385,6 +1390,8 @@ func (vm *VM) Run() (err error) {
 				} else {
 					err = vme
 				}
+			} else if re, ok := r.(error); ok {
+				err = re
 			} else {
 				if vm.onResumeNext {
 					err = nil
@@ -3184,6 +3191,32 @@ aspExecLoop:
 				vm.push(vm.jsThisValue)
 			}
 
+		case OpJSAwait:
+			p := vm.pop()
+			if p.Type == VTJSPromise {
+				for vm.jsGetPromiseState(p) == jsPromisePending {
+					vm.jsProcessMicrotasks()
+					if vm.jsGetPromiseState(p) == jsPromisePending {
+						time.Sleep(1 * time.Millisecond)
+					}
+				}
+				res := vm.jsGetPromiseResult(p)
+				if vm.jsGetPromiseState(p) == jsPromiseRejected {
+					panic(&jsAsyncRejectionError{reason: res})
+				}
+				vm.push(res)
+			} else {
+				vm.push(p)
+			}
+
+		case OpJSYield:
+			val := vm.pop()
+			vm.jsYield(val, false)
+
+		case OpJSYieldDelegate:
+			val := vm.pop()
+			vm.jsYield(val, true)
+
 		case OpJSSetThis:
 			v := vm.pop()
 			vm.jsThisValue = v
@@ -4049,6 +4082,13 @@ aspExecLoop:
 
 	if !vm.suppressTerminate && vm.prepareClassTerminateCall() {
 		goto aspExecLoop
+	}
+
+	if len(vm.jsMicrotaskQueue) > 0 {
+		vm.jsProcessMicrotasks()
+		if vm.ip < len(vm.bytecode) {
+			goto aspExecLoop
+		}
 	}
 
 	if vm.host != nil && vm.host.Response() != nil {

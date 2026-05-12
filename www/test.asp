@@ -37,4 +37,6 @@
     var totalSegundos = (tempoFim - tempoInicio) / 1000;
 
     Response.Write("Tempo gasto para executar o loop: " + totalSegundos + " segundos.");
+
+
 </script>

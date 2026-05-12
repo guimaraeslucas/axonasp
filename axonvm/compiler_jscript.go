@@ -1668,6 +1668,24 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 		c.patchJSJump(jumpFalse)
 		c.compileJScriptExpression(node.Alternate)
 		c.patchJSJump(jumpEnd)
+	case *jsast.AwaitExpression:
+		if node.Argument != nil {
+			c.compileJScriptExpression(node.Argument)
+		} else {
+			c.emit(OpJSLoadUndefined)
+		}
+		c.emit(OpJSAwait)
+	case *jsast.YieldExpression:
+		if node.Argument != nil {
+			c.compileJScriptExpression(node.Argument)
+		} else {
+			c.emit(OpJSLoadUndefined)
+		}
+		if node.Delegate {
+			c.emit(OpJSYieldDelegate)
+		} else {
+			c.emit(OpJSYield)
+		}
 	case *jsast.TemplateLiteral:
 		c.compileJScriptTemplateLiteral(node)
 	case *jsast.ArrowFunctionLiteral:
@@ -2996,6 +3014,12 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 	}
 	if c.jsStrictMode {
 		params = append(params, jsStrictModeFlag)
+	}
+	if fn.Generator {
+		params = append(params, jsGeneratorFlag)
+	}
+	if fn.Async {
+		params = append(params, jsAsyncFlag)
 	}
 	if localCount > 0 {
 		params = append(params, "__js_local_count__:"+strconv.Itoa(localCount))

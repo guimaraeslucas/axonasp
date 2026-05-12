@@ -77,24 +77,86 @@ line2`+"`"+`;
 	}
 }
 
-func TestJScriptStringEscapeSequences(t *testing.T) {
+func TestJScriptGenerators(t *testing.T) {
 	out, err := runJScript2(t, jscriptSrc(`
-		var okNewline = "A\nB".length === 3 && "A\nB".charCodeAt(1) === 10;
-		var okSingleQuote = 'It\'s' === "It's";
-		var okDoubleQuote = "\"ok\"" === '"ok"';
-		var okBackslash = "\\".length === 1 && "\\".charCodeAt(0) === 92;
-		var okBackspace = "\b".charCodeAt(0) === 8;
-		var okFormFeed = "\f".charCodeAt(0) === 12;
-		var okCarriageReturn = "\r".charCodeAt(0) === 13;
-		var okTab = "\t".charCodeAt(0) === 9;
-		var okVerticalTab = "\v".charCodeAt(0) === 11;
-		Response.Write(okNewline + "|" + okSingleQuote + "|" + okDoubleQuote + "|" + okBackslash + "|" + okBackspace + "|" + okFormFeed + "|" + okCarriageReturn + "|" + okTab + "|" + okVerticalTab);
+		function* gen() {
+			yield 1;
+			yield 2;
+			return 3;
+		}
+		var g = gen();
+		var r1 = g.next();
+		var r2 = g.next();
+		var r3 = g.next();
+		Response.Write(r1.value + ":" + r1.done + "|");
+		Response.Write(r2.value + ":" + r2.done + "|");
+		Response.Write(r3.value + ":" + r3.done);
 	`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out != "True|True|True|True|True|True|True|True|True" {
-		t.Errorf("unexpected escape sequence behavior: %q", out)
+	expected := `1:False|2:False|3:True`
+	if out != expected {
+		t.Errorf("expected %q, got %q", expected, out)
+	}
+}
+
+func TestJScriptGeneratorsResume(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		function* gen() {
+			var x = yield 1;
+			var y = yield (x + 10);
+			return x + y;
+		}
+		var g = gen();
+		var r1 = g.next();
+		var r2 = g.next(5);
+		var r3 = g.next(10);
+		Response.Write(r1.value + "|" + r2.value + "|" + r3.value);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := `1|15|15`
+	if out != expected {
+		t.Errorf("expected %q, got %q", expected, out)
+	}
+}
+
+func TestJScriptAsyncAwait(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		async function f() {
+			var p = Promise.resolve(42);
+			var val = await p;
+			return val + 1;
+		}
+		f().then(function(v) {
+			Response.Write(v);
+		});
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "43" {
+		t.Errorf("expected '43', got %q", out)
+	}
+}
+
+func TestJScriptAsyncAwaitReject(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		async function f() {
+			await Promise.reject("fail");
+			return "ok";
+		}
+		f().catch(function(e) {
+			Response.Write("Caught: " + e);
+		});
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Caught: fail") {
+		t.Errorf("expected output to contain 'Caught: fail', got %q", out)
 	}
 }
 

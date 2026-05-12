@@ -322,6 +322,10 @@ const (
 	OpJSSuperIndexSet           // [OpCode] ; stack: [..., value, index]
 	OpJSSuperCallComputedMember // [OpCode, ArgCountHigh, ArgCountLow] ; stack: [..., index, arg1, arg2, ...]
 
+	OpJSYield         // [OpCode]
+	OpJSYieldDelegate // [OpCode]
+	OpJSAwait         // [OpCode]
+
 	// Strict Mode & Block Scoping
 	OpJSStrictModeEnter  // [OpCode] - enter strict mode scope
 	OpJSStrictModeExit   // [OpCode] - exit strict mode scope
@@ -853,6 +857,12 @@ func (op OpCode) String() string {
 		return "OpJSClassInherit"
 	case OpJSSuperCall:
 		return "OpJSSuperCall"
+	case OpJSYield:
+		return "OpJSYield"
+	case OpJSYieldDelegate:
+		return "OpJSYieldDelegate"
+	case OpJSAwait:
+		return "OpJSAwait"
 	case OpJSMemberIndexSet:
 		return "OpJSMemberIndexSet"
 	case OpJSStrictModeEnter:

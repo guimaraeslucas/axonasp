@@ -75,16 +75,46 @@ Follow the subphase breakdown below for a structured implementation of Proxies a
 ---
 
 ## 🛠️ PHASE 8: STATE MACHINES (GENERATORS & ASYNC/AWAIT) (EXTREME COMPLEXITY)
-
-**Goal:** Support pause/resume capabilities and asynchronous execution without blocking the ASP thread.
+**Goal:** Support pause/resume capabilities and asynchronous execution without blocking the ASP thread and keeping the synchronous execution model intact. This is a critical phase that requires deep integration with the VM's execution model and careful handling of the microtask queue to ensure that asynchronous operations do not interfere with the synchronous nature of ASP. If coded wrong, it will create infinite loops or locks in the VM pool.
 
 ### Tasks:
 
-* [ ] **Architectural Advantage:** Use the explicit `CallFrame`, `sp`, `fp`, and `ip` state array to your advantage. Pausing a generator means saving this exact state so it can be pushed back onto `vm.callStack` later.
-* [ ] **State Machine Transformation:** The compiler must convert `function*` (`yield`) and `async` functions into resumable states.
-* [ ] **Microtask Queue:** Implement a microtask queue in the VM that processes resolved promises before returning control to the ASP engine.
-* [ ] **Constraint:** Ensure this does NOT interfere with the synchronous nature of VBScript or standard ASP objects (e.g., `Response.Write` must work correctly inside `yield` steps).
-* [ ] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
+*🛠️ SUBPHASE 8.1: MICROTASK QUEUE & PROMISES (MEDIUM COMPLEXITY)
+**Goal:** Establish the foundational asynchronous primitives. Because our engine runs synchronously per HTTP request, Promises act as state containers, and the Microtask Queue is processed synchronously when the execution stack is empty or explicitly awaited.
+
+* [x] **Native Promise Object:** Implement `Promise` in JScript (`resolve`, `reject`, `.then`, `.catch`, `.finally`).
+* [x] **VM Microtask Queue:** Add a `jsMicrotaskQueue []func()` to the `VM` struct.
+* [x] **Queue Processing:** Update the main `Run()` loop (or create a dedicated dispatcher) to pump/execute the `jsMicrotaskQueue` whenever the CallStack size reaches 0, or explicitly when an `await` instruction is hit.
+* [x] **VM Reset Integrity:** Ensure `jsMicrotaskQueue` is perfectly cleared inside `resetDynamicMaps()` in `vm_pool.go` so queued tasks do not leak to the next user's HTTP request.
+
+* [x] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
+
+*🛠️ SUBPHASE 8.2: STATE MACHINES (GENERATORS & ASYNC/AWAIT) (HIGH COMPLEXITY)
+**Goal:** Support pause/resume capabilities and asynchronous execution transparently.
+* [x] **Check implementation**: ES6 Finally is a bit complex, it returns a promise that resolves with the original value after the finally callback finishes, check if your current implementation is following the ES6 finally specification.
+* [x] **Compiler Transformation:** The compiler must convert `function*` (`yield`) and `async` functions into resumable state machines.
+* [x] **Architectural Advantage (Pause/Resume):** Use the explicit `CallFrame`, `sp`, `fp`, and `ip` state array to your advantage. Pausing a generator or an `await` call simply means popping the current `CallFrame` and saving it into a closure or Promise structure, allowing the VM to execute other code or microtasks, and pushing it back onto `vm.callStack` to resume.
+* [x] **The "Blocking Await" Shortcut:** Because we are in a dedicated goroutine, `await` does NOT need to yield to the Go scheduler. When `await` is called, the VM can simply loop and pump the Microtask queue until the specific Promise is resolved, blocking the execution synchronously but preserving strict ES6 semantic execution order.
+* [x] **Constraint:** Ensure this does NOT interfere with the synchronous nature of VBScript or standard ASP objects (e.g., `Response.Write` must work correctly inside `yield` steps).
+
+* [x] **Final checklist**: Did you followed the final checklist at the end of this document after implementing these features?
+
+* 🛠️ SUBPHASE 8.3: ES MODULES (ESM) CACHE & REGISTRY (CRITICAL ARCHITECTURE)
+**Goal:** Implement the split-caching architecture required to support `import` / `export` without destroying performance or leaking memory between concurrent ASP requests.
+
+* [ ] **The Global AST Cache (Read-Only):** Modify the existing compiler/cache layer so that when an `import './module.js'` is encountered, the file is read and compiled into AST/Bytecode ONCE globally. Protect this shared cache using Go's `sync.RWMutex`.
+* [ ] **The Request-Local Registry (Execution Memory):** Add a `jsModuleInstances map[string]*jsEnvFrame` (or similar environment pointer) to the `VM` struct. This represents the memory state of the modules *for the current user's request only*.
+* [ ] **Singleton Emulation:** When a script calls `import`, the VM must check its request-local registry. If the module is not there, it retrieves the AST from the Global Cache, executes it to populate the variables, and stores the resulting environment in the local registry. If it is already there, it simply returns the existing environment reference.
+* [ ] **VM Reset Integrity (CRITICAL):** Update `resetDynamicMaps()` in `vm_pool.go` to explicitly clear the request-local module registry (`clear(vm.jsModuleInstances)`). This guarantees that module state (e.g., `let loggedInUser = 'Admin';`) is destroyed when the request ends and does not leak to the next user's VM.
+
+
+*🛠️ SUBPHASE 8.4: MODULE BINDING & EXECUTION (HIGH COMPLEXITY)
+
+**Goal:** Connect the syntax to the new cache architecture.
+
+* [ ] **AST & OpCodes:** Add support for `jsast.ImportDeclaration` and `jsast.ExportDeclaration`. Introduce specific OpCodes (e.g., `OpJSImport`, `OpJSExport`) to handle the resolution.
+* [ ] **Synchronous Resolution:** Since the VM has a dedicated goroutine, module resolution (reading from disk if not in the global cache) must happen synchronously.
+* [ ] **ASP Context Injection:** Ensure that standard ASP objects (`Response`, `Request`, `Session`) are automatically injected or accessible within the isolated Lexical Environment of the loaded module, preventing `ReferenceError` crashes when modules interact with the server.
 
 ---
 
@@ -112,5 +142,5 @@ Follow the subphase breakdown below for a structured implementation of Proxies a
 6. **Documentation:** Did you update `jscript-es6-support.md` with the new features and any limitations or known issues?
 7. **Testing:** Did you add comprehensive test cases for each new feature in both Go and ASP test files?
 8. **Code Review:** Before finalizing, review the code for any potential performance pitfalls, memory leaks, or edge cases that could arise from the new features.
-9. **Check complete:** [x] JScript VM deep optimization Phase 3 (Unsafe Fast-Path) and Phase 4 (Escape Analysis/GC Thrashing elimination) are marked as complete in this file.
+
 

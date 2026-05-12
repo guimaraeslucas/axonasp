@@ -47,6 +47,8 @@ const jsSymbolPropertyPrefix = "__js_sym__"
 const jsRestParamPrefix = "__js_rest__:"
 const jsClassConstructorFlag = "__axon_internal__:class_constructor"
 const jsStrictModeFlag = "__axon_internal__:strict_mode"
+const jsGeneratorFlag = "__axon_internal__:generator"
+const jsAsyncFlag = "__axon_internal__:async"
 const jsDerivedConstructorFlag = "__axon_internal__:derived_constructor"
 
 const (
@@ -110,6 +112,8 @@ type jsFunctionObject struct {
 	isStrict           bool
 	isDerived          bool
 	homeObjID          int64
+	isAsync            bool
+	isGenerator        bool
 }
 
 type jsCallFrame struct {
@@ -138,6 +142,33 @@ type jsForInEnumerator struct {
 type jsForOfEnumerator struct {
 	values []Value
 	index  int
+}
+
+type jsPromiseState uint8
+
+const (
+	jsPromisePending jsPromiseState = iota
+	jsPromiseFulfilled
+	jsPromiseRejected
+)
+
+type jsPromiseReaction struct {
+	onFulfilled Value
+	onRejected  Value
+	capability  *jsPromiseCapability
+}
+
+type jsPromiseCapability struct {
+	promise Value
+	resolve Value
+	reject  Value
+}
+
+type jsPromiseObject struct {
+	state     jsPromiseState
+	result    Value
+	reactions []jsPromiseReaction
+	handled   bool // true if a rejection handler was attached
 }
 
 func (vm *VM) jsEval(args []Value) Value {
@@ -627,7 +658,7 @@ func (vm *VM) jsCreatePrototypeObject(owner Value) Value {
 
 func jsCtorNeedsPrototype(ctorName string) bool {
 	switch ctorName {
-	case "Array", "Object", "String", "Date", "RegExp", "Enumerator", "VBArray", "Set", "Map",
+	case "Array", "Object", "String", "Date", "RegExp", "Enumerator", "VBArray", "Set", "Map", "Promise",
 		"ArrayBuffer", "DataView",
 		"Int8Array", "Uint8Array", "Uint8ClampedArray",
 		"Int16Array", "Uint16Array",
@@ -872,6 +903,7 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["Array"] = vm.jsCreateIntrinsicObject("", "Array")
 	bindings["Object"] = vm.jsCreateIntrinsicObject("", "Object")
 	bindings["JSON"] = vm.jsCreateIntrinsicObject("", "JSON")
+	bindings["Promise"] = vm.jsCreatePromiseObject()
 	bindings["Number"] = vm.jsCreateNumberObject()
 	bindings["Symbol"] = vm.jsCreateSymbolObject()
 	bindings["Set"] = vm.jsCreateIntrinsicObject("", "Set")
@@ -971,6 +1003,44 @@ func (vm *VM) jsCreateSymbolObject() Value {
 	}
 	vm.jsPropertyItems[objID] = props
 	return Value{Type: VTJSObject, Num: objID}
+}
+
+func (vm *VM) jsCreatePromiseObject() Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 4)
+	obj["__js_type"] = NewString("Promise")
+	obj["__js_ctor"] = NewString("Promise")
+	vm.jsObjectItems[objID] = obj
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 6)
+
+	// Promise.prototype
+	proto := vm.jsCreatePrototypeObject(Value{Type: VTJSObject, Num: objID})
+	vm.jsSetDescriptor(objID, "prototype", jsPropertyDescriptor{
+		Value: proto, HasValue: true, Enumerable: false, Configurable: false, Writable: false,
+	})
+
+	// Static methods: Promise.resolve, Promise.reject, Promise.all, Promise.race
+	for _, name := range []string{"resolve", "reject", "all", "race"} {
+		vm.jsSetDescriptor(objID, name, jsPropertyDescriptor{
+			Value:        vm.jsCreateIntrinsicFunction("Promise."+name, "PromiseStatic"+strings.Title(name)),
+			HasValue:     true,
+			Enumerable:   false,
+			Configurable: true,
+			Writable:     true,
+		})
+	}
+
+	return Value{Type: VTJSObject, Num: objID}
+}
+
+func (vm *VM) jsCreateIntrinsicFunction(name string, ctorName string) Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 3)
+	obj["__js_type"] = NewString("Function")
+	obj["__js_ctor"] = NewString(ctorName)
+	obj["name"] = NewString(name)
+	vm.jsObjectItems[objID] = obj
+	return Value{Type: VTJSFunction, Num: objID}
 }
 
 func (vm *VM) jsCreateIntrinsicObject(typeName string, ctorName string) Value {
@@ -1635,6 +1705,8 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	isClassConstructor := false
 	isStrict := false
 	isDerived := false
+	isGenerator := false
+	isAsync := false
 	for i := 0; i < len(template.Names); i++ {
 		name := template.Names[i]
 		if strings.HasPrefix(name, "__js_local_count__:") {
@@ -1655,6 +1727,14 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 			isStrict = true
 			continue
 		}
+		if name == jsGeneratorFlag {
+			isGenerator = true
+			continue
+		}
+		if name == jsAsyncFlag {
+			isAsync = true
+			continue
+		}
 		if name == jsDerivedConstructorFlag {
 			isDerived = true
 			continue
@@ -1673,6 +1753,8 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 		isClassConstructor: isClassConstructor,
 		isStrict:           isStrict,
 		isDerived:          isDerived,
+		isAsync:            isAsync,
+		isGenerator:        isGenerator,
 	}
 	// Arrow functions capture the current 'this' value lexically at creation time.
 	if template.Type == VTJSArrowFunctionTemplate {
@@ -2612,6 +2694,17 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 			if val, exists := obj[member]; exists {
 				return val, false
 			}
+		}
+		return Value{Type: VTJSUndefined}, false
+	case VTJSPromise:
+		if strings.EqualFold(member, "then") {
+			return vm.jsCreateIntrinsicFunction("Promise.prototype.then", "PromisePrototypeThen"), false
+		}
+		if strings.EqualFold(member, "catch") {
+			return vm.jsCreateIntrinsicFunction("Promise.prototype.catch", "PromisePrototypeCatch"), false
+		}
+		if strings.EqualFold(member, "finally") {
+			return vm.jsCreateIntrinsicFunction("Promise.prototype.finally", "PromisePrototypeFinally"), false
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTJSFunction:
@@ -3733,6 +3826,15 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		case strings.EqualFold(member, "valueOf"):
 			t := valueToTimeInLocale(vm, target)
 			return NewInteger(t.UnixNano() / int64(time.Millisecond)), true
+		}
+	case VTJSPromise:
+		switch {
+		case strings.EqualFold(member, "then"):
+			return vm.jsPromiseThen(target, args), true
+		case strings.EqualFold(member, "catch"):
+			return vm.jsPromiseCatch(target, args), true
+		case strings.EqualFold(member, "finally"):
+			return vm.jsPromiseFinally(target, args), true
 		}
 	case VTJSObject:
 		switch {
@@ -5484,6 +5586,12 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 				vm.jsThrowTypeError("Class constructor cannot be invoked without 'new'")
 				return Value{Type: VTJSUndefined}
 			}
+			if closure.isGenerator {
+				return vm.jsCreateGeneratorObject(callee, thisVal, args)
+			}
+			if closure.isAsync {
+				return vm.jsAsyncCall(callee, thisVal, args)
+			}
 			if closure.isBound {
 				callArgs := closure.boundArgs
 				if len(args) > 0 {
@@ -5520,6 +5628,43 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsCreateArrayIterator(thisVal, 0)
 		case "StringIteratorFactory":
 			return vm.jsCreateStringIterator(vm.valueToString(thisVal))
+		case "PromiseResolve":
+			promise := vm.jsObjectItems[callee.Num]["__js_promise"]
+			resolution := jsArgOrUndefined(args, 0)
+			vm.jsResolvePromise(promise, resolution)
+			return Value{Type: VTJSUndefined}
+		case "PromiseReject":
+			promise := vm.jsObjectItems[callee.Num]["__js_promise"]
+			reason := jsArgOrUndefined(args, 0)
+			vm.jsRejectPromise(promise, reason)
+			return Value{Type: VTJSUndefined}
+		case "PromiseStaticResolve":
+			return vm.jsPromiseStaticResolve(args)
+		case "PromiseStaticReject":
+			return vm.jsPromiseStaticReject(args)
+		case "PromiseStaticAll":
+			return vm.jsPromiseStaticAll(args)
+		case "PromiseStaticRace":
+			return vm.jsPromiseStaticRace(args)
+		case "PromiseAllResolver":
+			vm.jsHandlePromiseAllResolver(callee, args)
+			return Value{Type: VTJSUndefined}
+		case "PromiseFinallyHandler":
+			return vm.jsHandlePromiseFinallyHandler(callee, args)
+		case "PromiseConstantHandler":
+			return vm.jsHandlePromiseConstantHandler(callee, args)
+		case "PromisePrototypeThen":
+			return vm.jsPromiseThen(thisVal, args)
+		case "PromisePrototypeCatch":
+			return vm.jsPromiseCatch(thisVal, args)
+		case "PromisePrototypeFinally":
+			return vm.jsPromiseFinally(thisVal, args)
+		case "GeneratorPrototypeNext":
+			return vm.jsHandleGeneratorNext(thisVal, args)
+		case "GeneratorPrototypeThrow":
+			return vm.jsHandleGeneratorThrow(thisVal, args)
+		case "GeneratorPrototypeReturn":
+			return vm.jsHandleGeneratorReturn(thisVal, args)
 		}
 		return Value{Type: VTJSUndefined}
 	case VTNativeObject:
@@ -6250,6 +6395,8 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 				}
 			}
 			return mapObj
+		case "Promise":
+			return vm.jsNewPromise(args)
 		case "ArrayBuffer":
 			byteLength := 0
 			if len(args) > 0 {
