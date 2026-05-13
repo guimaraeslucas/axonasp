@@ -138,11 +138,27 @@ func (vm *VM) jsPopulatePrototypes(bindings map[string]Value) {
 		}
 	}
 
-	// Set.prototype
-	if setCtor, ok := bindings["Set"]; ok {
-		if proto, deferred := vm.jsMemberGet(setCtor, "prototype"); !deferred && proto.Type == VTJSObject {
-			for _, name := range []string{"add", "has", "delete", "clear"} {
-				vm.jsSetDescriptor(proto.Num, name, jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction(name, "Set")))
+	// WeakSet.prototype
+	if wsCtor, ok := bindings["WeakSet"]; ok {
+		if proto, deferred := vm.jsMemberGet(wsCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			for _, name := range []string{"add", "has", "delete"} {
+				vm.jsSetDescriptor(proto.Num, name, jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction(name, "WeakSet")))
+			}
+		}
+	}
+
+	// WeakRef.prototype
+	if wrCtor, ok := bindings["WeakRef"]; ok {
+		if proto, deferred := vm.jsMemberGet(wrCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			vm.jsSetDescriptor(proto.Num, "deref", jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction("deref", "WeakRef")))
+		}
+	}
+
+	// FinalizationRegistry.prototype
+	if frCtor, ok := bindings["FinalizationRegistry"]; ok {
+		if proto, deferred := vm.jsMemberGet(frCtor, "prototype"); !deferred && proto.Type == VTJSObject {
+			for _, name := range []string{"register", "unregister"} {
+				vm.jsSetDescriptor(proto.Num, name, jsDefaultPropertyDescriptor(vm.jsCreateNativeFunction(name, "FinalizationRegistry")))
 			}
 		}
 	}

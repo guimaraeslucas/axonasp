@@ -1009,6 +1009,7 @@ func (vm *VM) jsSymbolFor(key string) Value {
 	}
 	sym := Value{Type: VTSymbol, Num: vm.jsAllocSymbolID(), Str: key}
 	vm.jsSymbolGlobalRegistry[key] = sym
+	vm.jsRegisteredSymbolIDs[sym.Num] = struct{}{}
 	return sym
 }
 

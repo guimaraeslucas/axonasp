@@ -25,28 +25,6 @@ Here is the comprehensive, phased prompt you can provide to your coding agent. I
 
 ---
 
-### Phase 3: Deep Runtime & Collections (Medium-High Risk)
-
-These changes touch the core of how Maps, WeakMaps, and Garbage Collection interact with our `Value` struct.
-
-**Subphase 3.1: Symbol-Based Keys for Maps/WeakMaps**
-
-* **Target:** Support `Symbol` keys in `Map` and `WeakMap`.
-* **Implementation Tips:**
-* Currently, Maps likely serialize keys to strings or rely on specific Go map types. Ensure the internal map structure (e.g., `jsMapItems`) can distinguish between a String `"foo"` and `Symbol("foo")`.
-* Use the `jsSymbolGlobalRegistry` and symbol IDs to generate unique Go map keys internally.
-
-
-**Subphase 3.2: Weak Collections**
-
-* **Target:** `WeakRef`, `FinalizationRegistry`.
-* **Implementation Tips:**
-* *Warning:* Go's garbage collector does not natively expose JS-style weak references directly to user-land without `runtime.SetFinalizer` tricks, which can be expensive.
-* Implement `WeakRef` by storing the object ID. If the object ID is deleted from `jsObjectItems` during a VM cleanup sweep, `deref()` returns undefined.
-
-
----
-
 ### Phase 4: AST and Compiler Overhauls (High Risk)
 
 These features require modifications to `compiler_jscript.go` (Parser/Lexer) and `opcode.go`.

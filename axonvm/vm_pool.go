@@ -795,6 +795,7 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.jsShapeBySignature)
 	vm.jsNextShapeID = 1
 	clear(vm.jsObjectStateItems)
+	clear(vm.jsSymbolStateItems)
 	clear(vm.jsPropertyItems)
 	clear(vm.jsFunctionItems)
 	clear(vm.jsForInItems)
@@ -808,6 +809,7 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.jsMicrotaskQueue)
 	vm.jsMicrotaskQueue = vm.jsMicrotaskQueue[:0]
 	clear(vm.jsSymbolGlobalRegistry)
+	clear(vm.jsRegisteredSymbolIDs)
 	clear(vm.jsCallStack)
 	vm.jsCallStack = vm.jsCallStack[:0]
 	clear(vm.jsTryStack)

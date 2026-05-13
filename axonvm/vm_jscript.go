@@ -322,8 +322,24 @@ func (vm *VM) jsExportAllFromModule(specifier string) {
 	}
 }
 
+func (vm *VM) jsIsWeakKey(v Value) bool {
+	if v.Type == VTJSObject || v.Type == VTJSFunction {
+		return true
+	}
+	if v.Type == VTSymbol {
+		if v.Num < 0 {
+			return false // Well-known symbols are not allowed as weak keys
+		}
+		if _, registered := vm.jsRegisteredSymbolIDs[v.Num]; registered {
+			return false // Registered symbols (Symbol.for) are not allowed as weak keys
+		}
+		return true
+	}
+	return false
+}
+
 func (vm *VM) jsWeakSet(key Value, weakID uint64, val Value) {
-	if key.Type != VTJSObject && key.Type != VTJSFunction {
+	if !vm.jsIsWeakKey(key) {
 		vm.jsThrowTypeError("Invalid value used as weak map key")
 		return
 	}
@@ -337,6 +353,15 @@ func (vm *VM) jsWeakSet(key Value, weakID uint64, val Value) {
 		}
 		return
 	}
+	if key.Type == VTSymbol {
+		state := vm.jsGetSymbolState(key.Num)
+		if state.HiddenWeakData == nil {
+			state.HiddenWeakData = make(map[uint64]Value)
+		}
+		state.HiddenWeakData[weakID] = val
+		vm.jsSymbolStateItems[key.Num] = state
+		return
+	}
 	// VTJSObject
 	state := vm.jsGetObjectState(key.Num)
 	if state.HiddenWeakData == nil {
@@ -347,13 +372,22 @@ func (vm *VM) jsWeakSet(key Value, weakID uint64, val Value) {
 }
 
 func (vm *VM) jsWeakGet(key Value, weakID uint64) Value {
-	if key.Type != VTJSObject && key.Type != VTJSFunction {
+	if !vm.jsIsWeakKey(key) {
 		return Value{Type: VTJSUndefined}
 	}
 	if key.Type == VTJSFunction {
 		fn := vm.jsFunctionItems[key.Num]
 		if fn != nil && fn.hiddenWeakData != nil {
 			if val, ok := fn.hiddenWeakData[weakID]; ok {
+				return val
+			}
+		}
+		return Value{Type: VTJSUndefined}
+	}
+	if key.Type == VTSymbol {
+		state, ok := vm.jsSymbolStateItems[key.Num]
+		if ok && state.HiddenWeakData != nil {
+			if val, ok := state.HiddenWeakData[weakID]; ok {
 				return val
 			}
 		}
@@ -369,13 +403,21 @@ func (vm *VM) jsWeakGet(key Value, weakID uint64) Value {
 }
 
 func (vm *VM) jsWeakHas(key Value, weakID uint64) bool {
-	if key.Type != VTJSObject && key.Type != VTJSFunction {
+	if !vm.jsIsWeakKey(key) {
 		return false
 	}
 	if key.Type == VTJSFunction {
 		fn := vm.jsFunctionItems[key.Num]
 		if fn != nil && fn.hiddenWeakData != nil {
 			_, exists := fn.hiddenWeakData[weakID]
+			return exists
+		}
+		return false
+	}
+	if key.Type == VTSymbol {
+		state, ok := vm.jsSymbolStateItems[key.Num]
+		if ok && state.HiddenWeakData != nil {
+			_, exists := state.HiddenWeakData[weakID]
 			return exists
 		}
 		return false
@@ -389,7 +431,7 @@ func (vm *VM) jsWeakHas(key Value, weakID uint64) bool {
 }
 
 func (vm *VM) jsWeakDelete(key Value, weakID uint64) bool {
-	if key.Type != VTJSObject && key.Type != VTJSFunction {
+	if !vm.jsIsWeakKey(key) {
 		return false
 	}
 	if key.Type == VTJSFunction {
@@ -398,6 +440,18 @@ func (vm *VM) jsWeakDelete(key Value, weakID uint64) bool {
 			_, exists := fn.hiddenWeakData[weakID]
 			if exists {
 				delete(fn.hiddenWeakData, weakID)
+			}
+			return exists
+		}
+		return false
+	}
+	if key.Type == VTSymbol {
+		state, ok := vm.jsSymbolStateItems[key.Num]
+		if ok && state.HiddenWeakData != nil {
+			_, exists := state.HiddenWeakData[weakID]
+			if exists {
+				delete(state.HiddenWeakData, weakID)
+				vm.jsSymbolStateItems[key.Num] = state
 			}
 			return exists
 		}
@@ -473,6 +527,80 @@ func (vm *VM) jsCallWeakCollectionMethod(target Value, typeName string, member s
 		case strings.EqualFold(member, "delete"):
 			return NewBool(vm.jsWeakDelete(jsArgOrUndefined(args, 0), weakID))
 		}
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsCallWeakRefMethod executes WeakRef prototype methods.
+func (vm *VM) jsCallWeakRefMethod(target Value, member string, args []Value) Value {
+	wr, ok := vm.jsWeakRefItems[target.Num]
+	if !ok {
+		vm.jsThrowTypeError("Method WeakRef.prototype." + member + " called on incompatible receiver")
+		return Value{Type: VTJSUndefined}
+	}
+	if strings.EqualFold(member, "deref") {
+		// Target can be Object, Function or Symbol
+		if _, exists := vm.jsObjectItems[wr.targetID]; exists {
+			return Value{Type: VTJSObject, Num: wr.targetID}
+		}
+		if _, exists := vm.jsFunctionItems[wr.targetID]; exists {
+			return Value{Type: VTJSFunction, Num: wr.targetID}
+		}
+		if _, exists := vm.jsSymbolStateItems[wr.targetID]; exists {
+			return Value{Type: VTSymbol, Num: wr.targetID}
+		}
+		// Registered symbols are not allowed as weak keys, but if they were used,
+		// they are technically always alive. However, our constructor checks this.
+		return Value{Type: VTJSUndefined}
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsCallFinalizationRegistryMethod executes FinalizationRegistry prototype methods.
+func (vm *VM) jsCallFinalizationRegistryMethod(target Value, member string, args []Value) Value {
+	fr, ok := vm.jsFinalizationRegistryItems[target.Num]
+	if !ok {
+		vm.jsThrowTypeError("Method FinalizationRegistry.prototype." + member + " called on incompatible receiver")
+		return Value{Type: VTJSUndefined}
+	}
+	switch {
+	case strings.EqualFold(member, "register"):
+		if len(args) < 2 {
+			vm.jsThrowTypeError("FinalizationRegistry.prototype.register requires at least 2 arguments")
+			return Value{Type: VTJSUndefined}
+		}
+		targetObj := args[0]
+		if targetObj.Type != VTJSObject && targetObj.Type != VTJSFunction && targetObj.Type != VTSymbol {
+			vm.jsThrowTypeError("FinalizationRegistry.prototype.register: target must be an object")
+			return Value{Type: VTJSUndefined}
+		}
+		heldValue := args[1]
+		unregisterToken := Value{Type: VTJSUndefined}
+		if len(args) > 2 {
+			unregisterToken = args[2]
+		}
+		fr.entries = append(fr.entries, jsFinalizationEntry{
+			targetID:        targetObj.Num,
+			heldValue:       heldValue,
+			unregisterToken: unregisterToken,
+		})
+		return Value{Type: VTJSUndefined}
+	case strings.EqualFold(member, "unregister"):
+		if len(args) == 0 {
+			return NewBool(false)
+		}
+		token := args[0]
+		found := false
+		newEntries := make([]jsFinalizationEntry, 0, len(fr.entries))
+		for _, entry := range fr.entries {
+			if vm.jsStrictEquals(entry.unregisterToken, token) {
+				found = true
+				continue
+			}
+			newEntries = append(newEntries, entry)
+		}
+		fr.entries = newEntries
+		return NewBool(found)
 	}
 	return Value{Type: VTJSUndefined}
 }
@@ -763,6 +891,14 @@ func (vm *VM) jsGetObjectState(objID int64) jsObjectState {
 		return state
 	}
 	return defaultJSObjectState()
+}
+
+func (vm *VM) jsGetSymbolState(symID int64) jsObjectState {
+	state, ok := vm.jsSymbolStateItems[symID]
+	if ok {
+		return state
+	}
+	return jsObjectState{Extensible: false}
 }
 
 func (vm *VM) jsSetObjectExtensible(objID int64, extensible bool) {
@@ -1198,6 +1334,7 @@ func (vm *VM) jsCreatePrototypeObject(owner Value) Value {
 func jsCtorNeedsPrototype(ctorName string) bool {
 	switch ctorName {
 	case "Array", "Object", "String", "Date", "RegExp", "Enumerator", "VBArray", "Set", "Map", "WeakMap", "WeakSet", "Promise",
+		"WeakRef", "FinalizationRegistry",
 		"ArrayBuffer", "DataView",
 		"Int8Array", "Uint8Array", "Uint8ClampedArray",
 		"Int16Array", "Uint16Array",
@@ -1449,6 +1586,8 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["Map"] = vm.jsCreateIntrinsicObject("", "Map")
 	bindings["WeakMap"] = vm.jsCreateIntrinsicObject("", "WeakMap")
 	bindings["WeakSet"] = vm.jsCreateIntrinsicObject("", "WeakSet")
+	bindings["WeakRef"] = vm.jsCreateIntrinsicObject("", "WeakRef")
+	bindings["FinalizationRegistry"] = vm.jsCreateIntrinsicObject("", "FinalizationRegistry")
 	// ES6 Binary Data constructors
 	bindings["ArrayBuffer"] = vm.jsCreateIntrinsicObject("", "ArrayBuffer")
 	bindings["DataView"] = vm.jsCreateIntrinsicObject("", "DataView")
@@ -1739,6 +1878,21 @@ func (vm *VM) jsPropertyKeyFromValue(v Value) string {
 	return vm.valueToString(v)
 }
 
+type jsWeakRef struct {
+	targetID int64
+}
+
+type jsFinalizationRegistry struct {
+	callback Value
+	entries  []jsFinalizationEntry
+}
+
+type jsFinalizationEntry struct {
+	targetID        int64
+	heldValue       Value
+	unregisterToken Value
+}
+
 // jsCleanupCollections clears Set/Map backing stores between top-level runs to
 // avoid stale growth in long-lived server processes.
 func (vm *VM) jsCleanupCollections() {
@@ -1749,6 +1903,13 @@ func (vm *VM) jsCleanupCollections() {
 	for id, mapItems := range vm.jsMapItems {
 		clear(mapItems)
 		delete(vm.jsMapItems, id)
+	}
+	for id := range vm.jsWeakRefItems {
+		delete(vm.jsWeakRefItems, id)
+	}
+	for id, registry := range vm.jsFinalizationRegistryItems {
+		clear(registry.entries)
+		delete(vm.jsFinalizationRegistryItems, id)
 	}
 }
 
@@ -6588,6 +6749,10 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsCallWeakCollectionMethod(thisVal, "WeakMap", vm.jsObjectStringProperty(callee, "name"), args)
 		case "WeakSet":
 			return vm.jsCallWeakCollectionMethod(thisVal, "WeakSet", vm.jsObjectStringProperty(callee, "name"), args)
+		case "WeakRef":
+			return vm.jsCallWeakRefMethod(thisVal, vm.jsObjectStringProperty(callee, "name"), args)
+		case "FinalizationRegistry":
+			return vm.jsCallFinalizationRegistryMethod(thisVal, vm.jsObjectStringProperty(callee, "name"), args)
 		case "GeneratorPrototypeNext":
 			return vm.jsHandleGeneratorNext(thisVal, args)
 		case "GeneratorPrototypeThrow":
@@ -7342,6 +7507,40 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 				}
 			}
 			return weakSetObj
+		case "WeakRef":
+			if len(args) == 0 || (args[0].Type != VTJSObject && args[0].Type != VTJSFunction && args[0].Type != VTSymbol) {
+				vm.jsThrowTypeError("WeakRef target must be an object")
+				return Value{Type: VTJSUndefined}
+			}
+			objID := vm.allocJSID()
+			obj := make(map[string]Value, 2)
+			obj["__js_type"] = NewString("WeakRef")
+			obj["__js_ctor"] = NewString("WeakRef")
+			if proto := vm.jsGetIntrinsicPrototype("WeakRef"); proto.Type == VTJSObject {
+				obj["__js_proto"] = proto
+			}
+			vm.jsObjectItems[objID] = obj
+			vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 2)
+			vm.jsWeakRefItems[objID] = &jsWeakRef{targetID: args[0].Num}
+			return Value{Type: VTJSObject, Num: objID}
+		case "FinalizationRegistry":
+			if len(args) == 0 || args[0].Type != VTJSFunction {
+				vm.jsThrowTypeError("FinalizationRegistry callback must be a function")
+				return Value{Type: VTJSUndefined}
+			}
+			objID := vm.allocJSID()
+			obj := make(map[string]Value, 2)
+			obj["__js_type"] = NewString("FinalizationRegistry")
+			obj["__js_ctor"] = NewString("FinalizationRegistry")
+			if proto := vm.jsGetIntrinsicPrototype("FinalizationRegistry"); proto.Type == VTJSObject {
+				obj["__js_proto"] = proto
+			}
+			vm.jsObjectItems[objID] = obj
+			vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 2)
+			vm.jsFinalizationRegistryItems[objID] = &jsFinalizationRegistry{
+				callback: args[0],
+			}
+			return Value{Type: VTJSObject, Num: objID}
 		case "Promise":
 			return vm.jsNewPromise(args)
 		case "ArrayBuffer":

@@ -1950,3 +1950,97 @@ func TestJScriptClassFields(t *testing.T) {
 		t.Errorf("expected 'x=1, y=2, z=3, s=static', got %q", out)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Symbol-Based Keys for Maps/WeakMaps (Phase 3.1)
+// ---------------------------------------------------------------------------
+
+func TestJScriptWeakMapSymbolKey(t *testing.T) {
+	out := runASPSourceForTest(t, `<script runat="server" language="JScript">
+		var wm = new WeakMap();
+		var key = Symbol("foo");
+		wm.set(key, "bar");
+		Response.Write(wm.get(key));
+	</script>`)
+	if out != "bar" {
+		t.Errorf("expected 'bar', got %q", out)
+	}
+}
+
+func TestJScriptMapSymbolKey(t *testing.T) {
+	out := runASPSourceForTest(t, `<script runat="server" language="JScript">
+		var m = new Map();
+		var key = Symbol("foo");
+		m.set(key, "bar");
+		Response.Write(m.get(key));
+	</script>`)
+	if out != "bar" {
+		t.Errorf("expected 'bar', got %q", out)
+	}
+}
+
+func TestJScriptWeakSetSymbolKey(t *testing.T) {
+	out := runASPSourceForTest(t, `<script runat="server" language="JScript">
+		var ws = new WeakSet();
+		var key = Symbol("foo");
+		ws.add(key);
+		Response.Write(ws.has(key));
+	</script>`)
+	if out != "True" {
+		t.Errorf("expected 'True', got %q", out)
+	}
+}
+
+func TestJScriptWeakMapInvalidSymbolKeys(t *testing.T) {
+	// Registered symbol
+	_, err := runASPSourceForTestWithErr(t, `<script runat="server" language="JScript">
+		var wm = new WeakMap();
+		var key = Symbol.for("foo");
+		wm.set(key, "bar");
+	</script>`)
+	if err == nil {
+		t.Error("expected TypeError for registered symbol in WeakMap.set, got nil")
+	}
+
+	// Well-known symbol
+	_, err = runASPSourceForTestWithErr(t, `<script runat="server" language="JScript">
+		var wm = new WeakMap();
+		var key = Symbol.iterator;
+		wm.set(key, "bar");
+	</script>`)
+	if err == nil {
+		t.Error("expected TypeError for well-known symbol in WeakMap.set, got nil")
+	}
+}
+
+func TestJScriptWeakRef(t *testing.T) {
+	out := runASPSourceForTest(t, `<script runat="server" language="JScript">
+		var obj = { x: 1 };
+		var wr = new WeakRef(obj);
+		var target = wr.deref();
+		Response.Write("wr.deref() is obj: " + (target === obj) + " | ");
+		if (target) {
+			Response.Write("target.x: " + target.x);
+		} else {
+			Response.Write("null/undefined");
+		}
+	</script>`)
+	if out != "wr.deref() is obj: True | target.x: 1" {
+		t.Errorf("expected 'wr.deref() is obj: True | target.x: 1', got %q", out)
+	}
+}
+
+func TestJScriptFinalizationRegistry(t *testing.T) {
+	out := runASPSourceForTest(t, `<script runat="server" language="JScript">
+		var registry = new FinalizationRegistry(function(held) {
+			// Callback won't be called in our current VM unless we implement a sweep.
+		});
+		var obj = {};
+		registry.register(obj, "some data", obj);
+		registry.unregister(obj);
+		Response.Write("ok");
+	</script>`)
+	if out != "ok" {
+		t.Errorf("expected 'ok', got %q", out)
+	}
+}

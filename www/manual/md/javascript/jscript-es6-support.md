@@ -60,8 +60,39 @@ Response.Write(ws.has(key)); // True
 - `WeakMap` and `WeakSet` provide collections where keys (or values in `WeakSet`) are held weakly.
 - **Memory Safety:** Unlike standard `Map` and `Set`, weak collections do not prevent their keys from being garbage collected. This is critical for preventing memory leaks in long-running scripts where objects are used as temporary keys.
 - **Inverted Storage:** AxonASP uses an efficient "inverted storage" pattern where weak data is stored internally within the key object itself, ensuring that when the key is destroyed, the associated data is automatically reclaimed without GC overhead.
-- **Valid Keys:** Only objects (`{}`) and functions (`function`) can be used as keys. Attempting to use a primitive (string, number, boolean) as a key will throw a `TypeError`.
+- **Valid Keys:** Objects (`{}`), functions (`function`), and **unique Symbols** (those created via `Symbol()` that are not registered in the global registry via `Symbol.for()` and are not well-known symbols like `Symbol.iterator`) can be used as keys. Attempting to use a primitive (string, number, boolean) or a restricted symbol as a key will throw a `TypeError`.
 - **Non-Iterable:** Weak collections are not iterable. They do not support `for...of` loops, and they do not have `.size`, `.keys()`, `.values()`, or `.entries()` methods.
+
+---
+
+## Weak References (WeakRef and FinalizationRegistry)
+
+### Syntax
+
+```javascript
+var obj = { data: 42 };
+
+// 1. WeakRef
+var wr = new WeakRef(obj);
+var target = wr.deref();
+if (target !== undefined) {
+    Response.Write(target.data);
+}
+
+// 2. FinalizationRegistry
+var registry = new FinalizationRegistry(function(heldValue) {
+    // Callback executed when registered objects are garbage collected
+});
+registry.register(obj, "some context", obj); // register object
+registry.unregister(obj); // unregister
+```
+
+### Remarks
+
+- **WeakRef:** Provides a way to hold a weak reference to an object, function, or symbol, allowing it to be garbage collected while still attempting to access it if it hasn't been collected yet via the `deref()` method.
+- **FinalizationRegistry:** Allows you to register a callback to be invoked when an object is garbage collected.
+- **VM Implementation Note:** AxonASP's JScript engine focuses on short-lived, high-performance HTTP request processing and does not implement a background garbage collector. Objects typically live until the end of the script execution (or request completion). Therefore, `FinalizationRegistry` callbacks will not be triggered during standard execution, but the API and validation semantics are fully implemented for compatibility with modern JavaScript libraries that expect these features to exist.
+- Target objects for `WeakRef` and `FinalizationRegistry.register` must be Objects (`{}`), Functions, or unique Symbols (not registered via `Symbol.for()`). Passing primitives will result in a `TypeError`.
 
 ---
 

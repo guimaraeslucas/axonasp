@@ -365,6 +365,7 @@ type VM struct {
 	jsShapeBySignature             map[string]uint32
 	jsNextShapeID                  uint32
 	jsObjectStateItems             map[int64]jsObjectState
+	jsSymbolStateItems             map[int64]jsObjectState
 	jsPropertyItems                map[int64]map[string]jsPropertyDescriptor
 	jsFunctionItems                map[int64]*jsFunctionObject
 	jsForInItems                   map[int]*jsForInEnumerator
@@ -373,6 +374,8 @@ type VM struct {
 	jsArgumentsItems               map[int64]*jsArgumentsBinding
 	jsSetItems                     map[int64]map[string]Value
 	jsMapItems                     map[int64]map[string]Value
+	jsWeakRefItems                 map[int64]*jsWeakRef
+	jsFinalizationRegistryItems    map[int64]*jsFinalizationRegistry
 	jsArrayIterators               map[int64]*jsArrayIterator
 	jsStringIterators              map[int64]*jsStringIterator
 	jsArrayBuffers                 map[int64][]byte       // backing byte slices for ArrayBuffer objects
@@ -383,6 +386,7 @@ type VM struct {
 	jsMicrotaskQueue               []func()
 	jsProcessingMicrotasks         bool
 	jsSymbolGlobalRegistry         map[string]Value // Symbol.for global registry: description -> Symbol Value
+	jsRegisteredSymbolIDs          map[int64]struct{}
 	jsNextSymbolID                 int64
 	jsStrictMode                   bool                  // Current strict mode state
 	jsFunctionStrictModes          map[int64]bool        // Maps function IDs to strict mode status
@@ -592,6 +596,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsShapeBySignature:             make(map[string]uint32),
 		jsNextShapeID:                  1,
 		jsObjectStateItems:             make(map[int64]jsObjectState),
+		jsSymbolStateItems:             make(map[int64]jsObjectState),
 		jsPropertyItems:                make(map[int64]map[string]jsPropertyDescriptor),
 		jsFunctionItems:                make(map[int64]*jsFunctionObject),
 		jsForInItems:                   make(map[int]*jsForInEnumerator),
@@ -600,6 +605,8 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsArgumentsItems:               make(map[int64]*jsArgumentsBinding),
 		jsSetItems:                     make(map[int64]map[string]Value),
 		jsMapItems:                     make(map[int64]map[string]Value),
+		jsWeakRefItems:                 make(map[int64]*jsWeakRef),
+		jsFinalizationRegistryItems:    make(map[int64]*jsFinalizationRegistry),
 		jsArrayIterators:               make(map[int64]*jsArrayIterator),
 		jsStringIterators:              make(map[int64]*jsStringIterator),
 		jsArrayBuffers:                 make(map[int64][]byte),
@@ -608,6 +615,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsPromiseItems:                 make(map[int64]*jsPromiseObject),
 		jsGeneratorItems:               make(map[int64]*jsGeneratorObject),
 		jsSymbolGlobalRegistry:         make(map[string]Value),
+		jsRegisteredSymbolIDs:          make(map[int64]struct{}),
 		jsNextSymbolID:                 1,
 		jsFunctionStrictModes:          make(map[int64]bool),
 		jsBlockScopes:                  make([]map[string]Value, 0, 32),
