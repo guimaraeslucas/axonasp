@@ -362,6 +362,47 @@ func TestJScriptGeneratorsResume(t *testing.T) {
 	}
 }
 
+func TestJScriptGeneratorLoopConstant(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		function* idMaker() {
+			while (true)
+				yield 1;
+		}
+
+		var gen = idMaker();
+		Response.Write(gen.next().value + "|");
+		Response.Write(gen.next().value + "|");
+		Response.Write(gen.next().value);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "1|1|1" {
+		t.Errorf("expected '1|1|1', got %q", out)
+	}
+}
+
+func TestJScriptGeneratorLoopPostIncrement(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		function* idMaker() {
+			var index = 0;
+			while (true)
+				yield index++;
+		}
+
+		var gen = idMaker();
+		Response.Write(gen.next().value + "|");
+		Response.Write(gen.next().value + "|");
+		Response.Write(gen.next().value);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "0|1|2" {
+		t.Errorf("expected '0|1|2', got %q", out)
+	}
+}
+
 func TestJScriptAsyncAwait(t *testing.T) {
 	out, err := runJScript2(t, jscriptSrc(`
 		async function f() {

@@ -3325,7 +3325,10 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 	prevLocalEnabled := c.jsLocalEnabled
 	prevLocalSlotCount := c.jsLocalSlotCount
 	prevLocalScopeStack := c.jsLocalScopeStack
-	canUseLocalSlots := !jsFunctionContainsNestedFunction(fn)
+	prevGenerator := c.jsInGeneratorFunction
+	c.jsInGeneratorFunction = fn != nil && fn.Generator
+	defer func() { c.jsInGeneratorFunction = prevGenerator }()
+	canUseLocalSlots := !jsFunctionContainsNestedFunction(fn) && (fn == nil || !fn.Generator)
 	c.jsLocalEnabled = canUseLocalSlots
 	c.jsLocalSlotCount = 0
 	c.jsLocalScopeStack = make([]jsLocalScope, 0, 8)
@@ -3491,13 +3494,16 @@ func (c *Compiler) compileJScriptUpdateExpression(node *jsast.UnaryExpression) b
 		case jstoken.INCREMENT:
 			if isLocal {
 				if node.Postfix {
-					c.emit(OpJSGetLocal, slot)
-					c.emit(OpJSIncLocal, slot)
-					c.emit(OpJSPop)
+					if !c.jsInGeneratorFunction {
+						c.emit(OpJSGetLocal, slot)
+						c.emit(OpJSIncLocal, slot)
+						c.emit(OpJSPop)
+						return true
+					}
 				} else {
 					c.emit(OpJSIncLocal, slot)
+					return true
 				}
-				return true
 			}
 			if isInt && !node.Postfix {
 				c.emit(OpJSIncInt, nameIdx)

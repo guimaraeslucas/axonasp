@@ -1219,7 +1219,10 @@ func (vm *VM) cloneForExecuteGlobal(startIP int) *VM {
 // stack and call frame context to enable local variable access.
 func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	child := *vm
-	// DO NOT reset stack, sp, or fp. Share parent's current frame.
+	// Copy the active stack so the child can suspend or resume without being
+	// clobbered by the caller continuing execution on the parent VM.
+	child.stack = make([]Value, len(vm.stack))
+	copy(child.stack, vm.stack)
 	child.ip = startIP
 	child.callStack = make([]CallFrame, len(vm.callStack))
 	copy(child.callStack, vm.callStack)
@@ -1231,6 +1234,38 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	child.suppressTerminate = true
 	child.onResumeNext = vm.onResumeNext
 	child.skipToNextStmt = false
+	child.jsEnvItems = make(map[int64]*jsEnvFrame, len(vm.jsEnvItems))
+	for id, env := range vm.jsEnvItems {
+		if env == nil {
+			child.jsEnvItems[id] = nil
+			continue
+		}
+		bindings := make(map[string]Value, len(env.bindings))
+		for name, value := range env.bindings {
+			bindings[name] = value
+		}
+		child.jsEnvItems[id] = &jsEnvFrame{parentID: env.parentID, bindings: bindings}
+	}
+	child.jsArgumentsItems = make(map[int64]*jsArgumentsBinding, len(vm.jsArgumentsItems))
+	for id, binding := range vm.jsArgumentsItems {
+		if binding == nil {
+			child.jsArgumentsItems[id] = nil
+			continue
+		}
+		indexToParam := make(map[string]string, len(binding.indexToParam))
+		for key, value := range binding.indexToParam {
+			indexToParam[key] = value
+		}
+		paramToIndex := make(map[string]string, len(binding.paramToIndex))
+		for key, value := range binding.paramToIndex {
+			paramToIndex[key] = value
+		}
+		child.jsArgumentsItems[id] = &jsArgumentsBinding{
+			envID:        binding.envID,
+			indexToParam: indexToParam,
+			paramToIndex: paramToIndex,
+		}
+	}
 	// stmtSP carries over from parent; child's first OpLine will reset it.
 
 	return &child

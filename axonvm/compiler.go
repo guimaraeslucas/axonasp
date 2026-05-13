@@ -151,6 +151,7 @@ type Compiler struct {
 	jsLocalScopeStack     []jsLocalScope    // Lexical stack for JScript local slot resolution
 	jsLocalEnabled        bool              // True when local slot lowering is enabled for current function
 	jsLocalSlotCount      int               // Number of local slots allocated for current function
+	jsInGeneratorFunction bool              // True when compiling a generator body.
 	// withDepth tracks nesting level of With...End With blocks at compile time.
 	// A value > 0 enables the leading-dot '.' statement and expression syntax.
 	withDepth          int
