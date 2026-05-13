@@ -27,7 +27,7 @@ The client bridge (`g3axonlive.js`) automatically collects `data-g3al-arg-*` att
 ### VBScript
 ```vbscript
 Dim AxonLive, jsonArgs
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 If AxonLive.IsAsyncRequest Then
@@ -40,7 +40,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 if (AxonLive.IsAsyncRequest) {

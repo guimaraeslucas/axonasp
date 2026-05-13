@@ -1,20 +1,20 @@
-# G3AXON.LIVE Object Overview
+# G3AXONLIVE Object Overview
 
-The `G3AXON.LIVE` object is the native server-side procedural controller for the AxonLive framework. By utilizing this object, developers can receive asynchronous JavaScript `fetch` events from the frontend, process the associated business logic locally in Go memory, and respond with targeted DOM updates (HTML patches) and client instructions.
+The `G3AXONLIVE` object is the native server-side procedural controller for the AxonLive framework. By utilizing this object, developers can receive asynchronous JavaScript `fetch` events from the frontend, process the associated business logic locally in Go memory, and respond with targeted DOM updates (HTML patches) and client instructions.
 
 ## ProgID
 
 ```vbscript
-Set obj = Server.CreateObject("G3AXON.LIVE")
+Set obj = Server.CreateObject("G3AXONLIVE")
 ```
 
 ```javascript
-var obj = Server.CreateObject("G3AXON.LIVE");
+var obj = Server.CreateObject("G3AXONLIVE");
 ```
 
 ## Architecture
 
-The `G3AXON.LIVE` object acts as a bridge between the incoming async POST request (triggered by `g3axonlive.js`) and the backend ASP engine. It provides methods to identify the source of the event (`EventComponentID`), fetch contextual data (`GetEventArg`), and securely update state.
+The `G3AXONLIVE` object acts as a bridge between the incoming async POST request (triggered by `g3axonlive.js`) and the backend ASP engine. It provides methods to identify the source of the event (`EventComponentID`), fetch contextual data (`GetEventArg`), and securely update state.
 
 Async event routing is bound to the authenticated ASP session cookie (`ASPSESSIONID`). The server validates event session identity against the authenticated request context before resolving the target page.
 

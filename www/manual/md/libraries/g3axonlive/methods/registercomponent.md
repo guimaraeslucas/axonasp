@@ -32,7 +32,7 @@ The `htmlString` must be a valid HTML string. If you replace an element, ensure 
 ### VBScript
 ```vbscript
 Dim AxonLive, newHtml
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 If AxonLive.IsAsyncRequest Then
@@ -44,7 +44,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 if (AxonLive.IsAsyncRequest) {

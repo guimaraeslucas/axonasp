@@ -31,7 +31,7 @@ This method is typically called when a user logs out or their session is explici
 ### VBScript
 ```vbscript
 Dim AxonLive, sID
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 sID = Session.SessionID
@@ -45,7 +45,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 var sID = Session.SessionID;

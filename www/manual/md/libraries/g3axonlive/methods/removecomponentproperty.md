@@ -33,7 +33,7 @@ Use this method to clean up individual properties without affecting the rest of 
 ### VBScript
 ```vbscript
 Dim AxonLive, sID
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 sID = Session.SessionID

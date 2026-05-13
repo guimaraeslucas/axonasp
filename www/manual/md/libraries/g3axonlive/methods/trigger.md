@@ -32,7 +32,7 @@ This is useful for chaining server-side workflows. For instance, successfully sa
 ### VBScript
 ```vbscript
 Dim AxonLive
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 If AxonLive.IsAsyncRequest Then
@@ -48,7 +48,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 if (AxonLive.IsAsyncRequest) {

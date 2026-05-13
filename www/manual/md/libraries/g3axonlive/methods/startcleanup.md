@@ -31,7 +31,7 @@ This method is usually triggered automatically during server startup if `g3axonl
 ### VBScript
 ```vbscript
 Dim AxonLive
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 
 ' Explicitly start the memory cleanup process
 AxonLive.StartCleanup()
@@ -39,7 +39,7 @@ AxonLive.StartCleanup()
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 
 // Explicitly start the memory cleanup process
 AxonLive.StartCleanup();

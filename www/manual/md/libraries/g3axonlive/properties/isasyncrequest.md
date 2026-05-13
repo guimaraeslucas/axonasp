@@ -27,7 +27,7 @@ This property is the main gatekeeper for AxonLive logic. All component-handling 
 ### VBScript
 ```vbscript
 Dim AxonLive
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 If AxonLive.IsAsyncRequest Then
@@ -41,7 +41,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 if (AxonLive.IsAsyncRequest) {

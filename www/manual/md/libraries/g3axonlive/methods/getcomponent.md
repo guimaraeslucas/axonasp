@@ -39,7 +39,7 @@ The returned proxy object acts as a bridge to manipulate the DOM element on the 
 ### VBScript
 ```vbscript
 Dim AxonLive, btnAction
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 If AxonLive.IsAsyncRequest Then
@@ -54,7 +54,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 if (AxonLive.IsAsyncRequest) {

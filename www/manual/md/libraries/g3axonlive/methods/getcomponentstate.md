@@ -32,7 +32,7 @@ This method is intended primarily for debugging purposes. Do not rely on its spe
 ### VBScript
 ```vbscript
 Dim AxonLive, sID, dump
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 sID = Session.SessionID
@@ -43,7 +43,7 @@ Response.Write "<pre>" & Server.HTMLEncode(dump) & "</pre>"
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 var sID = Session.SessionID;

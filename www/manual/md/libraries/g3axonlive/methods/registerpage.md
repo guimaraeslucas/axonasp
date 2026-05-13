@@ -32,7 +32,7 @@ You generally **do not need to call this manually**. The `InitPage` method autom
 ### VBScript
 ```vbscript
 Dim AxonLive, sID
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 
 sID = Session.SessionID
 AxonLive.RegisterPage sID, "/custom_handler.asp"
@@ -40,7 +40,7 @@ AxonLive.RegisterPage sID, "/custom_handler.asp"
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 
 var sID = Session.SessionID;
 AxonLive.RegisterPage(sID, "/custom_handler.asp");

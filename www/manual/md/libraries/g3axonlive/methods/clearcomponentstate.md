@@ -32,7 +32,7 @@ This method deletes all keys sharing the same `sessionID` and `componentID` pref
 ### VBScript
 ```vbscript
 Dim AxonLive, sID
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 sID = Session.SessionID
@@ -47,7 +47,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 var sID = Session.SessionID;

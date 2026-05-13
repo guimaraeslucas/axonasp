@@ -34,7 +34,7 @@ Unlike standard ASP `Session` variables, this state is maintained in an optimize
 ### VBScript
 ```vbscript
 Dim AxonLive, sID
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 sID = Session.SessionID
@@ -48,7 +48,7 @@ End If
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 var sID = Session.SessionID;

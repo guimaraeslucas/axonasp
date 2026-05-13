@@ -142,7 +142,7 @@
             * [Axgenerateguid](md/libraries/g3axon/methods/axgenerateguid.md)
             * [Axgetdefaultcss](md/libraries/g3axon/methods/axgetdefaultcss.md)
             * [Axpoweredbyimage](md/libraries/g3axon/methods/axpoweredbyimage.md)
-    * G3AXON.LIVE
+    * G3AXONLIVE
         * [Overview](md/libraries/g3axonlive/overview.md)
         * [Methods](md/libraries/g3axonlive/methods.md)
         * [Properties](md/libraries/g3axonlive/properties.md)

@@ -33,7 +33,7 @@ This method retrieves data from the optimized Go memory map, bypassing standard 
 ### VBScript
 ```vbscript
 Dim AxonLive, sID, stepVal
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage()
 
 sID = Session.SessionID
@@ -46,7 +46,7 @@ Response.Write "Current Step: " & stepVal
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage();
 
 var sID = Session.SessionID;

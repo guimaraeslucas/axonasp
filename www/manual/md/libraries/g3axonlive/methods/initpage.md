@@ -31,12 +31,12 @@ You MUST call this method at the very top of your ASP script, before checking `I
 ### VBScript
 ```vbscript
 Dim AxonLive
-Set AxonLive = Server.CreateObject("G3AXON.LIVE")
+Set AxonLive = Server.CreateObject("G3AXONLIVE")
 AxonLive.InitPage() ' Mandatory initialization
 ```
 
 ### JavaScript
 ```javascript
-var AxonLive = Server.CreateObject("G3AXON.LIVE");
+var AxonLive = Server.CreateObject("G3AXONLIVE");
 AxonLive.InitPage(); // Mandatory initialization
 ```
