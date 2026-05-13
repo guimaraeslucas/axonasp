@@ -272,6 +272,8 @@ oracle_user = "system"
 smpt_host = "smtp.example.com"
 smtp_from = "sender@example.com"
 smtp_pass = "your_password"
+smtp_port = 587
+smtp_user = "your_email@example.com"
 
 # G3AXONLIVE Configuration - Reactive Component Framework
 # The G3AXONLIVE library provides a native reactive component framework for building stateful ASP pages
@@ -298,9 +300,6 @@ g3axonlive_auto_cleanup = true
 # If the server tries to register more patches than this limit, an error is raised.
 # Increase this value if your page renders many independently-updated components at once.
 max_components_per_response = 200
-
-smtp_port = 587
-smtp_user = "your_email@example.com"
 
 [axfunctions]
 # When enabled, the Ax functions will be avaliable on the global context, without the need to call Server.Object(). This will break compatibility with Classic ASP default
