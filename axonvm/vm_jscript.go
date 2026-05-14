@@ -1640,7 +1640,7 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["Array"] = vm.jsCreateIntrinsicObject("", "Array")
 	bindings["Object"] = vm.jsCreateIntrinsicObject("", "Object")
 	bindings["JSON"] = vm.jsCreateIntrinsicObject("", "JSON")
-	bindings["Proxy"] = vm.jsCreateIntrinsicFunction("Proxy", "Proxy")
+	bindings["Proxy"] = vm.jsCreateProxyObject()
 	bindings["Reflect"] = vm.jsCreateReflectObject()
 	bindings["Promise"] = vm.jsCreatePromiseObject()
 	bindings["Number"] = vm.jsCreateNumberObject()
@@ -1713,6 +1713,32 @@ func (vm *VM) jsCreateReflectObject() Value {
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
 	return Value{Type: VTJSObject, Num: objID}
+}
+
+// jsCreateProxyObject allocates the global Proxy constructor object with static methods.
+func (vm *VM) jsCreateProxyObject() Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 4)
+	obj["__js_type"] = NewString("Function")
+	obj["__js_ctor"] = NewString("Proxy")
+	obj["name"] = NewString("Proxy")
+	obj["length"] = NewInteger(2)
+	vm.jsObjectItems[objID] = obj
+	props := make(map[string]jsPropertyDescriptor, 4)
+
+	// Proxy.revocable static method
+	revocableID := vm.allocJSID()
+	revocableObj := make(map[string]Value, 4)
+	revocableObj["__js_type"] = NewString("Function")
+	revocableObj["__js_ctor"] = NewString("ProxyRevocable")
+	revocableObj["name"] = NewString("revocable")
+	revocableObj["length"] = NewInteger(2)
+	vm.jsObjectItems[revocableID] = revocableObj
+	vm.jsPropertyItems[revocableID] = make(map[string]jsPropertyDescriptor, 4)
+	obj["revocable"] = Value{Type: VTJSFunction, Num: revocableID}
+
+	vm.jsPropertyItems[objID] = props
+	return Value{Type: VTJSFunction, Num: objID}
 }
 
 // jsCreateNumberObject allocates the global Number constructor object with ES6 static methods.
@@ -2351,6 +2377,38 @@ func (vm *VM) jsStrictEquals(a Value, b Value) bool {
 	}
 }
 
+func (vm *VM) jsIsCallable(v Value) bool {
+	switch v.Type {
+	case VTJSFunction, VTBuiltin, VTUserSub:
+		return true
+	case VTJSProxy:
+		if proxy, ok := vm.jsProxyItems[v.Num]; ok && !proxy.Revoked {
+			return vm.jsIsCallable(proxy.Target)
+		}
+	}
+	return false
+}
+
+func (vm *VM) jsIsConstructor(v Value) bool {
+	switch v.Type {
+	case VTJSFunction:
+		if closure, ok := vm.jsFunctionItems[v.Num]; ok && closure != nil {
+			return !closure.isGenerator && !closure.isAsync && !closure.isArrow
+		}
+		return true // Native JScript function (constructor)
+	case VTJSObject:
+		ctorName := vm.jsObjectStringProperty(v, "__js_ctor")
+		return ctorName != "" && ctorName != "Symbol" && ctorName != "isNaN" && ctorName != "isFinite" &&
+			ctorName != "parseInt" && ctorName != "parseFloat" && ctorName != "decodeURI" &&
+			ctorName != "decodeURIComponent" && ctorName != "encodeURI" && ctorName != "encodeURIComponent"
+	case VTJSProxy:
+		if proxy, ok := vm.jsProxyItems[v.Num]; ok && !proxy.Revoked {
+			return vm.jsIsConstructor(proxy.Target)
+		}
+	}
+	return false
+}
+
 func (vm *VM) jsTypeOf(v Value) string {
 	switch v.Type {
 	case VTJSUndefined:
@@ -2361,6 +2419,8 @@ func (vm *VM) jsTypeOf(v Value) string {
 		return "boolean"
 	case VTInteger, VTDouble:
 		return "number"
+	case VTJSBigInt:
+		return "bigint"
 	case VTString:
 		return "string"
 	case VTSymbol:
@@ -2368,14 +2428,8 @@ func (vm *VM) jsTypeOf(v Value) string {
 	case VTJSFunction:
 		return "function"
 	case VTJSProxy:
-		if proxy, ok := vm.jsProxyItems[v.Num]; ok && !proxy.Revoked {
-			targetType := proxy.Target.Type
-			if targetType == VTJSFunction || targetType == VTBuiltin || targetType == VTUserSub {
-				return "function"
-			}
-			if targetType == VTJSProxy {
-				return vm.jsTypeOf(proxy.Target)
-			}
+		if vm.jsIsCallable(v) {
+			return "function"
 		}
 		return "object"
 	case VTJSObject, VTNativeObject, VTObject, VTArray, VTJSPromise, VTJSGenerator:
@@ -7303,8 +7357,71 @@ func (vm *VM) jsSuperCall(args []Value) Value {
 	return vm.jsConstruct(superCtor, args, newTarget, true)
 }
 
+func (vm *VM) jsProxyApply(proxy Value, thisVal Value, args []Value) Value {
+	pObj, ok := vm.jsProxyItems[proxy.Num]
+	if !ok || pObj.Revoked {
+		vm.jsThrowTypeError("Cannot perform 'apply' on a proxy that has been revoked")
+		return Value{Type: VTJSUndefined}
+	}
+
+	// 1. Get the 'apply' trap
+	trap, _ := vm.jsMemberGet(pObj.Handler, "apply")
+
+	if trap.Type == VTJSUndefined || trap.Type == VTNull {
+		// 2. Forward to target
+		return vm.jsCall(pObj.Target, thisVal, args)
+	}
+
+	// 3. Invoke the trap: trap(target, thisArgument, argumentsList)
+	// Create argumentsList array
+	argList := ValueFromVBArray(NewVBArrayFromValues(0, args))
+	trapArgs := []Value{pObj.Target, thisVal, argList}
+	return vm.jsCall(trap, pObj.Handler, trapArgs)
+}
+
+func (vm *VM) jsProxyConstruct(proxy Value, args []Value, newTarget Value) Value {
+	pObj, ok := vm.jsProxyItems[proxy.Num]
+	if !ok || pObj.Revoked {
+		vm.jsThrowTypeError("Cannot perform 'construct' on a proxy that has been revoked")
+		return Value{Type: VTJSUndefined}
+	}
+
+	// 1. Get the 'construct' trap
+	trap, _ := vm.jsMemberGet(pObj.Handler, "construct")
+
+	if trap.Type == VTJSUndefined || trap.Type == VTNull {
+		// 2. Forward to target
+		return vm.jsConstruct(pObj.Target, args, newTarget, false)
+	}
+
+	// 3. Invoke the trap: trap(target, argumentsList, newTarget)
+	argList := ValueFromVBArray(NewVBArrayFromValues(0, args))
+	trapArgs := []Value{pObj.Target, argList, newTarget}
+	result := vm.jsCall(trap, pObj.Handler, trapArgs)
+
+	// 4. Result must be an object
+	isObject := func(v Value) bool {
+		switch v.Type {
+		case VTJSObject, VTJSFunction, VTJSPromise, VTJSGenerator, VTJSProxy, VTNativeObject, VTArray, VTObject:
+			return true
+		}
+		return false
+	}
+	if !isObject(result) {
+		vm.jsThrowTypeError("Proxy 'construct' trap must return an object")
+		return Value{Type: VTJSUndefined}
+	}
+	return result
+}
+
 func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 	switch callee.Type {
+	case VTJSProxy:
+		if !vm.jsIsCallable(callee) {
+			vm.jsThrowTypeError("Proxy target is not a function")
+			return Value{Type: VTJSUndefined}
+		}
+		return vm.jsProxyApply(callee, thisVal, args)
 	case VTJSFunction:
 		if closure, ok := vm.jsFunctionItems[callee.Num]; ok && closure != nil {
 			if closure.isClassConstructor {
@@ -7351,6 +7468,41 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 		switch ctorName {
 		case "Proxy":
 			vm.jsThrowTypeError("Constructor Proxy requires 'new'")
+			return Value{Type: VTJSUndefined}
+		case "ProxyRevocable":
+			if len(args) < 2 {
+				vm.jsThrowTypeError("Proxy.revocable requires 2 arguments: target and handler")
+				return Value{Type: VTJSUndefined}
+			}
+			proxyVal := vm.jsCreateProxy(args)
+			if proxyVal.Type != VTJSProxy {
+				return Value{Type: VTJSUndefined}
+			}
+			// Create revoke function
+			revokeID := vm.allocJSID()
+			revokeObj := make(map[string]Value, 4)
+			revokeObj["__js_type"] = NewString("Function")
+			revokeObj["__js_ctor"] = NewString("ProxyRevoke")
+			revokeObj["__js_proxy_id"] = NewInteger(proxyVal.Num)
+			revokeObj["name"] = NewString("")
+			revokeObj["length"] = NewInteger(0)
+			vm.jsObjectItems[revokeID] = revokeObj
+			vm.jsPropertyItems[revokeID] = make(map[string]jsPropertyDescriptor, 4)
+			revokeFn := Value{Type: VTJSFunction, Num: revokeID}
+
+			// Return {proxy, revoke}
+			resultID := vm.allocJSID()
+			resultObj := make(map[string]Value, 2)
+			resultObj["proxy"] = proxyVal
+			resultObj["revoke"] = revokeFn
+			vm.jsObjectItems[resultID] = resultObj
+			vm.jsPropertyItems[resultID] = make(map[string]jsPropertyDescriptor, 4)
+			return Value{Type: VTJSObject, Num: resultID}
+		case "ProxyRevoke":
+			proxyID := vm.jsObjectItems[callee.Num]["__js_proxy_id"].Num
+			if p, ok := vm.jsProxyItems[proxyID]; ok {
+				p.Revoked = true
+			}
 			return Value{Type: VTJSUndefined}
 		case "ArrayValues":
 			return vm.jsCreateArrayIterator(thisVal, 0)
@@ -8015,7 +8167,40 @@ func (vm *VM) jsNew(constructor Value, args []Value) Value {
 	return vm.jsConstruct(constructor, args, constructor, false)
 }
 
+func (vm *VM) jsCreateProxy(args []Value) Value {
+	if len(args) < 2 {
+		vm.jsThrowTypeError("Proxy requires 2 arguments: target and handler")
+		return Value{Type: VTJSUndefined}
+	}
+	target := args[0]
+	handler := args[1]
+	isObject := func(v Value) bool {
+		switch v.Type {
+		case VTJSObject, VTJSFunction, VTJSPromise, VTJSGenerator, VTJSProxy, VTNativeObject, VTArray, VTObject:
+			return true
+		}
+		return false
+	}
+	if !isObject(target) || !isObject(handler) {
+		vm.jsThrowTypeError("Proxy target and handler must be objects")
+		return Value{Type: VTJSUndefined}
+	}
+	proxyID := vm.allocJSID()
+	vm.jsProxyItems[proxyID] = &jsProxyObject{
+		Target:  target,
+		Handler: handler,
+	}
+	return Value{Type: VTJSProxy, Num: proxyID}
+}
+
 func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSuper bool) Value {
+	if constructor.Type == VTJSProxy {
+		if !vm.jsIsConstructor(constructor) {
+			vm.jsThrowTypeError("Proxy target is not a constructor")
+			return Value{Type: VTJSUndefined}
+		}
+		return vm.jsProxyConstruct(constructor, args, newTarget)
+	}
 	if constructor.Type == VTJSFunction {
 		closure := vm.jsFunctionItems[constructor.Num]
 		if closure != nil {
@@ -8055,29 +8240,7 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 			vm.jsThrowTypeError("Symbol is not a constructor")
 			return Value{Type: VTJSUndefined}
 		case "Proxy":
-			if len(args) < 2 {
-				vm.jsThrowTypeError("Constructor Proxy requires 2 arguments: target and handler")
-				return Value{Type: VTJSUndefined}
-			}
-			target := args[0]
-			handler := args[1]
-			isObject := func(v Value) bool {
-				switch v.Type {
-				case VTJSObject, VTJSFunction, VTJSPromise, VTJSGenerator, VTJSProxy, VTNativeObject, VTArray, VTObject:
-					return true
-				}
-				return false
-			}
-			if !isObject(target) || !isObject(handler) {
-				vm.jsThrowTypeError("Proxy target and handler must be objects")
-				return Value{Type: VTJSUndefined}
-			}
-			proxyID := vm.allocJSID()
-			vm.jsProxyItems[proxyID] = &jsProxyObject{
-				Target:  target,
-				Handler: handler,
-			}
-			return Value{Type: VTJSProxy, Num: proxyID}
+			return vm.jsCreateProxy(args)
 		case "Date":
 			if len(args) == 0 {
 				return NewDate(time.Now().In(builtinCurrentLocation(vm)))

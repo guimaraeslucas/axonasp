@@ -21,6 +21,7 @@
     * [Installing from Linux Packages](md/runtime/linux-packages.md)
     * [Service Wrapper](md/runtime/service-wrapper.md)
     * [MCP Server and VS Code](md/runtime/mcp-vscode.md)
+    * [CLI and TUI](md/runtime/cli-tui.md)
     * [System Pages and Error Pages](md/runtime/system-pages.md)
     * [AxonASP Error Code Reference](md/runtime/axonasp-error-codes.md)
 * Configuration

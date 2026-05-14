@@ -2013,7 +2013,11 @@ var proxy = new Proxy(target, handler);
 - **Supported Traps:**
     - `get(target, property, receiver)`: Intercepts property reads.
     - `set(target, property, value, receiver)`: Intercepts property writes. Must return `true` to indicate success. In **Strict Mode**, returning `false` (or any falsy value) throws a `TypeError`.
-- **Support Note:** AxonASP now supports `get` and `set` traps for member access (`obj.prop`) and indexed access (`obj[key]`). Interception for other operations (like `apply`, `construct`, `has`, `deleteProperty`) will be implemented in subsequent phases.
+    - `apply(target, thisArg, argumentsList)`: Intercepts function calls.
+    - `construct(target, argumentsList, newTarget)`: Intercepts `new` operator calls. Must return an object.
+- **Static Methods:**
+    - `Proxy.revocable(target, handler)`: Creates a revocable `Proxy` object. Returns an object with two properties: `proxy` and `revoke`.
+- **Support Note:** AxonASP now supports `get`, `set`, `apply`, and `construct` traps. Interception for other operations (like `has`, `deleteProperty`, `ownKeys`) will be implemented in subsequent phases.
 
 ### Reflect
 

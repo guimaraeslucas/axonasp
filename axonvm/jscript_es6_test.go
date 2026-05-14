@@ -2468,3 +2468,52 @@ func TestJScriptProxyGetSet(t *testing.T) {
 		}
 	}
 }
+
+func TestJScriptProxyApplyConstruct(t *testing.T) {
+	tests := []struct {
+		code     string
+		expected string
+	}{
+		// 1. apply trap
+		{`(function(){ 
+			var target = function(a, b) { return a + b; };
+			var handler = {
+				apply: function(target, thisArg, args) {
+					return target(args[0], args[1]) * 10;
+				}
+			};
+			var p = new Proxy(target, handler);
+			return p(1, 2);
+		})()`, "30"},
+		// 2. construct trap
+		{`(function(){
+			var target = function(name) { this.name = name; };
+			var handler = {
+				construct: function(target, args, newTarget) {
+					return { intercepted: args[0] };
+				}
+			};
+			var p = new Proxy(target, handler);
+			var obj = new p("Alice");
+			return obj.intercepted;
+		})()`, "Alice"},
+		// 3. construct trap must return object
+		{`(function(){
+			var p = new Proxy(function(){}, {
+				construct: function() { return 42; }
+			});
+			try { new p(); return "fail"; } catch(e) { return "ok"; }
+		})()`, "ok"},
+	}
+
+	for _, tt := range tests {
+		out, err := runJScript2(t, jscriptSrc(`Response.Write(`+tt.code+`);`))
+		if err != nil {
+			t.Errorf("code %q failed: %v", tt.code, err)
+			continue
+		}
+		if out != tt.expected {
+			t.Errorf("code %q: expected %q, got %q", tt.code, tt.expected, out)
+		}
+	}
+}

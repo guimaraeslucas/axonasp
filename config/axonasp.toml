@@ -91,6 +91,12 @@ adodb_platform_architecture = "auto"
 # List of file extensions that will be treated as ASP scripts and executed by the server. You can add or remove extensions from this list based on your needs. For example, if you want to execute .aspx files as ASP scripts, you can add ".aspx" to the list. Make sure to include the dot before the extension. The server will check the requested file's extension against this list to determine whether to execute it as an ASP script or serve it as a static file.
 execute_as_asp = [".asp"]
 
+# List of file extensions that will be treated as VBScript and executed by the server. You can add or remove extensions from this list based on your needs. Make sure to include the dot before the extension. The server will check the requested file's extension against this list to determine whether to execute it or serve it as a static file. This will only be used if engine_mode is set to vbscript.
+execute_as_vbscript = [".vbs"]
+
+# List of file extensions that will be treated as JavaScript and executed by the server. You can add or remove extensions from this list based on your needs. Make sure to include the dot before the extension. The server will check the requested file's extension against this list to determine whether to execute it or serve it as a static file. This will only be used if engine_mode is set to javascript.
+execute_as_javascript = [".js"]
+
 # When enabled, the server will watch for changes in the configuration file and automatically reload the configuration without needing to restart the server. This can be useful for making changes to the server settings on the fly, but it may also introduce some overhead as the server needs to monitor the file for changes. It's generally recommended to keep this setting disabled in production environments for better performance and stability, and only enable it during development or when you need to make frequent changes to the configuration. This setting isn't full implented yet.
 viper_watch_config = false
 
@@ -104,6 +110,9 @@ enable_cli = true
 enable_cli_run_from_command_line = true
 # When true, CLI execution always recompiles scripts as fresh runs and bypasses bytecode caching. Set to false to allow CLI to follow global.bytecode_caching_enabled behavior. When using TUI it's generally recommended to set this to true to ensure that you are always running the latest version of your scripts and to avoid any potential issues with stale bytecode. If you're using the CLI to run scripts (-r) directly from the command line, you can set this to false to take advantage of bytecode caching for improved performance, but be aware that changes to your scripts may not take effect until the bytecode cache is refreshed or cleared.
 force_fresh_compile = true
+
+#Set the engine mode. Can be set to: default to execute ASP pages/code, vbscript to execute vbscript only or javascript, to execute javascript only.
+engine_mode="default"
 
 #Web server configuration for AxonASP Server. This section contains settings related to the web server functionality (axonasp-http), such as the directory for error pages, the web root directory, default pages to serve, the port to listen on, and blocked file extensions. These settings help configure how the server handles incoming HTTP requests and serves content to clients. Adjust these settings according to your specific needs and server environment. This is where you can customize the behavior of the web server to ensure it serves your ASP applications correctly and securely througt the Proxy module, which is the default way to use AxonASP Server, but you can also use the FastCGI module if you prefer, which will allow you to use AxonASP Server with other web servers like Nginx or Apache, but it requires a bit more configuration and is not as straightforward as using the built-in web server, so we recommend using the built-in web server for most users, especially if you are new to web servers and ASP development.
 [server]
@@ -209,6 +218,9 @@ enable_directory_listing = true
 # The path to the HTML template used for directory listing when enable_directory_listing is set to true. This template should include placeholders (see the default directory listing template) where the server will inject the list of files and directories. You can customize this template to match the design of your website and provide a better user experience when directory listing is enabled. Make sure to set this to the correct path where your custom directory listing template is located.
 directory_listing_template = "./www/axonasp-pages/directory-listing.html"
 
+#Set the engine mode. Can be set to: default to execute ASP pages/code, vbscript to execute vbscript only or javascript, to execute javascript only.
+engine_mode="default"
+
 # FastCGI configuration for AxonASP Server. This section contains settings related to the FastCGI server functionality (axonasp-fastcgi), such as the port to listen on and the web root directory. These settings help configure how the server handles FastCGI requests, which can be used to integrate AxonASP Server with other web servers like Nginx or Apache. Adjust these settings according to your specific needs and server environment. This is where you can customize the behavior of the FastCGI server to ensure it serves your ASP applications correctly and securely when using it with a reverse proxy or as a backend for another web server.
 [fastcgi]
 # List of default pages to try when a directory is accessed. The server will look for these files in order and serve the first one it finds when requested for a directory. This is similar to the default_pages setting in the [server] section, but it applies specifically to the FastCGI server. You can customize this list based on the default pages you want to serve for directories when using FastCGI. 
@@ -227,7 +239,11 @@ default_pages = [
   "main.htm",
   "index.txt",
 ] 
-server_port = 9000 #can also be a path to socket, e.g. "unix:/tmp/axonasp.sock" on *nix systems
+#Set the port number to the fastcgi server. Can also be a path to socket, e.g. "unix:/tmp/axonasp.sock" on *nix systems
+server_port = 9000 
+
+#Set the engine mode. Can be set to: default to execute ASP pages/code, vbscript to execute vbscript only or javascript, to execute javascript only.
+engine_mode="default"
 
 # Database configuration for G3DB Module from AxonASP Server. Adjust these settings according to your specific database setup and requirements. Properly configuring the database settings is crucial for ensuring that your ASP applications can connect to the database efficiently and securely from the G3DB library, which is the default database library for AxonASP Server and provides support for various databases including SQLite, MySQL, PostgreSQL and SQL Server. This configuration does not affect the ADODB library for Access, which has its own configuration settings and is only available on Windows platforms. For better security, it's recommended to use environment variables or a secure secrets management solution to store sensitive information like database credentials instead of hardcoding them in the configuration file, especially in production environments. You can set a .env file in the root of the server executable with the same variables defined here, and the server will load them and override the values in this configuration file, allowing you to keep sensitive information out of your version control system and easily manage different configurations for development and production environments.
 [g3db]
