@@ -951,6 +951,47 @@ func (vm *VM) jsObjectOwnPropertyNames(target Value) []string {
 	return out
 }
 
+func (vm *VM) jsObjectOwnPropertySymbols(target Value) []Value {
+	if target.Type != VTJSObject && target.Type != VTJSFunction {
+		return nil
+	}
+	ids := make(map[int64]struct{}, 8)
+	collect := func(keys map[string]Value) {
+		for key := range keys {
+			if !strings.HasPrefix(key, jsSymbolPropertyPrefix) {
+				continue
+			}
+			numText := strings.TrimPrefix(key, jsSymbolPropertyPrefix)
+			if id, err := strconv.ParseInt(numText, 10, 64); err == nil {
+				ids[id] = struct{}{}
+			}
+		}
+	}
+	if obj, ok := vm.jsObjectItems[target.Num]; ok {
+		collect(obj)
+	}
+	if props, ok := vm.jsPropertyItems[target.Num]; ok {
+		shadow := make(map[string]Value, len(props))
+		for key := range props {
+			shadow[key] = Value{}
+		}
+		collect(shadow)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	ordered := make([]int64, 0, len(ids))
+	for id := range ids {
+		ordered = append(ordered, id)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+	out := make([]Value, len(ordered))
+	for i := 0; i < len(ordered); i++ {
+		out[i] = Value{Type: VTSymbol, Num: ordered[i]}
+	}
+	return out
+}
+
 func (vm *VM) jsObjectIsExtensible(target Value) bool {
 	if target.Type != VTJSObject && target.Type != VTJSFunction {
 		return false
@@ -5136,6 +5177,51 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 		case "Object":
 			switch {
+			case strings.EqualFold(member, "is"):
+				if len(args) < 2 {
+					return NewBool(false), true
+				}
+				a := args[0]
+				b := args[1]
+				if (a.Type == VTInteger || a.Type == VTDouble) && (b.Type == VTInteger || b.Type == VTDouble) {
+					aNum := vm.jsToNumber(a).Flt
+					bNum := vm.jsToNumber(b).Flt
+					if math.IsNaN(aNum) && math.IsNaN(bNum) {
+						return NewBool(true), true
+					}
+					if aNum == 0 && bNum == 0 {
+						return NewBool(math.Signbit(aNum) == math.Signbit(bNum)), true
+					}
+					return NewBool(aNum == bNum), true
+				}
+				return NewBool(vm.jsStrictEquals(a, b)), true
+			case strings.EqualFold(member, "setPrototypeOf"):
+				if len(args) < 2 {
+					vm.jsThrowTypeError("Object.setPrototypeOf requires an object and a prototype")
+					return Value{Type: VTJSUndefined}, true
+				}
+				obj := args[0]
+				proto := args[1]
+				if obj.Type != VTJSObject && obj.Type != VTJSFunction {
+					vm.jsThrowTypeError("Object.setPrototypeOf target must be an object")
+					return Value{Type: VTJSUndefined}, true
+				}
+				if proto.Type != VTJSObject && proto.Type != VTNull {
+					vm.jsThrowTypeError("Object.setPrototypeOf prototype must be an object or null")
+					return Value{Type: VTJSUndefined}, true
+				}
+				currentProto := NewNull()
+				if objMap, ok := vm.jsObjectItems[obj.Num]; ok {
+					if existing, exists := objMap["__js_proto"]; exists {
+						currentProto = existing
+					}
+				}
+				if !vm.jsObjectIsExtensible(obj) && !vm.jsStrictEquals(currentProto, proto) {
+					vm.jsThrowTypeError("Cannot set prototype of a non-extensible object")
+					return Value{Type: VTJSUndefined}, true
+				}
+				vm.jsSetProto(obj, proto)
+				return obj, true
 			case strings.EqualFold(member, "create"):
 				objID := vm.allocJSID()
 				obj := make(map[string]Value, 8)
@@ -5329,6 +5415,16 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					vm.jsMemberSet(outObj, keyStr, val)
 				}
 				return outObj, true
+			case strings.EqualFold(member, "getOwnPropertySymbols"):
+				if len(args) == 0 || args[0].Type == VTJSUndefined || args[0].Type == VTNull {
+					vm.jsThrowTypeError("Object.getOwnPropertySymbols called on null or undefined")
+					return Value{Type: VTJSUndefined}, true
+				}
+				if args[0].Type != VTJSObject && args[0].Type != VTJSFunction {
+					return ValueFromVBArray(NewVBArrayFromValues(0, nil)), true
+				}
+				symbols := vm.jsObjectOwnPropertySymbols(args[0])
+				return ValueFromVBArray(NewVBArrayFromValues(0, symbols)), true
 			case strings.EqualFold(member, "assign"):
 				if len(args) == 0 || args[0].Type == VTJSUndefined || args[0].Type == VTNull {
 					vm.jsThrowTypeError("Object.assign target cannot be null or undefined")

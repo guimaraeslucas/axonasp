@@ -59,12 +59,12 @@ This document outlines the phased implementation plan for missing ES6+ features,
 
 ## 🛠️ PHASE 4: INTERNATIONALIZATION API (HIGH COMPLEXITY)
 
-**Goal:** Implement the `Intl` API. This is heavy; prioritize integration with Go's `golang.org/x/text` packages.
+**Goal:** Implement the `Intl` API. This is heavy; prioritize integration with our current packages. If a locale is not set, default to locale and language set in axonasp.toml or fallback to `"en-US"` . To avoid recreating the wheel, leverage the existing VBScript implementation.
 
 ### Tasks:
 The Intl API - We must use the same system we use with the VBScript for internationalization/localization. We have already implemented the necessary Go functions in VBScript to handle locale-aware formatting and parsing - check the locale_format.go file/mslcid.go/builtins_vbscript_compat.go. Now we need to expose these capabilities to the JScript environment through the `Intl` namespace.
     * SUBPHASE 5.1: The Intl Namespace
-        * [ ] **Setup:** Register the `Intl` global object in `ensureJSRootEnv`. If a locale is not set, default to locale and language set in axonasp.toml or fallback to `"en-US"` like in VBScript implementation (locale_format.go).
+        * [ ] **Setup:** Register the `Intl` global object. 
     * SUBPHASE 5.2: Intl.DateTimeFormat
         * [ ] **Constructor:** Implement `Intl.DateTimeFormat([locales[, options]])`. Map JS locales to Go `language.Tag`.
         * [ ] **Format:** Implement the `format()` method, converting the JS Date object to Go's `time.Time` and formatting it according to the requested locale conventions using the AxonASP localization libraries.
@@ -76,9 +76,7 @@ The Intl API - We must use the same system we use with the VBScript for internat
 
 ---
 
-### Phase 5: Hard Constraints & Major Libraries (Extreme Complexity)
-
-These are massive undertakings. Do not start these unless Phase 1-4 are 100% stable.
+### Phase 5: RegExp (Replace the JS RegExp engine with a PCRE-compatible REGEXP2 to support full ES6+ features)
 
 **Subphase 5.1: RegExp Engine Replacement**
 

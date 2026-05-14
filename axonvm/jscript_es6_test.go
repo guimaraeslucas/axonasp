@@ -716,6 +716,45 @@ func TestJScriptNumberIsSafeInteger(t *testing.T) {
 	}
 }
 
+func TestJScriptObjectStaticsPhase3(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var s = Symbol("secret");
+		var proto = { x: 7 };
+		var obj = {};
+		Object.setPrototypeOf(obj, proto);
+		obj[s] = 42;
+
+		var syms = Object.getOwnPropertySymbols(obj);
+		var sameProto = Object.getPrototypeOf(obj) === proto;
+		var objectIs = Object.is(NaN, NaN) && !Object.is(0, -0) && Object.is(-0, -0);
+
+		Response.Write(objectIs ? "yes" : "no");
+		Response.Write("|");
+		Response.Write(sameProto ? "yes" : "no");
+		Response.Write("|");
+		Response.Write(syms.length);
+		Response.Write("|");
+		Response.Write(syms[0] === s ? "yes" : "no");
+		Response.Write("|");
+		Response.Write(obj.x);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "yes|yes|1|yes|7" {
+		t.Errorf("expected 'yes|yes|1|yes|7', got %q", out)
+	}
+
+	_, err = runJScript2(t, jscriptSrc(`
+		var frozen = {};
+		Object.preventExtensions(frozen);
+		Object.setPrototypeOf(frozen, { y: 1 });
+	`))
+	if err == nil {
+		t.Fatal("expected TypeError when changing prototype of non-extensible object")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ES6 Secondary Features
 // ---------------------------------------------------------------------------
