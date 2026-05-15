@@ -2061,7 +2061,11 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 			switch t := node.Operand.(type) {
 			case *jsast.DotExpression:
 				c.compileJScriptExpression(t.Left)
-				c.emit(OpJSDelete, c.addConstant(NewString(t.Identifier.Name.String())))
+				c.emit(OpJSMemberDelete, c.addConstant(NewString(t.Identifier.Name.String())))
+			case *jsast.BracketExpression:
+				c.compileJScriptExpression(t.Left)
+				c.compileJScriptExpression(t.Member)
+				c.emit(OpJSDelete)
 			case *jsast.Identifier:
 				// In strict mode, deleting a variable binding is a SyntaxError
 				if c.jsStrictMode {

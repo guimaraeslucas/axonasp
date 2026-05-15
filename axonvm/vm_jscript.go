@@ -1344,6 +1344,13 @@ func (vm *VM) jsDefineProperty(target Value, name string, kind int, val Value) {
 }
 
 func (vm *VM) jsGetDescriptor(objID int64, key string) (jsPropertyDescriptor, bool) {
+	if p, isProxy := vm.jsProxyItems[objID]; isProxy {
+		// TODO: Implement getOwnPropertyDescriptor trap
+		if p.Target.Type == VTJSObject || p.Target.Type == VTJSFunction {
+			return vm.jsGetDescriptor(p.Target.Num, key)
+		}
+		return jsPropertyDescriptor{}, false
+	}
 	props, ok := vm.jsPropertyItems[objID]
 	if ok {
 		d, exists := props[key]
@@ -3735,6 +3742,123 @@ func (vm *VM) jsProxySet(proxy Value, member string, val Value, receiver Value) 
 	}
 }
 
+func (vm *VM) jsProxyHas(proxy Value, member string) bool {
+	pObj, ok := vm.jsProxyItems[proxy.Num]
+	if !ok || pObj.Revoked {
+		vm.jsThrowTypeError("Cannot perform 'has' on a proxy that has been revoked")
+		return false
+	}
+
+	trap, _ := vm.jsMemberGet(pObj.Handler, "has")
+	if trap.Type == VTJSUndefined || trap.Type == VTNull {
+		return vm.jsHas(pObj.Target, member)
+	}
+
+	args := []Value{pObj.Target, vm.jsPropertyKeyToValue(member)}
+	result := vm.jsCall(trap, pObj.Handler, args)
+	return vm.jsTruthy(result)
+}
+
+func (vm *VM) jsProxyDelete(proxy Value, member string) bool {
+	pObj, ok := vm.jsProxyItems[proxy.Num]
+	if !ok || pObj.Revoked {
+		vm.jsThrowTypeError("Cannot perform 'deleteProperty' on a proxy that has been revoked")
+		return false
+	}
+
+	trap, _ := vm.jsMemberGet(pObj.Handler, "deleteProperty")
+	if trap.Type == VTJSUndefined || trap.Type == VTNull {
+		return vm.jsMemberDelete(pObj.Target, member)
+	}
+
+	args := []Value{pObj.Target, vm.jsPropertyKeyToValue(member)}
+	result := vm.jsCall(trap, pObj.Handler, args)
+	success := vm.jsTruthy(result)
+	if vm.jsStrictMode && !success {
+		vm.jsThrowTypeError(fmt.Sprintf("'deleteProperty' on proxy: trap returned falsy for property '%s'", member))
+	}
+	return success
+}
+
+func (vm *VM) jsProxyOwnKeys(proxy Value) []string {
+	pObj, ok := vm.jsProxyItems[proxy.Num]
+	if !ok || pObj.Revoked {
+		vm.jsThrowTypeError("Cannot perform 'ownKeys' on a proxy that has been revoked")
+		return nil
+	}
+
+	trap, _ := vm.jsMemberGet(pObj.Handler, "ownKeys")
+	if trap.Type == VTJSUndefined || trap.Type == VTNull {
+		return vm.jsObjectOwnKeys(pObj.Target)
+	}
+
+	args := []Value{pObj.Target}
+	result := vm.jsCall(trap, pObj.Handler, args)
+	// fmt.Printf("DEBUG: ownKeys trap result type: %d, length: %d\n", result.Type, 0)
+
+	var keys []string
+	if result.Type == VTArray && result.Arr != nil {
+		keys = make([]string, len(result.Arr.Values))
+		for i := 0; i < len(result.Arr.Values); i++ {
+			keys[i] = vm.valueToString(result.Arr.Values[i])
+		}
+	} else if result.Type == VTJSObject || result.Type == VTJSFunction {
+		lengthVal, _ := vm.jsMemberGet(result, "length")
+		length := int(vm.jsToNumber(lengthVal).Flt)
+		// fmt.Printf("DEBUG: ownKeys trap object length: %d\n", length)
+		keys = make([]string, length)
+		for i := 0; i < length; i++ {
+			val := vm.jsIndexGet(result, NewInteger(int64(i)))
+			keys[i] = vm.valueToString(val)
+		}
+	} else {
+		vm.jsThrowTypeError("Proxy 'ownKeys' trap must return an array")
+		return nil
+	}
+	return keys
+}
+
+func (vm *VM) jsHas(target Value, key string) bool {
+	switch target.Type {
+	case VTJSProxy:
+		return vm.jsProxyHas(target, key)
+	case VTJSObject, VTJSFunction:
+		_, exists := vm.jsResolveObjectMember(target.Num, key, make(map[int64]struct{}, 4))
+		return exists
+	case VTNativeObject:
+		// Check if property exists on native object
+		return vm.dispatchMemberGet(target, key).Type != VTJSUndefined
+	case VTString:
+		if strings.EqualFold(key, "length") {
+			return true
+		}
+		if idx, err := strconv.Atoi(key); err == nil && idx >= 0 && int64(idx) < jsStringLength(target.Str) {
+			return true
+		}
+	case VTArray:
+		if target.Arr != nil {
+			if strings.EqualFold(key, "length") {
+				return true
+			}
+			if idx, err := strconv.Atoi(key); err == nil && idx >= 0 && int64(idx) < int64(len(target.Arr.Values)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (vm *VM) jsObjectOwnKeys(obj Value) []string {
+	names := vm.jsObjectOwnPropertyNames(obj)
+	symbols := vm.jsObjectOwnPropertySymbols(obj)
+	keys := make([]string, 0, len(names)+len(symbols))
+	keys = append(keys, names...)
+	for _, s := range symbols {
+		keys = append(keys, jsSymbolPropertyPrefix+strconv.FormatInt(s.Num, 10))
+	}
+	return keys
+}
+
 func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 	if target.Type == VTJSUninitialized {
 		vm.jsThrowReferenceError("Must call super constructor in derived class before accessing 'this'")
@@ -5510,6 +5634,15 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				switch source.Type {
 				case VTJSObject, VTJSFunction:
 					keys = vm.jsObjectOwnEnumerableKeys(source.Num)
+				case VTJSProxy:
+					rawKeys := vm.jsProxyOwnKeys(source)
+					keys = make([]string, 0, len(rawKeys))
+					for _, k := range rawKeys {
+						desc, ok := vm.jsGetDescriptor(source.Num, k)
+						if ok && desc.Enumerable {
+							keys = append(keys, k)
+						}
+					}
 				case VTArray:
 					if source.Arr != nil {
 						keys = make([]string, len(source.Arr.Values))
@@ -5717,7 +5850,12 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				if len(args) == 0 {
 					return ValueFromVBArray(NewVBArrayFromValues(0, nil)), true
 				}
-				names := vm.jsObjectOwnPropertyNames(args[0])
+				var names []string
+				if args[0].Type == VTJSProxy {
+					names = vm.jsProxyOwnKeys(args[0])
+				} else {
+					names = vm.jsObjectOwnPropertyNames(args[0])
+				}
 				values := make([]Value, len(names))
 				for i := 0; i < len(names); i++ {
 					values[i] = NewString(names[i])
@@ -7204,6 +7342,18 @@ func (vm *VM) jsApplyDefinePropertySpec(current jsPropertyDescriptor, currentExi
 }
 
 func (vm *VM) jsEnumerateForInKeys(source Value) []string {
+	if source.Type == VTJSProxy {
+		rawKeys := vm.jsProxyOwnKeys(source)
+		var keys []string
+		for _, k := range rawKeys {
+			desc, ok := vm.jsGetDescriptor(source.Num, k)
+			if ok && desc.Enumerable {
+				keys = append(keys, k)
+			}
+		}
+		return keys
+	}
+
 	if source.Type == VTJSObject {
 		return vm.jsObjectOwnEnumerableKeys(source.Num)
 	}

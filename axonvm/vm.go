@@ -914,7 +914,7 @@ func opcodeOperandSize(op OpCode) int {
 		OpCall,
 		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSGetLocal, OpJSSetLocal, OpJSIncLocal, OpJSDecLocal,
 		OpJSRootFrameEnter, OpJSRootFrameLeave,
-		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSDelete, OpJSSuperCall,
+		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSSuperCall,
 		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 		OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
@@ -983,7 +983,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 		ip++
 		switch op {
 		case OpConstant, OpWriteStatic, OpGetClassMember, OpSetClassMember, OpEraseClassMember, OpMemberSet, OpMemberSetSet, OpNewClass, OpLetClassMember, OpArgClassMemberRef,
-			OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSCreateClosure, OpJSDelete,
+			OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSCreateClosure,
 			OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 			OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 			OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
@@ -3356,20 +3356,23 @@ aspExecLoop:
 				} else {
 					vm.push(NewBool(false))
 				}
+			} else if right.Type == VTJSProxy {
+				vm.push(NewBool(vm.jsProxyHas(right, vm.valueToString(left))))
 			} else {
 				vm.push(NewBool(false))
 			}
 
 		case OpJSDelete:
-			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
-			vm.ip += 2
+			keyVal := vm.pop()
 			target := vm.pop()
-			if target.Type == VTJSObject {
-				if obj, ok := vm.jsObjectItems[target.Num]; ok {
-					delete(obj, vm.constants[nameIdx].Str)
-				}
+			key := vm.valueToString(keyVal)
+			success := false
+			if target.Type == VTJSProxy {
+				success = vm.jsProxyDelete(target, key)
+			} else {
+				success = vm.jsMemberDelete(target, key)
 			}
-			vm.push(NewBool(true))
+			vm.push(NewBool(success))
 
 		case OpJSReturn:
 			vm.jsReturn(vm.pop())
@@ -4154,7 +4157,12 @@ aspExecLoop:
 			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			obj := vm.pop()
-			success := vm.jsMemberDelete(obj, vm.constants[memberIdx].Str)
+			success := false
+			if obj.Type == VTJSProxy {
+				success = vm.jsProxyDelete(obj, vm.constants[memberIdx].Str)
+			} else {
+				success = vm.jsMemberDelete(obj, vm.constants[memberIdx].Str)
+			}
 			vm.push(NewBool(success))
 
 		case OpJSIndexGet:

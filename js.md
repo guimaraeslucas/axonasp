@@ -44,12 +44,12 @@ Follow the subphase breakdown below for a structured implementation of Proxies a
         * [x] **Construct Trap:** Hook into the VM's `OpNew` handler. Check for a `"construct"` trap. Invoke it with `(target, argumentsList, newTarget)`. Ensure the return value is an object, otherwise throw a `TypeError`.
         * [x] **Validation:** Create `test_proxy_apply_construct.asp` to test intercepting function calls and constructor invocations.
     * SUBPHASE 6.4: Intercepting Object Operations (`has`, `deleteProperty`, `ownKeys`)
-        * [ ] **Has Trap:** Hook into the `in` operator logic (e.g., `OpJSIn`). Route to the `"has"` trap if defined.
-        * [ ] **Delete Trap:** Hook into the `delete` operator logic. Route to the `"deleteProperty"` trap. Enforce strict mode throwing if the trap returns `false`.
-        * [ ] **Keys/Enumeration:** Hook into `OpForIn` and `Object.keys()` internal logic to support the `"ownKeys"` trap, ensuring it returns a valid Array or iterable of strings/symbols.
-        * [ ] **Proxy revocable:** Implement `Proxy.revocable` and any missing `Proxy` implementations.
-        * [ ] **Object Traps:** Hook into `in` (`has`), `delete` (`deleteProperty`), and `Object.keys()` (`ownKeys`).
-        * [ ] **Validation:** Create `test_proxy_operations.asp` to verify operator interception works flawlessly.
+        * [x] **Has Trap:** Hook into the `in` operator logic (e.g., `OpJSIn`). Route to the `"has"` trap if defined.
+        * [x] **Delete Trap:** Hook into the `delete` operator logic. Route to the `"deleteProperty"` trap. Enforce strict mode throwing if the trap returns `false`.
+        * [x] **Keys/Enumeration:** Hook into `OpForIn` and `Object.keys()` internal logic to support the `"ownKeys"` trap, ensuring it returns a valid Array or iterable of strings/symbols.
+        * [x] **Proxy revocable:** Implement `Proxy.revocable` and any missing `Proxy` implementations.
+        * [x] **Object Traps:** Hook into `in` (`has`), `delete` (`deleteProperty`), and `Object.keys()` (`ownKeys`).
+        * [x] **Validation:** Create `test_proxy_operations.asp` to verify operator interception works flawlessly.
     * SUBPHASE 6.5: The `Reflect` API Implementation
         * [ ] **Reflect Methods:** Implement `Reflect.get()`, `Reflect.set()`, `Reflect.apply()`, `Reflect.construct()`, `Reflect.has()`, `Reflect.deleteProperty()`, and `Reflect.ownKeys()`.
         * [ ] **Parity & Invocation:** Ensure these methods directly map to the internal VM dispatch mechanics (the exact same internal methods used when traps forward to the target).

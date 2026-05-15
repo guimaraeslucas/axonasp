@@ -232,7 +232,7 @@ const (
 	OpJSTypeof                 // [OpCode]
 	OpJSInstanceOf             // [OpCode]
 	OpJSIn                     // [OpCode]
-	OpJSDelete                 // [OpCode]
+	OpJSDelete                 // [OpCode] - computed delete; stack: [..., obj, key]
 	OpJSReturn                 // [OpCode]
 	OpJSLoadUndefined          // [OpCode]
 	OpJSLoadThis               // [OpCode]
@@ -883,6 +883,18 @@ func (op OpCode) String() string {
 		return "OpJSClassInherit"
 	case OpJSSuperCall:
 		return "OpJSSuperCall"
+	case OpJSSuperMemberGet:
+		return "OpJSSuperMemberGet"
+	case OpJSSuperMemberSet:
+		return "OpJSSuperMemberSet"
+	case OpJSSuperCallMember:
+		return "OpJSSuperCallMember"
+	case OpJSSuperIndexGet:
+		return "OpJSSuperIndexGet"
+	case OpJSSuperIndexSet:
+		return "OpJSSuperIndexSet"
+	case OpJSSuperCallComputedMember:
+		return "OpJSSuperCallComputedMember"
 	case OpJSYield:
 		return "OpJSYield"
 	case OpJSYieldDelegate:
