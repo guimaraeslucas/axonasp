@@ -714,6 +714,9 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.jsArrayBuffers == nil {
 		vm.jsArrayBuffers = make(map[int64][]byte)
 	}
+	if vm.jsSharedArrayBuffers == nil {
+		vm.jsSharedArrayBuffers = make(map[int64][]byte)
+	}
 	if vm.jsModuleInstances == nil {
 		vm.jsModuleInstances = make(map[string]*jsEnvFrame)
 	}
@@ -810,6 +813,7 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.jsForOfItems)
 	clear(vm.jsEnvItems)
 	clear(vm.jsArrayBuffers)
+	clear(vm.jsSharedArrayBuffers)
 	clear(vm.jsModuleInstances)
 	clear(vm.jsModuleLoading)
 	clear(vm.jsIntlDateTimeFormatItems)

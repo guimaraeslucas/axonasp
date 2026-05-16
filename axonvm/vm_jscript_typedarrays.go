@@ -23,6 +23,7 @@ package axonvm
 import (
 	"encoding/binary"
 	"math"
+	"math/big"
 	"strings"
 )
 
@@ -102,17 +103,19 @@ func jsTypedArrayElementSize(typeName string) int {
 	}
 }
 
-// jsGetArrayBufferBytes retrieves the underlying byte slice for an ArrayBuffer object.
-// Returns nil if the value is not a valid ArrayBuffer.
+// jsGetArrayBufferBytes retrieves the underlying byte slice for an ArrayBuffer or SharedArrayBuffer object.
+// Returns nil if the value is not a valid buffer.
 func (vm *VM) jsGetArrayBufferBytes(bufObj Value) []byte {
 	if bufObj.Type != VTJSObject {
 		return nil
 	}
-	buf, ok := vm.jsArrayBuffers[bufObj.Num]
-	if !ok {
-		return nil
+	if buf, ok := vm.jsArrayBuffers[bufObj.Num]; ok {
+		return buf
 	}
-	return buf
+	if buf, ok := vm.jsSharedArrayBuffers[bufObj.Num]; ok {
+		return buf
+	}
+	return nil
 }
 
 // jsGetTypedArrayInfo extracts the buffer, byteOffset, byteLength, and element size
@@ -133,7 +136,11 @@ func (vm *VM) jsGetTypedArrayInfo(obj Value) (buf []byte, byteOffset, byteLength
 	if !hasBufID {
 		return nil, 0, 0, 0, false
 	}
-	bufBytes, hasBuf := vm.jsArrayBuffers[bufIDVal.Num]
+	bufID := bufIDVal.Num
+	bufBytes, hasBuf := vm.jsArrayBuffers[bufID]
+	if !hasBuf {
+		bufBytes, hasBuf = vm.jsSharedArrayBuffers[bufID]
+	}
 	if !hasBuf {
 		return nil, 0, 0, 0, false
 	}
@@ -170,6 +177,27 @@ func (vm *VM) jsNewArrayBuffer(byteLength int) Value {
 }
 
 // ---------------------------------------------------------------------------
+// SharedArrayBuffer constructor: new SharedArrayBuffer(byteLength)
+// ---------------------------------------------------------------------------
+
+// jsNewSharedArrayBuffer creates a new SharedArrayBuffer JS object backed by a Go []byte.
+func (vm *VM) jsNewSharedArrayBuffer(byteLength int) Value {
+	if byteLength < 0 {
+		vm.jsThrowRangeError("Invalid SharedArrayBuffer length")
+		return Value{Type: VTJSUndefined}
+	}
+	buf := make([]byte, byteLength)
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 4)
+	obj["__js_type"] = NewString("SharedArrayBuffer")
+	obj["__js_ctor"] = NewString("SharedArrayBuffer")
+	vm.jsObjectItems[objID] = obj
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+	vm.jsSharedArrayBuffers[objID] = buf
+	return Value{Type: VTJSObject, Num: objID}
+}
+
+// ---------------------------------------------------------------------------
 // TypedArray constructor: new Uint8Array(length | ArrayBuffer [, offset [, length]])
 // ---------------------------------------------------------------------------
 
@@ -193,12 +221,12 @@ func (vm *VM) jsNewTypedArray(typeName string, args []Value) Value {
 			return Value{Type: VTJSUndefined}
 		}
 		t, _ := items["__js_type"]
-		if t.Str == "ArrayBuffer" {
-			// View over existing ArrayBuffer
+		if t.Str == "ArrayBuffer" || t.Str == "SharedArrayBuffer" {
+			// View over existing buffer
 			bufID = args[0].Num
-			backing, hasBuf := vm.jsArrayBuffers[bufID]
-			if !hasBuf {
-				vm.jsThrowTypeError("Invalid ArrayBuffer")
+			backing := vm.jsGetArrayBufferBytes(args[0])
+			if backing == nil {
+				vm.jsThrowTypeError("Invalid buffer")
 				return Value{Type: VTJSUndefined}
 			}
 			byteOffset = 0
@@ -226,7 +254,7 @@ func (vm *VM) jsNewTypedArray(typeName string, args []Value) Value {
 			backing := vm.jsArrayBuffers[bufID]
 			for i := 0; i < length; i++ {
 				v, _ := vm.jsArrayLikeGetIndex(args[0], i)
-				jsWriteTypedArrayElement(typeName, elemSize, backing, i, vm.jsToNumber(v).Flt)
+				vm.jsWriteTypedArrayElement(typeName, elemSize, backing, i, v)
 			}
 		}
 	} else if args[0].Type == VTArray && args[0].Arr != nil {
@@ -238,7 +266,7 @@ func (vm *VM) jsNewTypedArray(typeName string, args []Value) Value {
 		byteLength = len(src) * elemSize
 		backing := vm.jsArrayBuffers[bufID]
 		for i, v := range src {
-			jsWriteTypedArrayElement(typeName, elemSize, backing, i, vm.jsToNumber(v).Flt)
+			vm.jsWriteTypedArrayElement(typeName, elemSize, backing, i, v)
 		}
 	} else {
 		// new Uint8Array(length)
@@ -272,13 +300,13 @@ func (vm *VM) jsNewTypedArray(typeName string, args []Value) Value {
 // jsNewDataView creates a new DataView over an existing ArrayBuffer.
 func (vm *VM) jsNewDataView(args []Value) Value {
 	if len(args) == 0 || args[0].Type != VTJSObject {
-		vm.jsThrowTypeError("DataView requires an ArrayBuffer argument")
+		vm.jsThrowTypeError("DataView requires a buffer argument")
 		return Value{Type: VTJSUndefined}
 	}
 	bufID := args[0].Num
-	backing, hasBuf := vm.jsArrayBuffers[bufID]
-	if !hasBuf {
-		vm.jsThrowTypeError("DataView: argument is not an ArrayBuffer")
+	backing := vm.jsGetArrayBufferBytes(args[0])
+	if backing == nil {
+		vm.jsThrowTypeError("DataView: argument is not a buffer")
 		return Value{Type: VTJSUndefined}
 	}
 	byteOffset := 0
@@ -344,24 +372,25 @@ func jsReadTypedArrayElement(typeName string, elemSize int, buf []byte, byteOffs
 		return NewDouble(math.Float64frombits(bits))
 	case "BigInt64Array":
 		bits := binary.LittleEndian.Uint64(buf[base : base+8])
-		return NewInteger(int64(bits))
+		return NewBigInt(big.NewInt(int64(bits)))
 	case "BigUint64Array":
 		bits := binary.LittleEndian.Uint64(buf[base : base+8])
-		return NewDouble(float64(bits))
+		return NewBigInt(new(big.Int).SetUint64(bits))
 	}
 	return Value{Type: VTJSUndefined}
 }
 
-// jsWriteTypedArrayElement writes a numeric value to element at logical index i.
+// jsWriteTypedArrayElement writes a numeric value or BigInt to element at logical index i.
 // Out-of-bounds access panics naturally; the VM's defer/recover converts it to RangeError.
-func jsWriteTypedArrayElement(typeName string, elemSize int, buf []byte, i int, fval float64) {
+func (vm *VM) jsWriteTypedArrayElement(typeName string, elemSize int, buf []byte, i int, val Value) {
 	base := i * elemSize
 	switch typeName {
 	case "Int8Array":
-		buf[base] = byte(int8(jsNumberToInt32(fval)))
+		buf[base] = byte(int8(jsNumberToInt32(vm.jsToNumber(val).Flt)))
 	case "Uint8Array":
-		buf[base] = byte(uint8(jsNumberToUint32(fval)))
+		buf[base] = byte(uint8(jsNumberToUint32(vm.jsToNumber(val).Flt)))
 	case "Uint8ClampedArray":
+		fval := vm.jsToNumber(val).Flt
 		v := int32(fval)
 		if v < 0 {
 			v = 0
@@ -370,21 +399,36 @@ func jsWriteTypedArrayElement(typeName string, elemSize int, buf []byte, i int, 
 		}
 		buf[base] = byte(v)
 	case "Int16Array":
-		binary.LittleEndian.PutUint16(buf[base:base+2], uint16(int16(jsNumberToInt32(fval))))
+		binary.LittleEndian.PutUint16(buf[base:base+2], uint16(int16(jsNumberToInt32(vm.jsToNumber(val).Flt))))
 	case "Uint16Array":
-		binary.LittleEndian.PutUint16(buf[base:base+2], uint16(jsNumberToUint32(fval)))
+		binary.LittleEndian.PutUint16(buf[base:base+2], uint16(jsNumberToUint32(vm.jsToNumber(val).Flt)))
 	case "Int32Array":
-		binary.LittleEndian.PutUint32(buf[base:base+4], uint32(jsNumberToInt32(fval)))
+		binary.LittleEndian.PutUint32(buf[base:base+4], uint32(jsNumberToInt32(vm.jsToNumber(val).Flt)))
 	case "Uint32Array":
-		binary.LittleEndian.PutUint32(buf[base:base+4], jsNumberToUint32(fval))
+		binary.LittleEndian.PutUint32(buf[base:base+4], jsNumberToUint32(vm.jsToNumber(val).Flt))
 	case "Float32Array":
-		binary.LittleEndian.PutUint32(buf[base:base+4], math.Float32bits(float32(fval)))
+		binary.LittleEndian.PutUint32(buf[base:base+4], math.Float32bits(float32(vm.jsToNumber(val).Flt)))
 	case "Float64Array":
-		binary.LittleEndian.PutUint64(buf[base:base+8], math.Float64bits(fval))
+		binary.LittleEndian.PutUint64(buf[base:base+8], math.Float64bits(vm.jsToNumber(val).Flt))
 	case "BigInt64Array":
-		binary.LittleEndian.PutUint64(buf[base:base+8], uint64(int64(fval)))
+		var bits uint64
+		if val.Type == VTJSBigInt {
+			bits = uint64(val.Big.Int64())
+		} else {
+			// Coerce to BigInt if possible or throw
+			vm.jsThrowTypeError("Cannot convert to BigInt")
+			return
+		}
+		binary.LittleEndian.PutUint64(buf[base:base+8], bits)
 	case "BigUint64Array":
-		binary.LittleEndian.PutUint64(buf[base:base+8], uint64(fval))
+		var bits uint64
+		if val.Type == VTJSBigInt {
+			bits = val.Big.Uint64()
+		} else {
+			vm.jsThrowTypeError("Cannot convert to BigInt")
+			return
+		}
+		binary.LittleEndian.PutUint64(buf[base:base+8], bits)
 	}
 }
 
@@ -427,8 +471,7 @@ func (vm *VM) jsTypedArrayIndexSet(obj Value, i int, val Value) bool {
 	if i < 0 || i >= length {
 		return true // silently ignore out-of-range like spec says
 	}
-	fval := vm.jsToNumber(val).Flt
-	jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], i, fval)
+	vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], i, val)
 	return true
 }
 
@@ -493,8 +536,7 @@ func (vm *VM) jsTypedArrayMemberSet(obj Value, member string, val Value) bool {
 		if idx < 0 || idx >= length {
 			return true // silently ignore
 		}
-		fval := vm.jsToNumber(val).Flt
-		jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], idx, fval)
+		vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], idx, val)
 		return true
 	}
 	return false
@@ -791,8 +833,7 @@ func (vm *VM) jsTypedArraySet(obj Value, args []Value) Value {
 			}
 			for i := 0; i < srcLen; i++ {
 				v := jsReadTypedArrayElement(srcTypeName, srcElemSize, srcBuf, srcByteOffset, i)
-				fval := vm.jsToNumber(v).Flt
-				jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], targetOffset+i, fval)
+				vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], targetOffset+i, v)
 			}
 			return Value{Type: VTJSUndefined}
 		}
@@ -812,8 +853,7 @@ func (vm *VM) jsTypedArraySet(obj Value, args []Value) Value {
 	}
 	for i := 0; i < srcLen; i++ {
 		v, _ := vm.jsArrayLikeGetIndex(src, i)
-		fval := vm.jsToNumber(v).Flt
-		jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], targetOffset+i, fval)
+		vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], targetOffset+i, v)
 	}
 	return Value{Type: VTJSUndefined}
 }
@@ -894,10 +934,6 @@ func (vm *VM) jsTypedArrayFill(obj Value, args []Value) Value {
 		return obj
 	}
 	length := byteLength / elemSize
-	fval := 0.0
-	if len(args) > 0 {
-		fval = vm.jsToNumber(args[0]).Flt
-	}
 	start := 0
 	end := length
 	if len(args) > 1 {
@@ -919,7 +955,7 @@ func (vm *VM) jsTypedArrayFill(obj Value, args []Value) Value {
 		end = length
 	}
 	for i := start; i < end; i++ {
-		jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], i, fval)
+		vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], i, args[0])
 	}
 	return obj
 }
@@ -933,10 +969,12 @@ func (vm *VM) jsArrayBufferSlice(obj Value, args []Value) Value {
 	if obj.Type != VTJSObject {
 		return Value{Type: VTJSUndefined}
 	}
-	backing, hasBuf := vm.jsArrayBuffers[obj.Num]
-	if !hasBuf {
+	backing := vm.jsGetArrayBufferBytes(obj)
+	if backing == nil {
 		return Value{Type: VTJSUndefined}
 	}
+	objType := vm.jsObjectStringProperty(obj, "__js_type")
+
 	length := len(backing)
 	begin := 0
 	end := length
@@ -969,14 +1007,35 @@ func (vm *VM) jsArrayBufferSlice(obj Value, args []Value) Value {
 	}
 	newBuf := make([]byte, end-begin)
 	copy(newBuf, backing[begin:end])
-	newObjID := vm.allocJSID()
-	newObj := make(map[string]Value, 4)
-	newObj["__js_type"] = NewString("ArrayBuffer")
-	newObj["__js_ctor"] = NewString("ArrayBuffer")
-	vm.jsObjectItems[newObjID] = newObj
-	vm.jsPropertyItems[newObjID] = make(map[string]jsPropertyDescriptor, 4)
-	vm.jsArrayBuffers[newObjID] = newBuf
-	return Value{Type: VTJSObject, Num: newObjID}
+
+	if objType == "SharedArrayBuffer" {
+		return vm.jsNewSharedArrayBufferWithBacking(newBuf)
+	}
+	return vm.jsNewArrayBufferWithBacking(newBuf)
+}
+
+// jsNewArrayBufferWithBacking creates a new ArrayBuffer JS object using an existing byte slice.
+func (vm *VM) jsNewArrayBufferWithBacking(buf []byte) Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 4)
+	obj["__js_type"] = NewString("ArrayBuffer")
+	obj["__js_ctor"] = NewString("ArrayBuffer")
+	vm.jsObjectItems[objID] = obj
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+	vm.jsArrayBuffers[objID] = buf
+	return Value{Type: VTJSObject, Num: objID}
+}
+
+// jsNewSharedArrayBufferWithBacking creates a new SharedArrayBuffer JS object using an existing byte slice.
+func (vm *VM) jsNewSharedArrayBufferWithBacking(buf []byte) Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 4)
+	obj["__js_type"] = NewString("SharedArrayBuffer")
+	obj["__js_ctor"] = NewString("SharedArrayBuffer")
+	vm.jsObjectItems[objID] = obj
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+	vm.jsSharedArrayBuffers[objID] = buf
+	return Value{Type: VTJSObject, Num: objID}
 }
 
 // ---------------------------------------------------------------------------

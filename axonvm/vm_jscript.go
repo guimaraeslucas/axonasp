@@ -1651,6 +1651,7 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["Array"] = vm.jsCreateIntrinsicObject("", "Array")
 	bindings["Object"] = vm.jsCreateIntrinsicObject("", "Object")
 	bindings["JSON"] = vm.jsCreateIntrinsicObject("", "JSON")
+	bindings["Atomics"] = vm.jsCreateAtomicsObject()
 	bindings["Proxy"] = vm.jsCreateProxyObject()
 	bindings["Reflect"] = vm.jsCreateReflectObject()
 	bindings["Promise"] = vm.jsCreatePromiseObject()
@@ -1663,8 +1664,9 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["WeakRef"] = vm.jsCreateIntrinsicObject("", "WeakRef")
 	bindings["FinalizationRegistry"] = vm.jsCreateIntrinsicObject("", "FinalizationRegistry")
 	// ES6 Binary Data constructors
-	bindings["ArrayBuffer"] = vm.jsCreateIntrinsicObject("", "ArrayBuffer")
-	bindings["DataView"] = vm.jsCreateIntrinsicObject("", "DataView")
+	bindings["ArrayBuffer"] = vm.jsCreateIntrinsicObject("ArrayBuffer", "ArrayBuffer")
+	bindings["SharedArrayBuffer"] = vm.jsCreateIntrinsicObject("SharedArrayBuffer", "SharedArrayBuffer")
+	bindings["DataView"] = vm.jsCreateIntrinsicObject("DataView", "DataView")
 	bindings["Int8Array"] = vm.jsCreateIntrinsicObject("", "Int8Array")
 	bindings["Uint8Array"] = vm.jsCreateIntrinsicObject("", "Uint8Array")
 	bindings["Uint8ClampedArray"] = vm.jsCreateIntrinsicObject("", "Uint8ClampedArray")
@@ -4173,15 +4175,14 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 				}
 			}
 		}
-		// ArrayBuffer property get (byteLength)
+		// ArrayBuffer / SharedArrayBuffer property get (byteLength)
 		if backing, isBuf := vm.jsArrayBuffers[target.Num]; isBuf {
 			if strings.EqualFold(member, "byteLength") {
 				return NewInteger(int64(len(backing))), false
 			}
-			if strings.EqualFold(member, "slice") {
-				// Return a bound-like reference that callers can invoke; handled via jsCallMember.
-				// Just return undefined — slice will be invoked via jsCallMember path.
-				return Value{Type: VTJSUndefined}, false
+		} else if backing, isSBuf := vm.jsSharedArrayBuffers[target.Num]; isSBuf {
+			if strings.EqualFold(member, "byteLength") {
+				return NewInteger(int64(len(backing))), false
 			}
 		}
 		// Typed array / DataView property get
@@ -4289,6 +4290,8 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if strings.EqualFold(member, "next") {
 				return vm.jsRegExpStringIteratorNext(target), true
 			}
+		case "Atomics":
+			return vm.jsAtomicsCall(member, args)
 		case "Uint8Array":
 			switch {
 			case strings.EqualFold(member, "toBase64"):
@@ -6504,19 +6507,21 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			case strings.EqualFold(member, "keyFor"):
 				return vm.jsSymbolKeyFor(jsArgOrUndefined(args, 0)), true
 			}
-		case "ArrayBuffer":
+		case "ArrayBuffer", "SharedArrayBuffer":
 			// ArrayBuffer.isView(arg) static method (called on the ctor object)
 			if strings.EqualFold(member, "isView") {
-				if len(args) == 0 {
-					return NewBool(false), true
+				if vm.jsObjectStringProperty(target, "__js_ctor") == "ArrayBuffer" {
+					if len(args) == 0 {
+						return NewBool(false), true
+					}
+					if args[0].Type != VTJSObject {
+						return NewBool(false), true
+					}
+					t := vm.jsObjectStringProperty(args[0], "__js_type")
+					return NewBool(jsIsTypedArrayType(t)), true
 				}
-				if args[0].Type != VTJSObject {
-					return NewBool(false), true
-				}
-				t := vm.jsObjectStringProperty(args[0], "__js_type")
-				return NewBool(jsIsTypedArrayType(t)), true
 			}
-			// ArrayBuffer instance method: slice
+			// ArrayBuffer / SharedArrayBuffer instance method: slice
 			if strings.EqualFold(member, "slice") {
 				return vm.jsArrayBufferSlice(target, args), true
 			}
@@ -7993,6 +7998,10 @@ func (vm *VM) dispatchJSIntrinsicCall(thisVal Value, ctorName string, args []Val
 			return NewBool(vm.jsProxySetPrototypeOf(target, proto))
 		}
 		return NewBool(vm.jsSetPrototype(target, proto))
+	case "AtomicsAdd", "AtomicsSub", "AtomicsAnd", "AtomicsOr", "AtomicsXor", "AtomicsLoad", "AtomicsStore", "AtomicsExchange", "AtomicsCompareExchange", "AtomicsIsLockFree":
+		methodName := ctorName[7:] // Strip "Atomics"
+		res, _ := vm.jsAtomicsCall(methodName, args)
+		return res
 	}
 	return Value{Type: VTJSUndefined}
 }
@@ -8102,6 +8111,8 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			}
 			return Value{Type: VTJSUndefined}
 		case "ReflectGet", "ReflectSet", "ReflectHas", "ReflectDeleteProperty", "ReflectOwnKeys", "ReflectDefineProperty", "ReflectGetOwnPropertyDescriptor", "ReflectGetPrototypeOf", "ReflectIsExtensible", "ReflectPreventExtensions", "ReflectSetPrototypeOf":
+			return vm.dispatchJSIntrinsicCall(thisVal, ctorName, args)
+		case "AtomicsAdd", "AtomicsSub", "AtomicsAnd", "AtomicsOr", "AtomicsXor", "AtomicsLoad", "AtomicsStore", "AtomicsExchange", "AtomicsCompareExchange", "AtomicsIsLockFree":
 			return vm.dispatchJSIntrinsicCall(thisVal, ctorName, args)
 		case "ReflectApply":
 			if len(args) < 1 {
@@ -9146,10 +9157,13 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 			return Value{Type: VTJSObject, Num: objID}
 		case "Promise":
 			return vm.jsNewPromise(args)
-		case "ArrayBuffer":
+		case "ArrayBuffer", "SharedArrayBuffer":
 			byteLength := 0
 			if len(args) > 0 {
 				byteLength = int(vm.jsToNumber(args[0]).Flt)
+			}
+			if ctorName == "SharedArrayBuffer" {
+				return vm.jsNewSharedArrayBuffer(byteLength)
 			}
 			return vm.jsNewArrayBuffer(byteLength)
 		case "DataView":

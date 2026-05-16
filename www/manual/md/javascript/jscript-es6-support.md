@@ -1227,24 +1227,28 @@ for (var n of range) {
 
 ---
 
-## Binary Data — ArrayBuffer and Typed Arrays
+## Binary Data — ArrayBuffer, SharedArrayBuffer and Typed Arrays
 
 ### Syntax
 
 ```javascript
 var buffer = new ArrayBuffer(byteLength);
+var sab    = new SharedArrayBuffer(byteLength);
 var view   = new Uint8Array(buffer);
+var view   = new Uint8Array(sab);
 var view   = new Uint8Array(length);
 var view   = new Uint8Array([1, 2, 3]);
 var dv     = new DataView(buffer [, byteOffset [, byteLength]]);
+var dv     = new DataView(sab [, byteOffset [, byteLength]]);
 ```
 
 ### Remarks
 
 - `ArrayBuffer` holds a raw byte block. Its `byteLength` property returns its size in bytes. Use `ArrayBuffer.isView(v)` to test whether a value is a typed array view.
-- **Typed arrays** provide strongly-typed views over an `ArrayBuffer`. All supported types are listed in the table below.
+- `SharedArrayBuffer` is similar to `ArrayBuffer` but represents memory that can be shared between agents (workers). In the AxonASP single-threaded context, it behaves like a non-transferable `ArrayBuffer`.
+- **Typed arrays** provide strongly-typed views over an `ArrayBuffer` or `SharedArrayBuffer`. All supported types are listed in the table below.
 - `DataView` gives byte-level control over reads and writes including explicit endianness.
-- Typed array constructors can be called with: a byte **length**, an existing **ArrayBuffer**, or an **array-like** source (plain array or another typed array).
+- Typed array constructors can be called with: a byte **length**, an existing **ArrayBuffer/SharedArrayBuffer**, or an **array-like** source (plain array or another typed array).
 - Index reads past the end of the view return `undefined`. Index writes past the end are silently ignored.
 - Calling a typed array constructor without `new` raises a `TypeError`.
 
@@ -2066,5 +2070,72 @@ Response.Write("Application Version: " + version);
 </script>
 ```
 
+## Atomics
+
+### Syntax
+
+```javascript
+Atomics.add(typedArray, index, value)
+Atomics.sub(typedArray, index, value)
+Atomics.and(typedArray, index, value)
+Atomics.or(typedArray, index, value)
+Atomics.xor(typedArray, index, value)
+Atomics.load(typedArray, index)
+Atomics.store(typedArray, index, value)
+Atomics.exchange(typedArray, index, value)
+Atomics.compareExchange(typedArray, index, expectedValue, replacementValue)
+Atomics.isLockFree(size)
+```
+
+### Remarks
+
+- The `Atomics` object provides atomic operations as static methods. They are used with `SharedArrayBuffer` objects to ensure that concurrent memory accesses are predictable and safe.
+- **Strict Validation:** In AxonASP, `Atomics` methods strictly require an integer TypedArray (e.g., `Int32Array`, `Uint8Array`) backed by a `SharedArrayBuffer`. Using a standard `ArrayBuffer` will throw a `TypeError`.
+- **Atomic Operations:** These operations cannot be interrupted and are performed as a single unit. Even in the single-threaded context of a standard ASP request, they provide the necessary semantics for modern JavaScript libraries.
+- `Atomics.isLockFree(size)` returns `true` for sizes 1, 2, 4, and 8, indicating that these operations are performed natively and efficiently by the CPU.
+
+### Code Example
+
+```javascript
+<script runat="server" language="JScript">
+var sab = new SharedArrayBuffer(1024);
+var u32 = new Uint32Array(sab);
+
+Atomics.store(u32, 0, 100);
+var old = Atomics.add(u32, 0, 50);
+
+Response.Write("Old: " + old + ", New: " + Atomics.load(u32, 0));
+// Output: Old: 100, New: 150
+</script>
+```
+
 ---
 
+## SharedArrayBuffer
+
+### Syntax
+
+```javascript
+var sab = new SharedArrayBuffer(byteLength);
+```
+
+### Remarks
+
+- `SharedArrayBuffer` represents a generic, fixed-length raw binary data buffer, similar to `ArrayBuffer`.
+- Unlike `ArrayBuffer`, a `SharedArrayBuffer` cannot be detached and its memory can be shared across multiple agents (workers).
+- In the AxonASP single-threaded VM context, `SharedArrayBuffer` behaves identically to `ArrayBuffer` but provides the necessary API compatibility for modern libraries and prepares the engine for future multi-agent support.
+- `SharedArrayBuffer` objects can be used as the backing store for any TypedArray or `DataView`.
+
+### Code Example
+
+```javascript
+<script runat="server" language="JScript">
+var sab = new SharedArrayBuffer(1024);
+var u8 = new Uint8Array(sab);
+u8[0] = 42;
+Response.Write("Value: " + u8[0] + ", Length: " + sab.byteLength);
+// Output: Value: 42, Length: 1024
+</script>
+```
+
+---

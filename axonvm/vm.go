@@ -390,6 +390,7 @@ type VM struct {
 	jsStringIterators              map[int64]*jsStringIterator
 	jsRegExpStringIterators        map[int64]*jsRegExpStringIterator
 	jsArrayBuffers                 map[int64][]byte       // backing byte slices for ArrayBuffer objects
+	jsSharedArrayBuffers           map[int64][]byte       // backing byte slices for SharedArrayBuffer objects
 	jsModuleInstances              map[string]*jsEnvFrame // Subphase 8.3: Request-local module registry
 	jsModuleLoading                map[string]struct{}    // Tracks modules currently executing for circular import handling
 	jsIntlDateTimeFormatItems      map[int64]*jsIntlDateTimeFormatObject
@@ -631,6 +632,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsStringIterators:              make(map[int64]*jsStringIterator),
 		jsRegExpStringIterators:        make(map[int64]*jsRegExpStringIterator),
 		jsArrayBuffers:                 make(map[int64][]byte),
+		jsSharedArrayBuffers:           make(map[int64][]byte),
 		jsModuleInstances:              make(map[string]*jsEnvFrame),
 		jsModuleLoading:                make(map[string]struct{}),
 		jsIntlDateTimeFormatItems:      make(map[int64]*jsIntlDateTimeFormatObject),
@@ -1409,6 +1411,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.jsSetItems = child.jsSetItems
 	vm.jsMapItems = child.jsMapItems
 	vm.jsArrayBuffers = child.jsArrayBuffers
+	vm.jsSharedArrayBuffers = child.jsSharedArrayBuffers
 	vm.jsSymbolGlobalRegistry = child.jsSymbolGlobalRegistry
 	vm.jsNextSymbolID = child.jsNextSymbolID
 	vm.jsProxyItems = child.jsProxyItems
