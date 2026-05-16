@@ -933,44 +933,113 @@ func (vm *VM) jsSetObjectExtensible(objID int64, extensible bool) {
 	vm.jsObjectStateItems[objID] = state
 }
 
+func (vm *VM) jsTrackObjectKey(objID int64, key string) {
+	if strings.HasPrefix(key, jsInternalPropPrefix) {
+		return
+	}
+	order := vm.jsObjectKeyOrder[objID]
+	// Check if already exists to maintain insertion order (only add if new)
+	for _, k := range order {
+		if k == key {
+			return
+		}
+	}
+	vm.jsObjectKeyOrder[objID] = append(order, key)
+}
+
+func (vm *VM) jsUntrackObjectKey(objID int64, key string) {
+	order, ok := vm.jsObjectKeyOrder[objID]
+	if !ok {
+		return
+	}
+	for i, k := range order {
+		if k == key {
+			vm.jsObjectKeyOrder[objID] = append(order[:i], order[i+1:]...)
+			return
+		}
+	}
+}
+
 func (vm *VM) jsObjectOwnPropertyNames(target Value) []string {
 	if target.Type != VTJSObject && target.Type != VTJSFunction {
 		return nil
 	}
-	keys := make(map[string]struct{}, 8)
-	if obj, ok := vm.jsObjectItems[target.Num]; ok {
+	objID := target.Num
+
+	var indices []int
+	var stringsOrder []string
+	seen := make(map[string]struct{})
+
+	// 1. Virtual properties for TypedArrays
+	if buf, _, byteLength, elemSize, ok := vm.jsGetTypedArrayInfo(target); ok {
+		length := byteLength / elemSize
+		for i := 0; i < length; i++ {
+			indices = append(indices, i)
+			seen[strconv.Itoa(i)] = struct{}{}
+		}
+		_ = buf
+	}
+
+	// 2. Tracked order
+	if order, ok := vm.jsObjectKeyOrder[objID]; ok {
+		for _, key := range order {
+			if strings.HasPrefix(key, jsInternalPropPrefix) || strings.HasPrefix(key, jsSymbolPropertyPrefix) {
+				continue
+			}
+			if _, already := seen[key]; already {
+				continue
+			}
+			if idx, ok := jsParseArrayIndex(key); ok {
+				indices = append(indices, idx)
+			} else {
+				stringsOrder = append(stringsOrder, key)
+			}
+			seen[key] = struct{}{}
+		}
+	}
+
+	// 3. Fallback for unindexed properties
+	collect := func(key string) {
+		if strings.HasPrefix(key, jsInternalPropPrefix) || strings.HasPrefix(key, jsSymbolPropertyPrefix) {
+			return
+		}
+		if _, already := seen[key]; already {
+			return
+		}
+		if idx, ok := jsParseArrayIndex(key); ok {
+			indices = append(indices, idx)
+		} else {
+			stringsOrder = append(stringsOrder, key)
+		}
+		seen[key] = struct{}{}
+	}
+	if obj, ok := vm.jsObjectItems[objID]; ok {
 		for key := range obj {
-			if strings.HasPrefix(key, jsInternalPropPrefix) {
-				continue
-			}
-			if strings.HasPrefix(key, jsSymbolPropertyPrefix) {
-				continue
-			}
-			keys[key] = struct{}{}
+			collect(key)
 		}
 	}
-	if props, ok := vm.jsPropertyItems[target.Num]; ok {
+	if props, ok := vm.jsPropertyItems[objID]; ok {
 		for key := range props {
-			if strings.HasPrefix(key, jsInternalPropPrefix) {
-				continue
-			}
-			if strings.HasPrefix(key, jsSymbolPropertyPrefix) {
-				continue
-			}
-			keys[key] = struct{}{}
+			collect(key)
 		}
 	}
-	if len(keys) == 0 {
-		return nil
+
+	// 4. Sorting
+	sort.Ints(indices)
+	if order, ok := vm.jsObjectKeyOrder[objID]; !ok || len(order) < len(stringsOrder) {
+		sort.Strings(stringsOrder)
 	}
-	out := make([]string, 0, len(keys))
-	for key := range keys {
-		out = append(out, key)
+
+	out := make([]string, 0, len(indices)+len(stringsOrder))
+	for _, idx := range indices {
+		out = append(out, strconv.Itoa(idx))
 	}
-	sort.Strings(out)
+	for _, s := range stringsOrder {
+		out = append(out, s)
+	}
+
 	return out
 }
-
 func (vm *VM) jsObjectOwnPropertySymbols(target Value) []Value {
 	if target.Type != VTJSObject && target.Type != VTJSFunction {
 		return nil
@@ -1368,6 +1437,12 @@ func (vm *VM) jsGetDescriptor(objID int64, key string) (jsPropertyDescriptor, bo
 	}
 	v, exists := obj[key]
 	if !exists {
+		// Support virtual descriptors for TypedArray indices
+		if idx, isIdx := jsParseArrayIndex(key); isIdx {
+			if val, handled := vm.jsTypedArrayIndexGet(Value{Type: VTJSObject, Num: objID}, idx); handled {
+				return jsDefaultPropertyDescriptor(val), true
+			}
+		}
 		return jsPropertyDescriptor{}, false
 	}
 	return jsDefaultPropertyDescriptor(v), true
@@ -1375,7 +1450,11 @@ func (vm *VM) jsGetDescriptor(objID int64, key string) (jsPropertyDescriptor, bo
 
 func (vm *VM) jsSetDescriptor(objID int64, key string, desc jsPropertyDescriptor) {
 	props := vm.jsEnsurePropertyMap(objID)
+	_, exists := props[key]
 	props[key] = desc
+	if !exists {
+		vm.jsTrackObjectKey(objID, key)
+	}
 	if desc.HasValue {
 		obj, ok := vm.jsObjectItems[objID]
 		if !ok {
@@ -1390,6 +1469,7 @@ func (vm *VM) jsSetDescriptor(objID int64, key string, desc jsPropertyDescriptor
 func (vm *VM) jsCreatePrototypeObject(owner Value) Value {
 	protoID := vm.allocJSID()
 	vm.jsObjectItems[protoID] = make(map[string]Value, 2)
+	vm.jsObjectKeyOrder[protoID] = make([]string, 0, 2)
 	vm.jsPropertyItems[protoID] = make(map[string]jsPropertyDescriptor, 2)
 	vm.jsSetDescriptor(protoID, "constructor", jsPropertyDescriptor{
 		Value:        owner,
@@ -1418,18 +1498,33 @@ func jsCtorNeedsPrototype(ctorName string) bool {
 }
 
 func (vm *VM) jsGetPrototypeValue(v Value) Value {
-	if v.Type == VTJSObject || v.Type == VTJSFunction {
-		if obj, ok := vm.jsObjectItems[v.Num]; ok {
+	if v.Type == VTJSObject || v.Type == VTJSFunction || v.Type == VTJSProxy {
+		id := v.Num
+		if obj, ok := vm.jsObjectItems[id]; ok {
 			if proto, exists := obj["__js_proto"]; exists {
 				return proto
+			}
+		}
+		if props, ok := vm.jsPropertyItems[id]; ok {
+			if desc, exists := props["__js_proto"]; exists {
+				if desc.HasValue {
+					return desc.Value
+				}
+			}
+		}
+		// Fallback to intrinsic prototypes if it's a built-in type object
+		if obj, ok := vm.jsObjectItems[id]; ok {
+			if t, hasT := obj["__js_type"]; hasT {
+				// Don't recurse infinitely, only for non-prototype objects
+				if !strings.HasSuffix(t.Str, " Prototype") {
+					return vm.jsGetIntrinsicPrototype(t.Str)
+				}
 			}
 		}
 	}
 	if v.Type == VTJSFunction {
 		if fn, ok := vm.jsFunctionItems[v.Num]; ok && fn != nil && fn.protoID != 0 {
-			// Fallback: this is usually the prototype object for instances,
-			// but we prefer __js_proto for actual inheritance chain.
-			// Actually, for functions, __js_proto IS the parent constructor.
+			return Value{Type: VTJSObject, Num: fn.protoID}
 		}
 	}
 	return Value{Type: VTJSUndefined}
@@ -1515,8 +1610,11 @@ func (vm *VM) jsFromGoJSON(payload any) Value {
 	case map[string]any:
 		objID := vm.allocJSID()
 		obj := make(map[string]Value, len(v))
+		vm.jsObjectKeyOrder[objID] = make([]string, 0, len(v))
 		for key, item := range v {
-			obj[key] = vm.jsFromGoJSON(item)
+			val := vm.jsFromGoJSON(item)
+			obj[key] = val
+			vm.jsTrackObjectKey(objID, key)
 		}
 		vm.jsObjectItems[objID] = obj
 		props := vm.jsEnsurePropertyMap(objID)
@@ -1916,6 +2014,10 @@ func (vm *VM) jsObjectStringProperty(obj Value, key string) string {
 func (vm *VM) allocJSID() int64 {
 	id := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
+	if vm.jsObjectKeyOrder == nil {
+		vm.jsObjectKeyOrder = make(map[int64][]string)
+	}
+	vm.jsObjectKeyOrder[id] = make([]string, 0, 8)
 	return id
 }
 
@@ -5794,12 +5896,10 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				obj := make(map[string]Value, 8)
 				vm.jsObjectItems[objID] = obj
 				vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
-				if len(args) > 0 {
-					if args[0].Type == VTJSObject || args[0].Type == VTNull {
-						obj["__js_proto"] = args[0]
-					}
-				}
 				created := Value{Type: VTJSObject, Num: objID}
+				if len(args) > 0 {
+					vm.jsSetProto(created, args[0])
+				}
 				if len(args) > 1 {
 					_, _ = vm.jsCallMember(target, "defineProperties", []Value{created, args[1]})
 				}
@@ -7575,8 +7675,33 @@ func (vm *VM) jsEnumerateForInKeys(source Value) []string {
 		return keys
 	}
 
-	if source.Type == VTJSObject {
-		return vm.jsObjectOwnEnumerableKeys(source.Num)
+	if source.Type == VTJSObject || source.Type == VTJSFunction {
+		seen := make(map[string]struct{})
+		var allKeys []string
+
+		curr := source
+		for curr.Type == VTJSObject || curr.Type == VTJSFunction {
+			names := vm.jsObjectOwnPropertyNames(curr)
+			for _, k := range names {
+				if _, alreadySeen := seen[k]; !alreadySeen {
+					desc, hasDesc := vm.jsGetDescriptor(curr.Num, k)
+					if hasDesc && desc.Enumerable {
+						allKeys = append(allKeys, k)
+						seen[k] = struct{}{}
+					} else if !hasDesc {
+						// For virtual properties (like TypedArray indices) without descriptors, 
+						// assume they are enumerable if they showed up in OwnPropertyNames.
+						allKeys = append(allKeys, k)
+						seen[k] = struct{}{}
+					}
+				}
+			}
+			curr = vm.jsGetPrototypeValue(curr)
+			if curr.Type == VTNull || curr.Type == VTJSUndefined {
+				break
+			}
+		}
+		return allKeys
 	}
 
 	if source.Type == VTArray && source.Arr != nil && len(source.Arr.Values) > 0 {
@@ -8266,24 +8391,21 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 	case VTJSObject:
 		ctorName := vm.jsObjectStringProperty(callee, "__js_ctor")
 		switch ctorName {
+		case "Number":
+			if len(args) == 0 {
+				return NewDouble(0)
+			}
+			return vm.jsToNumber(args[0])
 		case "String":
 			if len(args) == 0 {
 				return NewString("")
 			}
-			return NewString(vm.valueToString(args[0]))
-		case "Symbol":
-			description := ""
-			if len(args) > 0 && args[0].Type != VTJSUndefined {
-				description = vm.valueToString(args[0])
+			return NewString(vm.jsToString(args[0]))
+		case "Boolean":
+			if len(args) == 0 {
+				return NewBool(false)
 			}
-			return Value{Type: VTSymbol, Num: vm.jsAllocSymbolID(), Str: description}
-		case "Date":
-			return NewString(time.Now().In(builtinCurrentLocation(vm)).Format("Mon Jan 02 2006 15:04:05 GMT-0700"))
-		case "RegExp":
-			if len(args) > 0 {
-				return vm.jsNew(callee, args)
-			}
-			return Value{Type: VTJSUndefined}
+			return NewBool(vm.jsTruthy(args[0]))
 		case "Proxy":
 			vm.jsThrowTypeError("Constructor Proxy requires 'new'")
 			return Value{Type: VTJSUndefined}
@@ -8410,6 +8532,137 @@ func (vm *VM) jsThrowReferenceError(msg string) {
 }
 
 // jsToNumber converts a Value to a numeric value (VTDouble) following JScript semantics.
+// jsToPrimitive implements the ECMAScript ToPrimitive abstract operation.
+func (vm *VM) jsToPrimitive(v Value, hint string) Value {
+	if v.Type != VTJSObject && v.Type != VTJSFunction && v.Type != VTJSProxy && v.Type != VTArray {
+		return v
+	}
+
+	// 1. Check for @@toPrimitive
+	toPrimitive := jsWellKnownSymbolValue(jsWellKnownSymbolToPrimitive, "Symbol.toPrimitive")
+	if method, ok := vm.jsResolveObjectMember(v.Num, vm.jsPropertyKeyFromValue(toPrimitive), make(map[int64]struct{}, 4)); ok {
+		if method.HasValue && vm.jsIsCallable(method.Value) {
+			res := vm.jsCall(method.Value, v, []Value{NewString(hint)})
+			if res.Type != VTJSObject && res.Type != VTJSFunction && res.Type != VTJSProxy && res.Type != VTArray {
+				return res
+			}
+			vm.jsThrowTypeError("Symbol.toPrimitive returned an object")
+			return Value{Type: VTJSUndefined}
+		}
+	}
+
+	// 2. Default OrdinaryToPrimitive
+	if hint == "string" {
+		// toString then valueOf
+		if res, ok := vm.jsCallOrdinaryToPrimitive(v, "toString"); ok {
+			return res
+		}
+		if res, ok := vm.jsCallOrdinaryToPrimitive(v, "valueOf"); ok {
+			return res
+		}
+	} else {
+		// valueOf then toString
+		if res, ok := vm.jsCallOrdinaryToPrimitive(v, "valueOf"); ok {
+			return res
+		}
+		if res, ok := vm.jsCallOrdinaryToPrimitive(v, "toString"); ok {
+			return res
+		}
+	}
+
+	vm.jsThrowTypeError("Cannot convert object to primitive value")
+	return Value{Type: VTJSUndefined}
+}
+
+func (vm *VM) jsCallOrdinaryToPrimitive(v Value, methodName string) (Value, bool) {
+	if method, ok := vm.jsResolveObjectMember(v.Num, methodName, make(map[int64]struct{}, 4)); ok {
+		if method.HasValue && vm.jsIsCallable(method.Value) {
+			res := vm.jsCall(method.Value, v, nil)
+			if res.Type != VTJSObject && res.Type != VTJSFunction && res.Type != VTJSProxy && res.Type != VTArray {
+				return res, true
+			}
+		}
+	}
+	return Value{}, false
+}
+
+// jsToObject implements the ECMAScript ToObject abstract operation.
+func (vm *VM) jsToObject(v Value) Value {
+	switch v.Type {
+	case VTJSUndefined, VTNull, VTEmpty:
+		vm.jsThrowTypeError("Cannot convert undefined or null to object")
+		return Value{Type: VTJSUndefined}
+	case VTJSObject, VTJSFunction, VTJSProxy, VTArray:
+		return v
+	case VTBool:
+		return vm.jsNew(vm.jsGetName("Boolean"), []Value{v})
+	case VTInteger, VTDouble:
+		return vm.jsNew(vm.jsGetName("Number"), []Value{v})
+	case VTString:
+		return vm.jsNew(vm.jsGetName("String"), []Value{v})
+	case VTSymbol:
+		// Symbols are handled differently, they don't have a direct 'new' constructor in ES6
+		// but we can wrap them in an object for ToObject.
+		objID := vm.allocJSID()
+		obj := make(map[string]Value, 4)
+		obj["__js_type"] = NewString("Symbol")
+		obj["__js_primitive_value"] = v
+		if proto := vm.jsGetIntrinsicPrototype("Symbol"); proto.Type == VTJSObject {
+			obj["__js_proto"] = proto
+		}
+		vm.jsObjectItems[objID] = obj
+		vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+		return Value{Type: VTJSObject, Num: objID}
+	default:
+		return Value{Type: VTJSUndefined}
+	}
+}
+
+func (vm *VM) jsToString(v Value) string {
+	switch v.Type {
+	case VTJSUndefined:
+		return "undefined"
+	case VTNull, VTEmpty:
+		return "null"
+	case VTBool:
+		if v.Num != 0 {
+			return "true"
+		}
+		return "false"
+	case VTInteger:
+		return strconv.FormatInt(v.Num, 10)
+	case VTDouble:
+		if math.IsNaN(v.Flt) {
+			return "NaN"
+		}
+		if math.IsInf(v.Flt, 1) {
+			return "Infinity"
+		}
+		if math.IsInf(v.Flt, -1) {
+			return "-Infinity"
+		}
+		if v.Flt == 0 {
+			return "0"
+		}
+		return strconv.FormatFloat(v.Flt, 'g', -1, 64)
+	case VTString:
+		return v.Str
+	case VTJSBigInt:
+		if v.Big == nil {
+			return "0"
+		}
+		return v.Big.String()
+	case VTSymbol:
+		vm.jsThrowTypeError("Cannot convert a Symbol value to a string")
+		return ""
+	case VTJSObject, VTJSFunction, VTJSProxy, VTArray:
+		prim := vm.jsToPrimitive(v, "string")
+		return vm.jsToString(prim)
+	default:
+		return vm.valueToString(v)
+	}
+}
+
 func (vm *VM) jsToNumber(v Value) Value {
 	switch v.Type {
 	case VTJSBigInt:
@@ -8440,14 +8693,32 @@ func (vm *VM) jsToNumber(v Value) Value {
 		return NewDouble(0)
 	case VTDate:
 		return NewDouble(float64(v.Num) / float64(time.Millisecond))
+	case VTJSObject, VTJSFunction, VTJSProxy, VTArray:
+		prim := vm.jsToPrimitive(v, "number")
+		return vm.jsToNumber(prim)
 	default:
 		return NewDouble(math.NaN())
 	}
 }
 
 // jsToInt32 converts a value to a 32-bit signed integer for bitwise operations.
+func (vm *VM) jsToInteger(v Value) float64 {
+	number := vm.jsToNumber(v).Flt
+	if math.IsNaN(number) {
+		return 0
+	}
+	if number == 0 || math.IsInf(number, 0) {
+		return number
+	}
+	res := math.Trunc(number)
+	if res == 0 && number < 0 {
+		return -0.0 // maintain signed zero
+	}
+	return res
+}
+
 func (vm *VM) jsToInt32(v Value) int32 {
-	num := vm.jsToNumber(v).Flt
+	num := vm.jsToInteger(NewDouble(vm.jsToNumber(v).Flt)) // Simplified but usually enough
 	return int32(num)
 }
 
@@ -8757,25 +9028,56 @@ func (vm *VM) jsLooseEqual(a Value, b Value) Value {
 		return NewBool(true)
 	}
 
+	// 1. null == undefined
 	aNullish := a.Type == VTNull || a.Type == VTJSUndefined
 	bNullish := b.Type == VTNull || b.Type == VTJSUndefined
+	if aNullish && bNullish {
+		return NewBool(true)
+	}
 	if aNullish || bNullish {
-		return NewBool(aNullish && bNullish)
-	}
-
-	if a.Type == VTBool {
-		a = vm.jsToNumber(a)
-	}
-	if b.Type == VTBool {
-		b = vm.jsToNumber(b)
-	}
-
-	aNum := vm.jsToNumber(a).Flt
-	bNum := vm.jsToNumber(b).Flt
-	if math.IsNaN(aNum) || math.IsNaN(bNum) {
 		return NewBool(false)
 	}
-	return NewBool(aNum == bNum)
+
+	// 2. Coerce types
+	// ES5 11.9.3
+	
+	// String and Number
+	if (a.Type == VTString && (b.Type == VTInteger || b.Type == VTDouble)) ||
+		((a.Type == VTInteger || a.Type == VTDouble) && b.Type == VTString) {
+		return vm.jsLooseEqual(vm.jsToNumber(a), vm.jsToNumber(b))
+	}
+
+	// Boolean as Number
+	if a.Type == VTBool {
+		return vm.jsLooseEqual(vm.jsToNumber(a), b)
+	}
+	if b.Type == VTBool {
+		return vm.jsLooseEqual(a, vm.jsToNumber(b))
+	}
+
+	// Object and (String or Number or Symbol)
+	isObject := func(v Value) bool {
+		return v.Type == VTJSObject || v.Type == VTJSFunction || v.Type == VTJSProxy || v.Type == VTArray
+	}
+	isPrimitive := func(v Value) bool {
+		return v.Type == VTString || v.Type == VTInteger || v.Type == VTDouble || v.Type == VTSymbol
+	}
+
+	if isObject(a) && isPrimitive(b) {
+		return vm.jsLooseEqual(vm.jsToPrimitive(a, ""), b)
+	}
+	if isPrimitive(a) && isObject(b) {
+		return vm.jsLooseEqual(a, vm.jsToPrimitive(b, ""))
+	}
+
+	// BigInt cases (ES2020)
+	if (a.Type == VTJSBigInt && isPrimitive(b) && b.Type != VTSymbol) ||
+		(isPrimitive(a) && a.Type != VTSymbol && b.Type == VTJSBigInt) {
+		// Simplified BigInt comparison
+		return NewBool(vm.jsToString(a) == vm.jsToString(b))
+	}
+
+	return NewBool(false)
 }
 
 // jsLooseNotEqual implements JScript '!=' (loose inequality) operator.
@@ -9195,6 +9497,7 @@ func (vm *VM) jsMemberDelete(obj Value, member string) bool {
 			if props, ok := vm.jsPropertyItems[obj.Num]; ok {
 				delete(props, member)
 			}
+			vm.jsUntrackObjectKey(obj.Num, member)
 			return true
 		}
 	}

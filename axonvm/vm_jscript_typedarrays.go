@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -288,6 +289,9 @@ func (vm *VM) jsNewTypedArray(typeName string, args []Value) Value {
 	obj["__js_buffer_id"] = NewInteger(bufID)
 	obj["__js_byte_offset"] = NewInteger(int64(byteOffset))
 	obj["__js_byte_length"] = NewInteger(int64(byteLength))
+	if proto := vm.jsGetIntrinsicPrototype(typeName); proto.Type == VTJSObject {
+		obj["__js_proto"] = proto
+	}
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
 	return Value{Type: VTJSObject, Num: objID}
@@ -543,20 +547,19 @@ func (vm *VM) jsTypedArrayMemberSet(obj Value, member string, val Value) bool {
 }
 
 // jsParseArrayIndex tries to parse a string as a non-negative integer array index.
-// Returns (index, true) if valid.
+// Returns (index, true) if valid according to ECMAScript rules (no leading zeros except "0", < 2^32-1).
 func jsParseArrayIndex(s string) (int, bool) {
 	if s == "" || s[0] < '0' || s[0] > '9' {
 		return 0, false
 	}
-	n := 0
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c < '0' || c > '9' {
-			return 0, false
-		}
-		n = n*10 + int(c-'0')
+	if len(s) > 1 && s[0] == '0' {
+		return 0, false
 	}
-	return n, true
+	n, err := strconv.ParseUint(s, 10, 32)
+	if err != nil || n >= 0xffffffff {
+		return 0, false
+	}
+	return int(n), true
 }
 
 // ---------------------------------------------------------------------------

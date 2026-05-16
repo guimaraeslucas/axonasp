@@ -22,6 +22,7 @@ package axonvm
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"time"
@@ -96,6 +97,18 @@ func (v Value) String() string {
 	case VTInteger:
 		return fmt.Sprintf("%d", v.Num)
 	case VTDouble:
+		if math.IsNaN(v.Flt) {
+			return "NaN"
+		}
+		if math.IsInf(v.Flt, 1) {
+			return "Infinity"
+		}
+		if math.IsInf(v.Flt, -1) {
+			return "-Infinity"
+		}
+		if v.Flt == 0 {
+			return "0"
+		}
 		return fmt.Sprintf("%g", v.Flt)
 	case VTString:
 		return v.Str

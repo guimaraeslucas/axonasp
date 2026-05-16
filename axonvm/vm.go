@@ -368,6 +368,7 @@ type VM struct {
 	dictionaryItems                map[int64]*scriptingDictionary
 	nativeObjectProxies            map[int64]nativeObjectProxy
 	jsObjectItems                  map[int64]map[string]Value
+	jsObjectKeyOrder               map[int64][]string
 	jsObjectSlots                  map[int64][]Value
 	jsObjectSlotIndex              map[int64]map[string]uint16
 	jsObjectShape                  map[int64]uint32
@@ -610,6 +611,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		dictionaryItems:                make(map[int64]*scriptingDictionary),
 		nativeObjectProxies:            make(map[int64]nativeObjectProxy),
 		jsObjectItems:                  make(map[int64]map[string]Value),
+		jsObjectKeyOrder:               make(map[int64][]string),
 		jsObjectSlots:                  make(map[int64][]Value),
 		jsObjectSlotIndex:              make(map[int64]map[string]uint16),
 		jsObjectShape:                  make(map[int64]uint32),
@@ -1401,6 +1403,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.dictionaryItems = child.dictionaryItems
 	vm.nativeObjectProxies = child.nativeObjectProxies
 	vm.jsObjectItems = child.jsObjectItems
+	vm.jsObjectKeyOrder = child.jsObjectKeyOrder
 	vm.jsObjectStateItems = child.jsObjectStateItems
 	vm.jsPropertyItems = child.jsPropertyItems
 	vm.jsFunctionItems = child.jsFunctionItems

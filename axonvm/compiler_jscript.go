@@ -2762,6 +2762,9 @@ func (c *Compiler) compileJScriptCall(node *jsast.CallExpression) {
 
 // compileJScriptTailReturn emits one tail-call opcode when one return argument is a call expression.
 func (c *Compiler) compileJScriptTailReturn(argument jsast.Expression) bool {
+	if !c.jsStrictMode {
+		return false
+	}
 	callExpr, ok := argument.(*jsast.CallExpression)
 	if !ok {
 		return false
