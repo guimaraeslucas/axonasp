@@ -1045,26 +1045,24 @@ func (vm *VM) jsObjectOwnPropertySymbols(target Value) []Value {
 		return nil
 	}
 	ids := make(map[int64]struct{}, 8)
-	collect := func(keys map[string]Value) {
-		for key := range keys {
-			if !strings.HasPrefix(key, jsSymbolPropertyPrefix) {
-				continue
-			}
-			numText := strings.TrimPrefix(key, jsSymbolPropertyPrefix)
-			if id, err := strconv.ParseInt(numText, 10, 64); err == nil {
-				ids[id] = struct{}{}
-			}
+	collect := func(key string) {
+		if !strings.HasPrefix(key, jsSymbolPropertyPrefix) {
+			return
+		}
+		numText := strings.TrimPrefix(key, jsSymbolPropertyPrefix)
+		if id, err := strconv.ParseInt(numText, 10, 64); err == nil {
+			ids[id] = struct{}{}
 		}
 	}
 	if obj, ok := vm.jsObjectItems[target.Num]; ok {
-		collect(obj)
+		for key := range obj {
+			collect(key)
+		}
 	}
 	if props, ok := vm.jsPropertyItems[target.Num]; ok {
-		shadow := make(map[string]Value, len(props))
 		for key := range props {
-			shadow[key] = Value{}
+			collect(key)
 		}
-		collect(shadow)
 	}
 	if len(ids) == 0 {
 		return nil
@@ -7689,7 +7687,7 @@ func (vm *VM) jsEnumerateForInKeys(source Value) []string {
 						allKeys = append(allKeys, k)
 						seen[k] = struct{}{}
 					} else if !hasDesc {
-						// For virtual properties (like TypedArray indices) without descriptors, 
+						// For virtual properties (like TypedArray indices) without descriptors,
 						// assume they are enumerable if they showed up in OwnPropertyNames.
 						allKeys = append(allKeys, k)
 						seen[k] = struct{}{}
@@ -8406,6 +8404,12 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 				return NewBool(false)
 			}
 			return NewBool(vm.jsTruthy(args[0]))
+		case "Symbol":
+			desc := ""
+			if len(args) > 0 && args[0].Type != VTJSUndefined {
+				desc = vm.valueToString(args[0])
+			}
+			return Value{Type: VTSymbol, Num: vm.jsAllocSymbolID(), Str: desc}
 		case "Proxy":
 			vm.jsThrowTypeError("Constructor Proxy requires 'new'")
 			return Value{Type: VTJSUndefined}
@@ -9040,7 +9044,7 @@ func (vm *VM) jsLooseEqual(a Value, b Value) Value {
 
 	// 2. Coerce types
 	// ES5 11.9.3
-	
+
 	// String and Number
 	if (a.Type == VTString && (b.Type == VTInteger || b.Type == VTDouble)) ||
 		((a.Type == VTInteger || a.Type == VTDouble) && b.Type == VTString) {

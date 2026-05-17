@@ -1,6 +1,6 @@
 # 🚀 AXONASP: JSCRIPT MODERNIZATION & ES6+ EXPANSION ROADMAP
 
-This document serves as a high-precision checklist for implementing ECMAScript 6 (ES6) and modern ES11-ES24 features into the AxonASP JScript engine.
+This document serves as a high-precision checklist for implementing remaining ECMAScript 6 (ES6) and modern ES11-ES24 features into the AxonASP JScript engine.
 
 ## 🎯 CORE DIRECTIVES
 
@@ -9,71 +9,105 @@ This document serves as a high-precision checklist for implementing ECMAScript 6
 * **Zero-Allocation:** Avoid creating new Go objects on the heap during hot paths.
 * **No Reflection:** Use the established `Value` struct and switch-based dispatch.
 * **Minimal GC Impact:** Prefer native Go primitives and stack-based operations. Avoid the use of interfaces or any constructs that could trigger GC cycles.
+
+
 3. **VM Architecture Context (Crucial):**
-    * The AxonASP Eval loop is procedural (a large for loop labeled aspExecLoop).
-    *It uses a custom memory-managed stack (stack []Value), a callStack []CallFrame, and sp, fp, and ip pointers.
-* **NO Go Host Recursion:** User scripts run 100% isolated within the loop. Function calls (OpCall) just push a frame and jump ip. OpRet pops the frame and restores ip/sp/fp. Native Go recursion is strictly for native built-ins. Leverage this architecture heavily, especially for stack management and state pausing.
-3. **Validation:** Every step MUST be accompanied by a GoLang test case in `axonvm/jscript_es6_test.go` and a javascript ASP test page in `./www/tests/test_*.asp` that must run with success in `axonasp-cli.exe -r <filename>`. Don't delete the test files, just add new ones for the new features. Ensure that all existing tests pass without modification to confirm no regressions.
-4. After implementing the features, update the documentation in `./www/manual/md/javascript/jscript-es6-support.md` to reflect the new capabilities and any limitations.
-5. Please think and do your best job. I trust you.
+* The AxonASP Eval loop is procedural (a large `for` loop labeled `aspExecLoop`).
+* It uses a custom memory-managed stack (`stack []Value`), a `callStack []CallFrame`, and `sp`, `fp`, and `ip` pointers.
+* **NO Go Host Recursion:** User scripts run 100% isolated within the loop. Function calls (`OpCall`) just push a frame and jump `ip`. `OpRet` pops the frame and restores `ip`/`sp`/`fp`. Native Go recursion is strictly for native built-ins. Leverage this architecture heavily, especially for stack management and state pausing.
+
+
+4. **Validation:** Every step MUST be accompanied by a GoLang test case in `axonvm/jscript_es6_test.go` and a javascript ASP test page in `./www/tests/test_*.asp` that must run with success in `axonasp-cli.exe -r <filename>`. Don't delete the test files, just add new ones for the new features. Ensure that all existing tests pass without modification to confirm no regressions.
+5. After implementing the features, update the documentation in `./www/manual/md/javascript/jscript-es6-support.md` to reflect the new capabilities and any limitations.
+6. Please think and do your best job. I trust you.
 
 **Objective:** Implement missing ECMAScript 2020+ features, ergonomic APIs, and advanced architectural updates into the AxonASP JScript engine.
 
 ---
 
+## 🛠️ PHASE 3: WELL-KNOWN SYMBOLS & PROTOCOLS (MEDIUM COMPLEXITY)
 
-## 🛠️ PHASE 6: PROXIES & REFLECTION (HIGH COMPLEXITY)
-
-**Goal:** Introduce metaprogramming capabilities.
+**Goal:** Deeply integrate Well-Known Symbols into the engine's built-in methods to ensure full ES6 behavioral compliance.
 
 ### Tasks:
-Follow the subphase breakdown below for a structured implementation of Proxies and the Reflect API:
-    * SUBPHASE 6.1: Core Types & Global Built-ins Setup
-        * [x] **Internal Representation:** Define the internal memory model for Proxies without breaking the `Value` struct. Either introduce a `VTJSProxy` type or utilize `VTJSObject` with hidden internal properties (e.g., `[[ProxyTarget]]` and `[[ProxyHandler]]`).
-        * [x] **Global Registration:** Inject the `Proxy` constructor and the `Reflect` namespace object into the global JScript environment upon VM initialization.
-        * [x] **Constructor Logic:** Implement the `new Proxy(target, handler)` built-in function. Ensure it throws a `TypeError` if `target` or `handler` are not valid objects (`VTJSObject` or `VTJSFunction`).
-        * [x] **Validation:** Create `test_proxy_init.asp` to verify `Proxy` and `Reflect` exist globally and that `new Proxy()` correctly validates its arguments.
-    * SUBPHASE 6.2: Intercepting Property Access (`get` & `set` Traps)
-        * [x] **Get Trap:** Deeply hook into `vm.jsMemberGet`. If the object is a Proxy, inspect the `[[ProxyHandler]]` for a `"get"` property. If present, invoke it as a function with `(target, property, receiver)`. If not, forward the operation to the `[[ProxyTarget]]`.
-        * [x] **Set Trap:** Hook into `vm.jsMemberSet` and `vm.jsIndexSet`. Check the handler for a `"set"` property. Invoke it with `(target, property, value, receiver)`. 
-        * [x] **Strict Mode Enforcement:** In strict mode, if a `set` trap returns a falsy value, the VM MUST throw a `TypeError`.
-        * [x] **Validation:** Create `test_proxy_get_set.asp` to ensure properties can be dynamically intercepted, modified, or blocked without leaking memory or escaping the VM stack.
-    * SUBPHASE 6.3: Intercepting Execution (`apply` & `construct` Traps)
-        * [x] **Callable Proxies:** A Proxy is only callable if its `[[ProxyTarget]]` is a `VTJSFunction`. Enforce this during instantiation.
-        * [x] **Apply Trap:** Hook into the VM's `OpCall` handler. If the callee is a Proxy, check for an `"apply"` trap. If present, invoke it with `(target, thisArg, argumentsList)`.
-        * [x] **Construct Trap:** Hook into the VM's `OpNew` handler. Check for a `"construct"` trap. Invoke it with `(target, argumentsList, newTarget)`. Ensure the return value is an object, otherwise throw a `TypeError`.
-        * [x] **Validation:** Create `test_proxy_apply_construct.asp` to test intercepting function calls and constructor invocations.
-    * SUBPHASE 6.4: Intercepting Object Operations (`has`, `deleteProperty`, `ownKeys`)
-        * [x] **Has Trap:** Hook into the `in` operator logic (e.g., `OpJSIn`). Route to the `"has"` trap if defined.
-        * [x] **Delete Trap:** Hook into the `delete` operator logic. Route to the `"deleteProperty"` trap. Enforce strict mode throwing if the trap returns `false`.
-        * [x] **Keys/Enumeration:** Hook into `OpForIn` and `Object.keys()` internal logic to support the `"ownKeys"` trap, ensuring it returns a valid Array or iterable of strings/symbols.
-        * [x] **Proxy revocable:** Implement `Proxy.revocable` and any missing `Proxy` implementations.
-        * [x] **Object Traps:** Hook into `in` (`has`), `delete` (`deleteProperty`), and `Object.keys()` (`ownKeys`).
-        * [x] **Validation:** Create `test_proxy_operations.asp` to verify operator interception works flawlessly.
-    * SUBPHASE 6.5: The `Reflect` API Implementation
-        * [x] **Reflect Methods:** Implement `Reflect.get()`, `Reflect.set()`, `Reflect.apply()`, `Reflect.construct()`, `Reflect.has()`, `Reflect.deleteProperty()`, and `Reflect.ownKeys()`.
-        * [x] **Parity & Invocation:** Ensure these methods directly map to the internal VM dispatch mechanics (the exact same internal methods used when traps forward to the target).
-        * [x] **Return Semantics:** Unlike standard operators which might throw in strict mode, ensure `Reflect.set()` and `Reflect.deleteProperty()` return boolean success flags as dictated by the ES6 spec.
-        * [x] **Validation:** Create `test_reflect_api.asp` to verify parity between Proxy traps and Reflect invocations.
-    * SUBPHASE 6.7: Final Agent Checklist
-        * [x] **Gofmt:** Run `gofmt` on all modified files.
-        * [x] **JScript Check:** Run go tests on jscript implementation to ensure we're working as expected.
-        * [x] **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure deep VM hooks into member resolution did NOT break VBScript `.` access.
-        * [x] **Memory Profile:** Run `go test -bench . -benchmem`. Proxy traps involve nested VM calls; ensure `CallFrame` allocations remain strictly stack-bound (Zero-Allocation axiom).
-        * [x] **Error Codes:** Ensure correct use of error codes from `jscripterrorcodes.go` for trap violations and TypeErrors.
-        * [x] **Documentation:** Update `jscript-es6-support.md` detailing the supported Proxy traps and the `Reflect` API features.
+
+* SUBPHASE 3.1: Array Protocol Hooks
+* [ ] **`Symbol.isConcatSpreadable`:** Modify `Array.prototype.concat`. Before treating an argument as an array to be flattened, check for the `Symbol.isConcatSpreadable` property. Ensure this lookup is fast.
+* [ ] **`Symbol.species`:** Update `Array.prototype.slice`, `map`, and `filter`. Instead of hardcoding `new Array()`, they must look up the constructor's `Symbol.species` to support subclassing.
+
+
+* SUBPHASE 3.2: Runtime Hooks
+* [ ] **`Symbol.hasInstance`:** Update the `OpJSInstanceOf` opcode logic. Before doing standard prototype chain traversal, check if the right-hand-side object has a `[Symbol.hasInstance]` method and invoke it.
+* [ ] **`Symbol.unscopables`:** Update `OpWithEnter` / `OpJSGetName` logic. When resolving variables inside a `with` statement, check the object's `Symbol.unscopables` property to block specific property leakage.
+
+
+
+---
+
+## 🛠️ PHASE 4: UNICODE & FULL PLANE SUPPORT (MEDIUM TO HIGH COMPLEXITY)
+
+**Goal:** Bring JScript into full compliance with the Unicode Standard, moving beyond the Basic Multilingual Plane (BMP).
+
+### Tasks:
+
+* SUBPHASE 4.1: Regular Expressions & Strings
+* [ ] **`u` Flag in RegExp:** Update the regular expression engine compilation step. Support the `u` flag, enabling Unicode code point escapes (`\u{1F600}`) and Unicode property escapes.
+* [ ] **String Code Points:** Implement `String.prototype.codePointAt()` and `String.fromCodePoint()`. Be extremely careful with Go's `rune` vs JS string length (UTF-16 surrogate pairs) to avoid out-of-bounds panics.
+
+
+* SUBPHASE 4.2: Lexical Unicode Identifiers
+* [ ] **AST & Lexer Updates:** Modify the Lexer in `./jscript/` to allow valid Unicode characters in variable/identifier names as defined by the ES6 spec. Ensure constants map correctly without encoding corruption in the single-pass compiler context.
+
+
+
+---
+
+## 🛠️ PHASE 5: PROXY/REFLECT INVARIANTS (HIGH COMPLEXITY)
+
+**Goal:** Enforce the strict "Invariants of the Essential Internal Methods" for Proxies to prevent malicious or broken traps from corrupting the VM state.
+
+### Tasks:
+
+* SUBPHASE 5.1: Trap Validation Engine
+* [ ] **Constraint Checking Logic:** Create a centralized validation mechanism inside `./jscript/` for Proxy traps.
+* [ ] **Missing Property Traps:** Enforce that a Proxy cannot report a property as missing (`[[Get]]` returns undefined or `[[Has]]` returns false) if the target object has that property explicitly marked as non-configurable.
+
+
+* SUBPHASE 5.2: Prototype & Extensibility Safety
+* [ ] **Prototype Traps:** Ensure the `getPrototypeOf` trap cannot return a different prototype if the target object is non-extensible.
+* [ ] **Error Handling:** If an invariant is broken, throw a precise `TypeError` using the `jscripterrorcodes.go` system. Test extensively with edge cases.
+
+
+
+---
+
+## 🛠️ PHASE 6: INTERNATIONALIZATION - THE `Intl` OBJECT (EXTREME COMPLEXITY)
+
+**Goal:** Implement the complex `Intl` API for ES6 localization support, balancing spec compliance with our "Zero-Allocation" and memory constraint axioms.
+
+### Tasks:
+
+* SUBPHASE 6.1: Core Infrastructure
+* [ ] **Locale Resolution:** Implement the default locale detection and fallback mechanisms required by the spec.
+* [ ] **Global `Intl` Namespace:** Register the `Intl` object and stub out its constructors globally.
+
+
+* SUBPHASE 6.2: Formatters
+* [ ] **`Intl.DateTimeFormat`:** Wrap Go's `time` package logic to mirror JS locale strings. Map JS format options (e.g., `year: 'numeric', month: 'short'`) to Go format strings efficiently.
+* [ ] **`Intl.NumberFormat`:** Implement localized number formatting. Be wary of memory allocations when dealing with dynamic string building.
+* [ ] **`Intl.Collator`:** Implement localized string comparison. Rely on Go standard libraries where possible, but ensure strict adherence to ES-spec sorting rules.
+
+
 
 ---
 
 ## ✅ FINAL CHECKLIST FOR AGENT
 
 1. **Gofmt:** Did you run `gofmt` on all modified files?
-2. **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure zero regressions.
-3. **Memory Profile:** Use `go test -bench` to ensure no new allocations were introduced in the JScript execution path.
-4. **Error Codes:** Did you use the correct error codes from `jscripterrorcodes.go` for syntax/runtime failures?
+2. **VBScript Check:** Run `go test ./axonvm -run TestVBScript` to ensure zero regressions in the primary engine.
+3. **Memory Profile:** Use `go test -bench` to ensure no new allocations were introduced in the JScript execution path (especially in standard library additions).
+4. **Error Codes:** Did you use the correct error codes from `jscripterrorcodes.go` for syntax/runtime failures, especially regarding Proxy invariants?
 5. **Branding:** Ensure all new files follow the G3pix copyright header format.
-6. **Documentation:** Did you update `jscript-es6-support.md` with the new features and any limitations or known issues?
-7. **Testing:** Did you add comprehensive test cases for each new feature in both Go and ASP test files?
-8. **Code Review:** Before finalizing, review the code for any potential performance pitfalls, memory leaks, or edge cases that could arise from the new features.
-
-
+6. **Documentation:** Did you update `jscript-es6-support.md` with the newly supported APIs (e.g., `Intl`, `Math` expansions) and their limitations?
+7. **Testing:** Did you add comprehensive test cases for each new feature in both Go and ASP test files? (Crucial for verifying proxy invariants and unicode parsing).
+8. **Code Review:** Before finalizing, verify that `OpCall` limits and stack states are safely preserved when dealing with nested Symbol and Proxy runtime hooks.

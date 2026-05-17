@@ -2517,3 +2517,27 @@ func TestJScriptProxyApplyConstruct(t *testing.T) {
 		}
 	}
 }
+
+func TestJScriptPhase1ShorthandAndMeta(t *testing.T) {
+	tests := []struct {
+		code     string
+		expected string
+	}{
+		{`(function(){ var x=10, y=20; var o={x,y}; return o.x+"|"+o.y; })()`, "10|20"},
+		{`({ getX() { return 42; } }).getX()`, "42"},
+		{`(function() { return new.target === undefined; })()`, "True"},
+		{`(function() { function Foo() { this.ok = (new.target === Foo); } return (new Foo()).ok; })()`, "True"},
+		{`(function(){ var k="a"; var o={[k]:123}; return o.a; })()`, "123"},
+	}
+
+	for _, tt := range tests {
+		out, err := runJScript2(t, jscriptSrc(`Response.Write(`+tt.code+`);`))
+		if err != nil {
+			t.Errorf("code %q failed: %v", tt.code, err)
+			continue
+		}
+		if out != tt.expected {
+			t.Errorf("code %q: expected %q, got %q", tt.code, tt.expected, out)
+		}
+	}
+}

@@ -51,7 +51,7 @@ func (vm *VM) jsCreateAtomicsObject() Value {
 	return Value{Type: VTJSObject, Num: objID}
 }
 
-// jsAtomicsValidateTypedArray validates that the argument is an integer TypedArray 
+// jsAtomicsValidateTypedArray validates that the argument is an integer TypedArray
 // backed by a SharedArrayBuffer.
 func (vm *VM) jsAtomicsValidateTypedArray(obj Value) (buf []byte, offset int, elemSize int, typeName string, ok bool) {
 	if obj.Type != VTJSObject {
@@ -107,8 +107,8 @@ func (vm *VM) jsAtomicsValidateAccess(obj Value, indexVal Value, buf []byte, off
 	items := vm.jsObjectItems[obj.Num]
 	lenVal := items["__js_byte_length"]
 	byteLength := int(lenVal.Num)
-	
-	if index < 0 || index * elemSize >= byteLength {
+
+	if index < 0 || index*elemSize >= byteLength {
 		vm.jsThrowRangeError("Atomics: index out of bounds")
 		return 0, false
 	}
@@ -461,32 +461,41 @@ func (vm *VM) jsAtomicsBitwise(op string, args []Value) Value {
 	case "Int8Array", "Uint8Array":
 		old := buf[bytePos]
 		switch strings.ToLower(op) {
-		case "and": buf[bytePos] = old & byte(val)
-		case "or":  buf[bytePos] = old | byte(val)
-		case "xor": buf[bytePos] = old ^ byte(val)
+		case "and":
+			buf[bytePos] = old & byte(val)
+		case "or":
+			buf[bytePos] = old | byte(val)
+		case "xor":
+			buf[bytePos] = old ^ byte(val)
 		}
 		return NewInteger(int64(int8(old)))
 	case "Int16Array", "Uint16Array":
 		ptr := (*uint16)(unsafe.Pointer(&buf[bytePos]))
 		old := *ptr
 		switch strings.ToLower(op) {
-		case "and": *ptr = old & uint16(val)
-		case "or":  *ptr = old | uint16(val)
-		case "xor": *ptr = old ^ uint16(val)
+		case "and":
+			*ptr = old & uint16(val)
+		case "or":
+			*ptr = old | uint16(val)
+		case "xor":
+			*ptr = old ^ uint16(val)
 		}
 		return NewInteger(int64(int16(old)))
 	case "Int32Array", "Uint32Array":
 		// Go's sync/atomic doesn't have And/Or/Xor until Go 1.23 for some types,
-		// or at all for others. For compliance and single-threaded safety, 
+		// or at all for others. For compliance and single-threaded safety,
 		// we can use a loop with CompareAndSwap.
 		ptr := (*uint32)(unsafe.Pointer(&buf[bytePos]))
 		for {
 			old := atomic.LoadUint32(ptr)
 			var next uint32
 			switch strings.ToLower(op) {
-			case "and": next = old & uint32(val)
-			case "or":  next = old | uint32(val)
-			case "xor": next = old ^ uint32(val)
+			case "and":
+				next = old & uint32(val)
+			case "or":
+				next = old | uint32(val)
+			case "xor":
+				next = old ^ uint32(val)
 			}
 			if atomic.CompareAndSwapUint32(ptr, old, next) {
 				return NewInteger(int64(int32(old)))
@@ -498,9 +507,12 @@ func (vm *VM) jsAtomicsBitwise(op string, args []Value) Value {
 			old := atomic.LoadUint64(ptr)
 			var next uint64
 			switch strings.ToLower(op) {
-			case "and": next = old & uint64(val)
-			case "or":  next = old | uint64(val)
-			case "xor": next = old ^ uint64(val)
+			case "and":
+				next = old & uint64(val)
+			case "or":
+				next = old | uint64(val)
+			case "xor":
+				next = old ^ uint64(val)
 			}
 			if atomic.CompareAndSwapUint64(ptr, old, next) {
 				return NewInteger(int64(old))

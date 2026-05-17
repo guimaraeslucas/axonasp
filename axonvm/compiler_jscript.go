@@ -1802,7 +1802,7 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 	case *jsast.Identifier:
 		// Check for VMENGINE global constant - returns AxonASP engine identification string.
 		if node.Name.String() == "VMENGINE" {
-			c.emit(JsOpAxonAsp)
+			c.emit(OpConstant, c.addConstant(NewString("G3pix AxonASP JavaScript Engine")))
 		} else {
 			if slot, ok := c.jsResolveLocalSlot(node.Name.String()); ok {
 				c.emit(OpJSGetLocal, slot)
@@ -1812,6 +1812,12 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 		}
 	case *jsast.ThisExpression:
 		c.emit(OpJSLoadThis)
+	case *jsast.MetaProperty:
+		if node.Meta.Name.String() == "new" && node.Property.Name.String() == "target" {
+			c.emit(OpJSLoadNewTarget)
+		} else {
+			c.emit(OpJSLoadUndefined)
+		}
 	case *jsast.FunctionLiteral:
 		c.compileJScriptFunctionLiteral(node, "", false)
 	case *jsast.ClassExpression:

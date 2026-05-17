@@ -3392,9 +3392,8 @@ aspExecLoop:
 		case OpJSLoadUndefined:
 			vm.push(Value{Type: VTJSUndefined})
 
-		case JsOpAxonAsp:
-			// Push the AxonASP JavaScript engine identification string.
-			vm.push(NewString("G3pix AxonASP JavaScript Engine"))
+		case OpJSLoadNewTarget:
+			vm.push(vm.jsNewTarget)
 
 		case OpJSLoadThis:
 			if vm.jsThisValue.Type == VTJSUninitialized {

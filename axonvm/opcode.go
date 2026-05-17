@@ -340,17 +340,16 @@ const (
 	OpJSForIterEnter     // [OpCode, NumVarsHigh, NumVarsLow, NameIdx1Hi, NameIdx1Lo, ...] - per-iteration env enter
 	OpJSForIterExit      // [OpCode, NumVarsHigh, NumVarsLow, NameIdx1Hi, NameIdx1Lo, ...] - per-iteration env exit+writeback
 
-	// JsOpAxonAsp pushes the string "G3pix AxonASP JavaScript Engine" onto the stack.
-	// This is a special bytecode accessible via the __VMENGINE__ global constant
-	// to test and identify the AxonASP JavaScript engine.
+	// OpJSLoadNewTarget pushes the newTarget value for the current function call onto the stack.
+	// If the current call is not a constructor call, it pushes undefined.
 	// [OpCode]
-	JsOpAxonAsp
+	OpJSLoadNewTarget
 )
 
 const (
 	// OpIncLocalInt increments one local numeric slot in place.
 	// [OpCode, OffsetHigh, OffsetLow]
-	OpIncLocalInt OpCode = iota + JsOpAxonAsp + 1
+	OpIncLocalInt OpCode = iota + OpJSLoadNewTarget + 1
 	// OpDecLocalInt decrements one local numeric slot in place.
 	// [OpCode, OffsetHigh, OffsetLow]
 	OpDecLocalInt
@@ -923,8 +922,8 @@ func (op OpCode) String() string {
 		return "OpJSForIterEnter"
 	case OpJSForIterExit:
 		return "OpJSForIterExit"
-	case JsOpAxonAsp:
-		return "JsOpAxonAsp"
+	case OpJSLoadNewTarget:
+		return "OpJSLoadNewTarget"
 	case OpNop:
 		return "OpNop"
 	case OpForNextFastInt:

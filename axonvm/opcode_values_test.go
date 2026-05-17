@@ -13,7 +13,7 @@ func TestPrintOpcodeValues(t *testing.T) {
 	fmt.Printf("OpJSDefineProperty: %d\n", int(OpJSDefineProperty))
 	fmt.Printf("OpJSSetProto: %d\n", int(OpJSSetProto))
 	fmt.Printf("OpJSSuperCall: %d\n", int(OpJSSuperCall))
-	fmt.Printf("JsOpAxonAsp: %d\n", int(JsOpAxonAsp))
+	fmt.Printf("OpJSLoadNewTarget: %d\n", int(OpJSLoadNewTarget))
 	fmt.Printf("OpIncLocalInt: %d\n", int(OpIncLocalInt))
 	fmt.Printf("OpDecLocalInt: %d\n", int(OpDecLocalInt))
 	fmt.Printf("OpNop: %d\n", int(OpNop))
