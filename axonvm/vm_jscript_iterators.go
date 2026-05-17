@@ -136,6 +136,13 @@ func (vm *VM) jsIteratorNextResult(value Value, done bool) Value {
 
 // jsPopulatePrototypes adds ES6+ methods and well-known symbols to built-in prototypes.
 func (vm *VM) jsPopulatePrototypes(bindings map[string]Value) {
+	// Symbol.species on constructors
+	for _, name := range []string{"Array", "RegExp", "Promise", "Map", "Set", "ArrayBuffer", "SharedArrayBuffer", "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array"} {
+		if ctor, ok := bindings[name]; ok {
+			vm.jsSetSpeciesGetter(ctor)
+		}
+	}
+
 	// Array.prototype[Symbol.iterator] = Array.prototype.values
 	if arrayCtor, ok := bindings["Array"]; ok {
 		if proto, deferred := vm.jsMemberGet(arrayCtor, "prototype"); !deferred && proto.Type == VTJSObject {

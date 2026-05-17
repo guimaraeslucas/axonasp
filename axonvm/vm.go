@@ -3350,7 +3350,11 @@ aspExecLoop:
 
 		case OpJSNewObject:
 			objID := vm.allocJSID()
-			vm.jsObjectItems[objID] = make(map[string]Value, 8)
+			obj := make(map[string]Value, 8)
+			if proto := vm.jsGetIntrinsicPrototype("Object"); proto.Type == VTJSObject {
+				obj["__js_proto"] = proto
+			}
+			vm.jsObjectItems[objID] = obj
 			vm.jsObjectSlots[objID] = make([]Value, 0, 8)
 			vm.jsObjectSlotIndex[objID] = make(map[string]uint16, 8)
 			vm.jsObjectShape[objID] = 0
@@ -3372,8 +3376,7 @@ aspExecLoop:
 		case OpJSInstanceOf:
 			right := vm.pop()
 			left := vm.pop()
-			isObject := left.Type == VTJSObject || left.Type == VTJSFunction || left.Type == VTJSProxy || left.Type == VTJSPromise || left.Type == VTJSGenerator || left.Type == VTNativeObject
-			vm.push(NewBool(isObject && (right.Type == VTJSFunction || right.Type == VTJSObject)))
+			vm.push(NewBool(vm.jsInstanceOf(left, right)))
 
 		case OpJSIn:
 			right := vm.pop()

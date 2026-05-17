@@ -1496,7 +1496,55 @@ func jsCtorNeedsPrototype(ctorName string) bool {
 	}
 }
 
+// jsInstanceOf implements the JScript 'instanceof' operator logic.
+func (vm *VM) jsInstanceOf(left Value, right Value) bool {
+	if right.Type != VTJSObject && right.Type != VTJSFunction && right.Type != VTJSProxy {
+		vm.jsThrowTypeError("instanceof: right-hand side is not an object")
+		return false
+	}
+
+	// 1. Symbol.hasInstance hook
+	hasInstanceKey := jsSymbolPropertyPrefix + strconv.FormatInt(jsWellKnownSymbolHasInstance, 10)
+	hook, deferred := vm.jsMemberGet(right, hasInstanceKey)
+	if !deferred && vm.jsIsCallable(hook) {
+		res := vm.jsCall(hook, right, []Value{left})
+		return vm.jsTruthy(res)
+	}
+
+	// 2. Default logic: check if right is a function
+	if !vm.jsIsCallable(right) {
+		vm.jsThrowTypeError("instanceof: right-hand side is not callable")
+		return false
+	}
+
+	// Prototype chain traversal
+	protoVal, _ := vm.jsMemberGet(right, "prototype")
+	if protoVal.Type != VTJSObject && protoVal.Type != VTJSFunction && protoVal.Type != VTJSProxy && protoVal.Type != VTArray {
+		vm.jsThrowTypeError("instanceof: target prototype is not an object")
+		return false
+	}
+
+	curr := vm.jsGetPrototypeValue(left)
+	for curr.Type == VTJSObject || curr.Type == VTJSFunction || curr.Type == VTJSProxy || curr.Type == VTArray {
+		if curr.Type == protoVal.Type && curr.Num == protoVal.Num {
+			return true
+		}
+		curr = vm.jsGetPrototypeValue(curr)
+	}
+
+	return false
+}
+
 func (vm *VM) jsGetPrototypeValue(v Value) Value {
+	if v.Type == VTArray {
+		return vm.jsGetIntrinsicPrototype("Array")
+	}
+	if v.Type == VTJSProxy {
+		if proxy, ok := vm.jsProxyItems[v.Num]; ok && proxy != nil && !proxy.Revoked {
+			return vm.jsGetPrototypeValue(proxy.Target)
+		}
+		return Value{Type: VTJSUndefined}
+	}
 	if v.Type == VTJSObject || v.Type == VTJSFunction || v.Type == VTJSProxy {
 		id := v.Num
 		if obj, ok := vm.jsObjectItems[id]; ok {
@@ -1518,6 +1566,11 @@ func (vm *VM) jsGetPrototypeValue(v Value) Value {
 				if !strings.HasSuffix(t.Str, " Prototype") {
 					return vm.jsGetIntrinsicPrototype(t.Str)
 				}
+			}
+		}
+		if v.Type == VTJSFunction {
+			if proto := vm.jsGetIntrinsicPrototype("Function"); proto.Type == VTJSObject {
+				return proto
 			}
 		}
 	}
@@ -1919,10 +1972,11 @@ func (vm *VM) jsCreateSymbolObject() Value {
 	obj["asyncDispose"] = jsWellKnownSymbolValue(jsWellKnownSymbolAsyncDispose, "Symbol.asyncDispose")
 	obj["unscopables"] = jsWellKnownSymbolValue(jsWellKnownSymbolUnscopables, "Symbol.unscopables")
 	obj["matchAll"] = jsWellKnownSymbolValue(jsWellKnownSymbolMatchAll, "Symbol.matchAll")
+	obj["isConcatSpreadable"] = jsWellKnownSymbolValue(jsWellKnownSymbolIsConcatSpreadable, "Symbol.isConcatSpreadable")
 	vm.jsObjectItems[objID] = obj
 	props := make(map[string]jsPropertyDescriptor, 8)
 	// Make well-known symbols read-only, non-enumerable, non-configurable
-	for _, name := range []string{"iterator", "toStringTag", "species", "hasInstance", "toPrimitive", "dispose", "asyncDispose", "unscopables", "matchAll"} {
+	for _, name := range []string{"iterator", "toStringTag", "species", "hasInstance", "toPrimitive", "dispose", "asyncDispose", "unscopables", "matchAll", "isConcatSpreadable"} {
 		props[name] = jsPropertyDescriptor{
 			Value: obj[name], HasValue: true,
 			Enumerable: false, Configurable: false, Writable: false,
@@ -2398,9 +2452,21 @@ func (vm *VM) jsAssignWithBinding(name string, val Value) bool {
 func (vm *VM) jsHasProperty(target Value, name string) bool {
 	switch target.Type {
 	case VTJSObject, VTJSFunction:
+		if vm.jsObjectStringProperty(target, "__js_type") == "Array" {
+			if idx, ok := jsParseArrayIndex(name); ok {
+				if slots, hasSlots := vm.jsObjectSlots[target.Num]; hasSlots {
+					return idx >= 0 && idx < len(slots)
+				}
+			}
+		}
 		_, ok := vm.jsResolveObjectMember(target.Num, name, make(map[int64]struct{}, 4))
 		if ok {
 			return true
+		}
+		if obj, hasObj := vm.jsObjectItems[target.Num]; hasObj {
+			if _, exists := obj[name]; exists {
+				return true
+			}
 		}
 		if obj, hasObj := vm.jsObjectItems[target.Num]; hasObj {
 			_, ok = obj[name]
@@ -2680,6 +2746,68 @@ func (vm *VM) jsConcatString(v Value) string {
 		return vm.jsArrayToString(arr)
 	}
 	return vm.valueToString(v)
+}
+
+// jsSetSpeciesGetter attaches the standard Symbol.species getter to a constructor.
+func (vm *VM) jsSetSpeciesGetter(ctor Value) {
+	if ctor.Type != VTJSObject && ctor.Type != VTJSFunction {
+		return
+	}
+	speciesKey := jsSymbolPropertyPrefix + strconv.FormatInt(jsWellKnownSymbolSpecies, 10)
+	getter := vm.jsCreateNativeFunction("get [Symbol.species]", "SpeciesGetter")
+	vm.jsSetDescriptor(ctor.Num, speciesKey, jsPropertyDescriptor{
+		Getter:       getter,
+		HasGetter:    true,
+		Enumerable:   false,
+		Configurable: true,
+	})
+}
+
+// jsArraySpeciesCreate creates a new array object using the species constructor if present.
+func (vm *VM) jsArraySpeciesCreate(target Value, length int) Value {
+	ctor := vm.jsGetSpeciesConstructor(target, "Array")
+	// If it's the standard Array constructor, we can use our optimized VTArray.
+	if ctor.Type == VTJSFunction {
+		if vm.jsObjectStringProperty(ctor, "__js_ctor") == "Array" {
+			return ValueFromVBArray(NewVBArrayFromValues(0, make([]Value, length)))
+		}
+	}
+	// Fallback to calling the constructor
+	return vm.jsNew(ctor, []Value{NewInteger(int64(length))})
+}
+
+// jsGetSpeciesConstructor implements the Symbol.species lookup for derived objects.
+func (vm *VM) jsGetSpeciesConstructor(target Value, defaultConstructor string) Value {
+	ctorVal, _ := vm.jsMemberGet(target, "constructor")
+	if ctorVal.Type != VTJSObject && ctorVal.Type != VTJSFunction && ctorVal.Type != VTJSProxy {
+		return vm.jsGetName(defaultConstructor)
+	}
+	speciesKey := jsSymbolPropertyPrefix + strconv.FormatInt(jsWellKnownSymbolSpecies, 10)
+	species, deferred := vm.jsMemberGet(ctorVal, speciesKey)
+	if !deferred && species.Type != VTJSUndefined && species.Type != VTNull {
+		return species
+	}
+	return vm.jsGetName(defaultConstructor)
+}
+
+// jsIsConcatSpreadable determines if a value should be flattened by Array.prototype.concat.
+func (vm *VM) jsIsConcatSpreadable(v Value) bool {
+	if v.Type != VTJSObject && v.Type != VTJSFunction && v.Type != VTArray && v.Type != VTJSProxy {
+		return false
+	}
+	spreadableKey := jsSymbolPropertyPrefix + strconv.FormatInt(jsWellKnownSymbolIsConcatSpreadable, 10)
+	spreadable, deferred := vm.jsMemberGet(v, spreadableKey)
+	if !deferred && spreadable.Type != VTJSUndefined {
+		return vm.jsTruthy(spreadable)
+	}
+	// Default: only arrays are spreadable
+	if v.Type == VTArray {
+		return true
+	}
+	if v.Type == VTJSObject {
+		return vm.jsObjectStringProperty(v, "__js_type") == "Array"
+	}
+	return false
 }
 
 // jsAsConcatArray resolves supported array-like bridge values to a VTArray source.
@@ -3670,6 +3798,10 @@ func (vm *VM) jsArrayLikeLength(target Value) (int, bool, bool) {
 			return 0, false, true
 		}
 		if lengthVal.Type == VTJSUndefined {
+			arrayProto := vm.jsGetIntrinsicPrototype("Array")
+			if arrayProto.Type == VTJSObject && vm.jsObjectIsPrototypeOf(arrayProto, target) {
+				return 0, true, false
+			}
 			return 0, false, false
 		}
 		n := int(vm.jsToNumber(lengthVal).Flt)
@@ -4175,6 +4307,12 @@ func (vm *VM) jsSetPrototype(target Value, proto Value) bool {
 	if proto.Type != VTJSObject && proto.Type != VTJSFunction && proto.Type != VTArray && proto.Type != VTNull && proto.Type != VTJSProxy {
 		return false
 	}
+	if !vm.jsObjectIsExtensible(target) {
+		currentProto := vm.jsGetPrototypeValue(target)
+		if currentProto.Type != proto.Type || currentProto.Num != proto.Num {
+			return false
+		}
+	}
 	curr := proto
 	for curr.Type == VTJSObject || curr.Type == VTJSFunction || curr.Type == VTArray {
 		if curr.Num == target.Num {
@@ -4273,8 +4411,15 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTArray:
-		if target.Arr != nil && strings.EqualFold(member, "length") {
-			return NewInteger(int64(len(target.Arr.Values))), false
+		if target.Arr != nil {
+			if strings.EqualFold(member, "length") {
+				return NewInteger(int64(len(target.Arr.Values))), false
+			}
+			if target.Arr.JSProps != nil {
+				if val, ok := target.Arr.JSProps[member]; ok {
+					return val, false
+				}
+			}
 		}
 		proto := vm.jsGetIntrinsicPrototype("Array")
 		if proto.Type == VTJSObject {
@@ -4312,6 +4457,15 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTJSObject:
+		if vm.jsObjectStringProperty(target, "__js_type") == "Array" {
+			if idx, ok := jsParseArrayIndex(member); ok {
+				if slots, hasSlots := vm.jsObjectSlots[target.Num]; hasSlots {
+					if idx >= 0 && idx < len(slots) {
+						return slots[idx], false
+					}
+				}
+			}
+		}
 		if value, ok := vm.jsGetAliasedArgumentValue(target.Num, member); ok {
 			return value, false
 		}
@@ -4552,17 +4706,16 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return ValueFromVBArray(NewVBArrayFromValues(0, nil)), true
 				}
 				thisArg := jsArgOrUndefined(args, 1)
-				mapped := make([]Value, length)
+				A := vm.jsArraySpeciesCreate(target, length)
 				for i := 0; i < length; i++ {
 					if !vm.jsArrayLikeHasIndex(target, i) {
-						mapped[i] = Value{Type: VTJSUndefined}
 						continue
 					}
 					item, _ := vm.jsArrayLikeGetIndex(target, i)
 					result := vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
-					mapped[i] = result
+					vm.jsIndexSet(A, NewInteger(int64(i)), result)
 				}
-				return ValueFromVBArray(NewVBArrayFromValues(0, mapped)), true
+				return A, true
 			case strings.EqualFold(member, "toReversed"):
 				out := make([]Value, length)
 				for i := 0; i < length; i++ {
@@ -5414,9 +5567,12 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if end < start {
 				end = start
 			}
-			out := make([]Value, end-start)
-			copy(out, target.Arr.Values[start:end])
-			return ValueFromVBArray(NewVBArrayFromValues(0, out)), true
+			outLen := end - start
+			A := vm.jsArraySpeciesCreate(target, outLen)
+			for i := 0; i < outLen; i++ {
+				vm.jsIndexSet(A, NewInteger(int64(i)), target.Arr.Values[start+i])
+			}
+			return A, true
 		case strings.EqualFold(member, "splice"):
 			length := len(target.Arr.Values)
 			start := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
@@ -5479,15 +5635,33 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			out := make([]Value, 0, len(target.Arr.Values)+len(args))
 			out = append(out, target.Arr.Values...)
 			for i := 0; i < len(args); i++ {
-				if args[i].Type == VTArray && args[i].Arr != nil {
-					out = append(out, args[i].Arr.Values...)
-					continue
+				arg := args[i]
+				if vm.jsIsConcatSpreadable(arg) {
+					// Extract values from array or array-like
+					var values []Value
+					if arg.Type == VTArray && arg.Arr != nil {
+						values = arg.Arr.Values
+					} else {
+						// It could be a bridge object or a JS object marked as spreadable
+						lenVal, _ := vm.jsMemberGet(arg, "length")
+						length := int(vm.jsToNumber(lenVal).Flt)
+						if length < 0 {
+							length = 0
+						}
+						values = make([]Value, length)
+						for j := 0; j < length; j++ {
+							if vm.jsArrayLikeHasIndex(arg, j) {
+								item, _ := vm.jsArrayLikeGetIndex(arg, j)
+								values[j] = item
+							} else {
+								values[j] = Value{Type: VTJSUndefined}
+							}
+						}
+					}
+					out = append(out, values...)
+				} else {
+					out = append(out, arg)
 				}
-				if converted, ok := vm.jsAsConcatArray(args[i]); ok {
-					out = append(out, converted.Arr.Values...)
-					continue
-				}
-				out = append(out, args[i])
 			}
 			return ValueFromVBArray(NewVBArrayFromValues(0, out)), true
 		case strings.EqualFold(member, "indexOf"):
@@ -5679,15 +5853,16 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				return ValueFromVBArray(NewVBArrayFromValues(0, nil)), true
 			}
 			thisArg := jsArgOrUndefined(args, 1)
-			mapped := make([]Value, len(target.Arr.Values))
-			for i := 0; i < len(target.Arr.Values); i++ {
+			length := len(target.Arr.Values)
+			A := vm.jsArraySpeciesCreate(target, length)
+			for i := 0; i < length; i++ {
 				result := vm.jsCall(callback, thisArg, []Value{target.Arr.Values[i], NewInteger(int64(i)), target})
 				if callback.Type == VTJSFunction && len(vm.jsCallStack) > 0 && result.Type == VTJSUndefined {
 					return Value{Type: VTJSUndefined}, true
 				}
-				mapped[i] = result
+				vm.jsIndexSet(A, NewInteger(int64(i)), result)
 			}
-			return ValueFromVBArray(NewVBArrayFromValues(0, mapped)), true
+			return A, true
 		case strings.EqualFold(member, "filter"):
 			callback := jsArgOrUndefined(args, 0)
 			if callback.Type != VTJSFunction {
@@ -5704,7 +5879,11 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					filtered = append(filtered, target.Arr.Values[i])
 				}
 			}
-			return ValueFromVBArray(NewVBArrayFromValues(0, filtered)), true
+			A := vm.jsArraySpeciesCreate(target, len(filtered))
+			for i := 0; i < len(filtered); i++ {
+				vm.jsIndexSet(A, NewInteger(int64(i)), filtered[i])
+			}
+			return A, true
 		case strings.EqualFold(member, "reduce"):
 			if len(target.Arr.Values) == 0 && len(args) < 2 {
 				return Value{Type: VTJSUndefined}, true
@@ -6831,6 +7010,11 @@ func (vm *VM) jsCreateErrorObject(name string, msg string) Value {
 	obj["__js_ctor"] = NewString(name)
 	obj["name"] = NewString(name)
 	obj["message"] = NewString(msg)
+	if proto := vm.jsGetIntrinsicPrototype(name); proto.Type == VTJSObject {
+		obj["__js_proto"] = proto
+	} else if proto := vm.jsGetIntrinsicPrototype("Error"); proto.Type == VTJSObject {
+		obj["__js_proto"] = proto
+	}
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
 	return Value{Type: VTJSObject, Num: objID}
@@ -7483,6 +7667,14 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 		return
 	case VTNativeObject:
 		vm.dispatchMemberSet(target.Num, member, val)
+	case VTArray:
+		if target.Arr == nil {
+			return
+		}
+		if target.Arr.JSProps == nil {
+			target.Arr.JSProps = make(map[string]Value, 4)
+		}
+		target.Arr.JSProps[member] = val
 	case VTJSObject, VTJSFunction:
 		var targetID int64
 		if target.Type == VTJSObject || target.Type == VTJSFunction {
@@ -8353,6 +8545,8 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 				}
 			}
 			return vm.jsConstruct(target, applyArgs, newTarget, false)
+		case "SpeciesGetter":
+			return thisVal
 		case "ArrayValues":
 			return vm.jsCreateArrayIterator(thisVal, 0)
 		case "ArrayKeys":
@@ -8619,7 +8813,6 @@ func (vm *VM) jsThrowJSError(code jscript.JSSyntaxErrorCode) {
 		}
 
 		panic(vme)
-		return
 	}
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]
 	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
@@ -8645,6 +8838,20 @@ func (vm *VM) jsThrowReferenceError(msg string) {
 func (vm *VM) jsToPrimitive(v Value, hint string) Value {
 	if v.Type != VTJSObject && v.Type != VTJSFunction && v.Type != VTJSProxy && v.Type != VTArray {
 		return v
+	}
+	if hint == "string" && v.Type == VTJSObject && vm.jsObjectStringProperty(v, "__js_type") == "Error" {
+		name := vm.jsObjectStringProperty(v, "name")
+		msg := vm.jsObjectStringProperty(v, "message")
+		if name == "" {
+			name = vm.jsObjectStringProperty(v, "__js_ctor")
+		}
+		if name == "" {
+			name = "Error"
+		}
+		if msg == "" {
+			return NewString(name)
+		}
+		return NewString(name + ": " + msg)
 	}
 
 	// 1. Check for @@toPrimitive
@@ -8821,7 +9028,7 @@ func (vm *VM) jsToInteger(v Value) float64 {
 	}
 	res := math.Trunc(number)
 	if res == 0 && number < 0 {
-		return -0.0 // maintain signed zero
+		return math.Copysign(0, -1) // maintain signed zero
 	}
 	return res
 }
@@ -9340,6 +9547,20 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 	if constructor.Type == VTJSObject || constructor.Type == VTJSFunction {
 		ctorName := vm.jsObjectStringProperty(constructor, "__js_ctor")
 		switch ctorName {
+		case "Array":
+			if len(args) == 0 {
+				return ValueFromVBArray(NewVBArrayFromValues(0, nil))
+			}
+			if len(args) == 1 && (args[0].Type == VTInteger || args[0].Type == VTDouble) {
+				length := int(vm.jsToNumber(args[0]).Flt)
+				if length < 0 {
+					length = 0
+				}
+				return ValueFromVBArray(NewVBArrayFromValues(0, make([]Value, length)))
+			}
+			vals := make([]Value, len(args))
+			copy(vals, args)
+			return ValueFromVBArray(NewVBArrayFromValues(0, vals))
 		case "Symbol":
 			vm.jsThrowTypeError("Symbol is not a constructor")
 			return Value{Type: VTJSUndefined}
@@ -9686,11 +9907,22 @@ func (vm *VM) jsIndexSet(arr Value, index Value, value Value) {
 		if arr.Arr == nil {
 			return
 		}
-		indexNum := int(vm.jsToNumber(index).Flt)
-		adjustedIndex := indexNum - arr.Arr.Lower
-		if adjustedIndex >= 0 && adjustedIndex < len(arr.Arr.Values) {
-			arr.Arr.Values[adjustedIndex] = value
+		if index.Type == VTSymbol {
+			key := vm.jsPropertyKeyFromValue(index)
+			vm.jsMemberSet(arr, key, value)
+			return
 		}
+		indexNum, isIdx := jsParseArrayIndex(vm.valueToString(index))
+		if isIdx {
+			adjustedIndex := indexNum - arr.Arr.Lower
+			if adjustedIndex >= 0 && adjustedIndex < len(arr.Arr.Values) {
+				arr.Arr.Values[adjustedIndex] = value
+				return
+			}
+		}
+		// Fallback to member set for non-numeric keys or out-of-bounds indices (JScript arrays are objects)
+		key := vm.jsPropertyKeyFromValue(index)
+		vm.jsMemberSet(arr, key, value)
 	case VTJSObject:
 		// Try typed array index set first.
 		idxInt := int(vm.jsToNumber(index).Flt)

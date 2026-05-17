@@ -25,38 +25,19 @@ This document serves as a high-precision checklist for implementing remaining EC
 
 ---
 
-## 🛠️ PHASE 3: WELL-KNOWN SYMBOLS & PROTOCOLS (MEDIUM COMPLEXITY)
-
-**Goal:** Deeply integrate Well-Known Symbols into the engine's built-in methods to ensure full ES6 behavioral compliance.
-
-### Tasks:
-
-* SUBPHASE 3.1: Array Protocol Hooks
-* [ ] **`Symbol.isConcatSpreadable`:** Modify `Array.prototype.concat`. Before treating an argument as an array to be flattened, check for the `Symbol.isConcatSpreadable` property. Ensure this lookup is fast.
-* [ ] **`Symbol.species`:** Update `Array.prototype.slice`, `map`, and `filter`. Instead of hardcoding `new Array()`, they must look up the constructor's `Symbol.species` to support subclassing.
-
-
-* SUBPHASE 3.2: Runtime Hooks
-* [ ] **`Symbol.hasInstance`:** Update the `OpJSInstanceOf` opcode logic. Before doing standard prototype chain traversal, check if the right-hand-side object has a `[Symbol.hasInstance]` method and invoke it.
-* [ ] **`Symbol.unscopables`:** Update `OpWithEnter` / `OpJSGetName` logic. When resolving variables inside a `with` statement, check the object's `Symbol.unscopables` property to block specific property leakage.
-
-
-
----
-
 ## 🛠️ PHASE 4: UNICODE & FULL PLANE SUPPORT (MEDIUM TO HIGH COMPLEXITY)
 
 **Goal:** Bring JScript into full compliance with the Unicode Standard, moving beyond the Basic Multilingual Plane (BMP).
-If necessary use the unistring inside ./jscript/unistring.go, but check if it is suitable for the task before using it. The unistring implementation is designed to handle Unicode strings efficiently, but it may not be necessary for all operations. For basic string manipulation and regular expression support, you may be able to work directly with Go's built-in string type, which is UTF-8 encoded and preferable. Also check the current UTF-8/UTF-16 implementation that we already use for VBScript to see if it is not better.
+If necessary use the unistring inside ./jscript/unistring.go, but check if it is suitable for the task before using it. The unistring implementation is designed to handle Unicode strings efficiently, but it may not be necessary for all operations. For basic string manipulation and regular expression support, you may be able to work directly with Go's built-in string type, which is UTF-8 encoded and preferable. Also check the current UTF-8/UTF-16 implementation that we already use for VBScript to see if it is not better to implement it in the JavaScript engine.
 ### Tasks:
 
 * SUBPHASE 4.1: Regular Expressions & Strings
-* [ ] **`u` Flag in RegExp:** Update the regular expression engine compilation step. Support the `u` flag, enabling Unicode code point escapes (`\u{1F600}`) and Unicode property escapes.
+* [ ] **`u` Flag in RegExp:** Update the regular expression engine compilation step. Support the `u` flag, enabling Unicode code point escapes (`\u{1F600}`) and Unicode property escapes. Remember we use regex2, so check its documentation for how to implement this feature, maybe it is already supported.
 * [ ] **String Code Points:** Implement `String.prototype.codePointAt()` and `String.fromCodePoint()`. Be extremely careful with Go's `rune` vs JS string length (UTF-16 surrogate pairs) to avoid out-of-bounds panics.
 
 
 * SUBPHASE 4.2: Lexical Unicode Identifiers
-* [ ] **AST & Lexer Updates:** Modify the Lexer in `./jscript/` to allow valid Unicode characters in variable/identifier names as defined by the ES6 spec. Ensure constants map correctly without encoding corruption in the single-pass compiler context.
+* [ ] **AST & Lexer Updates:** Modify the Lexer **ONLY if necessary** in `./jscript/` to allow valid Unicode characters in variable/identifier names as defined by the ES6 spec. Ensure constants map correctly without encoding corruption in the single-pass compiler context.
 
 
 

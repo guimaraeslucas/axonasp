@@ -22,8 +22,9 @@ package axonvm
 
 // VBArray stores VBScript-compatible array data and lower bound metadata.
 type VBArray struct {
-	Lower  int
-	Values []Value
+	Lower   int
+	Values  []Value
+	JSProps map[string]Value // Stores JScript-specific properties (including Symbols)
 }
 
 // GoVBArray stores a typed Go-facing array while keeping VBScript lower-bound information.
