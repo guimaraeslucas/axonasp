@@ -41,6 +41,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"g3pix.com.br/axonasp/axonconfig"
 	"g3pix.com.br/axonasp/jscript"
 	"g3pix.com.br/axonasp/jscript/ftoa"
 	"g3pix.com.br/axonasp/vbscript"
@@ -1842,12 +1843,39 @@ func (vm *VM) ensureJSRootEnv() {
 	if evalIdx, ok := GetBuiltinIndex("Eval"); ok {
 		bindings["eval"] = Value{Type: VTBuiltin, Num: int64(evalIdx)}
 	}
+
+	// Add Node.js API compatibility globals if enabled via config
+	if vm.enableNodeCompatibility() {
+		bindings["process"] = vm.jsCreateProcessObject()
+		bindings["Buffer"] = vm.jsCreateBufferConstructor()
+	}
+
+	// Create the root environment frame
 	vm.jsEnvItems[rootID] = &jsEnvFrame{parentID: 0, bindings: bindings}
 	if vm.jsActiveEnvID == 0 {
 		vm.jsActiveEnvID = rootID
 	}
 	vm.jsThisValue = Value{Type: VTJSUndefined}
 	vm.jsPopulatePrototypes(bindings)
+
+	// Add global and globalThis aliases pointing to the root object
+	// These must be added to the environment after jsEnvItems is populated
+	rootObj := Value{Type: VTJSObject, Num: rootID}
+	vm.jsEnvItems[rootID].bindings["global"] = rootObj
+	vm.jsEnvItems[rootID].bindings["globalThis"] = rootObj
+}
+
+// enableNodeCompatibility checks the viper configuration to determine if Node.js
+// API compatibility mode should be enabled for the JScript engine.
+func (vm *VM) enableNodeCompatibility() bool {
+	// Load the config if available
+	cfg := axonconfig.NewViper()
+	if cfg == nil {
+		return false
+	}
+
+	// Check the javascript.enable_node_compatibility setting
+	return cfg.GetBool("javascript.enable_node_compatibility")
 }
 
 // jsCreateMathObject allocates the global Math object with immutable constants.
@@ -2452,10 +2480,11 @@ func (vm *VM) jsAssignWithBinding(name string, val Value) bool {
 func (vm *VM) jsHasProperty(target Value, name string) bool {
 	switch target.Type {
 	case VTJSObject, VTJSFunction:
-		if vm.jsObjectStringProperty(target, "__js_type") == "Array" {
-			if idx, ok := jsParseArrayIndex(name); ok {
-				if slots, hasSlots := vm.jsObjectSlots[target.Num]; hasSlots {
-					return idx >= 0 && idx < len(slots)
+		// Handle global/globalThis object - access properties from root environment bindings
+		if target.Num == vm.jsRootEnvID && vm.jsRootEnvID != 0 {
+			if rootEnv, ok := vm.jsEnvItems[vm.jsRootEnvID]; ok {
+				if _, exists := rootEnv.bindings[name]; exists {
+					return true
 				}
 			}
 		}
@@ -4702,12 +4731,29 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTJSObject:
+		// Handle global/globalThis object - access properties from root environment bindings first
+		if target.Num == vm.jsRootEnvID && vm.jsRootEnvID != 0 {
+			if rootEnv, ok := vm.jsEnvItems[vm.jsRootEnvID]; ok {
+				if val, exists := rootEnv.bindings[member]; exists {
+					return val, false
+				}
+			}
+		}
 		if vm.jsObjectStringProperty(target, "__js_type") == "Array" {
 			if idx, ok := jsParseArrayIndex(member); ok {
 				if slots, hasSlots := vm.jsObjectSlots[target.Num]; hasSlots {
 					if idx >= 0 && idx < len(slots) {
 						return slots[idx], false
 					}
+				}
+			}
+		}
+		// Handle Buffer instance index access (e.g., buffer[0])
+		if vm.jsObjectStringProperty(target, "__js_type") == "Buffer" {
+			if idx, ok := jsParseArrayIndex(member); ok {
+				bufItem, exists := vm.jsBufferItems[target.Num]
+				if exists && idx >= 0 && idx < len(bufItem.data) {
+					return NewInteger(int64(bufItem.data[idx])), false
 				}
 			}
 		}
@@ -4851,11 +4897,35 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 			return vm.jsBindFunction(target, bindThis, boundArgs), true
 		}
+		// Handle Buffer constructor static methods
+		if vm.jsObjectStringProperty(target, "__js_ctor") == "Buffer" {
+			if result, handled := vm.jsCallBufferMethod(member, args); handled {
+				return result, true
+			}
+		}
 	}
 
 	if target.Type == VTJSObject {
 		class := vm.jsObjectStringProperty(target, "__js_type")
 		switch class {
+		case "process":
+			// Node.js process object methods
+			if result, handled := vm.jsCallProcessMethod(member, args); handled {
+				return result, true
+			}
+		case "Buffer":
+			// Node.js Buffer constructor methods (static) or instance methods
+			if target.Num == vm.nextDynamicNativeID || vm.jsObjectStringProperty(target, "__js_ctor") == "Buffer" {
+				// Constructor methods (static)
+				if result, handled := vm.jsCallBufferMethod(member, args); handled {
+					return result, true
+				}
+			} else {
+				// Instance methods
+				if result, handled := vm.jsCallBufferInstanceMethod(target, member, args); handled {
+					return result, true
+				}
+			}
 		case "Array Iterator":
 			if strings.EqualFold(member, "next") {
 				return vm.jsArrayIteratorNext(target), true

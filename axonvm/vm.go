@@ -406,6 +406,8 @@ type VM struct {
 	jsProcessingMicrotasks         bool
 	jsSymbolGlobalRegistry         map[string]Value // Symbol.for global registry: description -> Symbol Value
 	jsRegisteredSymbolIDs          map[int64]struct{}
+	jsBufferItems                  map[int64]*jsBuffer // Node.js Buffer instances
+	jsProcessObjectID              int64               // ID of the process global object
 	jsNextSymbolID                 int64
 	jsRootEnvID                    int64                 // ID of the JScript root environment frame
 	jsStrictMode                   bool                  // Current strict mode state

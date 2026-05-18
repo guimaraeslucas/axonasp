@@ -364,3 +364,7 @@ service_executable_path = "./axonasp-http"
 # List of environment variables to set for the service, in the format "KEY=VALUE". These environment variables will be available to the service process when it runs, allowing you to configure the behavior of the server or your ASP applications without modifying the configuration file directly. You can add as many environment variables as needed, and they will be set in the service's environment when it starts. This is especially useful for setting sensitive information like database credentials or API keys in a secure way, such as using a secrets management solution or environment variable management in your deployment platform.
 #service_environment_variables = ["SERVER_SERVER_PORT=9901"] 
 service_environment_variables = []
+
+[javascript]
+#Enable the compatibility mode with Node.js, this is a experimental feature
+enable_node_compatibility = true
