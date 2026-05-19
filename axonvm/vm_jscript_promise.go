@@ -617,11 +617,17 @@ func (vm *VM) jsEnqueueMicrotask(task func()) {
 	vm.jsMicrotaskQueue = append(vm.jsMicrotaskQueue, task)
 }
 
-// jsProcessMicrotasks executes all pending microtasks until the queue is empty.
+// jsProcessMicrotasks executes all pending Promise/microtask callbacks until the queue is empty.
+// It only handles the microtask queue; nextTick and setImmediate are handled by jsPumpNodeAsyncTasks
+// to avoid re-entrant call chains that would overflow the stack.
 func (vm *VM) jsProcessMicrotasks() {
 	if vm.jsProcessingMicrotasks {
 		return
 	}
+	// Drain async FS completions into the microtask queue.
+	vm.jsPumpAsyncFSReadResults(64)
+	// Drain timer-fired results into the microtask queue.
+	vm.jsPumpTimerResults(64)
 	vm.jsProcessingMicrotasks = true
 	defer func() {
 		vm.jsProcessingMicrotasks = false

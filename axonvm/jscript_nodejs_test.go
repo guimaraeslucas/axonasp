@@ -408,6 +408,27 @@ func TestJScriptQueryStringModule(t *testing.T) {
 	}
 }
 
+// TestJScriptNodeRequireBuiltinModule verifies require() for built-in modules.
+func TestJScriptNodeRequireBuiltinModule(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		const crypto = require("crypto");
+		var c1 = crypto;
+		var c2 = require("node:crypto");
+		Response.Write(typeof c1 === "object" ? "1" : "0");
+		var h1 = c1.createHash("sha256").update("abc").digest("hex");
+		var h2 = c2.createHash("sha256").update("abc").digest("hex");
+		Response.Write(h1.length === 64 ? "1" : "0");
+		Response.Write(h2.length === 64 ? "1" : "0");
+		Response.Write(h1 === h2 ? "1" : "0");
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	expected := "1111"
+	if output != expected {
+		t.Fatalf("Expected '%s', got '%s'", expected, output)
+	}
+}
+
 // TestJScriptNodeFSModuleSync verifies fs synchronous APIs under sandboxed paths.
 func TestJScriptNodeFSModuleSync(t *testing.T) {
 	source := `<script runat="server" language="JScript">
@@ -500,5 +521,296 @@ func TestJScriptNodeHTTPSModule(t *testing.T) {
 	expected := "11"
 	if output != expected {
 		t.Fatalf("Expected '%s', got '%s'", expected, output)
+	}
+}
+
+// TestJScriptNodeFSModuleAsyncCallback verifies callback-based fs.readFile.
+func TestJScriptNodeFSModuleAsyncCallback(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_callback.txt";
+		fs.writeFileSync(p, "async-callback", "utf8");
+		var done = "0";
+		fs.readFile(p, "utf8", function(err, data) {
+			if (!err && data === "async-callback") {
+				done = "1";
+			} else {
+				done = "E";
+			}
+		});
+		for (var i = 0; i < 50000 && done === "0"; i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done === "1" ? "1" : "0");
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	expected := "1"
+	if output != expected {
+		t.Fatalf("Expected '%s', got '%s'", expected, output)
+	}
+}
+
+// TestJScriptNodeFSModuleAsyncPromises verifies fs.promises.readFile integration with Promise.
+func TestJScriptNodeFSModuleAsyncPromises(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		var doneBuf = "0";
+		fs.promises.readFile(p, "utf8").then(function(data) {
+			done = (data === "async-promises") ? "1" : "E";
+		}, function(err) {
+			done = "E";
+		});
+		fs.promises.readFile(p).then(function(data) {
+			doneBuf = Buffer.isBuffer(data) ? "1" : "E";
+		}, function(err) {
+			doneBuf = "E";
+		});
+		for (var i = 0; i < 60000 && (done === "0" || doneBuf === "0"); i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done === "1" ? "1" : "0");
+		Response.Write(doneBuf === "1" ? "1" : "0");
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	expected := "11"
+	if output != expected {
+		t.Fatalf("Expected '%s', got '%s'", expected, output)
+	}
+}
+
+// TestJScriptTimingSetTimeout verifies that setTimeout fires the callback and passes extra args.
+func TestJScriptTimingSetTimeout(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var fired = "0";
+		var gotArg = "";
+		var h = setTimeout(function(a) {
+			fired = "1";
+			gotArg = a;
+		}, 10, "hello");
+		for (var i = 0; i < 100000 && fired === "0"; i++) { var x = i; }
+		Response.Write(fired === "1" ? "1" : "0");
+		Response.Write(gotArg === "hello" ? "1" : "0");
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "11" {
+		t.Fatalf("Expected '11', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingClearTimeout verifies that clearTimeout prevents the callback.
+func TestJScriptTimingClearTimeout(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var fired = "0";
+		var h = setTimeout(function() { fired = "1"; }, 20);
+		clearTimeout(h);
+		for (var i = 0; i < 50000; i++) { var x = i; }
+		Response.Write(fired === "0" ? "1" : "0");
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "1" {
+		t.Fatalf("Expected '1', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingSetInterval verifies that setInterval fires multiple times.
+func TestJScriptTimingSetInterval(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var count = 0;
+		var h = setInterval(function() { count++; }, 5);
+		for (var i = 0; i < 200000 && count < 3; i++) { var x = i; }
+		clearInterval(h);
+		Response.Write(count >= 2 ? "1" : "0");
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "1" {
+		t.Fatalf("Expected '1', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingSetImmediate verifies that setImmediate runs after current sync code.
+func TestJScriptTimingSetImmediate(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var order = "";
+		order += "A";
+		setImmediate(function() { order += "C"; });
+		order += "B";
+		for (var i = 0; i < 1000; i++) { var x = i; }
+		Response.Write(order);
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "ABC" {
+		t.Fatalf("Expected 'ABC', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingProcessNextTick verifies process.nextTick runs before Promise callbacks.
+func TestJScriptTimingProcessNextTick(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var order = "";
+		Promise.resolve().then(function() { order += "P"; });
+		process.nextTick(function() { order += "N"; });
+		for (var i = 0; i < 1000; i++) { var x = i; }
+		Response.Write(order);
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "NP" {
+		t.Fatalf("Expected 'NP', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingTimeoutObject verifies ref/unref/hasRef methods on Timeout object.
+func TestJScriptTimingTimeoutObject(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var h = setTimeout(function() {}, 5000);
+		var r1 = h.hasRef();
+		h.unref();
+		var r2 = h.hasRef();
+		h.ref();
+		var r3 = h.hasRef();
+		clearTimeout(h);
+		Response.Write((r1 === true ? "1" : "0") + (r2 === false ? "1" : "0") + (r3 === true ? "1" : "0"));
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "111" {
+		t.Fatalf("Expected '111', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingSetTimeoutRunsBeforeExit verifies one-shot timers are drained
+// at script termination without requiring a manual spin loop in user code.
+func TestJScriptTimingSetTimeoutRunsBeforeExit(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		setTimeout(function() {
+			Response.Write("T");
+		}, 1);
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "T" {
+		t.Fatalf("Expected 'T', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingSetTimeoutArrowCapturesBlockScope verifies arrow callbacks keep let/const captures.
+func TestJScriptTimingSetTimeoutArrowCapturesBlockScope(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		{
+			const prefix = "A";
+			let total = 40;
+			setTimeout(() => {
+				total += 2;
+				Response.Write(prefix + total);
+			}, 1);
+		}
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "A42" {
+		t.Fatalf("Expected 'A42', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingSetIntervalArrowCapturesBlockScope verifies interval arrow callbacks keep let/const captures.
+func TestJScriptTimingSetIntervalArrowCapturesBlockScope(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		{
+			const prefix = "I";
+			let count = 0;
+			var handle = setInterval(() => {
+				count += 1;
+				if (count === 2) {
+					clearInterval(handle);
+				}
+			}, 1);
+			for (var i = 0; i < 200000 && count < 2; i++) { var spin = i; }
+			Response.Write(prefix + count);
+		}
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "I2" {
+		t.Fatalf("Expected 'I2', got '%s'", output)
+	}
+}
+
+// TestJScriptTimingNextTickArrowCapturesBlockScope verifies nextTick arrow callbacks keep let/const captures.
+func TestJScriptTimingNextTickArrowCapturesBlockScope(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		{
+			const prefix = "N";
+			let value = 1;
+			process.nextTick(() => {
+				value += 4;
+				Response.Write(prefix + value);
+			});
+		}
+	</script>`
+	output := runASPSourceForTest(t, source)
+	if output != "N5" {
+		t.Fatalf("Expected 'N5', got '%s'", output)
+	}
+}
+
+// TestJScriptNodeCryptoHashConstInFunction verifies const declarations in function lexical scope.
+func TestJScriptNodeCryptoHashConstInFunction(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var crypto = require("crypto");
+		function hashNow(msg) {
+			const hash = crypto.createHash("sha256").update(msg).digest("hex");
+			Response.Write(hash);
+		}
+		hashNow("abc");
+	</script>`
+	output := runASPSourceForTest(t, source)
+	const expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+	if output != expected {
+		t.Fatalf("Expected '%s', got '%s'", expected, output)
+	}
+}
+
+// TestJScriptNodeCryptoHashConstInTimeoutFunction verifies const declarations work in timer callback call stacks.
+func TestJScriptNodeCryptoHashConstInTimeoutFunction(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var crypto = require("crypto");
+		function hashNow(msg) {
+			const hash = crypto.createHash("sha256").update(msg).digest("hex");
+			Response.Write(hash);
+		}
+		var m = "abc";
+		setTimeout(function() {
+			hashNow(m);
+		}, 1);
+	</script>`
+	output := runASPSourceForTest(t, source)
+	const expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+	if output != expected {
+		t.Fatalf("Expected '%s', got '%s'", expected, output)
+	}
+}
+
+// TestJScriptPureModeFunctionConstLexical verifies let/const function scope in pure JavaScript mode (CLI/module path).
+func TestJScriptPureModeFunctionConstLexical(t *testing.T) {
+	source := `var out = "";
+	function setOut() {
+		const value = "ok";
+		out = value;
+	}
+	setOut();`
+
+	compiler := NewJavaScriptCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+
+	out := vm.jsGetName("out")
+	if out.Type != VTString || out.Str != "ok" {
+		t.Fatalf("expected out='ok', got type=%v value=%q", out.Type, out.Str)
 	}
 }

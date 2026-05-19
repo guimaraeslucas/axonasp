@@ -1,0 +1,1 @@
+var crypto = require("crypto"); function generateHash(message) { console.log("Message: " + message); var h = crypto.createHash("sha256"); console.log("H type: " + typeof h); var u = h.update(message); console.log("U type: " + typeof u); var d = h.digest("hex"); console.log("D type: " + typeof d); console.log("Hash: " + d); } generateHash("test");

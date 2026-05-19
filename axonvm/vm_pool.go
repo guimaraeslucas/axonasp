@@ -738,6 +738,21 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.jsGeneratorItems == nil {
 		vm.jsGeneratorItems = make(map[int64]*jsGeneratorObject)
 	}
+	if vm.jsAsyncFSReadResults == nil {
+		vm.jsAsyncFSReadResults = make(chan jsAsyncFSReadResult, jsAsyncFSReadResultQueueSize)
+	}
+	if vm.jsTimerItems == nil {
+		vm.jsTimerItems = make(map[int64]*jsTimerItem)
+	}
+	if vm.jsTimerResultQueue == nil {
+		vm.jsTimerResultQueue = make(chan jsTimerFiredResult, jsTimerResultQueueSize)
+	}
+	if vm.jsImmediateQueue == nil {
+		vm.jsImmediateQueue = make([]jsImmediateItem, 0, 8)
+	}
+	if vm.jsNextTickQueue == nil {
+		vm.jsNextTickQueue = make([]jsNextTickItem, 0, 8)
+	}
 	if vm.jsMicrotaskQueue == nil {
 		vm.jsMicrotaskQueue = make([]func(), 0, 8)
 	}
@@ -852,6 +867,19 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.jsPromiseItems)
 	clear(vm.jsGeneratorItems)
 	clear(vm.jsProxyItems)
+	// Stop all active timers and drain timer-result channel before reset.
+	vm.jsStopAllTimers()
+	vm.jsImmediateQueue = vm.jsImmediateQueue[:0]
+	vm.jsNextTickQueue = vm.jsNextTickQueue[:0]
+	vm.jsPumpingNodeTasks = false
+	for {
+		select {
+		case <-vm.jsAsyncFSReadResults:
+		default:
+			goto drainedAsyncFS
+		}
+	}
+drainedAsyncFS:
 	clear(vm.jsMicrotaskQueue)
 	vm.jsMicrotaskQueue = vm.jsMicrotaskQueue[:0]
 	clear(vm.jsSymbolGlobalRegistry)

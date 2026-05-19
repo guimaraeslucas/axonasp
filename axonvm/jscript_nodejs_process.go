@@ -148,6 +148,25 @@ func (vm *VM) jsCallProcessMethod(methodName string, args []Value) (Value, bool)
 		// process.argv is accessed as a property, not a method
 		// This shouldn't be called as a method
 		return Value{Type: VTJSUndefined}, true
+
+	case "nexttick":
+		// process.nextTick(callback, ...args)
+		// Enqueues callback in the high-priority nextTick queue, executed
+		// before Promise microtasks per Node.js event loop spec.
+		if len(args) < 1 || !vm.jsIsCallable(args[0]) {
+			vm.jsThrowTypeError("process.nextTick requires a callback function")
+			return Value{Type: VTJSUndefined}, true
+		}
+		cb := args[0]
+		cbArgs := []Value(nil)
+		if len(args) > 1 {
+			cbArgs = args[1:]
+		}
+		vm.jsNextTickQueue = append(vm.jsNextTickQueue, jsNextTickItem{
+			callback: cb,
+			args:     cbArgs,
+		})
+		return Value{Type: VTJSUndefined}, true
 	}
 
 	return Value{Type: VTJSUndefined}, false

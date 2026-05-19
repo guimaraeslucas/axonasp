@@ -2832,8 +2832,22 @@ func (c *Compiler) compileJScriptFunctionLiteral(fn *jsast.FunctionLiteral, fall
 	}
 
 	if fn.Body != nil {
+		fnLetNames, fnConstNames := jsGetBlockLexicalNames(fn.Body.List)
+		hasFnLexical := len(fnLetNames) > 0 || len(fnConstNames) > 0
+		if hasFnLexical {
+			c.emit(OpJSBlockScopeEnter)
+			for _, name := range fnLetNames {
+				c.emit(OpJSTDZRegisterLet, c.addConstant(NewString(name)))
+			}
+			for _, name := range fnConstNames {
+				c.emit(OpJSTDZRegisterConst, c.addConstant(NewString(name)))
+			}
+		}
 		for i := range fn.Body.List {
 			c.compileJScriptStatement(fn.Body.List[i])
+		}
+		if hasFnLexical {
+			c.emit(OpJSBlockScopeExit)
 		}
 	}
 	c.emit(OpJSLoadUndefined)
@@ -3400,8 +3414,22 @@ func (c *Compiler) compileJScriptArrowFunctionLiteral(fn *jsast.ArrowFunctionLit
 		c.compileJScriptExpression(body.Expression)
 		c.emit(OpJSReturn)
 	case *jsast.BlockStatement:
+		bodyLetNames, bodyConstNames := jsGetBlockLexicalNames(body.List)
+		hasBodyLexical := len(bodyLetNames) > 0 || len(bodyConstNames) > 0
+		if hasBodyLexical {
+			c.emit(OpJSBlockScopeEnter)
+			for _, name := range bodyLetNames {
+				c.emit(OpJSTDZRegisterLet, c.addConstant(NewString(name)))
+			}
+			for _, name := range bodyConstNames {
+				c.emit(OpJSTDZRegisterConst, c.addConstant(NewString(name)))
+			}
+		}
 		for i := range body.List {
 			c.compileJScriptStatement(body.List[i])
+		}
+		if hasBodyLexical {
+			c.emit(OpJSBlockScopeExit)
 		}
 		c.emit(OpJSLoadUndefined)
 		c.emit(OpJSReturn)

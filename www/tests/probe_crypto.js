@@ -1,0 +1,1 @@
+var crypto = require("crypto"); console.log("Crypto keys: " + Object.keys(crypto)); var hash = crypto.createHash("sha256"); console.log("Hash object: " + hash); if (hash) { console.log("Hash keys: " + Object.keys(hash)); }

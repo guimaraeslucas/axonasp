@@ -402,6 +402,12 @@ type VM struct {
 	jsPromiseItems                 map[int64]*jsPromiseObject
 	jsGeneratorItems               map[int64]*jsGeneratorObject
 	jsProxyItems                   map[int64]*jsProxyObject
+	jsAsyncFSReadResults           chan jsAsyncFSReadResult
+	jsTimerItems                   map[int64]*jsTimerItem  // active setTimeout/setInterval handles
+	jsTimerResultQueue             chan jsTimerFiredResult // goroutine -> VM thread timer completions
+	jsImmediateQueue               []jsImmediateItem       // setImmediate callbacks
+	jsNextTickQueue                []jsNextTickItem        // process.nextTick callbacks
+	jsPumpingNodeTasks             bool                    // re-entrancy guard for jsPumpNodeAsyncTasks
 	jsMicrotaskQueue               []func()
 	jsProcessingMicrotasks         bool
 	jsSymbolGlobalRegistry         map[string]Value // Symbol.for global registry: description -> Symbol Value
@@ -650,6 +656,11 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		jsPromiseItems:                 make(map[int64]*jsPromiseObject),
 		jsGeneratorItems:               make(map[int64]*jsGeneratorObject),
 		jsProxyItems:                   make(map[int64]*jsProxyObject),
+		jsAsyncFSReadResults:           make(chan jsAsyncFSReadResult, jsAsyncFSReadResultQueueSize),
+		jsTimerItems:                   make(map[int64]*jsTimerItem),
+		jsTimerResultQueue:             make(chan jsTimerFiredResult, jsTimerResultQueueSize),
+		jsImmediateQueue:               make([]jsImmediateItem, 0, 8),
+		jsNextTickQueue:                make([]jsNextTickItem, 0, 8),
 		jsSymbolGlobalRegistry:         make(map[string]Value),
 		jsRegisteredSymbolIDs:          make(map[int64]struct{}),
 		jsNextSymbolID:                 1,
@@ -1310,6 +1321,40 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 			paramToIndex: paramToIndex,
 		}
 	}
+	child.jsBlockScopes = make([]map[string]Value, len(vm.jsBlockScopes))
+	for i, scope := range vm.jsBlockScopes {
+		if scope == nil {
+			continue
+		}
+		cloned := make(map[string]Value, len(scope))
+		for name, value := range scope {
+			cloned[name] = value
+		}
+		child.jsBlockScopes[i] = cloned
+	}
+	child.jsBlockScopeConst = make([]map[string]struct{}, len(vm.jsBlockScopeConst))
+	for i, scopeConst := range vm.jsBlockScopeConst {
+		if scopeConst == nil {
+			continue
+		}
+		cloned := make(map[string]struct{}, len(scopeConst))
+		for name := range scopeConst {
+			cloned[name] = struct{}{}
+		}
+		child.jsBlockScopeConst[i] = cloned
+	}
+	child.jsBlockScopeTDZ = make([]map[string]struct{}, len(vm.jsBlockScopeTDZ))
+	for i, scopeTDZ := range vm.jsBlockScopeTDZ {
+		if scopeTDZ == nil {
+			continue
+		}
+		cloned := make(map[string]struct{}, len(scopeTDZ))
+		for name := range scopeTDZ {
+			cloned[name] = struct{}{}
+		}
+		child.jsBlockScopeTDZ[i] = cloned
+	}
+	child.jsBlockScopeDepth = len(child.jsBlockScopes)
 	child.jsTryStack = make([]int, 0, 8)
 	child.jsErrStack = make([]Value, 0, 4)
 	// stmtSP carries over from parent; child's first OpLine will reset it.
@@ -1558,6 +1603,9 @@ func (vm *VM) Run() (err error) {
 aspExecLoop:
 	for vm.ip < len(vm.bytecode) {
 		operationCount++
+		if operationCount&63 == 0 {
+			vm.jsPumpNodeAsyncTasks(32)
+		}
 		if operationCount&1023 == 0 && vm.host != nil && vm.host.Server() != nil && vm.host.Server().HasTimedOut() {
 			return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()), vm.sourceName, vm.lastLine)
 		}
@@ -1574,6 +1622,7 @@ aspExecLoop:
 
 		switch op {
 		case OpHalt:
+			vm.jsDrainNodeAsyncOnExit()
 			break aspExecLoop
 
 		case OpConstant:

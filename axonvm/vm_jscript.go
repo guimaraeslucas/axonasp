@@ -130,30 +130,37 @@ type jsFunctionObject struct {
 	boundArgs  []Value
 	// isArrow marks this as an ES6 arrow function that captures 'this' lexically.
 	// When true, capturedThis is used as the receiver regardless of call site.
-	isArrow            bool
-	capturedThis       Value
-	isClassConstructor bool
-	isStrict           bool
-	isDerived          bool
-	homeObjID          int64
-	isAsync            bool
-	isGenerator        bool
-	hiddenWeakData     map[uint64]Value
+	isArrow                 bool
+	capturedThis            Value
+	isClassConstructor      bool
+	isStrict                bool
+	isDerived               bool
+	homeObjID               int64
+	isAsync                 bool
+	isGenerator             bool
+	capturedBlockScopes     []map[string]Value
+	capturedBlockScopeConst []map[string]struct{}
+	capturedBlockScopeTDZ   []map[string]struct{}
+	hiddenWeakData          map[uint64]Value
 }
 
 type jsCallFrame struct {
-	returnIP     int
-	envID        int64
-	savedFP      int
-	fn           Value
-	thisVal      Value
-	newTarget    Value
-	tryDepth     int
-	savedSP      int
-	isCtor       bool
-	ctorObj      Value
-	jsStrictMode bool
-	isSuperCall  bool
+	returnIP             int
+	envID                int64
+	savedFP              int
+	fn                   Value
+	thisVal              Value
+	newTarget            Value
+	tryDepth             int
+	savedSP              int
+	isCtor               bool
+	ctorObj              Value
+	jsStrictMode         bool
+	isSuperCall          bool
+	savedBlockScopes     []map[string]Value
+	savedBlockScopeConst []map[string]struct{}
+	savedBlockScopeTDZ   []map[string]struct{}
+	savedBlockScopeDepth int
 }
 
 type jsForInEnumerator struct {
@@ -1846,6 +1853,7 @@ func (vm *VM) ensureJSRootEnv() {
 
 	// Add Node.js API compatibility globals if enabled via config
 	if vm.enableNodeCompatibility() {
+		bindings["require"] = vm.jsCreateIntrinsicObject("", "require")
 		bindings["process"] = vm.jsCreateProcessObject()
 		bindings["Buffer"] = vm.jsCreateBufferConstructor()
 		bindings["path"] = vm.jsCreatePathObject()
@@ -1860,6 +1868,13 @@ func (vm *VM) ensureJSRootEnv() {
 		bindings["URL"] = urlCtor
 		bindings["URLSearchParams"] = urlSearchParamsCtor
 		bindings["url"] = vm.jsCreateURLModuleObject(urlCtor, urlSearchParamsCtor)
+		// Phase 2: Timing globals
+		bindings["setTimeout"] = vm.jsCreateIntrinsicObject("", "setTimeout")
+		bindings["clearTimeout"] = vm.jsCreateIntrinsicObject("", "clearTimeout")
+		bindings["setInterval"] = vm.jsCreateIntrinsicObject("", "setInterval")
+		bindings["clearInterval"] = vm.jsCreateIntrinsicObject("", "clearInterval")
+		bindings["setImmediate"] = vm.jsCreateIntrinsicObject("", "setImmediate")
+		bindings["clearImmediate"] = vm.jsCreateIntrinsicObject("", "clearImmediate")
 	}
 
 	// Create the root environment frame
@@ -2991,6 +3006,23 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 		isAsync:            isAsync,
 		isGenerator:        isGenerator,
 	}
+	if vm.jsBlockScopeDepth > 0 {
+		activeDepth := vm.jsBlockScopeDepth
+		if activeDepth > len(vm.jsBlockScopes) {
+			activeDepth = len(vm.jsBlockScopes)
+		}
+		if activeDepth > len(vm.jsBlockScopeConst) {
+			activeDepth = len(vm.jsBlockScopeConst)
+		}
+		if activeDepth > len(vm.jsBlockScopeTDZ) {
+			activeDepth = len(vm.jsBlockScopeTDZ)
+		}
+		if activeDepth > 0 {
+			fnObj.capturedBlockScopes = append(make([]map[string]Value, 0, activeDepth), vm.jsBlockScopes[:activeDepth]...)
+			fnObj.capturedBlockScopeConst = append(make([]map[string]struct{}, 0, activeDepth), vm.jsBlockScopeConst[:activeDepth]...)
+			fnObj.capturedBlockScopeTDZ = append(make([]map[string]struct{}, 0, activeDepth), vm.jsBlockScopeTDZ[:activeDepth]...)
+		}
+	}
 	// Arrow functions capture the current 'this' value lexically at creation time.
 	if template.Type == VTJSArrowFunctionTemplate {
 		fnObj.isArrow = true
@@ -3050,22 +3082,30 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 		return false
 	}
 	frame := jsCallFrame{
-		returnIP:     vm.ip,
-		envID:        vm.jsActiveEnvID,
-		savedFP:      vm.fp,
-		fn:           fn,
-		thisVal:      vm.jsThisValue,
-		newTarget:    vm.jsNewTarget,
-		tryDepth:     len(vm.jsTryStack),
-		savedSP:      vm.sp,
-		isCtor:       isCtor,
-		ctorObj:      ctorObj,
-		jsStrictMode: vm.jsStrictMode,
-		isSuperCall:  isSuperCall,
+		returnIP:             vm.ip,
+		envID:                vm.jsActiveEnvID,
+		savedFP:              vm.fp,
+		fn:                   fn,
+		thisVal:              vm.jsThisValue,
+		newTarget:            vm.jsNewTarget,
+		tryDepth:             len(vm.jsTryStack),
+		savedSP:              vm.sp,
+		isCtor:               isCtor,
+		ctorObj:              ctorObj,
+		jsStrictMode:         vm.jsStrictMode,
+		isSuperCall:          isSuperCall,
+		savedBlockScopes:     append(make([]map[string]Value, 0, len(vm.jsBlockScopes)), vm.jsBlockScopes...),
+		savedBlockScopeConst: append(make([]map[string]struct{}, 0, len(vm.jsBlockScopeConst)), vm.jsBlockScopeConst...),
+		savedBlockScopeTDZ:   append(make([]map[string]struct{}, 0, len(vm.jsBlockScopeTDZ)), vm.jsBlockScopeTDZ...),
+		savedBlockScopeDepth: vm.jsBlockScopeDepth,
 	}
 	vm.jsCallStack = append(vm.jsCallStack, frame)
 	vm.jsStrictMode = closure.isStrict
 	vm.jsNewTarget = newTarget
+	vm.jsBlockScopes = append(make([]map[string]Value, 0, len(closure.capturedBlockScopes)), closure.capturedBlockScopes...)
+	vm.jsBlockScopeConst = append(make([]map[string]struct{}, 0, len(closure.capturedBlockScopeConst)), closure.capturedBlockScopeConst...)
+	vm.jsBlockScopeTDZ = append(make([]map[string]struct{}, 0, len(closure.capturedBlockScopeTDZ)), closure.capturedBlockScopeTDZ...)
+	vm.jsBlockScopeDepth = len(vm.jsBlockScopes)
 	envID := vm.allocJSID()
 	bindings := make(map[string]Value, len(closure.params)+2)
 	for i := 0; i < len(closure.params); i++ {
@@ -3095,6 +3135,10 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 		vm.jsThisValue = frame.thisVal
 		vm.jsNewTarget = frame.newTarget
 		vm.jsStrictMode = frame.jsStrictMode
+		vm.jsBlockScopes = frame.savedBlockScopes
+		vm.jsBlockScopeConst = frame.savedBlockScopeConst
+		vm.jsBlockScopeTDZ = frame.savedBlockScopeTDZ
+		vm.jsBlockScopeDepth = frame.savedBlockScopeDepth
 		vm.fp = frame.savedFP
 		vm.sp = frame.savedSP
 		return false
@@ -3293,12 +3337,20 @@ func (vm *VM) jsTailCallValue(callee Value, thisVal Value, args []Value) bool {
 
 	vm.jsActiveEnvID = envID
 	vm.jsThisValue = thisVal
+	vm.jsBlockScopes = append(make([]map[string]Value, 0, len(closure.capturedBlockScopes)), closure.capturedBlockScopes...)
+	vm.jsBlockScopeConst = append(make([]map[string]struct{}, 0, len(closure.capturedBlockScopeConst)), closure.capturedBlockScopeConst...)
+	vm.jsBlockScopeTDZ = append(make([]map[string]struct{}, 0, len(closure.capturedBlockScopeTDZ)), closure.capturedBlockScopeTDZ...)
+	vm.jsBlockScopeDepth = len(vm.jsBlockScopes)
 	vm.ip = closure.startIP
 	if !vm.jsPrepareLocalFrame(closure.localCount, frame.savedSP) {
 		vm.jsActiveEnvID = frame.envID
 		vm.jsThisValue = frame.thisVal
 		vm.jsNewTarget = frame.newTarget
 		vm.jsStrictMode = frame.jsStrictMode
+		vm.jsBlockScopes = frame.savedBlockScopes
+		vm.jsBlockScopeConst = frame.savedBlockScopeConst
+		vm.jsBlockScopeTDZ = frame.savedBlockScopeTDZ
+		vm.jsBlockScopeDepth = frame.savedBlockScopeDepth
 		vm.fp = frame.savedFP
 		vm.sp = frame.savedSP
 		vm.ip = frame.returnIP
@@ -4055,6 +4107,10 @@ func (vm *VM) jsReturn(retVal Value) {
 	vm.jsThisValue = frame.thisVal
 	vm.jsNewTarget = frame.newTarget
 	vm.jsStrictMode = frame.jsStrictMode
+	vm.jsBlockScopes = frame.savedBlockScopes
+	vm.jsBlockScopeConst = frame.savedBlockScopeConst
+	vm.jsBlockScopeTDZ = frame.savedBlockScopeTDZ
+	vm.jsBlockScopeDepth = frame.savedBlockScopeDepth
 	vm.ip = frame.returnIP
 	vm.fp = frame.savedFP
 	vm.sp = frame.savedSP
@@ -4927,6 +4983,10 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if result, handled := vm.jsCallFSMethod(member, args); handled {
 				return result, true
 			}
+		case "fs.promises":
+			if result, handled := vm.jsCallFSPromisesMethod(member, args); handled {
+				return result, true
+			}
 		case "crypto":
 			if result, handled := vm.jsCallCryptoMethod(member, args); handled {
 				return result, true
@@ -4991,6 +5051,10 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 		case "URLSearchParams":
 			if result, handled := vm.jsCallURLSearchParamsMethod(target, member, args); handled {
+				return result, true
+			}
+		case "Timeout":
+			if result, handled := vm.jsCallTimeoutMethod(target, member, args); handled {
 				return result, true
 			}
 		case "Array Iterator":
@@ -9162,6 +9226,21 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsParseIntES5(args)
 		case "parseFloat":
 			return vm.jsParseFloatES5(args)
+		case "require":
+			return vm.jsRequire(args)
+		// Phase 2: Node.js timing globals
+		case "setTimeout":
+			return vm.jsSetTimeout(args)
+		case "clearTimeout":
+			return vm.jsClearTimeout(args)
+		case "setInterval":
+			return vm.jsSetInterval(args)
+		case "clearInterval":
+			return vm.jsClearInterval(args)
+		case "setImmediate":
+			return vm.jsSetImmediate(args)
+		case "clearImmediate":
+			return vm.jsClearImmediate(args)
 		case "decodeURI":
 			decoded, err := jsDecodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)))
 			if err != nil {

@@ -38,13 +38,104 @@ import (
 	"time"
 )
 
+const jsAsyncFSReadResultQueueSize = 256
+
+type jsAsyncFSReadResult struct {
+	promise    Value
+	callback   Value
+	data       []byte
+	encoding   string
+	errMsg     string
+	asPromise  bool
+	callbackOk bool
+}
+
+// jsNodeGetRootBinding reads one binding directly from the JS root environment.
+// This bypasses local lexical scopes (including TDZ) and is used by require().
+func (vm *VM) jsNodeGetRootBinding(name string) Value {
+	vm.ensureJSRootEnv()
+	if vm.jsRootEnvID == 0 {
+		return Value{Type: VTJSUndefined}
+	}
+	root := vm.jsEnvItems[vm.jsRootEnvID]
+	if root == nil {
+		return Value{Type: VTJSUndefined}
+	}
+	if val, ok := root.bindings[name]; ok {
+		return val
+	}
+	return Value{Type: VTJSUndefined}
+}
+
+// jsRequire resolves built-in Node.js-compatible modules exposed by this VM.
+func (vm *VM) jsRequire(args []Value) Value {
+	if len(args) < 1 {
+		vm.jsThrowTypeError("require expects a module name")
+		return Value{Type: VTJSUndefined}
+	}
+
+	moduleName := strings.TrimSpace(vm.valueToString(args[0]))
+	if moduleName == "" {
+		vm.jsThrowTypeError("require expects a module name")
+		return Value{Type: VTJSUndefined}
+	}
+
+	resolved := strings.ToLower(moduleName)
+	if strings.HasPrefix(resolved, "node:") {
+		resolved = strings.TrimPrefix(resolved, "node:")
+	}
+
+	switch resolved {
+	case "process":
+		return vm.jsNodeGetRootBinding("process")
+	case "buffer":
+		objID := vm.allocJSID()
+		obj := make(map[string]Value, 3)
+		obj["__js_type"] = NewString("buffer")
+		obj["Buffer"] = vm.jsNodeGetRootBinding("Buffer")
+		vm.jsObjectItems[objID] = obj
+		vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 3)
+		return Value{Type: VTJSObject, Num: objID}
+	case "path":
+		return vm.jsNodeGetRootBinding("path")
+	case "os":
+		return vm.jsNodeGetRootBinding("os")
+	case "fs":
+		return vm.jsNodeGetRootBinding("fs")
+	case "crypto":
+		return vm.jsNodeGetRootBinding("crypto")
+	case "http":
+		return vm.jsNodeGetRootBinding("http")
+	case "https":
+		return vm.jsNodeGetRootBinding("https")
+	case "querystring":
+		return vm.jsNodeGetRootBinding("querystring")
+	case "url":
+		return vm.jsNodeGetRootBinding("url")
+	default:
+		vm.jsThrowReferenceError("Cannot find module '" + moduleName + "'")
+		return Value{Type: VTJSUndefined}
+	}
+}
+
 // jsCreateFSObject allocates the Node.js-compatible fs module object.
 func (vm *VM) jsCreateFSObject() Value {
 	objID := vm.allocJSID()
 	obj := make(map[string]Value, 8)
 	obj["__js_type"] = NewString("fs")
+	obj["promises"] = vm.jsCreateFSPromisesObject()
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
+	return Value{Type: VTJSObject, Num: objID}
+}
+
+// jsCreateFSPromisesObject allocates the Node.js-compatible fs.promises object.
+func (vm *VM) jsCreateFSPromisesObject() Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 6)
+	obj["__js_type"] = NewString("fs.promises")
+	vm.jsObjectItems[objID] = obj
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 6)
 	return Value{Type: VTJSObject, Num: objID}
 }
 
@@ -189,9 +280,178 @@ func (vm *VM) jsCreateFSStatsObject(info os.FileInfo) Value {
 	return Value{Type: VTJSObject, Num: objID}
 }
 
+// jsNodeCreateDeferredPromise allocates one pending Promise for async fs operations.
+func (vm *VM) jsNodeCreateDeferredPromise() Value {
+	promiseID := vm.allocJSID()
+	promise := Value{Type: VTJSPromise, Num: promiseID}
+	vm.jsPromiseItems[promiseID] = &jsPromiseObject{state: jsPromisePending}
+	return promise
+}
+
+// jsNodeFSBytesToValue converts file bytes to readFile result value based on encoding.
+func (vm *VM) jsNodeFSBytesToValue(data []byte, encoding string) (Value, bool) {
+	enc := strings.ToLower(strings.TrimSpace(encoding))
+	if enc == "" {
+		return vm.jsCreateBufferInstance(data), true
+	}
+	switch enc {
+	case "utf8", "utf-8":
+		return NewString(string(data)), true
+	case "hex":
+		return NewString(hex.EncodeToString(data)), true
+	case "base64":
+		return NewString(base64.StdEncoding.EncodeToString(data)), true
+	default:
+		return Value{Type: VTJSUndefined}, false
+	}
+}
+
+// jsQueueAsyncFSRead launches one goroutine to read one sandboxed file path.
+func (vm *VM) jsQueueAsyncFSRead(resolvedPath string, encoding string, callback Value, callbackOk bool, promise Value, asPromise bool) bool {
+	if vm.jsAsyncFSReadResults == nil {
+		return false
+	}
+	if cap(vm.jsAsyncFSReadResults) == 0 {
+		return false
+	}
+	if len(vm.jsAsyncFSReadResults) >= cap(vm.jsAsyncFSReadResults)-1 {
+		return false
+	}
+
+	go func(path string, enc string, cb Value, cbOK bool, p Value, usePromise bool, out chan<- jsAsyncFSReadResult) {
+		data, err := os.ReadFile(path)
+		res := jsAsyncFSReadResult{
+			promise:    p,
+			callback:   cb,
+			data:       data,
+			encoding:   enc,
+			asPromise:  usePromise,
+			callbackOk: cbOK,
+		}
+		if err != nil {
+			res.errMsg = err.Error()
+		}
+		out <- res
+	}(resolvedPath, encoding, callback, callbackOk, promise, asPromise, vm.jsAsyncFSReadResults)
+
+	return true
+}
+
+// jsHandleAsyncFSReadResult queues JS-visible callback/promise completion on the microtask queue.
+func (vm *VM) jsHandleAsyncFSReadResult(result jsAsyncFSReadResult) {
+	vm.jsEnqueueMicrotask(func() {
+		if result.asPromise {
+			if result.errMsg != "" {
+				vm.jsRejectPromise(result.promise, vm.jsCreateErrorObject("Error", result.errMsg))
+				return
+			}
+			val, ok := vm.jsNodeFSBytesToValue(result.data, result.encoding)
+			if !ok {
+				vm.jsRejectPromise(result.promise, vm.jsCreateErrorObject("TypeError", "Unsupported encoding: "+result.encoding))
+				return
+			}
+			vm.jsResolvePromise(result.promise, val)
+			return
+		}
+
+		if !result.callbackOk || result.callback.Type != VTJSFunction {
+			return
+		}
+
+		if result.errMsg != "" {
+			errVal := vm.jsCreateErrorObject("Error", result.errMsg)
+			vm.jsCall(result.callback, Value{Type: VTJSUndefined}, []Value{errVal, Value{Type: VTJSUndefined}})
+			return
+		}
+
+		val, ok := vm.jsNodeFSBytesToValue(result.data, result.encoding)
+		if !ok {
+			errVal := vm.jsCreateErrorObject("TypeError", "Unsupported encoding: "+result.encoding)
+			vm.jsCall(result.callback, Value{Type: VTJSUndefined}, []Value{errVal, Value{Type: VTJSUndefined}})
+			return
+		}
+
+		vm.jsCall(result.callback, Value{Type: VTJSUndefined}, []Value{Value{Type: VTNull}, val})
+	})
+}
+
+// jsPumpAsyncFSReadResults drains pending fs async read completions into microtasks.
+func (vm *VM) jsPumpAsyncFSReadResults(limit int) {
+	if vm.jsAsyncFSReadResults == nil || limit <= 0 {
+		return
+	}
+	for i := 0; i < limit; i++ {
+		select {
+		case result := <-vm.jsAsyncFSReadResults:
+			vm.jsHandleAsyncFSReadResult(result)
+		default:
+			return
+		}
+	}
+}
+
+// jsPumpNodeAsyncTasks drives a single event-loop pass:
+//  1. Drain async I/O and timer completions into the microtask queue.
+//  2. Run the process.nextTick queue (highest priority).
+//  3. Drain the Promise / microtask queue.
+//  4. Run setImmediate callbacks.
+//
+// A re-entrancy guard prevents nested calls (e.g. from within a callback's vm.Run cycle)
+// from starting a second overlapping pass.
+func (vm *VM) jsPumpNodeAsyncTasks(limit int) {
+	if vm.jsPumpingNodeTasks {
+		return
+	}
+	vm.jsPumpingNodeTasks = true
+	defer func() { vm.jsPumpingNodeTasks = false }()
+
+	vm.jsPumpAsyncFSReadResults(limit)
+	vm.jsPumpTimerResults(limit)
+	if len(vm.jsNextTickQueue) > 0 {
+		vm.jsProcessNextTickQueue()
+	}
+	if len(vm.jsMicrotaskQueue) > 0 {
+		vm.jsProcessMicrotasks()
+	}
+	if len(vm.jsImmediateQueue) > 0 {
+		vm.jsProcessImmediateQueue()
+	}
+}
+
 // jsCallFSMethod dispatches fs sync methods.
 func (vm *VM) jsCallFSMethod(methodName string, args []Value) (Value, bool) {
 	switch strings.ToLower(methodName) {
+	case "readfile":
+		if len(args) < 2 {
+			vm.jsThrowTypeError("fs.readFile requires path and callback")
+			return Value{Type: VTJSUndefined}, true
+		}
+		resolved, ok := vm.jsNodeResolveSandboxPath(args[0])
+		if !ok {
+			vm.jsThrowTypeError("fs.readFile path is outside sandbox")
+			return Value{Type: VTJSUndefined}, true
+		}
+
+		callbackIdx := len(args) - 1
+		callback := args[callbackIdx]
+		if callback.Type != VTJSFunction {
+			vm.jsThrowTypeError("fs.readFile callback must be a function")
+			return Value{Type: VTJSUndefined}, true
+		}
+
+		encoding := ""
+		if callbackIdx > 1 {
+			encoding = vm.jsNodeExtractEncoding(args, 1)
+		}
+
+		if !vm.jsQueueAsyncFSRead(resolved, encoding, callback, true, Value{Type: VTJSUndefined}, false) {
+			vm.jsEnqueueMicrotask(func() {
+				errVal := vm.jsCreateErrorObject("Error", "fs.readFile async queue is full")
+				vm.jsCall(callback, Value{Type: VTJSUndefined}, []Value{errVal, Value{Type: VTJSUndefined}})
+			})
+		}
+
+		return Value{Type: VTJSUndefined}, true
 	case "existssync":
 		if len(args) < 1 {
 			return NewBool(false), true
@@ -273,6 +533,29 @@ func (vm *VM) jsCallFSMethod(methodName string, args []Value) (Value, bool) {
 			return Value{Type: VTJSUndefined}, true
 		}
 		return vm.jsCreateFSStatsObject(info), true
+	}
+	return Value{Type: VTJSUndefined}, false
+}
+
+// jsCallFSPromisesMethod dispatches fs.promises API methods.
+func (vm *VM) jsCallFSPromisesMethod(methodName string, args []Value) (Value, bool) {
+	switch strings.ToLower(methodName) {
+	case "readfile":
+		if len(args) < 1 {
+			vm.jsThrowTypeError("fs.promises.readFile requires a path")
+			return Value{Type: VTJSUndefined}, true
+		}
+		resolved, ok := vm.jsNodeResolveSandboxPath(args[0])
+		if !ok {
+			vm.jsThrowTypeError("fs.promises.readFile path is outside sandbox")
+			return Value{Type: VTJSUndefined}, true
+		}
+		encoding := vm.jsNodeExtractEncoding(args, 1)
+		promise := vm.jsNodeCreateDeferredPromise()
+		if !vm.jsQueueAsyncFSRead(resolved, encoding, Value{Type: VTJSUndefined}, false, promise, true) {
+			vm.jsRejectPromise(promise, vm.jsCreateErrorObject("Error", "fs.promises.readFile async queue is full"))
+		}
+		return promise, true
 	}
 	return Value{Type: VTJSUndefined}, false
 }
