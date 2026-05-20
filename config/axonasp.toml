@@ -95,7 +95,7 @@ execute_as_asp = [".asp"]
 execute_as_vbscript = [".vbs"]
 
 # List of file extensions that will be treated as JavaScript and executed by the server. You can add or remove extensions from this list based on your needs. Make sure to include the dot before the extension. The server will check the requested file's extension against this list to determine whether to execute it or serve it as a static file. This will only be used if engine_mode is set to javascript.
-execute_as_javascript = [".js"]
+execute_as_javascript = [".js", ".mjs"]
 
 # When enabled, the server will watch for changes in the configuration file and automatically reload the configuration without needing to restart the server. This can be useful for making changes to the server settings on the fly, but it may also introduce some overhead as the server needs to monitor the file for changes. It's generally recommended to keep this setting disabled in production environments for better performance and stability, and only enable it during development or when you need to make frequent changes to the configuration. This setting isn't full implented yet.
 viper_watch_config = false

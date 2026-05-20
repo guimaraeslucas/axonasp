@@ -118,25 +118,25 @@ func (v Value) String() string {
 		if v.Num == 0 {
 			return "" // Nothing has no string value
 		}
-		return fmt.Sprintf("[Object:%d]", v.Num)
+		return "[object Object]"
 	case VTNativeObject:
-		return fmt.Sprintf("[NativeObject:%d]", v.Num)
+		return "[object NativeObject]"
 	case VTBuiltin:
-		return fmt.Sprintf("[Builtin:%d]", v.Num)
+		return "[object Builtin]"
 	case VTDate:
 		return time.Unix(0, v.Num).UTC().Format(time.RFC3339)
 	case VTUserSub:
-		return "[UserSub]"
+		return "[object Function]"
 	case VTJSUndefined:
 		return "undefined"
 	case VTJSUninitialized:
 		return "[Uninitialized]"
 	case VTJSObject:
-		return fmt.Sprintf("[JSObject:%d]", v.Num)
+		return "[object Object]"
 	case VTJSFunction:
-		return fmt.Sprintf("[JSFunction:%d]", v.Num)
+		return "[object Function]"
 	case VTJSFunctionTemplate:
-		return fmt.Sprintf("[JSFunctionTemplate:%d]", v.Num)
+		return "[object FunctionTemplate]"
 	case VTArgRef:
 		return "[ArgRef]"
 	case VTSymbol:

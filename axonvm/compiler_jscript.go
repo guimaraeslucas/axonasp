@@ -3135,6 +3135,21 @@ func jsGetBlockLexicalNames(stmts []jsast.Statement) ([]string, []string) {
 					jsExtractBindingNames(binding.Target, &letNames)
 				}
 			}
+		} else if exportDecl, ok := s.(*jsast.ExportDeclaration); ok && exportDecl.Declaration != nil {
+			switch inner := exportDecl.Declaration.(type) {
+			case *jsast.LexicalDeclaration:
+				for _, binding := range inner.List {
+					if inner.Token == jstoken.CONST {
+						jsExtractBindingNames(binding.Target, &constNames)
+					} else {
+						jsExtractBindingNames(binding.Target, &letNames)
+					}
+				}
+			case *jsast.ClassDeclaration:
+				if inner.Class != nil && inner.Class.Name != nil {
+					letNames = append(letNames, inner.Class.Name.Name.String())
+				}
+			}
 		} else if decl, ok := s.(*jsast.UsingDeclaration); ok {
 			for _, binding := range decl.List {
 				jsExtractBindingNames(binding.Target, &letNames)

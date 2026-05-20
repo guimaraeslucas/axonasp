@@ -242,6 +242,18 @@ func TestScriptCacheDiskMissesWhenIncludeMetadataMissing(t *testing.T) {
 	}
 }
 
+// TestScriptCacheResolveEngineModeTreatsMJSAsJavaScript verifies .mjs files
+// are executed through the JavaScript engine by default.
+func TestScriptCacheResolveEngineModeTreatsMJSAsJavaScript(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheDisabled, t.TempDir(), 8)
+	cache.SetEngineConfig(EngineModeDefault, []string{".asp"}, []string{".vbs"}, []string{".js", ".mjs"})
+
+	mode := cache.resolveEngineMode(filepath.Join(t.TempDir(), "module.mjs"))
+	if mode != EngineModeJavaScript {
+		t.Fatalf("expected EngineModeJavaScript for .mjs, got %v", mode)
+	}
+}
+
 func TestScriptCacheAddWatchRecursiveTrackedDeduplicatesDirectories(t *testing.T) {
 	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
 	root := t.TempDir()

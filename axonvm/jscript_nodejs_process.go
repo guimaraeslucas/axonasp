@@ -23,6 +23,7 @@ package axonvm
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -44,13 +45,24 @@ func (vm *VM) jsCreateProcessObject() Value {
 	argvArray := vm.jsCreateArgvArray()
 	obj["argv"] = argvArray
 
-	// Store function proxies for cwd and exit methods
-	// These are special marker values that will be handled in jsCallMember
-	obj["__js_cwd_method"] = NewString("__js_cwd__")
-	obj["__js_exit_method"] = NewString("__js_exit__")
+	// Node.js common properties
+	obj["version"] = NewString("v" + GetRuntimeVersion())
+	obj["platform"] = NewString(runtime.GOOS)
+	obj["arch"] = NewString(runtime.GOARCH)
+	obj["pid"] = NewInteger(int64(os.Getpid()))
+	obj["title"] = NewString("axonasp")
+
+	// Helper to create a native function proxy
+	createMethod := func(name string, ctorName string) Value {
+		return vm.jsCreateIntrinsicFunction("process."+name, ctorName)
+	}
+
+	obj["cwd"] = createMethod("cwd", "ProcessCwd")
+	obj["exit"] = createMethod("exit", "ProcessExit")
+	obj["nextTick"] = createMethod("nextTick", "ProcessNextTick")
 
 	vm.jsObjectItems[objID] = obj
-	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 10)
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 15)
 
 	// Mark this as the process object for special handling
 	vm.jsProcessObjectID = objID

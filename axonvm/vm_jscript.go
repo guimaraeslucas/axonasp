@@ -275,7 +275,9 @@ func (vm *VM) jsImportModule(specifier string) (*jsEnvFrame, bool) {
 	defer delete(vm.jsModuleLoading, modulePath)
 
 	cache := getExecuteScriptCache()
-	program, loadErr := cache.LoadOrCompileWithMode(modulePath, vm.executionMode)
+	// Module imports must use the standard compilation path so export/import
+	// semantics match server execution in all modes (CLI/TUI/Eval included).
+	program, loadErr := cache.LoadOrCompile(modulePath)
 	if loadErr != nil {
 		delete(vm.jsModuleInstances, modulePath)
 		delete(vm.jsEnvItems, moduleEnvID)
@@ -284,7 +286,7 @@ func (vm *VM) jsImportModule(specifier string) (*jsEnvFrame, bool) {
 	}
 
 	startIP := vm.appendExecuteProgram(program.GlobalCount, program.Constants, program.Bytecode)
-	child := vm.cloneForExecuteLocal(startIP)
+	child := vm.cloneForExecuteGlobal(startIP)
 	child.sourceName = modulePath
 	child.baseSourceName = modulePath
 	child.jsActiveEnvID = moduleEnvID
@@ -1606,6 +1608,15 @@ func (vm *VM) jsResolveObjectMember(objID int64, member string, visited map[int6
 	if !ok {
 		return jsPropertyDescriptor{}, false
 	}
+	if val, exists := obj[member]; exists {
+		return jsPropertyDescriptor{
+			Value:        val,
+			HasValue:     true,
+			Enumerable:   true,
+			Configurable: true,
+			Writable:     true,
+		}, true
+	}
 	proto, exists := obj["__js_proto"]
 	if !exists || (proto.Type != VTJSObject && proto.Type != VTJSFunction) {
 		return jsPropertyDescriptor{}, false
@@ -1881,13 +1892,28 @@ func (vm *VM) ensureJSRootEnv() {
 		bindings["url"] = vm.jsCreateURLModuleObject(urlCtor, urlSearchParamsCtor)
 		bindings["__axon_stream"] = vm.jsCreateNodeStreamHooksObject()
 		// Phase 2: Timing globals
-		bindings["setTimeout"] = vm.jsCreateIntrinsicObject("", "setTimeout")
-		bindings["clearTimeout"] = vm.jsCreateIntrinsicObject("", "clearTimeout")
-		bindings["setInterval"] = vm.jsCreateIntrinsicObject("", "setInterval")
-		bindings["clearInterval"] = vm.jsCreateIntrinsicObject("", "clearInterval")
-		bindings["setImmediate"] = vm.jsCreateIntrinsicObject("", "setImmediate")
-		bindings["clearImmediate"] = vm.jsCreateIntrinsicObject("", "clearImmediate")
+		bindings["setTimeout"] = vm.jsCreateIntrinsicFunction("setTimeout", "SetTimeout")
+		bindings["clearTimeout"] = vm.jsCreateIntrinsicFunction("clearTimeout", "ClearTimeout")
+		bindings["setInterval"] = vm.jsCreateIntrinsicFunction("setInterval", "SetInterval")
+		bindings["clearInterval"] = vm.jsCreateIntrinsicFunction("clearInterval", "ClearInterval")
+		bindings["setImmediate"] = vm.jsCreateIntrinsicFunction("setImmediate", "SetImmediate")
+		bindings["clearImmediate"] = vm.jsCreateIntrinsicFunction("clearImmediate", "ClearImmediate")
+
+		// Node.js module globals
+		if vm.sourceName != "" {
+			absPath, _ := filepath.Abs(vm.sourceName)
+			bindings["__filename"] = NewString(absPath)
+			bindings["__dirname"] = NewString(filepath.Dir(absPath))
+		} else {
+			bindings["__filename"] = NewString("")
+			bindings["__dirname"] = NewString("")
+		}
+		bindings["global"] = Value{Type: VTJSObject, Num: rootID}
 	}
+
+	// Root-level console is always available in JScript for AxonASP,
+	// but we use the JScript-optimized version here.
+	bindings["console"] = vm.jsCreateConsoleObject()
 
 	// Create the root environment frame
 	vm.jsEnvItems[rootID] = &jsEnvFrame{parentID: 0, bindings: bindings}
@@ -2734,7 +2760,12 @@ func (vm *VM) jsTypeOf(v Value) string {
 			return "function"
 		}
 		return "object"
-	case VTJSObject, VTNativeObject, VTObject, VTArray, VTJSPromise, VTJSGenerator:
+	case VTJSObject:
+		if vm.jsIsCallable(v) {
+			return "function"
+		}
+		return "object"
+	case VTNativeObject, VTObject, VTArray, VTJSPromise, VTJSGenerator:
 		return "object"
 	default:
 		return "undefined"
@@ -3888,6 +3919,9 @@ func (vm *VM) jsObjectToStringTag(v Value) string {
 			"BigInt64Array", "BigUint64Array":
 			return "[object " + tag + "]"
 		default:
+			if tag != "" {
+				return "[object " + tag + "]"
+			}
 			return "[object Object]"
 		}
 	default:
@@ -4904,6 +4938,15 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 			if val, exists := obj[member]; exists {
 				return val, false
 			}
+		}
+		// Intercept standard methods if not found in descriptors or object items
+		switch {
+		case strings.EqualFold(member, "toString"):
+			return vm.jsCreateNativeFunction("toString", "ObjectToString"), false
+		case strings.EqualFold(member, "toLocaleString"):
+			return vm.jsCreateNativeFunction("toLocaleString", "ObjectToLocaleString"), false
+		case strings.EqualFold(member, "valueOf"):
+			return vm.jsCreateNativeFunction("valueOf", "ObjectValueOf"), false
 		}
 		return Value{Type: VTJSUndefined}, false
 	case VTJSPromise:
@@ -8906,6 +8949,111 @@ func (vm *VM) dispatchJSIntrinsicCall(thisVal Value, ctorName string, args []Val
 			return NewBool(vm.jsProxySetPrototypeOf(target, proto))
 		}
 		return NewBool(vm.jsSetPrototype(target, proto))
+	case "ConsoleLog":
+		return consoleDispatch(vm, "log", args)
+	case "ConsoleWarn":
+		return consoleDispatch(vm, "warn", args)
+	case "ConsoleError":
+		return consoleDispatch(vm, "error", args)
+	case "ConsoleInfo":
+		return consoleDispatch(vm, "info", args)
+	case "ConsoleDebug":
+		return consoleDispatch(vm, "debug", args)
+	case "ConsoleTrace":
+		return consoleDispatch(vm, "trace", args)
+	case "ConsoleClear":
+		return consoleDispatch(vm, "clear", args)
+	case "ProcessCwd":
+		res, _ := vm.jsCallProcessMethod("cwd", args)
+		return res
+	case "ProcessExit":
+		res, _ := vm.jsCallProcessMethod("exit", args)
+		return res
+	case "ProcessNextTick":
+		res, _ := vm.jsCallProcessMethod("nextTick", args)
+		return res
+	case "OSHostname":
+		res, _ := vm.jsCallOSMethod("hostname", args)
+		return res
+	case "OSType":
+		res, _ := vm.jsCallOSMethod("type", args)
+		return res
+	case "OSPlatform":
+		res, _ := vm.jsCallOSMethod("platform", args)
+		return res
+	case "OSArch":
+		res, _ := vm.jsCallOSMethod("arch", args)
+		return res
+	case "OSRelease":
+		res, _ := vm.jsCallOSMethod("release", args)
+		return res
+	case "OSUptime":
+		res, _ := vm.jsCallOSMethod("uptime", args)
+		return res
+	case "OSFreemem":
+		res, _ := vm.jsCallOSMethod("freemem", args)
+		return res
+	case "OSTotalmem":
+		res, _ := vm.jsCallOSMethod("totalmem", args)
+		return res
+	case "OSCpus":
+		res, _ := vm.jsCallOSMethod("cpus", args)
+		return res
+	case "PathJoin":
+		res, _ := vm.jsCallPathMethod("join", args)
+		return res
+	case "PathResolve":
+		res, _ := vm.jsCallPathMethod("resolve", args)
+		return res
+	case "PathBasename":
+		res, _ := vm.jsCallPathMethod("basename", args)
+		return res
+	case "PathDirname":
+		res, _ := vm.jsCallPathMethod("dirname", args)
+		return res
+	case "PathExtname":
+		res, _ := vm.jsCallPathMethod("extname", args)
+		return res
+	case "PathNormalize":
+		res, _ := vm.jsCallPathMethod("normalize", args)
+		return res
+	case "HTTPCreateServer":
+		res, _ := vm.jsCallHTTPMethod("http", "createServer", args)
+		return res
+	case "HTTPRequest":
+		res, _ := vm.jsCallHTTPMethod("http", "request", args)
+		return res
+	case "HTTPGet":
+		res, _ := vm.jsCallHTTPMethod("http", "get", args)
+		return res
+	case "HTTPServerListen":
+		res, _ := vm.jsCallHTTPServerMethod(thisVal, "listen", args)
+		return res
+	case "QSParse":
+		res, _ := vm.jsCallQueryStringMethod("parse", args)
+		return res
+	case "QSStringify":
+		res, _ := vm.jsCallQueryStringMethod("stringify", args)
+		return res
+	case "SetTimeout":
+		return vm.jsSetTimeout(args)
+	case "ClearTimeout":
+		return vm.jsClearTimeout(args)
+	case "SetInterval":
+		return vm.jsSetInterval(args)
+	case "ClearInterval":
+		return vm.jsClearInterval(args)
+	case "SetImmediate":
+		return vm.jsSetImmediate(args)
+	case "ClearImmediate":
+		return vm.jsClearImmediate(args)
+	case "ObjectToString":
+		return NewString(vm.jsObjectToStringTag(thisVal))
+	case "ObjectToLocaleString":
+		// Standard toLocaleString defaults to toString for regular objects.
+		return NewString(vm.jsObjectToStringTag(thisVal))
+	case "ObjectValueOf":
+		return thisVal
 	case "AtomicsAdd", "AtomicsSub", "AtomicsAnd", "AtomicsOr", "AtomicsXor", "AtomicsLoad", "AtomicsStore", "AtomicsExchange", "AtomicsCompareExchange", "AtomicsIsLockFree":
 		methodName := ctorName[7:] // Strip "Atomics"
 		res, _ := vm.jsAtomicsCall(methodName, args)
@@ -9374,6 +9522,18 @@ func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 	panic(vme)
 }
 
+// jsThrowError throws a standard JScript Error that can be caught by a JS try/catch.
+func (vm *VM) jsThrowError(msg string) {
+	if len(vm.jsTryStack) == 0 {
+		vm.jsRaiseRuntimeError(jscript.InternalError, msg)
+		return
+	}
+	target := vm.jsTryStack[len(vm.jsTryStack)-1]
+	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
+	vm.jsErrStack = append(vm.jsErrStack, vm.jsCreateErrorObject("Error", msg))
+	vm.ip = target
+}
+
 // jsThrowTypeError throws a JScript TypeError that can be caught by a JS try/catch.
 // If no active catch handler exists, raises a VBScript TypeMismatch error instead.
 func (vm *VM) jsThrowTypeError(msg string) {
@@ -9471,12 +9631,11 @@ func (vm *VM) jsToPrimitive(v Value, hint string) Value {
 }
 
 func (vm *VM) jsCallOrdinaryToPrimitive(v Value, methodName string) (Value, bool) {
-	if method, ok := vm.jsResolveObjectMember(v.Num, methodName, make(map[int64]struct{}, 4)); ok {
-		if method.HasValue && vm.jsIsCallable(method.Value) {
-			res := vm.jsCall(method.Value, v, nil)
-			if res.Type != VTJSObject && res.Type != VTJSFunction && res.Type != VTJSProxy && res.Type != VTArray {
-				return res, true
-			}
+	method, deferred := vm.jsMemberGet(v, methodName)
+	if !deferred && vm.jsIsCallable(method) {
+		res := vm.jsCall(method, v, nil)
+		if res.Type != VTJSObject && res.Type != VTJSFunction && res.Type != VTJSProxy && res.Type != VTArray {
+			return res, true
 		}
 	}
 	return Value{}, false

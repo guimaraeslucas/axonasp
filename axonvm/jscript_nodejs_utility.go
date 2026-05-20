@@ -27,25 +27,53 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // jsCreatePathObject allocates the Node.js-compatible path module object.
 func (vm *VM) jsCreatePathObject() Value {
 	objID := vm.allocJSID()
-	obj := make(map[string]Value, 6)
+	obj := make(map[string]Value, 8)
 	obj["__js_type"] = NewString("path")
+
+	createMethod := func(name string, ctorName string) Value {
+		return vm.jsCreateIntrinsicFunction("path."+name, ctorName)
+	}
+
+	obj["join"] = createMethod("join", "PathJoin")
+	obj["resolve"] = createMethod("resolve", "PathResolve")
+	obj["basename"] = createMethod("basename", "PathBasename")
+	obj["dirname"] = createMethod("dirname", "PathDirname")
+	obj["extname"] = createMethod("extname", "PathExtname")
+	obj["normalize"] = createMethod("normalize", "PathNormalize")
+
 	vm.jsObjectItems[objID] = obj
-	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 6)
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
 	return Value{Type: VTJSObject, Num: objID}
 }
 
 // jsCreateOSObject allocates the Node.js-compatible os module object.
 func (vm *VM) jsCreateOSObject() Value {
 	objID := vm.allocJSID()
-	obj := make(map[string]Value, 6)
+	obj := make(map[string]Value, 10)
 	obj["__js_type"] = NewString("os")
+
+	createMethod := func(name string, ctorName string) Value {
+		return vm.jsCreateIntrinsicFunction("os."+name, ctorName)
+	}
+
+	obj["hostname"] = createMethod("hostname", "OSHostname")
+	obj["type"] = createMethod("type", "OSType")
+	obj["platform"] = createMethod("platform", "OSPlatform")
+	obj["arch"] = createMethod("arch", "OSArch")
+	obj["release"] = createMethod("release", "OSRelease")
+	obj["uptime"] = createMethod("uptime", "OSUptime")
+	obj["freemem"] = createMethod("freemem", "OSFreemem")
+	obj["totalmem"] = createMethod("totalmem", "OSTotalmem")
+	obj["cpus"] = createMethod("cpus", "OSCpus")
+
 	vm.jsObjectItems[objID] = obj
-	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 6)
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 10)
 	return Value{Type: VTJSObject, Num: objID}
 }
 
@@ -54,6 +82,16 @@ func (vm *VM) jsCreateQueryStringObject() Value {
 	objID := vm.allocJSID()
 	obj := make(map[string]Value, 6)
 	obj["__js_type"] = NewString("querystring")
+
+	createMethod := func(name string, ctorName string) Value {
+		return vm.jsCreateIntrinsicFunction("querystring."+name, ctorName)
+	}
+
+	obj["parse"] = createMethod("parse", "QSParse")
+	obj["stringify"] = createMethod("stringify", "QSStringify")
+	obj["escape"] = createMethod("escape", "QSEscape")
+	obj["unescape"] = createMethod("unescape", "QSUnescape")
+
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 6)
 	return Value{Type: VTJSObject, Num: objID}
@@ -155,6 +193,30 @@ func (vm *VM) jsCallPathMethod(methodName string, args []Value) (Value, bool) {
 // jsCallOSMethod dispatches os module methods.
 func (vm *VM) jsCallOSMethod(methodName string, _ []Value) (Value, bool) {
 	switch strings.ToLower(methodName) {
+	case "hostname":
+		name, err := os.Hostname()
+		if err != nil {
+			return NewString("localhost"), true
+		}
+		return NewString(name), true
+	case "type":
+		switch runtime.GOOS {
+		case "windows":
+			return NewString("Windows_NT"), true
+		case "darwin":
+			return NewString("Darwin"), true
+		case "linux":
+			return NewString("Linux"), true
+		default:
+			return NewString(runtime.GOOS), true
+		}
+	case "release":
+		// Return a generic release version for the OS.
+		// For actual release detection, more complex Go logic would be needed.
+		return NewString("1.0.0"), true
+	case "uptime":
+		// This is a simplified uptime implementation.
+		return NewDouble(time.Since(vm.startTime).Seconds()), true
 	case "arch":
 		return NewString(runtime.GOARCH), true
 	case "platform":
@@ -166,6 +228,10 @@ func (vm *VM) jsCallOSMethod(methodName string, _ []Value) (Value, bool) {
 			return NewDouble(float64(mem.Sys - mem.Alloc)), true
 		}
 		return NewDouble(0), true
+	case "totalmem":
+		var mem runtime.MemStats
+		runtime.ReadMemStats(&mem)
+		return NewDouble(float64(mem.Sys)), true
 	case "cpus":
 		cpuCount := runtime.NumCPU()
 		if cpuCount < 0 {

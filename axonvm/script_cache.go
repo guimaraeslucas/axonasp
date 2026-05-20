@@ -497,8 +497,8 @@ func (c *ScriptCache) resolveEngineMode(filePath string) EngineMode {
 		}
 	}
 
-	// Legacy behavior: if it's .js, it's JScript
-	if ext == ".js" {
+	// Legacy behavior: if it's .js/.mjs, it's JScript.
+	if ext == ".js" || ext == ".mjs" {
 		return EngineModeJavaScript
 	}
 

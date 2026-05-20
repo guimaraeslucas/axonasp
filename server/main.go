@@ -63,7 +63,7 @@ var (
 	DefaultPages                  = []string{"index.asp", "default.asp", "index.html", "default.html", "default.asp"}
 	ExecuteAsASPExtensions        = []string{".asp"}
 	ExecuteAsVBScriptExtensions   = []string{".vbs"}
-	ExecuteAsJavaScriptExtensions = []string{".js"}
+	ExecuteAsJavaScriptExtensions = []string{".js", ".mjs"}
 	ServerEngineMode              = axonvm.EngineModeDefault
 	BlockedExtensions             = []string{}
 	BlockedFiles                  = []string{}

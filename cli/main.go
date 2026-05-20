@@ -59,7 +59,7 @@ var (
 	ResponseBufferLimitBytes      = 4 * 1024 * 1024
 	ExecuteAsASPExtensions        = []string{".asp"}
 	ExecuteAsVBScriptExtensions   = []string{".vbs"}
-	ExecuteAsJavaScriptExtensions = []string{".js"}
+	ExecuteAsJavaScriptExtensions = []string{".js", ".mjs"}
 	CLIEngineMode                 = axonvm.EngineModeDefault
 	CLIServerRoot                 = "./www"
 	serverLocation                = time.UTC

@@ -57,6 +57,35 @@ Response.Write(calculadora.somar(5, 3) + "|" + calculadora.subtrair(5, 3));`
 	}
 }
 
+func TestJScriptRequireCommonJSFunctionExportWithConstBinding(t *testing.T) {
+	dir := t.TempDir()
+	depPath := filepath.Join(dir, "logger.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	depSrc := `function log(mensagem) {
+  console.log("[LOG]:", mensagem);
+}
+module.exports = log;`
+	entrySrc := `const log = require("./logger");
+log("Iniciando sistema...");
+Response.Write("ok");`
+
+	if err := os.WriteFile(depPath, []byte(depSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(entrySrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatalf("unexpected error executing CommonJS function export: %v", err)
+	}
+	if out != "ok" {
+		t.Fatalf("expected 'ok', got %q", out)
+	}
+}
+
 func TestJScriptRequireMissingModuleReportsJavaScriptRuntime(t *testing.T) {
 	dir := t.TempDir()
 	entryPath := filepath.Join(dir, "entry.js")

@@ -36,10 +36,9 @@ const jsEventsModuleKey = "__builtin__:events"
 func (vm *VM) jsGetOrCreateEventsModule() Value {
 	// Check if an already-cached module env exists
 	if env, ok := vm.jsModuleInstances[jsEventsModuleKey]; ok && env != nil {
-		// Rebuild the module object from the cached env every time so the caller
-		// gets the live EventEmitter binding.
+		// Return the cached constructor directly
 		if ctorVal, ok := env.bindings["EventEmitter"]; ok {
-			return vm.jsBuildEventsModuleObject(ctorVal)
+			return ctorVal
 		}
 	}
 
@@ -47,6 +46,12 @@ func (vm *VM) jsGetOrCreateEventsModule() Value {
 	ctor := vm.jsRunNodeEventsPolyfill()
 	if ctor.Type == VTJSUndefined {
 		return Value{Type: VTJSUndefined}
+	}
+
+	// In Node.js, require('events') returns the EventEmitter constructor itself,
+	// and it also has a property named 'EventEmitter' pointing back to itself.
+	if ctor.Type == VTJSFunction {
+		vm.jsMemberSet(ctor, "EventEmitter", ctor)
 	}
 
 	// Cache the constructor in a dedicated env frame so repeated require("events")
@@ -66,7 +71,7 @@ func (vm *VM) jsGetOrCreateEventsModule() Value {
 		root.bindings["EventEmitter"] = ctor
 	}
 
-	return vm.jsBuildEventsModuleObject(ctor)
+	return ctor
 }
 
 // jsBuildEventsModuleObject wraps the EventEmitter constructor in a plain object that

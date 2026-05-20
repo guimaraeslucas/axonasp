@@ -20,7 +20,7 @@ import (
 	"testing"
 )
 
-func runJScriptModuleEntry(t *testing.T, entryPath string) (string, error) {
+func runJScriptModuleEntryWithMode(t *testing.T, entryPath string, mode ExecutionMode) (string, error) {
 	t.Helper()
 
 	cache := getExecuteScriptCache()
@@ -32,6 +32,7 @@ func runJScriptModuleEntry(t *testing.T, entryPath string) (string, error) {
 	vm := NewVMFromCachedProgram(program)
 	vm.sourceName = entryPath
 	vm.baseSourceName = entryPath
+	vm.SetExecutionMode(mode)
 	host := NewMockHost()
 	var out bytes.Buffer
 	host.SetOutput(&out)
@@ -40,6 +41,10 @@ func runJScriptModuleEntry(t *testing.T, entryPath string) (string, error) {
 
 	err = vm.Run()
 	return out.String(), err
+}
+
+func runJScriptModuleEntry(t *testing.T, entryPath string) (string, error) {
+	return runJScriptModuleEntryWithMode(t, entryPath, ExecutionModeServer)
 }
 
 func TestJScriptModuleCache(t *testing.T) {
@@ -253,6 +258,30 @@ func TestJScriptModuleImportSideEffectFromExportModule(t *testing.T) {
 	}
 	if out != "DE" {
 		t.Fatalf("expected DE, got %q", out)
+	}
+}
+
+func TestJScriptModuleImportExportNamedInCLIExecutionMode(t *testing.T) {
+	dir := t.TempDir()
+	depPath := filepath.Join(dir, "saudacao.mjs")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	depSrc := `export function ola(nome) { return "Ola, " + nome + "!"; }`
+	entrySrc := `import { ola } from "./saudacao.mjs"; Response.Write(ola("Francisco"));`
+
+	if err := os.WriteFile(depPath, []byte(depSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(entrySrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntryWithMode(t, entryPath, ExecutionModeCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "Ola, Francisco!" {
+		t.Fatalf("expected Ola, Francisco!, got %q", out)
 	}
 }
 

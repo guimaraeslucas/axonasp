@@ -120,6 +120,38 @@ func consoleDispatch(vm *VM, method string, args []Value) Value {
 	return Value{Type: VTEmpty}
 }
 
+// jsCreateConsoleObject creates a JScript-compatible console object.
+// This allows JScript code to see console.log, console.error, etc. as proper functions.
+func (vm *VM) jsCreateConsoleObject() Value {
+	objID := vm.allocJSID()
+	obj := make(map[string]Value, 8)
+
+	// Type marker
+	obj["__js_type"] = NewString("console")
+
+	// Helper to create a native function proxy
+	createMethod := func(name string) Value {
+		return vm.jsCreateIntrinsicFunction("console."+name, "Console"+strings.Title(name))
+	}
+
+	obj["log"] = createMethod("log")
+	obj["warn"] = createMethod("warn")
+	obj["error"] = createMethod("error")
+	obj["info"] = createMethod("info")
+	obj["debug"] = createMethod("debug")
+	obj["trace"] = createMethod("trace")
+	obj["clear"] = createMethod("clear")
+
+	if proto := vm.jsGetIntrinsicPrototype("Object"); proto.Type == VTJSObject {
+		obj["__js_proto"] = proto
+	}
+
+	vm.jsObjectItems[objID] = obj
+	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
+
+	return Value{Type: VTJSObject, Num: objID}
+}
+
 // consoleSerializeArgs converts all console arguments into one printable message.
 // Arguments are joined by a single space to match JavaScript console behavior.
 func consoleSerializeArgs(vm *VM, args []Value) string {

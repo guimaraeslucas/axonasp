@@ -61,7 +61,7 @@ var (
 	DefaultPages                  = []string{"default.asp", "default.htm", "index.asp", "index.html", "default.html"}
 	ExecuteAsASPExtension         = []string{".asp"}
 	ExecuteAsVBScriptExtensions   = []string{".vbs"}
-	ExecuteAsJavaScriptExtensions = []string{".js"}
+	ExecuteAsJavaScriptExtensions = []string{".js", ".mjs"}
 	ServerEngineMode              = axonvm.EngineModeDefault
 	DefaultErrorPagesDir          = "./www/error-pages"
 	ScriptTimeout                 = 60

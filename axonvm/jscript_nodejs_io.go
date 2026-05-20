@@ -211,7 +211,7 @@ func (vm *VM) jsRequire(args []Value) Value {
 		if resolved {
 			return moduleVal
 		}
-		vm.jsThrowReferenceError("Cannot find module '" + moduleName + "'")
+		vm.jsThrowError("Cannot find module '" + moduleName + "'")
 		return Value{Type: VTJSUndefined}
 	}
 
@@ -252,7 +252,7 @@ func (vm *VM) jsRequire(args []Value) Value {
 	case "stream":
 		return vm.jsGetOrCreateStreamModule()
 	default:
-		vm.jsThrowReferenceError("Cannot find module '" + moduleName + "'")
+		vm.jsThrowError("Cannot find module '" + moduleName + "'")
 		return Value{Type: VTJSUndefined}
 	}
 }
@@ -293,6 +293,15 @@ func (vm *VM) jsCreateHTTPObject(moduleType string) Value {
 	objID := vm.allocJSID()
 	obj := make(map[string]Value, 8)
 	obj["__js_type"] = NewString(moduleType)
+
+	createMethod := func(name string, ctorName string) Value {
+		return vm.jsCreateIntrinsicFunction(moduleType+"."+name, ctorName)
+	}
+
+	obj["createServer"] = createMethod("createServer", "HTTPCreateServer")
+	obj["request"] = createMethod("request", "HTTPRequest")
+	obj["get"] = createMethod("get", "HTTPGet")
+
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 8)
 	return Value{Type: VTJSObject, Num: objID}
@@ -1109,6 +1118,31 @@ func (vm *VM) jsCallHTTPMethod(moduleType string, methodName string, args []Valu
 		return vm.jsNodeDoHTTPRequest(moduleType, "GET", args)
 	case "request":
 		return vm.jsNodeDoHTTPRequest(moduleType, "", args)
+	case "createserver":
+		objID := vm.allocJSID()
+		obj := make(map[string]Value, 4)
+		obj["__js_type"] = NewString("http.Server")
+		if len(args) > 0 && vm.jsIsCallable(args[0]) {
+			obj["__js_request_listener"] = args[0]
+		}
+		obj["listen"] = vm.jsCreateIntrinsicFunction("http.Server.listen", "HTTPServerListen")
+		vm.jsObjectItems[objID] = obj
+		vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, 4)
+		return Value{Type: VTJSObject, Num: objID}, true
+	}
+	return Value{Type: VTJSUndefined}, false
+}
+
+// jsCallHTTPServerMethod dispatches http.Server methods like listen().
+func (vm *VM) jsCallHTTPServerMethod(target Value, methodName string, args []Value) (Value, bool) {
+	if target.Type != VTJSObject {
+		return Value{Type: VTJSUndefined}, false
+	}
+	switch strings.ToLower(methodName) {
+	case "listen":
+		// Node.js server.listen() is asynchronous but here we can just return the server
+		// object (fluent API support) and ignore the actual binding for now.
+		return target, true
 	}
 	return Value{Type: VTJSUndefined}, false
 }

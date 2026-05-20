@@ -448,6 +448,7 @@ type VM struct {
 	jsErrStack        []Value
 	jsActiveEnvID     int64
 	jsThisValue       Value
+	startTime         time.Time
 	jsNewTarget       Value
 	consoleTimerItems map[string]time.Time
 
@@ -546,6 +547,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		globalZeroArgFuncs:             make(map[string]bool),
 		dynamicProgramStarts:           make(map[uint64]int, 32),
 		globalNameIndex:                make(map[string]int, globalCount),
+		startTime:                      time.Now(),
 		argBuffer:                      make([]Value, 0, 16),
 		indexBuffer:                    make([]Value, 0, 16),
 		combineBuffer:                  make([]Value, 0, 16),
@@ -1013,7 +1015,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 		switch op {
 		case OpConstant, OpWriteStatic, OpGetClassMember, OpSetClassMember, OpEraseClassMember, OpMemberSet, OpMemberSetSet, OpNewClass, OpLetClassMember, OpArgClassMemberRef,
 			OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSCreateClosure,
-			OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
+			OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 			OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 			OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
 			OpJSMemberIndexGet, OpJSMemberIndexSet,
@@ -1273,6 +1275,13 @@ func (vm *VM) cloneForExecuteGlobal(startIP int) *VM {
 	child.executeGlobalResumeGuard = vm.onResumeNext
 	child.stmtSP = -1
 	child.skipToNextStmt = false
+	// Global dynamic execution (for CommonJS modules and ExecuteGlobal paths)
+	// must not inherit caller lexical block scopes, otherwise TDZ bindings from
+	// the caller can leak and break valid module-local identifiers.
+	child.jsBlockScopes = make([]map[string]Value, 0)
+	child.jsBlockScopeConst = make([]map[string]struct{}, 0)
+	child.jsBlockScopeTDZ = make([]map[string]struct{}, 0)
+	child.jsBlockScopeDepth = 0
 
 	return &child
 }
@@ -6567,7 +6576,8 @@ func (vm *VM) aspErrorPropertyValue(errObj *asp.ASPError, property string) Value
 func (vm *VM) valueToString(v Value) string {
 	v = resolveCallable(vm, v)
 	if v.Type == VTJSObject || v.Type == VTJSFunction {
-		if vm.jsObjectStringProperty(v, "__js_type") == "Error" {
+		jsType := vm.jsObjectStringProperty(v, "__js_type")
+		if jsType == "Error" {
 			name := vm.jsObjectStringProperty(v, "name")
 			msg := vm.jsObjectStringProperty(v, "message")
 			if name == "" {
@@ -6581,8 +6591,36 @@ func (vm *VM) valueToString(v Value) string {
 			}
 			return name + ": " + msg
 		}
+		if jsType != "" {
+			return "[object " + jsType + "]"
+		}
+		jsCtor := vm.jsObjectStringProperty(v, "__js_ctor")
+		if jsCtor != "" {
+			return "[object " + jsCtor + "]"
+		}
 	}
 	if v.Type == VTNativeObject {
+		if v.Num == nativeObjectConsole {
+			return "[object console]"
+		}
+		if v.Num == nativeObjectResponse {
+			return "[object Response]"
+		}
+		if v.Num == nativeObjectRequest {
+			return "[object Request]"
+		}
+		if v.Num == nativeObjectServer {
+			return "[object Server]"
+		}
+		if v.Num == nativeObjectSession {
+			return "[object Session]"
+		}
+		if v.Num == nativeObjectApplication {
+			return "[object Application]"
+		}
+		if v.Num == nativeObjectErr {
+			return vm.errPropertyValue("Description").String()
+		}
 		if cookieName, exists := vm.responseCookieItems[v.Num]; exists {
 			return vm.host.Response().GetCookieValue(cookieName)
 		}
@@ -6591,9 +6629,6 @@ func (vm *VM) valueToString(v Value) string {
 		}
 		if subMatchValue, exists := vm.regExpSubMatchValueItems[v.Num]; exists {
 			return subMatchValue.value
-		}
-		if v.Num == nativeObjectErr {
-			return vm.errPropertyValue("Description").String()
 		}
 		// ADODB.Field proxy: coerce to its default Value property in string context.
 		if adodbDefault, handled := vm.dispatchADODBFieldPropertyGet(v.Num, "__default__"); handled {
