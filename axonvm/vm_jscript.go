@@ -9342,11 +9342,43 @@ func (vm *VM) jsThrow(v Value) {
 	vm.ip = target
 }
 
+// jsRaiseRuntimeError raises an uncaught JavaScript runtime error in ASP-compatible shape.
+func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
+	description := strings.TrimSpace(msg)
+	if description == "" {
+		description = code.String()
+	}
+
+	vbCode := vbscript.VBSyntaxErrorCode(code)
+	vme := &VMError{
+		Code:           vbCode,
+		Line:           vm.lastLine,
+		Column:         vm.lastColumn,
+		Msg:            description,
+		ASPCode:        int(code),
+		ASPDescription: description,
+		Category:       "JavaScript runtime",
+		Description:    description,
+		Number:         jscript.HRESULTFromJScriptCode(code),
+		Source:         "JavaScript runtime error",
+	}
+
+	vm.errSetFromVMError(vme)
+
+	if vm.onResumeNext || vm.executeGlobalResumeGuard {
+		vm.lastError = vme
+		vm.skipToNextStmt = true
+		return
+	}
+
+	panic(vme)
+}
+
 // jsThrowTypeError throws a JScript TypeError that can be caught by a JS try/catch.
 // If no active catch handler exists, raises a VBScript TypeMismatch error instead.
 func (vm *VM) jsThrowTypeError(msg string) {
 	if len(vm.jsTryStack) == 0 {
-		vm.raise(vbscript.TypeMismatch, msg)
+		vm.jsRaiseRuntimeError(jscript.TypeMismatch, msg)
 		return
 	}
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]
@@ -9359,29 +9391,8 @@ func (vm *VM) jsThrowTypeError(msg string) {
 func (vm *VM) jsThrowJSError(code jscript.JSSyntaxErrorCode) {
 	msg := code.String()
 	if len(vm.jsTryStack) == 0 {
-		vbCode := vbscript.VBSyntaxErrorCode(code)
-		vme := &VMError{
-			Code:           vbCode,
-			Line:           vm.lastLine,
-			Column:         vm.lastColumn,
-			Msg:            msg,
-			ASPCode:        int(code),
-			ASPDescription: msg,
-			Category:       "JavaScript runtime",
-			Description:    msg,
-			Number:         vbscript.HRESULTFromVBScriptCode(vbCode),
-			Source:         "JavaScript runtime error",
-		}
-
-		vm.errSetFromVMError(vme)
-
-		if vm.onResumeNext || vm.executeGlobalResumeGuard {
-			vm.lastError = vme
-			vm.skipToNextStmt = true
-			return
-		}
-
-		panic(vme)
+		vm.jsRaiseRuntimeError(code, msg)
+		return
 	}
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]
 	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
@@ -9393,7 +9404,7 @@ func (vm *VM) jsThrowJSError(code jscript.JSSyntaxErrorCode) {
 // If no active catch handler exists, raises a VBScript VariableNotDefined error instead.
 func (vm *VM) jsThrowReferenceError(msg string) {
 	if len(vm.jsTryStack) == 0 {
-		vm.raise(vbscript.VariableNotDefined, msg)
+		vm.jsRaiseRuntimeError(jscript.UndefinedIdentifier, msg)
 		return
 	}
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]

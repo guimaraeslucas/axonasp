@@ -943,7 +943,7 @@ func opcodeOperandSize(op OpCode) int {
 		OpCall,
 		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSGetLocal, OpJSSetLocal, OpJSIncLocal, OpJSDecLocal,
 		OpJSRootFrameEnter, OpJSRootFrameLeave,
-		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSSuperCall,
+		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSCallComputedMember, OpJSTailCallComputedMember, OpJSNewArray, OpJSSuperCall,
 		OpJSNew, OpJSMemberDelete, OpJSPostIncrement, OpJSPostDecrement, OpJSPreIncrement, OpJSPreDecrement,
 		OpJSAddAssign, OpJSSubtractAssign, OpJSMultiplyAssign, OpJSDivideAssign, OpJSModuloAssign,
 		OpJSExponentAssign, OpJSLogicalAndAssign, OpJSLogicalOrAssign, OpJSCoalesceAssign,
@@ -1027,7 +1027,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
 			ip += 10
-		case OpJSRot, OpJSSuperCall, OpJSCall, OpJSTailCall, OpJSNewArray, OpJSSuperCallComputedMember:
+		case OpJSRot, OpJSSuperCall, OpJSCall, OpJSTailCall, OpJSCallComputedMember, OpJSTailCallComputedMember, OpJSNewArray, OpJSSuperCallComputedMember:
 			ip += 2
 		case OpJSDefineProperty:
 			nameIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
@@ -1045,7 +1045,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			valueIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(valueIdx))
 			ip += 2
-		case OpCallMember, OpArraySet, OpJSCallMember, OpJSTailCallMember, OpJSSuperCallMember:
+		case OpCallMember, OpJSCallMember, OpJSTailCallMember, OpJSSuperCallMember:
 			memberIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(memberIdx))
 			if op == OpCallMember {
@@ -1053,6 +1053,8 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			} else {
 				ip += 4
 			}
+		case OpArraySet:
+			ip += 4
 		case OpJSForIn:
 			// EnumVarIdx(2) + LoopStartTarget(4)
 			enumVarIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
@@ -1186,13 +1188,14 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(exportIdx))
 			ip += 2
 		case OpSetOption:
-			ip += 2
+			ip += 4
 		case OpLine:
 			ip += 4
 		case OpCallBuiltin:
 			ip += 4
 		default:
-			// Single-byte opcodes have no inline operands.
+			// Keep scan aligned for opcodes that do not need remapping but still carry operands.
+			ip += opcodeOperandSize(op)
 		}
 	}
 }
@@ -1217,7 +1220,7 @@ func (vm *VM) appendExecuteProgram(globalCount int, constants []Value, bytecode 
 			appendedConstants[i].Num += int64(bytecodeBase)
 			continue
 		}
-		if appendedConstants[i].Type == VTJSFunctionTemplate {
+		if appendedConstants[i].Type == VTJSFunctionTemplate || appendedConstants[i].Type == VTJSArrowFunctionTemplate {
 			appendedConstants[i].Num += int64(bytecodeBase)
 			appendedConstants[i].Flt += float64(bytecodeBase)
 		}

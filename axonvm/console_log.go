@@ -43,6 +43,7 @@ type consoleOutputFormat struct {
 var consoleMethodFormats = map[string]consoleOutputFormat{
 	"log":   {writer: os.Stdout, symbol: "⌨ ", level: "LOG", logFile: "console.log"},
 	"info":  {writer: os.Stdout, symbol: "ℹ ", level: "INFO", logFile: "console.log"},
+	"err":   {writer: os.Stderr, symbol: "✖ ", level: "ERROR", logFile: "error.log"},
 	"error": {writer: os.Stderr, symbol: "✖ ", level: "ERROR", logFile: "error.log"},
 	"warn":  {writer: os.Stderr, symbol: "⚠ ", level: "WARN", logFile: "error.log"},
 	"trace": {writer: os.Stderr, symbol: "↳ ", level: "TRACE", logFile: "error.log"},
@@ -113,10 +114,27 @@ func consoleDispatch(vm *VM, method string, args []Value) Value {
 		return Value{Type: VTEmpty}
 	}
 
-	msg := consoleSerializeArg(vm, args[0])
+	msg := consoleSerializeArgs(vm, args)
 	consoleWriteMessage(vm, format, msg)
 
 	return Value{Type: VTEmpty}
+}
+
+// consoleSerializeArgs converts all console arguments into one printable message.
+// Arguments are joined by a single space to match JavaScript console behavior.
+func consoleSerializeArgs(vm *VM, args []Value) string {
+	if len(args) == 0 {
+		return ""
+	}
+	if len(args) == 1 {
+		return consoleSerializeArg(vm, args[0])
+	}
+
+	parts := make([]string, len(args))
+	for i := 0; i < len(args); i++ {
+		parts[i] = consoleSerializeArg(vm, args[i])
+	}
+	return strings.Join(parts, " ")
 }
 
 // consoleWriteMessage writes one decorated line to console output and a plain line to log files.

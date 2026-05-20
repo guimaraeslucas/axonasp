@@ -158,3 +158,37 @@ func TestConsoleTraceJScriptOnly(t *testing.T) {
 		t.Fatalf("expected no trace output for non-JScript contexts, got %q", out.String())
 	}
 }
+
+// TestConsoleMethodsSerializeAllArgs verifies console methods include all provided arguments.
+func TestConsoleMethodsSerializeAllArgs(t *testing.T) {
+	host := NewMockHost()
+	var out bytes.Buffer
+	host.SetOutput(&out)
+	host.Request().ServerVars.Add("AXONASP_CLI_TUI", "1")
+
+	vm := NewVM(nil, nil, 0)
+	vm.SetHost(host)
+
+	methods := []struct {
+		name     string
+		expected string
+	}{
+		{name: "log", expected: "LOG"},
+		{name: "info", expected: "INFO"},
+		{name: "warn", expected: "WARN"},
+		{name: "error", expected: "ERROR"},
+		{name: "err", expected: "ERROR"},
+	}
+
+	for _, tc := range methods {
+		out.Reset()
+		consoleDispatch(vm, tc.name, []Value{NewString("Soma:"), NewInteger(8)})
+		rendered := out.String()
+		if !strings.Contains(rendered, "Soma: 8") {
+			t.Fatalf("expected %s to include all args, got %q", tc.name, rendered)
+		}
+		if !strings.Contains(rendered, "["+tc.expected+"]") {
+			t.Fatalf("expected %s output level %s, got %q", tc.name, tc.expected, rendered)
+		}
+	}
+}

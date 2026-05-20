@@ -25,8 +25,65 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestJScriptRequireRelativeCommonJSModule(t *testing.T) {
+	dir := t.TempDir()
+	depPath := filepath.Join(dir, "calculadora.js")
+	entryPath := filepath.Join(dir, "entry.js")
+
+	depSrc := `const somar = (a, b) => a + b;
+const subtrair = (a, b) => a - b;
+module.exports = { somar, subtrair };`
+	entrySrc := `const calculadora = require("./calculadora");
+Response.Write(calculadora.somar(5, 3) + "|" + calculadora.subtrair(5, 3));`
+
+	if err := os.WriteFile(depPath, []byte(depSrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entryPath, []byte(entrySrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := runJScriptModuleEntry(t, entryPath)
+	if err != nil {
+		t.Fatalf("unexpected error executing CommonJS module: %v", err)
+	}
+	if out != "8|2" {
+		t.Fatalf("expected '8|2', got %q", out)
+	}
+}
+
+func TestJScriptRequireMissingModuleReportsJavaScriptRuntime(t *testing.T) {
+	dir := t.TempDir()
+	entryPath := filepath.Join(dir, "entry.js")
+	entrySrc := `require("./calculadora");`
+
+	if err := os.WriteFile(entryPath, []byte(entrySrc), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runJScriptModuleEntry(t, entryPath)
+	if err == nil {
+		t.Fatal("expected module-not-found error, got nil")
+	}
+	errText := err.Error()
+	if !strings.Contains(errText, "Cannot find module './calculadora'") {
+		t.Fatalf("expected module-not-found text, got: %v", err)
+	}
+	if !strings.Contains(errText, "Category: JavaScript runtime") {
+		t.Fatalf("expected JavaScript runtime category, got: %v", err)
+	}
+	if !strings.Contains(errText, "Source: JavaScript runtime error") {
+		t.Fatalf("expected JavaScript runtime source, got: %v", err)
+	}
+	if strings.Contains(errText, "VBScript runtime") {
+		t.Fatalf("did not expect VBScript runtime classification, got: %v", err)
+	}
+}
 
 // TestJScriptGlobalAndGlobalThis verifies that global and globalThis are aliases.
 func TestJScriptGlobalAndGlobalThis(t *testing.T) {

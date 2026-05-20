@@ -39,6 +39,7 @@ import (
 )
 
 const jsAsyncFSReadResultQueueSize = 256
+const jsCommonJSExportsCacheKey = "__js_cjs_exports"
 
 type jsAsyncFSReadResult struct {
 	promise    Value
@@ -48,6 +49,128 @@ type jsAsyncFSReadResult struct {
 	errMsg     string
 	asPromise  bool
 	callbackOk bool
+}
+
+// jsIsPathModuleSpecifier reports whether a require() specifier is a path-like import.
+func jsIsPathModuleSpecifier(specifier string) bool {
+	if specifier == "" {
+		return false
+	}
+	if filepath.IsAbs(specifier) {
+		return true
+	}
+	if strings.HasPrefix(specifier, "./") || strings.HasPrefix(specifier, "../") {
+		return true
+	}
+	if strings.HasPrefix(specifier, ".\\") || strings.HasPrefix(specifier, "..\\") {
+		return true
+	}
+	if strings.HasPrefix(specifier, "/") || strings.HasPrefix(specifier, "\\") {
+		return true
+	}
+	return false
+}
+
+// jsGetCommonJSModuleExports extracts module.exports from one cached CommonJS environment.
+func (vm *VM) jsGetCommonJSModuleExports(env *jsEnvFrame) Value {
+	if env == nil {
+		return Value{Type: VTJSUndefined}
+	}
+	if exportsVal, ok := env.bindings[jsCommonJSExportsCacheKey]; ok {
+		return exportsVal
+	}
+	moduleVal, ok := env.bindings["module"]
+	if !ok {
+		return Value{Type: VTJSUndefined}
+	}
+	exportsVal, deferred := vm.jsMemberGet(moduleVal, "exports")
+	if deferred {
+		return Value{Type: VTJSUndefined}
+	}
+	env.bindings[jsCommonJSExportsCacheKey] = exportsVal
+	return exportsVal
+}
+
+// jsRequireFileModule loads and executes a CommonJS module from disk.
+func (vm *VM) jsRequireFileModule(moduleName string) (Value, bool, bool) {
+	modulePath, err := vm.jsResolveModulePath(moduleName)
+	if err != nil {
+		return Value{Type: VTJSUndefined}, false, false
+	}
+
+	if env, ok := vm.jsModuleInstances[modulePath]; ok && env != nil {
+		return vm.jsGetCommonJSModuleExports(env), true, false
+	}
+
+	info, statErr := os.Stat(modulePath)
+	if statErr != nil || info.IsDir() {
+		return Value{Type: VTJSUndefined}, false, false
+	}
+
+	vm.ensureJSRootEnv()
+	rootEnvID := vm.jsActiveEnvID
+
+	exportsObjID := vm.allocJSID()
+	exportsObj := make(map[string]Value, 8)
+	vm.jsObjectItems[exportsObjID] = exportsObj
+	vm.jsPropertyItems[exportsObjID] = make(map[string]jsPropertyDescriptor, 8)
+	exportsVal := Value{Type: VTJSObject, Num: exportsObjID}
+
+	moduleObjID := vm.allocJSID()
+	moduleObj := make(map[string]Value, 4)
+	moduleObj["exports"] = exportsVal
+	vm.jsObjectItems[moduleObjID] = moduleObj
+	vm.jsPropertyItems[moduleObjID] = make(map[string]jsPropertyDescriptor, 4)
+	moduleVal := Value{Type: VTJSObject, Num: moduleObjID}
+
+	moduleEnvID := vm.allocJSID()
+	moduleEnv := &jsEnvFrame{parentID: rootEnvID, bindings: make(map[string]Value, 12)}
+	moduleEnv.bindings["module"] = moduleVal
+	moduleEnv.bindings["exports"] = exportsVal
+	moduleEnv.bindings["require"] = vm.jsCreateIntrinsicObject("", "require")
+	moduleEnv.bindings["__filename"] = NewString(modulePath)
+	moduleEnv.bindings["__dirname"] = NewString(filepath.Dir(modulePath))
+	vm.jsEnvItems[moduleEnvID] = moduleEnv
+	vm.jsModuleInstances[modulePath] = moduleEnv
+	vm.jsModuleLoading[modulePath] = struct{}{}
+	defer delete(vm.jsModuleLoading, modulePath)
+
+	cache := getExecuteScriptCache()
+	program, loadErr := cache.LoadOrCompile(modulePath)
+	if loadErr != nil {
+		delete(vm.jsModuleInstances, modulePath)
+		delete(vm.jsEnvItems, moduleEnvID)
+		vm.jsThrowReferenceError("Cannot load module '" + modulePath + "': " + loadErr.Error())
+		return Value{Type: VTJSUndefined}, true, true
+	}
+
+	startIP := vm.appendExecuteProgram(program.GlobalCount, program.Constants, program.Bytecode)
+	child := vm.cloneForExecuteGlobal(startIP)
+	child.engineMode = EngineModeJavaScript
+	child.sourceName = modulePath
+	child.baseSourceName = modulePath
+	child.jsActiveEnvID = moduleEnvID
+	if runErr := child.Run(); runErr != nil {
+		delete(vm.jsModuleInstances, modulePath)
+		delete(vm.jsEnvItems, moduleEnvID)
+		vm.jsThrowReferenceError("Error executing module '" + modulePath + "': " + runErr.Error())
+		return Value{Type: VTJSUndefined}, true, true
+	}
+
+	vm.nextDynamicNativeID = child.nextDynamicNativeID
+	vm.jsNextSymbolID = child.jsNextSymbolID
+	vm.jsRootEnvID = child.jsRootEnvID
+	if finalEnv, ok := vm.jsEnvItems[moduleEnvID]; ok && finalEnv != nil {
+		vm.jsModuleInstances[modulePath] = finalEnv
+		exportsFinal := vm.jsGetCommonJSModuleExports(finalEnv)
+		if exportsFinal.Type == VTJSUndefined {
+			finalEnv.bindings[jsCommonJSExportsCacheKey] = exportsVal
+			return exportsVal, true, false
+		}
+		return exportsFinal, true, false
+	}
+
+	return exportsVal, true, false
 }
 
 // jsNodeGetRootBinding reads one binding directly from the JS root environment.
@@ -77,6 +200,18 @@ func (vm *VM) jsRequire(args []Value) Value {
 	moduleName := strings.TrimSpace(vm.valueToString(args[0]))
 	if moduleName == "" {
 		vm.jsThrowTypeError("require expects a module name")
+		return Value{Type: VTJSUndefined}
+	}
+
+	if jsIsPathModuleSpecifier(moduleName) {
+		moduleVal, resolved, threw := vm.jsRequireFileModule(moduleName)
+		if threw {
+			return Value{Type: VTJSUndefined}
+		}
+		if resolved {
+			return moduleVal
+		}
+		vm.jsThrowReferenceError("Cannot find module '" + moduleName + "'")
 		return Value{Type: VTJSUndefined}
 	}
 
