@@ -152,6 +152,17 @@ func (c *Compiler) parseStatement() {
 			c.parseDoStatement()
 		case vbscript.KeywordFor:
 			c.parseForStatement()
+		case vbscript.KeywordGoto:
+			c.move()
+			var name string
+			if lit, ok := c.next.(*vbscript.DecIntegerLiteralToken); ok {
+				name = fmt.Sprintf("%d", lit.Value)
+				c.move()
+			} else {
+				name = c.expectIdentifier()
+			}
+			c.emitGoTo(name)
+			return
 		case vbscript.KeywordSub:
 			c.parseSubFunction(false)
 		case vbscript.KeywordFunction:
@@ -162,6 +173,10 @@ func (c *Compiler) parseStatement() {
 			c.move()
 			if c.matchKeywordOrIdentifier(vbscript.KeywordClass, "class") {
 				c.parseClassDeclaration()
+				return
+			}
+			if c.matchKeywordOrIdentifier(vbscript.KeywordEnd, "type") || strings.EqualFold(c.nextIdentifierName(), "type") {
+				c.parseTypeDeclaration()
 				return
 			}
 			if c.matchKeywordOrIdentifier(vbscript.KeywordConst, "const") {
@@ -321,6 +336,17 @@ func (c *Compiler) parseStatement() {
 			c.parseExpression(PrecNone)
 			c.emit(OpPop)
 		}
+	case *vbscript.DecIntegerLiteralToken:
+		// VB6 supports line numbers as labels
+		lit := c.next.(*vbscript.DecIntegerLiteralToken)
+		name := fmt.Sprintf("%d", lit.Value)
+		c.move()
+
+		if _, ok := c.next.(*vbscript.ColonLineTerminationToken); ok {
+			c.move() // Consume ':'
+			c.registerLabel(name)
+		}
+		return
 	case *vbscript.IdentifierToken, *vbscript.ExtendedIdentifierToken, *vbscript.KeywordOrIdentifierToken:
 		var name string
 		switch t := c.next.(type) {
@@ -334,8 +360,19 @@ func (c *Compiler) parseStatement() {
 
 		c.move()
 
+		if _, ok := c.next.(*vbscript.ColonLineTerminationToken); ok {
+			c.move() // Consume ':'
+			c.registerLabel(name)
+			return
+		}
+
 		if strings.EqualFold(name, "Option") {
 			c.parseOptionStatementAfterOptionKeyword()
+			return
+		}
+
+		if strings.EqualFold(name, "Type") {
+			c.parseTypeDeclaration()
 			return
 		}
 
@@ -428,6 +465,18 @@ func (c *Compiler) parseStatement() {
 
 			// Property assignment: obj.Prop = value
 			if peq, ok := c.next.(*vbscript.PunctuationToken); ok && peq.Type == vbscript.PunctEqual {
+				// Check if target is a known UDT to use fast OpSetRecordMember
+				udtName, isUDT := c.lastEmittedUDTNameFromOp()
+				if isUDT && len(memberChain) == 1 {
+					memberIdx, _, _, found := c.getUDTMemberIndex(udtName, memberName)
+					if found {
+						c.move() // Consume '='
+						c.parseExpression(PrecNone)
+						c.emit(OpSetRecordMember, memberIdx)
+						return
+					}
+				}
+
 				setMemberName := flatMemberName
 				if len(memberChain) > 1 {
 					for i := 0; i < len(memberChain)-1; i++ {
@@ -1288,12 +1337,17 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	prevConstLocals := c.constLocals
 	prevClassName := c.currentClassName
 	prevFunctionName := c.currentFunctionName
+	prevLabelMap := c.labelMap
+	prevForwardLabelPatches := c.forwardLabelPatches
 
 	c.isLocal = true
 	c.currentClassName = className
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
+	c.labelMap = make(map[string]int)
+	c.forwardLabelPatches = make(map[string][]int)
+
 	if isFunc {
 		c.currentFunctionName = methodName
 	} else {
@@ -1378,12 +1432,20 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 		UserSubConstID: placeholder,
 	})
 
+	if len(c.forwardLabelPatches) > 0 {
+		for label := range c.forwardLabelPatches {
+			panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Label '%s' not defined in method '%s.%s'", label, className, methodName)))
+		}
+	}
+
 	c.isLocal = prevIsLocal
 	c.currentClassName = prevClassName
 	c.locals = prevLocals
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
 	c.currentFunctionName = prevFunctionName
+	c.labelMap = prevLabelMap
+	c.forwardLabelPatches = prevForwardLabelPatches
 }
 
 // parseClassPropertyDeclaration compiles one class Property Get/Let/Set body and validates signatures.
@@ -1429,12 +1491,17 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	prevConstLocals := c.constLocals
 	prevClassName := c.currentClassName
 	prevFunctionName := c.currentFunctionName
+	prevLabelMap := c.labelMap
+	prevForwardLabelPatches := c.forwardLabelPatches
 
 	c.isLocal = true
 	c.currentClassName = className
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
+	c.labelMap = make(map[string]int)
+	c.forwardLabelPatches = make(map[string][]int)
+
 	if isFunction {
 		c.currentFunctionName = propertyName
 	} else {
@@ -1486,6 +1553,12 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 
 	c.patchJump(jumpOverBody)
 
+	if len(c.forwardLabelPatches) > 0 {
+		for label := range c.forwardLabelPatches {
+			panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Label '%s' not defined in property '%s.%s'", label, className, propertyName)))
+		}
+	}
+
 	c.registerClassPropertyDeclaration(className, propertyName, isPublic, accessorKind, len(params), placeholder)
 
 	classNameIdx := c.addConstant(NewString(className))
@@ -1521,6 +1594,8 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
 	c.currentFunctionName = prevFunctionName
+	c.labelMap = prevLabelMap
+	c.forwardLabelPatches = prevForwardLabelPatches
 }
 
 // registerClassPropertyDeclaration validates and stores one Property accessor metadata entry.
@@ -1688,7 +1763,7 @@ func (c *Compiler) parseScopedVariableDeclaration() {
 		c.declareVar(name)
 
 		// Parse optional VB6 As Type clause.
-		declaredType := c.parseAsTypeClause()
+		declaredType, udtName := c.parseAsTypeClause()
 
 		if c.tryParseArrayDeclaration(name) {
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
@@ -1701,7 +1776,7 @@ func (c *Compiler) parseScopedVariableDeclaration() {
 		}
 
 		// Emit type initialization opcode if As Type was specified.
-		c.emitTypedInit(name, declaredType)
+		c.emitTypedInit(name, declaredType, udtName)
 
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
 			c.move()
@@ -1755,34 +1830,50 @@ func (c *Compiler) matchAsKeyword() bool {
 	}
 }
 
-// parseAsTypeClause checks for an optional "As Type" clause and returns the declared type.
-// Returns VTEmpty if no "As" clause is present (meaning Variant/no constraint).
-// If "As" is present but the type name is invalid, it panics with a compile error.
-func (c *Compiler) parseAsTypeClause() ValueType {
+// parseAsTypeClause checks for an optional "As Type" clause and returns the declared type and UDT name if applicable.
+func (c *Compiler) parseAsTypeClause() (ValueType, string) {
 	if !c.matchAsKeyword() {
-		return VTEmpty // No type declared = Variant
+		return VTEmpty, "" // No type declared = Variant
 	}
 	c.move() // consume "As"
 	typeName := c.expectIdentifier()
 	declaredType, ok := vb6TypeNameToValueType(typeName)
-	if !ok {
-		panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Invalid type name '%s' in As clause. Expected Integer, Long, Single, Double, String, Boolean, Byte, Object, or Variant.", typeName)))
+	if ok {
+		return declaredType, ""
 	}
-	return declaredType
+	// Check if it's a UDT
+	if _, exists := c.recordDeclLookup[strings.ToLower(typeName)]; exists {
+		return VTRecord, typeName
+	}
+	panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Invalid type name '%s' in As clause. Expected Integer, Long, Single, Double, String, Boolean, Byte, Object, Variant, or a User-Defined Type.", typeName)))
 }
 
 // emitTypedInit records a VB6 As Type declaration for a variable in the compiler's type maps.
-// The VM reads this metadata during initialization via NewVMFromCompiler.
-// If declaredType is VTEmpty (Variant / no As clause), nothing is recorded.
-func (c *Compiler) emitTypedInit(name string, declaredType ValueType) {
+func (c *Compiler) emitTypedInit(name string, declaredType ValueType, udtName string) {
 	if declaredType == VTEmpty {
 		return // No type declaration, standard variant behavior
 	}
 	lower := strings.ToLower(name)
 	if c.isLocal {
 		c.localVarTypes[lower] = declaredType
+		if declaredType == VTRecord {
+			c.localRecordTypes[lower] = udtName
+		}
 	} else {
 		c.globalVarTypes[lower] = declaredType
+		if declaredType == VTRecord {
+			c.globalRecordTypes[lower] = udtName
+		}
+	}
+
+	// If it's a UDT, we also need to emit an initialization opcode to allocate the record.
+	if declaredType == VTRecord {
+		udtIdx, ok := c.recordDeclLookup[strings.ToLower(udtName)]
+		if ok {
+			c.emit(OpInitRecord, udtIdx)
+			op, idx := c.resolveSetVar(name)
+			c.emit(OpSet, int(op), idx) // Use OpSet to assign the record instance
+		}
 	}
 }
 
@@ -1793,7 +1884,7 @@ func (c *Compiler) parseDimStatement() {
 		c.declareVar(name)
 
 		// Parse optional VB6 As Type clause.
-		declaredType := c.parseAsTypeClause()
+		declaredType, udtName := c.parseAsTypeClause()
 
 		if c.tryParseArrayDeclaration(name) {
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
@@ -1806,7 +1897,7 @@ func (c *Compiler) parseDimStatement() {
 		}
 
 		// Emit type initialization opcode if As Type was specified.
-		c.emitTypedInit(name, declaredType)
+		c.emitTypedInit(name, declaredType, udtName)
 
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
 			c.move()
@@ -2801,11 +2892,16 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	prevDeclared := c.declaredLocals
 	prevConstLocals := c.constLocals
 	prevFunctionName := c.currentFunctionName
+	prevLabelMap := c.labelMap
+	prevForwardLabelPatches := c.forwardLabelPatches
 
 	c.isLocal = true
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
+	c.labelMap = make(map[string]int)
+	c.forwardLabelPatches = make(map[string][]int)
+
 	if isFunc {
 		c.currentFunctionName = name
 	} else {
@@ -2841,6 +2937,12 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 
 	c.constants[placeholder] = NewUserSub(entryPoint, len(params), c.locals.Count(), isFunc, byRefMaskSub, c.locals.names)
 
+	if len(c.forwardLabelPatches) > 0 {
+		for label := range c.forwardLabelPatches {
+			panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Label '%s' not defined in procedure '%s'", label, name)))
+		}
+	}
+
 	if isFunc {
 		c.emit(OpGetLocal, returnIdx)
 	} else {
@@ -2856,6 +2958,8 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
 	c.currentFunctionName = prevFunctionName
+	c.labelMap = prevLabelMap
+	c.forwardLabelPatches = prevForwardLabelPatches
 }
 
 // hoistProcedureDimDeclarations predeclares late Dim names so one procedure keeps
@@ -3088,6 +3192,69 @@ func (c *Compiler) parseForToStatementFastPathGlobal(
 
 // sub-expressions with their own & are compiled normally (they still produce a
 // single Value via the regular OpConcat path inside parseExpression).
+func (c *Compiler) expectStatementEnd() {
+	if c.isStatementEnd() {
+		// Only move if it's not EOF or CodeEnd (which we want to keep for the main loop)
+		switch c.next.(type) {
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+			c.move()
+		}
+		return
+	}
+	panic(c.vbCompileError(vbscript.SyntaxError, "Expected end of statement"))
+}
+
+func (c *Compiler) parseTypeDeclaration() {
+	if c.isLocal || c.currentClassName != "" {
+		panic(c.vbCompileError(vbscript.SyntaxError, "Type declaration is only allowed in global scope"))
+	}
+	if strings.EqualFold(c.nextIdentifierName(), "type") {
+		c.move() // Consume "Type" when it is still the current token.
+	}
+	typeName := c.expectIdentifier()
+	lowerTypeName := strings.ToLower(typeName)
+
+	if _, exists := c.recordDeclLookup[lowerTypeName]; exists {
+		panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Type '%s' already defined", typeName)))
+	}
+
+	decl := CompiledRecordDecl{
+		Name:    typeName,
+		Members: make([]CompiledRecordMemberDecl, 0),
+	}
+
+	c.expectStatementEnd()
+
+	for !c.matchEof() {
+		switch c.next.(type) {
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+			c.move()
+			continue
+		}
+		if c.matchKeywordOrIdentifier(vbscript.KeywordEnd, "end") {
+			c.move()
+			if strings.EqualFold(c.nextIdentifierName(), "type") {
+				c.move()
+				break
+			}
+			panic(c.vbCompileError(vbscript.ExpectedEnd, "Expected 'End Type'"))
+		}
+
+		memberName := c.expectIdentifier()
+		declaredType, udtName := c.parseAsTypeClause()
+
+		decl.Members = append(decl.Members, CompiledRecordMemberDecl{
+			Name:    memberName,
+			Type:    declaredType,
+			UDTName: udtName,
+		})
+		c.expectStatementEnd()
+	}
+
+	c.recordDeclLookup[lowerTypeName] = len(c.recordDecls)
+	c.recordDecls = append(c.recordDecls, decl)
+}
+
 func (c *Compiler) parseResponseWriteFlatChain() int {
 	// Parse the first operand using PrecTerm (= PrecConcat+1) so that the
 	// recursive descent stops at the outermost & without consuming it.

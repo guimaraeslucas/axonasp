@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -56,6 +57,57 @@ var (
 type SearchIndex struct {
 	indexPath string
 	docsPath  string
+}
+
+// canonicalIndexPath normalizes a path so containment checks are stable across relative paths and separators.
+func canonicalIndexPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return ""
+	}
+	absPath, err := filepath.Abs(trimmed)
+	if err != nil {
+		absPath = trimmed
+	}
+	cleaned := filepath.Clean(absPath)
+	if resolved, err := filepath.EvalSymlinks(cleaned); err == nil {
+		cleaned = resolved
+	}
+	return cleaned
+}
+
+// pathWithin reports whether candidate is inside or equal to root.
+func pathWithin(root, candidate string) bool {
+	rootPath := canonicalIndexPath(root)
+	candidatePath := canonicalIndexPath(candidate)
+	if rootPath == "" || candidatePath == "" {
+		return false
+	}
+
+	if runtime.GOOS == "windows" {
+		rootPath = strings.ToLower(rootPath)
+		candidatePath = strings.ToLower(candidatePath)
+	}
+
+	if candidatePath == rootPath {
+		return true
+	}
+
+	sep := string(os.PathSeparator)
+	if !strings.HasSuffix(rootPath, sep) {
+		rootPath += sep
+	}
+
+	return strings.HasPrefix(candidatePath, rootPath)
+}
+
+// canonicalDocLookupPath resolves one documentation path relative to the configured docs root.
+func canonicalDocLookupPath(root string, relPath string) string {
+	trimmed := strings.TrimSpace(relPath)
+	if trimmed == "" {
+		return ""
+	}
+	return canonicalIndexPath(filepath.Join(root, filepath.FromSlash(trimmed)))
 }
 
 // init loads environment variables and applies TOML-based configuration through Viper.
@@ -100,6 +152,9 @@ func applyMCPConfigValues(v *viper.Viper) {
 
 // Rebuild clears and recreates the Bluge index by scanning the documentation directory.
 func (s *SearchIndex) Rebuild() error {
+	s.indexPath = canonicalIndexPath(s.indexPath)
+	s.docsPath = canonicalIndexPath(s.docsPath)
+
 	fmt.Fprintf(os.Stderr, "[G3pix AxonASP MCP] Rebuilding index at %s from %s...\n", s.indexPath, s.docsPath)
 
 	// Remove old index
@@ -164,8 +219,8 @@ func (s *SearchIndex) walkAndIndex(writer *bluge.Writer, absPath, relPath string
 		}
 
 		if isDir {
-			// Skip the index directory itself if it happens to be inside docsPath
-			if strings.Contains(filepath.ToSlash(entryAbs), "mcp/search-index") {
+			// Skip the index directory subtree when it lives inside the docs tree.
+			if pathWithin(s.indexPath, entryAbs) {
 				continue
 			}
 			if err := s.walkAndIndex(writer, entryAbs, entryRel, visited, depth+1); err != nil {
@@ -272,10 +327,14 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 	// Build the response in Markdown format
 	var responseBuilder strings.Builder
-	responseBuilder.WriteString(fmt.Sprintf("The best matches for your search '%s'. You must select a file path and use the 'read_axonasp_doc' tool to see the full content and implementation details. ALWAYS prioritize existing server-side implementations over recreating Classic ASP code from scratch; for example, strictly use the native G3JSON object for JSON manipulation rather than raw parsing or custom ASP classes. Furthermore, you must adhere to standard Classic ASP coding patterns by avoiding single-line syntax where distinct lines are required, and always explicitly closing conditional blocks with 'End If':\n\n", queryTerm))
+	responseBuilder.WriteString(fmt.Sprintf("Ranked manual matches for '%s'. Step 1: inspect the snippet of the most probable match below. Step 2: choose a returned path and call 'read_axonasp_doc' to receive the full Markdown content. Do not browse the workspace or manual folders directly when this tool returns a likely match. ALWAYS prioritize existing server-side implementations over recreating Classic ASP code from scratch; for example, strictly use the native G3JSON object for JSON manipulation rather than raw parsing or custom ASP classes. Furthermore, you must adhere to standard Classic ASP coding patterns by avoiding single-line syntax where distinct lines are required, and always explicitly closing conditional blocks with 'End If':\n\n", queryTerm))
 
 	for i, res := range results {
-		responseBuilder.WriteString(fmt.Sprintf("### Match %d: %s\n", i+1, res.Path))
+		heading := fmt.Sprintf("Match %d", i+1)
+		if i == 0 {
+			heading = "Most probable match"
+		}
+		responseBuilder.WriteString(fmt.Sprintf("### %s: %s\n", heading, res.Path))
 		responseBuilder.WriteString(fmt.Sprintf("- **Score:** %.4f\n", res.Score))
 		responseBuilder.WriteString(fmt.Sprintf("- **Snippet:** %s\n\n", res.Snippet))
 	}
@@ -296,15 +355,14 @@ func readDocHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	}
 
 	// Construct full path and validate security
-	fullPath := filepath.Join(docFilePath, filepath.FromSlash(relPath))
-	absDocs, _ := filepath.Abs(docFilePath)
-	absFile, _ := filepath.Abs(fullPath)
+	absDocs := canonicalIndexPath(docFilePath)
+	absFile := canonicalDocLookupPath(docFilePath, relPath)
 
-	if !strings.HasPrefix(absFile, absDocs) {
+	if !pathWithin(absDocs, absFile) || absDocs == "" || absFile == "" {
 		return mcp.NewToolResultError("Security error: requested path is outside the documentation directory."), nil
 	}
 
-	content, err := os.ReadFile(fullPath)
+	content, err := os.ReadFile(absFile)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to read documentation file: %v", err)), nil
 	}
@@ -355,14 +413,14 @@ func main() {
 	// 1. Instantiate the MCP Server
 	s := server.NewMCPServer(
 		"G3pix AxonASP Docs",
-		"1.1.0",
+		"2.2.0",
 		server.WithPromptCapabilities(true),
 	)
 
 	// 2. Register Search Tool
 	searchTool := mcp.NewTool(
 		"search_axonasp_docs",
-		mcp.WithDescription("Search for AxonASP built-in functions, custom objects, and libraries. Returns a list of matching file paths and snippets. Use english keywords."),
+		mcp.WithDescription("Step 1 of 2 for AxonASP manual lookup. Search manual pages, examples, runtime docs, built-in functions, custom objects, and libraries. Returns ranked file paths and snippets only; then call read_axonasp_doc to receive the full Markdown content. Do not browse workspace files directly. Use english keywords."),
 		mcp.WithString("query", mcp.Required(), mcp.Description("Search term or action (e.g., G3JSON, database connection).")),
 	)
 	s.AddTool(searchTool, searchHandler)
@@ -370,7 +428,7 @@ func main() {
 	// 3. Register Read Tool
 	readTool := mcp.NewTool(
 		"read_axonasp_doc",
-		mcp.WithDescription("Read the full content of a documentation file using the path obtained from search results."),
+		mcp.WithDescription("Step 2 of 2 for AxonASP manual lookup. Read the full Markdown content of a documentation file using the path returned by search_axonasp_docs. Use this instead of browsing the manual folder directly."),
 		mcp.WithString("path", mcp.Required(), mcp.Description("The relative path of the file (e.g., libraries/g3json/overview.md).")),
 	)
 	s.AddTool(readTool, readDocHandler)

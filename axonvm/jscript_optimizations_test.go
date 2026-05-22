@@ -98,22 +98,22 @@ func TestJScriptIntegerArithmeticSpecialization(t *testing.T) {
 	}
 
 	bytecode := compiler.Bytecode()
-	hasAddInt := false
-	hasSubInt := false
+	hasAdd := false
+	hasSub := false
 	for i := 0; i < len(bytecode); i++ {
 		op := OpCode(bytecode[i])
-		if op == OpJSAddInt {
-			hasAddInt = true
+		if op == OpJSAdd {
+			hasAdd = true
 		}
-		if op == OpJSSubInt {
-			hasSubInt = true
+		if op == OpJSSubtract {
+			hasSub = true
 		}
 	}
-	if !hasAddInt {
-		t.Errorf("expected OpJSAddInt in bytecode")
+	if !hasAdd {
+		t.Errorf("expected OpJSAdd in bytecode")
 	}
-	if !hasSubInt {
-		t.Errorf("expected OpJSSubInt in bytecode")
+	if !hasSub {
+		t.Errorf("expected OpJSSubtract in bytecode")
 	}
 
 	out := runASPSourceForTest(t, source)

@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"g3pix.com.br/axonasp/axonvm/asp"
@@ -501,6 +502,9 @@ type VM struct {
 	dynamicProgramStarts map[uint64]int  // Per-VM start offsets for already-appended cached dynamic fragments.
 	jsStringWorkBytes    int64           // Per-run cumulative bytes produced by JScript string operations.
 
+	RecordDecls      []CompiledRecordDecl
+	RecordDeclLookup map[string]int
+
 	baseBytecode         []byte
 	baseConstants        []Value
 	baseGlobals          []Value
@@ -560,6 +564,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		globalZeroArgFuncs:             make(map[string]bool),
 		dynamicProgramStarts:           make(map[uint64]int, 32),
 		globalNameIndex:                make(map[string]int, globalCount),
+		RecordDeclLookup:               make(map[string]int),
 		startTime:                      time.Now(),
 		argBuffer:                      make([]Value, 0, 16),
 		indexBuffer:                    make([]Value, 0, 16),
@@ -780,6 +785,13 @@ func NewVMFromCompiler(compiler *Compiler) *VM {
 	vm.applyGlobalVarTypes(compiler.GlobalVarTypes())
 	// Apply VB6 As Type declarations for local variables (function-scoped).
 	vm.applyLocalVarTypes(compiler)
+
+	// Copy UDT declarations
+	vm.RecordDecls = append(vm.RecordDecls[:0], compiler.recordDecls...)
+	for k, v := range compiler.recordDeclLookup {
+		vm.RecordDeclLookup[k] = v
+	}
+
 	vm.captureBaseProgramState()
 	return vm
 }
@@ -959,8 +971,9 @@ func opcodeOperandSize(op OpCode) int {
 		OpRegisterClass,
 		OpGetGlobal, OpSetGlobal, OpEraseGlobal, OpGetLocal, OpSetLocal, OpEraseLocal,
 		OpArgGlobalRef, OpArgLocalRef,
-		OpLetGlobal, OpLetLocal, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt, OpJSIncLocalInt, OpJSDecLocalInt,
+		OpLetGlobal, OpLetLocal,
 		OpCall,
+		OpInitRecord, OpGetRecordMember, OpSetRecordMember,
 		OpJSDeclareName, OpJSGetName, OpJSSetName, OpJSGetLocal, OpJSSetLocal, OpJSIncLocal, OpJSDecLocal,
 		OpJSRootFrameEnter, OpJSRootFrameLeave,
 		OpJSCreateClosure, OpJSCall, OpJSTailCall, OpJSCallComputedMember, OpJSTailCallComputedMember, OpJSNewArray, OpJSSuperCall,
@@ -973,8 +986,8 @@ func opcodeOperandSize(op OpCode) int {
 		OpJSSuperMemberGet, OpJSSuperMemberSet, OpJSSuperCallComputedMember,
 		OpJSExportAll:
 		return 2
-	// 4-byte operands (for jump targets)
-	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
+	// 4-byte operands
+	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel, OpSet,
 		OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,
 		OpJSJumpIfNullish, OpJSJumpIfNotNullish, OpJSJumpIfNotUndefined,
 		OpJSCase, OpJSDefault, OpJSBreak, OpJSContinue, OpJSForInCleanup, OpJSForOfCleanup:
@@ -1926,6 +1939,51 @@ aspExecLoop:
 				vm.incrementObjectRefCount(newVal)
 			}
 
+		case OpSet:
+			// OpSet destOp(16) destIdx(16)
+			destOp := OpCode(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+			vm.ip += 2
+			destIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			newVal := vm.pop()
+
+			if destOp == OpSetGlobal {
+				if int(destIdx) < len(vm.globalTypes) && vm.globalTypes[destIdx] != VTEmpty {
+					coerced, err := vm.coerceToDeclaredType(newVal, vm.globalTypes[destIdx])
+					if err != nil {
+						vm.raise(vbscript.TypeMismatch, err.Error())
+						continue
+					}
+					newVal = coerced
+				}
+				if vm.Globals[destIdx].Type == VTObject {
+					vm.decrementObjectRefCount(vm.Globals[destIdx])
+				}
+				vm.Globals[destIdx] = newVal
+				if newVal.Type == VTObject {
+					vm.incrementObjectRefCount(newVal)
+				}
+			} else if destOp == OpSetLocal {
+				slot := vm.fp + int(destIdx)
+				if declaredType := vm.localTypes[slot]; declaredType != VTEmpty {
+					coerced, err := vm.coerceToDeclaredType(newVal, declaredType)
+					if err != nil {
+						vm.raise(vbscript.TypeMismatch, err.Error())
+						continue
+					}
+					newVal = coerced
+				}
+				if vm.stack[slot].Type == VTObject {
+					vm.decrementObjectRefCount(vm.stack[slot])
+				}
+				vm.stack[slot] = newVal
+				if newVal.Type == VTObject {
+					vm.incrementObjectRefCount(newVal)
+				}
+			} else {
+				vm.raise(vbscript.InternalError, "Invalid OpSet destination")
+			}
+
 		case OpIncLocalInt:
 			offset := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
@@ -2779,6 +2837,26 @@ aspExecLoop:
 				vm.push(Value{Type: VTEmpty})
 				continue
 			}
+
+			if target.Type == VTRecord && target.Rec != nil {
+				memberName := member.String()
+				def := vm.RecordDecls[target.Rec.DefIdx]
+				found := false
+				for i, m := range def.Members {
+					if strings.EqualFold(m.Name, memberName) {
+						vm.push(target.Rec.Members[i])
+						found = true
+						break
+					}
+				}
+				if found {
+					continue
+				}
+				vm.raise(vbscript.ObjectDoesntSupportThisPropertyOrMethod, "Member not found in UDT: "+memberName)
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
+
 			if target.Type != VTNativeObject {
 				vm.raise(vbscript.CouldNotFindTargetObject, "Object required")
 				vm.push(Value{Type: VTEmpty})
@@ -2795,6 +2873,50 @@ aspExecLoop:
 				continue
 			}
 			vm.push(Value{Type: VTObject, Num: vm.activeClassObjectID})
+
+		case OpInitRecord:
+			defIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			if int(defIdx) >= len(vm.RecordDecls) {
+				vm.raise(vbscript.InternalError, "Invalid UDT definition index")
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
+			decl := vm.RecordDecls[defIdx]
+			rec := vm.acquireRecord(len(decl.Members))
+			rec.DefIdx = int(defIdx)
+			vm.push(Value{Type: VTRecord, Rec: rec})
+
+		case OpGetRecordMember:
+			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			recVal := vm.pop()
+			if recVal.Type != VTRecord || recVal.Rec == nil {
+				vm.raise(vbscript.CouldNotFindTargetObject, "UDT required for GetRecordMember")
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
+			if int(memberIdx) >= len(recVal.Rec.Members) {
+				vm.raise(vbscript.InternalError, "Invalid UDT member index")
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
+			vm.push(recVal.Rec.Members[memberIdx])
+
+		case OpSetRecordMember:
+			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+			rhs := vm.pop()
+			recVal := vm.pop()
+			if recVal.Type != VTRecord || recVal.Rec == nil {
+				vm.raise(vbscript.CouldNotFindTargetObject, "UDT required for SetRecordMember")
+				continue
+			}
+			if int(memberIdx) >= len(recVal.Rec.Members) {
+				vm.raise(vbscript.InternalError, "Invalid UDT member index")
+				continue
+			}
+			recVal.Rec.Members[memberIdx] = rhs
 
 		case OpMemberSet, OpMemberSetSet:
 			// OpMemberSet: [OpCode, ConstMemberIdxHigh, ConstMemberIdxLow]
@@ -2817,6 +2939,20 @@ aspExecLoop:
 					continue
 				}
 				vm.raise(vbscript.WrongNumberOfParameters, "Wrong number of parameters or invalid property assignment")
+			} else if target.Type == VTRecord && target.Rec != nil {
+				memberName := vm.constants[memberIdx].Str
+				def := vm.RecordDecls[target.Rec.DefIdx]
+				found := false
+				for i, m := range def.Members {
+					if strings.EqualFold(m.Name, memberName) {
+						target.Rec.Members[i] = value
+						found = true
+						break
+					}
+				}
+				if !found {
+					vm.raise(vbscript.ObjectDoesntSupportThisPropertyOrMethod, "Member not found in UDT: "+memberName)
+				}
 			} else if target.Type == VTNativeObject {
 				vm.dispatchMemberSet(target.Num, vm.constants[memberIdx].Str, value)
 			} else {
@@ -3193,8 +3329,13 @@ aspExecLoop:
 			v := &vm.stack[slot]
 			switch v.Type {
 			case VTInteger:
-				v.Num++
-				val = *v
+				if next, ok := jsAddIntegersNoOverflow(v.Num, 1); ok {
+					v.Num = next
+					val = *v
+				} else {
+					val = NewDouble(float64(v.Num) + 1)
+					vm.stack[slot] = val
+				}
 			case VTDouble:
 				v.Flt++
 				val = *v
@@ -3212,8 +3353,13 @@ aspExecLoop:
 			v := &vm.stack[slot]
 			switch v.Type {
 			case VTInteger:
-				v.Num--
-				val = *v
+				if next, ok := jsSubtractIntegersNoOverflow(v.Num, 1); ok {
+					v.Num = next
+					val = *v
+				} else {
+					val = NewDouble(float64(v.Num) - 1)
+					vm.stack[slot] = val
+				}
 			case VTDouble:
 				v.Flt--
 				val = *v
@@ -3472,6 +3618,14 @@ aspExecLoop:
 
 		case OpJSAdd:
 			b, a := vm.pop(), vm.pop()
+			if a.Type == VTInteger && b.Type == VTInteger {
+				if sum, ok := jsAddIntegersNoOverflow(a.Num, b.Num); ok {
+					vm.push(NewInteger(sum))
+					break
+				}
+				vm.push(NewDouble(float64(a.Num) + float64(b.Num)))
+				break
+			}
 			vm.push(vm.jsAdd(a, b))
 
 		case OpJSStrictEq:
@@ -3652,44 +3806,6 @@ aspExecLoop:
 
 		case OpJSPop:
 			vm.pop()
-
-		case OpJSAddInt:
-			b, a := vm.pop(), vm.pop()
-			if a.Type == VTInteger && b.Type == VTInteger {
-				if res, ok := jsAddIntegersNoOverflow(a.Num, b.Num); ok {
-					vm.push(NewInteger(res))
-					break
-				}
-			}
-			vm.push(vm.jsAdd(a, b))
-
-		case OpJSSubInt:
-			b, a := vm.pop(), vm.pop()
-			if a.Type == VTInteger && b.Type == VTInteger {
-				if res, ok := jsSubtractIntegersNoOverflow(a.Num, b.Num); ok {
-					vm.push(NewInteger(res))
-					break
-				}
-			}
-			vm.push(vm.jsSubtract(a, b))
-
-		case OpJSIncInt:
-			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
-			vm.ip += 2
-			nameStr := vm.constants[nameIdx].Str
-			current := vm.jsGetName(nameStr)
-			var newVal Value
-			if current.Type == VTInteger {
-				if next, ok := jsAddIntegersNoOverflow(current.Num, 1); ok {
-					newVal = NewInteger(next)
-				} else {
-					newVal = NewDouble(float64(current.Num) + 1)
-				}
-			} else {
-				newVal = vm.jsIncrementNumberValue(current)
-			}
-			vm.jsSetName(nameStr, newVal)
-			vm.push(newVal)
 
 		case OpJSMathSin:
 			vm.push(NewDouble(math.Sin(vm.jsToNumber(vm.pop()).Flt)))
@@ -3973,6 +4089,14 @@ aspExecLoop:
 		case OpJSSubtract:
 			right := vm.pop()
 			left := vm.pop()
+			if left.Type == VTInteger && right.Type == VTInteger {
+				if diff, ok := jsSubtractIntegersNoOverflow(left.Num, right.Num); ok {
+					vm.push(NewInteger(diff))
+					break
+				}
+				vm.push(NewDouble(float64(left.Num) - float64(right.Num)))
+				break
+			}
 			result := vm.jsSubtract(left, right)
 			vm.push(result)
 
@@ -4102,7 +4226,19 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsIncrementNumberValue(oldVal)
+			newVal := oldVal
+			switch oldVal.Type {
+			case VTInteger:
+				if next, ok := jsAddIntegersNoOverflow(oldVal.Num, 1); ok {
+					newVal.Num = next
+				} else {
+					newVal = NewDouble(float64(oldVal.Num) + 1)
+				}
+			case VTDouble:
+				newVal.Flt++
+			default:
+				newVal = vm.jsIncrementNumberValue(oldVal)
+			}
 			vm.jsSetName(nameStr, newVal)
 			vm.push(oldVal)
 
@@ -4111,7 +4247,19 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsDecrementNumberValue(oldVal)
+			newVal := oldVal
+			switch oldVal.Type {
+			case VTInteger:
+				if next, ok := jsSubtractIntegersNoOverflow(oldVal.Num, 1); ok {
+					newVal.Num = next
+				} else {
+					newVal = NewDouble(float64(oldVal.Num) - 1)
+				}
+			case VTDouble:
+				newVal.Flt--
+			default:
+				newVal = vm.jsDecrementNumberValue(oldVal)
+			}
 			vm.jsSetName(nameStr, newVal)
 			vm.push(oldVal)
 
@@ -4120,7 +4268,19 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsIncrementNumberValue(oldVal)
+			newVal := oldVal
+			switch oldVal.Type {
+			case VTInteger:
+				if next, ok := jsAddIntegersNoOverflow(oldVal.Num, 1); ok {
+					newVal.Num = next
+				} else {
+					newVal = NewDouble(float64(oldVal.Num) + 1)
+				}
+			case VTDouble:
+				newVal.Flt++
+			default:
+				newVal = vm.jsIncrementNumberValue(oldVal)
+			}
 			vm.jsSetName(nameStr, newVal)
 			vm.push(newVal)
 
@@ -4129,7 +4289,19 @@ aspExecLoop:
 			vm.ip += 2
 			nameStr := vm.constants[nameIdx].Str
 			oldVal := vm.jsGetName(nameStr)
-			newVal := vm.jsDecrementNumberValue(oldVal)
+			newVal := oldVal
+			switch oldVal.Type {
+			case VTInteger:
+				if next, ok := jsSubtractIntegersNoOverflow(oldVal.Num, 1); ok {
+					newVal.Num = next
+				} else {
+					newVal = NewDouble(float64(oldVal.Num) - 1)
+				}
+			case VTDouble:
+				newVal.Flt--
+			default:
+				newVal = vm.jsDecrementNumberValue(oldVal)
+			}
 			vm.jsSetName(nameStr, newVal)
 			vm.push(newVal)
 
@@ -7826,6 +7998,8 @@ func (vm *VM) zeroValueForType(t ValueType) Value {
 		return Value{Type: VTBool, Num: 0}
 	case VTObject:
 		return Value{Type: VTNothing}
+	case VTRecord:
+		return Value{Type: VTRecord} // Requires initialization via OpInitRecord
 	default:
 		return Value{Type: VTEmpty}
 	}
@@ -7837,6 +8011,13 @@ func (vm *VM) coerceToDeclaredType(v Value, declaredType ValueType) (Value, erro
 	if v.Type == VTEmpty || v.Type == VTNull {
 		// Empty/Null can be assigned to any typed variable as the zero value.
 		return vm.zeroValueForType(declaredType), nil
+	}
+
+	if declaredType == VTRecord {
+		if v.Type == VTRecord {
+			return v, nil
+		}
+		return Value{}, fmt.Errorf("Type mismatch: expected Record")
 	}
 
 	switch declaredType {
@@ -8070,4 +8251,48 @@ func (vm *VM) StackTop() Value {
 		return Value{Type: VTEmpty}
 	}
 	return vm.stack[vm.sp]
+}
+
+var recordPool = sync.Pool{
+	New: func() interface{} {
+		return &VBRecord{}
+	},
+}
+
+func (vm *VM) acquireRecord(size int) *VBRecord {
+	rec := recordPool.Get().(*VBRecord)
+	if cap(rec.Members) < size {
+		rec.Members = make([]Value, size)
+	} else {
+		rec.Members = rec.Members[:size]
+		// Clear values to avoid leaks or stale data
+		for i := range rec.Members {
+			rec.Members[i] = Value{}
+		}
+	}
+	return rec
+}
+
+// releaseRecordValue releases one VTRecord value (including nested records) back to the record pool.
+func (vm *VM) releaseRecordValue(v Value) {
+	if v.Type != VTRecord || v.Rec == nil {
+		return
+	}
+	vm.releaseRecord(v.Rec)
+}
+
+// releaseRecord returns one UDT record instance and nested members to the record pool.
+func (vm *VM) releaseRecord(rec *VBRecord) {
+	if rec == nil {
+		return
+	}
+	for i := range rec.Members {
+		if rec.Members[i].Type == VTRecord && rec.Members[i].Rec != nil {
+			vm.releaseRecord(rec.Members[i].Rec)
+		}
+		rec.Members[i] = Value{}
+	}
+	rec.DefIdx = 0
+	rec.Members = rec.Members[:0]
+	recordPool.Put(rec)
 }

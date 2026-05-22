@@ -54,6 +54,9 @@
 * Javascript (JScript support)
     * [Use Javascript in ASP Pages](md/javascript/jscript-support.md)
     * [ES6 Features and Beyond](md/javascript/jscript-es6-support.md)
+* ASP Modernization
+    * [VB6 GoTo and Jumps](md/asp-modernization/goto-flow/overview.md)
+    * [VB6 User-Defined Types (Phase 3)](md/asp-modernization/goto-flow/vb6-udt-phase3.md)
 * Libraries
     * [Object Overview](md/libraries/overview.md)
     * G3AXON Functions

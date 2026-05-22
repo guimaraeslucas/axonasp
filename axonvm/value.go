@@ -70,16 +70,25 @@ const (
 	VTJSGenerator
 	// VTJSProxy points to one dynamic Proxy ID in VM jsProxyItems.
 	VTJSProxy
+	// VTRecord represents a User-Defined Type (UDT) instance.
+	VTRecord
 )
 
 type Value struct {
 	Type  ValueType
-	Num   int64   // Used for Bool (0/1), Integer, Date, NativeObject ID, and Builtin Index
-	Flt   float64 // Used for Double
-	Str   string  // Strings in Go are lightweight pointers
-	Arr   *VBArray
+	Num   int64    // Used for Bool (0/1), Integer, Date, NativeObject ID, and Builtin Index
+	Flt   float64  // Used for Double
+	Str   string   // Strings in Go are lightweight pointers
+	Arr   *VBArray // Used for VBScript arrays
+	Rec   *VBRecord // Used for User-Defined Types (UDT)
 	Names []string // Stores local names for VTUserSub or field names for VTObject
 	Big   *big.Int // Used for JavaScript BigInt
+}
+
+// VBRecord stores data for a User-Defined Type (UDT) instance.
+type VBRecord struct {
+	DefIdx  int
+	Members []Value
 }
 
 // String returns the string representation of the VBScript value.
@@ -155,6 +164,8 @@ func (v Value) String() string {
 		return "[object Generator]"
 	case VTJSProxy:
 		return "[object Proxy]"
+	case VTRecord:
+		return "[Record]"
 	default:
 		return "Unknown"
 	}

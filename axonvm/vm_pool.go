@@ -379,6 +379,9 @@ func (vm *VM) resetForReuse() {
 }
 
 func (vm *VM) resetGlobals() {
+	for i := range vm.Globals {
+		vm.releaseRecordValue(vm.Globals[i])
+	}
 	if cap(vm.Globals) < len(vm.baseGlobals) {
 		vm.Globals = make([]Value, len(vm.baseGlobals))
 	} else {
@@ -396,6 +399,9 @@ func (vm *VM) resetGlobals() {
 }
 
 func (vm *VM) resetStack() {
+	for i := range vm.stack {
+		vm.releaseRecordValue(vm.stack[i])
+	}
 	if len(vm.stack) != StackSize {
 		vm.stack = make([]Value, StackSize)
 		vm.localTypes = [StackSize]ValueType{} // Reset local types when re-creating stack

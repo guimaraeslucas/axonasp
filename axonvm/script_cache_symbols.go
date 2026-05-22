@@ -144,6 +144,8 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 		GlobalZeroArgFuncs:  sortedTrueKeys(compiler.globalZeroArgFuncs),
 		GlobalTypeNames:     globalTypeNames,
 		IncludeDependencies: compiler.IncludeDependencies(),
+		RecordDecls:         cloneRecordDeclSlice(compiler.recordDecls),
+		RecordDeclLookup:    cloneIntMap(compiler.recordDeclLookup),
 	}
 
 	if compiler.IsJSModule() {

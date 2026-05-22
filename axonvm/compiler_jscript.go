@@ -1879,17 +1879,9 @@ func (c *Compiler) compileJScriptExpression(expr jsast.Expression) {
 			c.compileJScriptExpression(foldedRight)
 			switch node.Operator {
 			case jstoken.PLUS:
-				if c.jsInferredType(foldedLeft) == jsTypeInteger && c.jsInferredType(foldedRight) == jsTypeInteger {
-					c.emit(OpJSAddInt)
-				} else {
-					c.emit(OpJSAdd)
-				}
+				c.emit(OpJSAdd)
 			case jstoken.MINUS:
-				if c.jsInferredType(foldedLeft) == jsTypeInteger && c.jsInferredType(foldedRight) == jsTypeInteger {
-					c.emit(OpJSSubInt)
-				} else {
-					c.emit(OpJSSubtract)
-				}
+				c.emit(OpJSSubtract)
 			case jstoken.MULTIPLY:
 				c.emit(OpJSMultiply)
 			case jstoken.SLASH:
@@ -2981,10 +2973,7 @@ func (c *Compiler) compileJScriptUpdateExpression(node *jsast.UnaryExpression) b
 					return true
 				}
 			}
-			if isInt && !node.Postfix {
-				c.emit(OpJSIncInt, nameIdx)
-				return true
-			}
+			_ = isInt
 			if node.Postfix {
 				c.emit(OpJSPostIncrement, nameIdx)
 			} else {

@@ -245,12 +245,11 @@ const (
 	OpJSObjectRest             // [OpCode, StaticCountH, StaticCountL, ..., DynamicCountH, DynamicCountL] ; pops obj and DynamicCount keys, pushes rest object
 	OpJSPop                    // [OpCode]
 	OpJSRot                    // [OpCode, Count] ; rotates top N elements of the stack
-
-	OpJSJump               // [OpCode, Target3, Target2, Target1, Target0]
-	OpJSJumpIfFalse        // [OpCode, Target3, Target2, Target1, Target0]
-	OpJSJumpIfTrue         // [OpCode, Target3, Target2, Target1, Target0]
-	OpJSJumpIfNotUndefined // [OpCode, Target3, Target2, Target1, Target0]
-	OpJSLoadCatchError     // [OpCode]
+	OpJSJump                   // [OpCode, Target3, Target2, Target1, Target0]
+	OpJSJumpIfFalse            // [OpCode, Target3, Target2, Target1, Target0]
+	OpJSJumpIfTrue             // [OpCode, Target3, Target2, Target1, Target0]
+	OpJSJumpIfNotUndefined     // [OpCode, Target3, Target2, Target1, Target0]
+	OpJSLoadCatchError         // [OpCode]
 
 	OpJSStoreCatchError         // [OpCode]
 	OpJSBreak                   // [OpCode] - Break from loop (jump target managed by compiler)
@@ -489,9 +488,16 @@ const (
 	OpJSMathMax   // [OpCode]
 
 	// Phase 2 JScript Integer Fast Paths
-	OpJSAddInt // [OpCode]
-	OpJSSubInt // [OpCode]
-	OpJSIncInt // [OpCode, NameConstIdxHigh, NameConstIdxLow]
+	// OpInitRecord creates one zero-initialized UDT record instance from a compiled
+	// record declaration index and pushes it onto the stack.
+	// [OpCode, DefIdxHigh, DefIdxLow]
+	OpInitRecord // [OpCode, DefIdxHigh, DefIdxLow]
+	// OpGetRecordMember loads one UDT member value by fixed member index.
+	// [OpCode, MemberIdxHigh, MemberIdxLow]
+	OpGetRecordMember
+	// OpSetRecordMember writes one UDT member value by fixed member index.
+	// [OpCode, MemberIdxHigh, MemberIdxLow]
+	OpSetRecordMember
 )
 
 func (op OpCode) String() string {
@@ -606,6 +612,12 @@ func (op OpCode) String() string {
 		return "OpNewClass"
 	case OpArraySet:
 		return "OpArraySet"
+	case OpInitRecord:
+		return "OpInitRecord"
+	case OpGetRecordMember:
+		return "OpGetRecordMember"
+	case OpSetRecordMember:
+		return "OpSetRecordMember"
 	case OpMemberGet:
 		return "OpMemberGet"
 	case OpMe:
@@ -696,12 +708,6 @@ func (op OpCode) String() string {
 		return "OpJSTailCallComputedMember"
 	case OpJSCreateClosure:
 		return "OpJSCreateClosure"
-	case OpJSAdd:
-		return "OpJSAdd"
-	case OpJSStrictEq:
-		return "OpJSStrictEq"
-	case OpJSStrictNeq:
-		return "OpJSStrictNeq"
 	case OpJSTryEnter:
 		return "OpJSTryEnter"
 	case OpJSTryLeave:
@@ -960,12 +966,6 @@ func (op OpCode) String() string {
 		return "OpJSMathMin"
 	case OpJSMathMax:
 		return "OpJSMathMax"
-	case OpJSAddInt:
-		return "OpJSAddInt"
-	case OpJSSubInt:
-		return "OpJSSubInt"
-	case OpJSIncInt:
-		return "OpJSIncInt"
 	default:
 		return "OpUnknown"
 	}

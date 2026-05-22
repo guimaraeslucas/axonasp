@@ -756,11 +756,24 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 					c.emit(OpCallMember, midx, argCount)
 					c.emitTrailingCoerceIfValueContext()
 				} else {
-					// Plain property access: Obj.Prop — emit OpMemberGet.
-					// Chaining (Obj.A.B) is handled naturally by repeated Pratt infix application.
+					// Plain property access: Obj.Prop
+					// Check if target is a known UDT to use fast OpGetRecordMember
+					udtName, isUDT := c.lastEmittedUDTNameFromOp()
+					if isUDT {
+						memberIdx, memberType, nextUDTName, found := c.getUDTMemberIndex(udtName, name)
+						if found {
+							c.emit(OpGetRecordMember, memberIdx)
+							c.updateLastEmittedType(memberType, nextUDTName)
+							c.emitTrailingCoerceIfValueContext()
+							return
+						}
+					}
+
+					// Fallback to standard object member access
 					idx := c.addConstant(NewString(name))
 					c.emit(OpConstant, idx)
 					c.emit(OpMemberGet)
+					c.updateLastEmittedType(VTEmpty, "") // Type unknown after object access
 					c.emitTrailingCoerceIfValueContext()
 				}
 			}
@@ -1107,6 +1120,13 @@ func (c *Compiler) Compile() (err error) {
 	if jscriptPageMode {
 		flushJScriptProgram()
 	}
+
+	if len(c.forwardLabelPatches) > 0 {
+		for label := range c.forwardLabelPatches {
+			return c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Label '%s' not defined", label))
+		}
+	}
+
 	c.emit(OpHalt)
 	c.optimizePeephole()
 	return nil

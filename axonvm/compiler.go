@@ -106,6 +106,8 @@ type Compiler struct {
 	declaredLocals      map[string]bool      // Variables declared via Dim in local scope
 	globalVarTypes      map[string]ValueType // VB6 As Type declarations for global variables (VTEmpty = Variant)
 	localVarTypes       map[string]ValueType // VB6 As Type declarations for local variables (VTEmpty = Variant)
+	globalRecordTypes   map[string]string    // UDT names for global variables
+	localRecordTypes    map[string]string    // UDT names for local variables
 	constGlobals        map[string]bool      // Constants declared via Const in global scope
 	constLocals         map[string]bool      // Constants declared via Const in local scope
 	constLiteralGlobals map[string]Value     // Compile-time known global constant values
@@ -132,6 +134,8 @@ type Compiler struct {
 	globalZeroArgFuncs  map[string]bool
 	classDecls          []CompiledClassDecl
 	classDeclLookup     map[string]int
+	recordDecls         []CompiledRecordDecl
+	recordDeclLookup    map[string]int
 	ObjectDeclarations  []*vbscript.ASPObjectToken
 	currentClassName    string
 	currentFunctionName string
@@ -164,6 +168,66 @@ type Compiler struct {
 	userGlobalsStart int
 	isEval           bool // True if compiling a VBScript expression for Eval()
 	isJSModule       bool // True if compiling a pure JScript module
+
+	labelMap            map[string]int
+	forwardLabelPatches map[string][]int
+
+	lastEmittedType    ValueType
+	lastEmittedUDTName string
+}
+
+func (c *Compiler) updateLastEmittedType(vt ValueType, udt string) {
+	c.lastEmittedType = vt
+	c.lastEmittedUDTName = udt
+}
+
+func (c *Compiler) lastEmittedUDT() (string, bool) {
+	if c.lastEmittedType == VTRecord {
+		return c.lastEmittedUDTName, true
+	}
+	return "", false
+}
+
+func (c *Compiler) getUDTMemberIndex(udtName, memberName string) (int, ValueType, string, bool) {
+	lowerUDT := strings.ToLower(udtName)
+	udtIdx, ok := c.recordDeclLookup[lowerUDT]
+	if !ok {
+		return -1, VTEmpty, "", false
+	}
+	decl := c.recordDecls[udtIdx]
+	for i, m := range decl.Members {
+		if strings.EqualFold(m.Name, memberName) {
+			return i, m.Type, m.UDTName, true
+		}
+	}
+	return -1, VTEmpty, "", false
+}
+
+func (c *Compiler) lastEmittedUDTNameFromOp() (string, bool) {
+	if len(c.bytecode) < 3 {
+		return "", false
+	}
+	op := OpCode(c.bytecode[len(c.bytecode)-3])
+	idx := int(binary.BigEndian.Uint16(c.bytecode[len(c.bytecode)-2:]))
+
+	var varName string
+	switch op {
+	case OpGetGlobal:
+		if idx >= 0 && idx < len(c.Globals.names) {
+			varName = strings.ToLower(c.Globals.names[idx])
+			if udt, ok := c.globalRecordTypes[varName]; ok {
+				return udt, true
+			}
+		}
+	case OpGetLocal:
+		if idx >= 0 && idx < len(c.locals.names) {
+			varName = strings.ToLower(c.locals.names[idx])
+			if udt, ok := c.localRecordTypes[varName]; ok {
+				return udt, true
+			}
+		}
+	}
+	return "", false
 }
 
 type loopContext struct {
@@ -211,8 +275,20 @@ type definitionTokenBound struct {
 	end   int
 }
 
+// CompiledRecordDecl stores metadata for one User-Defined Type (UDT) declaration.
+type CompiledRecordDecl struct {
+	Name    string
+	Members []CompiledRecordMemberDecl
+}
+
+// CompiledRecordMemberDecl stores one UDT member metadata entry.
+type CompiledRecordMemberDecl struct {
+	Name    string
+	Type    ValueType
+	UDTName string // If Type is VTRecord, this specifies which UDT it is
+}
+
 // CompiledClassDecl stores bootstrap metadata for one class declaration.
-// It is intentionally minimal during staged class implementation.
 type CompiledClassDecl struct {
 	Name       string
 	Fields     []CompiledClassFieldDecl
@@ -447,6 +523,8 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		declaredLocals:        make(map[string]bool),
 		globalVarTypes:        make(map[string]ValueType),
 		localVarTypes:         make(map[string]ValueType),
+		globalRecordTypes:     make(map[string]string),
+		localRecordTypes:      make(map[string]string),
 		constGlobals:          make(map[string]bool),
 		constLocals:           make(map[string]bool),
 		constLiteralGlobals:   make(map[string]Value),
@@ -463,6 +541,8 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		globalZeroArgFuncs:    make(map[string]bool),
 		classDecls:            make([]CompiledClassDecl, 0),
 		classDeclLookup:       make(map[string]int),
+		recordDecls:           make([]CompiledRecordDecl, 0),
+		recordDeclLookup:      make(map[string]int),
 		loopContexts:          make([]loopContext, 0),
 		jsStrictMode:          false,
 		jsFunctionStrictModes: make(map[int]bool),
@@ -471,6 +551,8 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		jsLocalEnabled:        false,
 		jsLocalSlotCount:      0,
 		activeVBSConstants:    make([]VBSConstant, 0, len(VBSConstants)),
+		labelMap:              make(map[string]int),
+		forwardLabelPatches:   make(map[string][]int),
 	}
 	c.activeVBSConstants = append(c.activeVBSConstants, VBSConstants...)
 
@@ -1347,7 +1429,8 @@ func (c *Compiler) isGlobalDefinitionToken(token vbscript.Token) bool {
 	if c.matchKeywordOrIdentifier(vbscript.KeywordClass, "class") ||
 		c.matchKeywordOrIdentifier(vbscript.KeywordSub, "sub") ||
 		c.matchKeywordOrIdentifier(vbscript.KeywordFunction, "function") ||
-		c.matchKeywordOrIdentifier(vbscript.KeywordConst, "const") {
+		c.matchKeywordOrIdentifier(vbscript.KeywordConst, "const") ||
+		c.matchKeywordOrIdentifier(vbscript.KeywordEnd, "type") {
 		return true
 	}
 
@@ -1357,7 +1440,8 @@ func (c *Compiler) isGlobalDefinitionToken(token vbscript.Token) bool {
 		return c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordClass, "class") ||
 			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordSub, "sub") ||
 			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordFunction, "function") ||
-			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordConst, "const")
+			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordConst, "const") ||
+			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordEnd, "type")
 	}
 
 	return false
@@ -1438,6 +1522,50 @@ func usesWideJumpOperand(op OpCode) bool {
 func (c *Compiler) addConstant(v Value) int {
 	c.constants = append(c.constants, v)
 	return len(c.constants) - 1
+}
+
+func (c *Compiler) registerLabel(name string) {
+	lower := strings.ToLower(name)
+	if _, exists := c.labelMap[lower]; exists {
+		panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Label '%s' already defined", name)))
+	}
+	pos := len(c.bytecode)
+	c.labelMap[lower] = pos
+
+	// Patch forward references
+	if patches, ok := c.forwardLabelPatches[lower]; ok {
+		for _, patchPos := range patches {
+			c.patchJumpTo(patchPos, pos)
+		}
+		delete(c.forwardLabelPatches, lower)
+	}
+}
+
+func (c *Compiler) emitGoTo(name string) {
+	lower := strings.ToLower(name)
+	if pos, ok := c.labelMap[lower]; ok {
+		c.emit(OpJump, pos)
+	} else {
+		// Forward reference
+		jumpPos := c.emitJump(OpJump)
+		c.forwardLabelPatches[lower] = append(c.forwardLabelPatches[lower], jumpPos)
+	}
+}
+
+func (c *Compiler) nextIdentifierName() string {
+	if c.next == nil {
+		return ""
+	}
+	switch t := c.next.(type) {
+	case *vbscript.IdentifierToken:
+		return t.Name
+	case *vbscript.KeywordOrIdentifierToken:
+		return t.Name
+	case *vbscript.ExtendedIdentifierToken:
+		return strings.TrimSuffix(strings.TrimPrefix(t.Name, "["), "]")
+	default:
+		return ""
+	}
 }
 
 func (c *Compiler) Bytecode() []byte {
@@ -1560,6 +1688,7 @@ func (c *Compiler) vbSyntaxError(code vbscript.VBSyntaxErrorCode) *vbscript.VBSy
 func (c *Compiler) vbCompileError(code vbscript.VBSyntaxErrorCode, detail string) *vbscript.VBSyntaxError {
 	err := c.vbSyntaxError(code)
 	err.WithASPDescription(detail)
+	err.Description = detail
 	return err
 }
 

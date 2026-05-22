@@ -1861,13 +1861,13 @@ func (l *Lexer) nextLineTermination() Token {
 	}
 
 	var token Token
-	if isColon && line == l.CurrentLine {
+	if isColon {
 		token = &ColonLineTerminationToken{
 			LineTerminationToken: LineTerminationToken{
 				BaseToken: BaseToken{
 					Start:      start,
 					End:        l.Index,
-					LineNumber: l.CurrentLine - 1,
+					LineNumber: line,
 					LineStart:  l.CurrentLineStart,
 				},
 			},

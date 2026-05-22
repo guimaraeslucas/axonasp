@@ -108,6 +108,12 @@ func TestSearchAndReadWorkflow(t *testing.T) {
 	if !strings.Contains(searchText, "asp/global-asa.md") {
 		t.Errorf("Search result does not contain expected path 'asp/global-asa.md'. Got: %s", searchText)
 	}
+	if !strings.Contains(searchText, "Most probable match") {
+		t.Errorf("Search result should identify the highest-ranked entry. Got: %s", searchText)
+	}
+	if !strings.Contains(searchText, "read_axonasp_doc") {
+		t.Errorf("Search result should instruct callers to use read_axonasp_doc. Got: %s", searchText)
+	}
 
 	// 5. Test Read Handler (Step B)
 	readReq := mcp.CallToolRequest{
@@ -165,5 +171,63 @@ func TestSymlinkLoopProtection(t *testing.T) {
 	err = idx.Rebuild()
 	if err != nil {
 		t.Errorf("Rebuild failed or timed out due to symlink loop: %v", err)
+	}
+}
+
+func TestRebuildSkipsIndexSubtreeInsideDocs(t *testing.T) {
+	tmpDocs, err := os.MkdirTemp("", "mcp-docs-index-subtree")
+	if err != nil {
+		t.Fatalf("Failed to create temp docs dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDocs)
+
+	indexDir := filepath.Join(tmpDocs, "nested", "manual-index")
+	if err := os.MkdirAll(indexDir, 0755); err != nil {
+		t.Fatalf("Failed to create nested index dir: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDocs, "root.md"), []byte("root token"), 0644); err != nil {
+		t.Fatalf("Failed to write root doc: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(indexDir, "generated.md"), []byte("index token"), 0644); err != nil {
+		t.Fatalf("Failed to write generated doc: %v", err)
+	}
+
+	idx := &SearchIndex{indexPath: indexDir, docsPath: tmpDocs}
+	if err := idx.Rebuild(); err != nil {
+		t.Fatalf("Failed to rebuild index: %v", err)
+	}
+
+	config := bluge.DefaultConfig(idx.indexPath)
+	reader, err := bluge.OpenReader(config)
+	if err != nil {
+		t.Fatalf("Failed to open reader: %v", err)
+	}
+	defer reader.Close()
+
+	rootQuery := bluge.NewMatchQuery("root").SetField("content")
+	rootResults, err := reader.Search(context.Background(), bluge.NewTopNSearch(5, rootQuery))
+	if err != nil {
+		t.Fatalf("Failed to search root token: %v", err)
+	}
+	match, err := rootResults.Next()
+	if err != nil {
+		t.Fatalf("Failed to iterate root results: %v", err)
+	}
+	if match == nil {
+		t.Fatalf("Expected root doc to be indexed")
+	}
+
+	indexQuery := bluge.NewMatchQuery("index").SetField("content")
+	indexResults, err := reader.Search(context.Background(), bluge.NewTopNSearch(5, indexQuery))
+	if err != nil {
+		t.Fatalf("Failed to search nested index token: %v", err)
+	}
+	match, err = indexResults.Next()
+	if err != nil {
+		t.Fatalf("Failed to iterate nested index results: %v", err)
+	}
+	if match != nil {
+		t.Fatalf("Expected index subtree content to be skipped")
 	}
 }

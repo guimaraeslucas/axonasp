@@ -111,6 +111,10 @@ type CachedProgram struct {
 	// This is populated from the compiler's globalVarTypes during cache creation.
 	GlobalTypeNames     []string
 	IncludeDependencies []string
+	// RecordDecls and RecordDeclLookup carry compiled UDT metadata required by
+	// OpInitRecord/OpGetRecordMember/OpSetRecordMember in cached VM startup paths.
+	RecordDecls      []CompiledRecordDecl
+	RecordDeclLookup map[string]int
 }
 
 // cachedProgramBinaryPayload stores the serialized disk representation.
@@ -1040,6 +1044,11 @@ func NewVMFromCachedProgram(program CachedProgram) *VM {
 	vm.sourceName = program.SourceName
 	vm.engineMode = program.EngineMode
 	applyProgramGlobalMetadata(vm, program)
+	vm.RecordDecls = append(vm.RecordDecls[:0], program.RecordDecls...)
+	clear(vm.RecordDeclLookup)
+	for k, v := range program.RecordDeclLookup {
+		vm.RecordDeclLookup[k] = v
+	}
 	vm.captureBaseProgramState()
 	return vm
 }
@@ -1659,6 +1668,8 @@ func cloneCachedProgram(program CachedProgram) CachedProgram {
 		DeclaredGlobalNames: cloneStringSlice(program.DeclaredGlobalNames),
 		ConstGlobalNames:    cloneStringSlice(program.ConstGlobalNames),
 		IncludeDependencies: cloneStringSlice(program.IncludeDependencies),
+		RecordDecls:         cloneRecordDeclSlice(program.RecordDecls),
+		RecordDeclLookup:    cloneIntMap(program.RecordDeclLookup),
 	}
 	return cloned
 }
@@ -1697,6 +1708,33 @@ func cloneValueSlice(values []Value) []Value {
 	return cloned
 }
 
+func cloneRecordDeclSlice(values []CompiledRecordDecl) []CompiledRecordDecl {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]CompiledRecordDecl, len(values))
+	for i := range values {
+		cloned[i].Name = values[i].Name
+		if len(values[i].Members) > 0 {
+			members := make([]CompiledRecordMemberDecl, len(values[i].Members))
+			copy(members, values[i].Members)
+			cloned[i].Members = members
+		}
+	}
+	return cloned
+}
+
+func cloneIntMap(values map[string]int) map[string]int {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]int, len(values))
+	for k, v := range values {
+		cloned[k] = v
+	}
+	return cloned
+}
+
 // immutableCachedProgramView returns one non-allocating immutable view of cache payload slices.
 // The returned struct aliases backing arrays and must be treated as read-only.
 func immutableCachedProgramView(program CachedProgram) CachedProgram {
@@ -1714,12 +1752,25 @@ func immutableCachedProgramView(program CachedProgram) CachedProgram {
 	program.ConstGlobalNames = immutableStringView(program.ConstGlobalNames)
 	program.IncludeDependencies = immutableStringView(program.IncludeDependencies)
 	program.GlobalNamesLower = immutableStringView(program.GlobalNamesLower)
+	program.RecordDecls = immutableRecordDeclView(program.RecordDecls)
 
 	for i := range program.Constants {
 		program.Constants[i].Names = immutableStringView(program.Constants[i].Names)
 	}
 
 	return program
+}
+
+func immutableRecordDeclView(values []CompiledRecordDecl) []CompiledRecordDecl {
+	if len(values) == 0 {
+		return nil
+	}
+	for i := range values {
+		if len(values[i].Members) > 0 {
+			values[i].Members = values[i].Members[:len(values[i].Members):len(values[i].Members)]
+		}
+	}
+	return values[:len(values):len(values)]
 }
 
 func immutableStringView(values []string) []string {
