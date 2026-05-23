@@ -241,6 +241,11 @@ func (c *Compiler) emitStaticObjectIdentifierFallback(name string) bool {
 		return false
 	}
 
+	lower := strings.ToLower(strings.TrimSpace(name))
+	if c.constGlobals[lower] {
+		return false
+	}
+
 	nameGetOp, nameIdx := c.resolveVar(name)
 	nameSetOp, nameSetIdx := c.resolveSetVar(name)
 	if nameGetOp != OpGetGlobal || nameSetOp != OpSetGlobal {

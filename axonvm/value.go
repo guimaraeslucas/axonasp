@@ -90,6 +90,9 @@ type Value struct {
 type VBRecord struct {
 	DefIdx  int
 	Members []Value
+	// releaseMark prevents recursive/double release when record graphs contain
+	// aliases or cycles.
+	releaseMark bool
 }
 
 // String returns the string representation of the VBScript value.

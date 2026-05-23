@@ -110,12 +110,14 @@ type Compiler struct {
 	localRecordTypes    map[string]string    // UDT names for local variables
 	constGlobals        map[string]bool      // Constants declared via Const in global scope
 	constLocals         map[string]bool      // Constants declared via Const in local scope
+	staticLocals        map[string]int       // Static local variables mapping (localName -> globalIndex)
 	constLiteralGlobals map[string]Value     // Compile-time known global constant values
 	isLocal             bool                 // True if currently compiling a Sub/Function
 
 	// Compilation Options
 	optionExplicit bool // Requires variables to be Dim'ed
 	optionCompare  int  // 0: Binary (default), 1: Text
+	optionBase     int  // 0 or 1 (default 0)
 	optionStrict   bool // (Future) Enforces strict typing
 	optionInfer    bool // (Future) Allows type inference
 	sourceName     string
@@ -531,6 +533,7 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		localRecordTypes:      make(map[string]string),
 		constGlobals:          make(map[string]bool),
 		constLocals:           make(map[string]bool),
+		staticLocals:          make(map[string]int),
 		constLiteralGlobals:   make(map[string]Value),
 		isLocal:               false,
 		optionExplicit:        false,
@@ -1109,6 +1112,9 @@ func (c *Compiler) resolveVar(name string) (OpCode, int) {
 
 	// 1. Check Locals
 	if c.isLocal {
+		if globalIdx, isStatic := c.staticLocals[lower]; isStatic {
+			return OpGetGlobal, globalIdx
+		}
 		if idx, exists := c.locals.Get(name); exists {
 			return OpGetLocal, idx
 		}
@@ -1219,6 +1225,9 @@ func (c *Compiler) resolveSetVar(name string) (OpCode, int) {
 	lower := strings.ToLower(name)
 
 	if c.isLocal {
+		if globalIdx, isStatic := c.staticLocals[lower]; isStatic {
+			return OpSetGlobal, globalIdx
+		}
 		if idx, exists := c.locals.Get(name); exists {
 			if c.constLocals[lower] {
 				panic(c.vbCompileError(vbscript.IllegalAssignment, fmt.Sprintf("illegal assignment: '%s'", name)))
@@ -1432,6 +1441,7 @@ func (c *Compiler) isGlobalDefinitionToken(token vbscript.Token) bool {
 	}
 
 	if c.tokenMatchesKeywordOrIdentifier(token, vbscript.KeywordClass, "class") ||
+		c.tokenMatchesKeywordOrIdentifier(token, vbscript.KeywordEnum, "enum") ||
 		c.tokenMatchesKeywordOrIdentifier(token, vbscript.KeywordSub, "sub") ||
 		c.tokenMatchesKeywordOrIdentifier(token, vbscript.KeywordFunction, "function") ||
 		c.tokenMatchesKeywordOrIdentifier(token, vbscript.KeywordConst, "const") {
@@ -1442,6 +1452,7 @@ func (c *Compiler) isGlobalDefinitionToken(token vbscript.Token) bool {
 		c.tokenMatchesKeywordOrIdentifier(token, vbscript.KeywordPrivate, "private") {
 		peek := c.peekToken()
 		return c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordClass, "class") ||
+			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordEnum, "enum") ||
 			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordSub, "sub") ||
 			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordFunction, "function") ||
 			c.tokenMatchesKeywordOrIdentifier(peek, vbscript.KeywordConst, "const")

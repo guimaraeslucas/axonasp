@@ -20,15 +20,6 @@ FinalStep:
 End Sub
 ```
 
-### Numeric Labels (Line Numbers)
-AxonASP also supports numeric labels (line numbers) for full compatibility with legacy Basic code.
-```vbscript
-10 x = 1
-20 GoTo 40
-30 x = 2
-40 Response.Write x ' Outputs 1
-```
-
 ## GoTo Statement
 The `GoTo` statement unconditionally transfers execution to the specified label or line number within the **same procedure**.
 

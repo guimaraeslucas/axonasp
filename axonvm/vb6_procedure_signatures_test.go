@@ -6,7 +6,11 @@
  */
 package axonvm
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // TestVB6OptionalWithDefault tests Optional parameter with default value.
 func TestVB6OptionalWithDefault(t *testing.T) {
@@ -244,5 +248,59 @@ Response.Write BuildList("items:", 1, 2, 3)
 	expected := "items:|items: 1 2 3"
 	if out != expected {
 		t.Fatalf("ParamArray with named: expected %q, got %q", expected, out)
+	}
+}
+
+// TestVB6OptionalTypedDefaultWithParamArray verifies Optional typed defaults are
+// applied when omitted, even when a trailing ParamArray exists and the
+// declaration is split with line continuation.
+func TestVB6OptionalTypedDefaultWithParamArray(t *testing.T) {
+	source := `<%
+Function LogMessage(ByVal level As String, _
+					ByVal msg As String, _
+					Optional timestamp As String = "now", _
+					ParamArray tags())
+	Dim result, i
+	result = "[" & level & "] " & msg
+
+	If timestamp <> "now" Then
+		result = result & " @" & timestamp
+	End If
+
+	If IsArray(tags) And UBound(tags) >= LBound(tags) Then
+		result = result & " {"
+		For i = LBound(tags) To UBound(tags)
+			If i > LBound(tags) Then result = result & ", "
+			result = result & tags(i)
+		Next
+		result = result & "}"
+	End If
+
+	LogMessage = result
+End Function
+
+Response.Write LogMessage("INFO", "Application started") & "|"
+Response.Write LogMessage("WARN", "High memory usage", "now", "server1", "memory") & "|"
+Response.Write LogMessage("ERROR", "Connection failed", "12:00:00", "critical", "db", "timeout")
+%>`
+	out := runVBSAndGetOutput(t, source)
+	expected := "[INFO] Application started|[WARN] High memory usage {server1, memory}|[ERROR] Connection failed @12:00:00 {critical, db, timeout}"
+	if out != expected {
+		t.Fatalf("Optional typed default with ParamArray: expected %q, got %q", expected, out)
+	}
+}
+
+// TestVB6OptionalTypedDefaultWithParamArrayFromFile reproduces execution using
+// the real ASP file, including directive and on-disk line endings.
+func TestVB6OptionalTypedDefaultWithParamArrayFromFile(t *testing.T) {
+	path := filepath.Join("..", "www", "tests", "test_vb6_.asp")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read test file failed: %v", err)
+	}
+	out := runVBSAndGetOutput(t, string(raw))
+	expected := "[INFO] Application started<br>[WARN] High memory usage {server1, memory}<br>[ERROR] Connection failed @12:00:00 {critical, db, timeout}"
+	if out != expected {
+		t.Fatalf("file-based optional default mismatch: expected %q, got %q", expected, out)
 	}
 }

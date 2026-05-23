@@ -89,3 +89,62 @@ Response.Write v
 		t.Fatalf("unexpected output: %q", out)
 	}
 }
+
+func TestReleaseRecordHandlesSelfReference(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+	rec := vm.acquireRecord(1)
+	rec.DefIdx = 1
+	rec.Members[0] = Value{Type: VTRecord, Rec: rec}
+
+	vm.releaseRecord(rec)
+}
+
+func TestVB6UDTPhase3RepeatedPooledExecution(t *testing.T) {
+	source := `<%
+Type Address
+    City As String
+End Type
+
+Type Person
+    Name As String
+    Age As Integer
+    Home As Address
+End Type
+
+Dim addr As Address
+Dim p As Person
+
+addr.City = "Sao Paulo"
+p.Name = "Maya"
+p.Age = 29
+p.Home = addr
+
+Response.Write p.Name & "|" & p.Age & "|" & p.Home.City
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	program := cachedProgramFromCompiler(compiler)
+	for i := 0; i < 8; i++ {
+		vm := AcquireVMFromCachedProgram(program)
+		host := NewMockHost()
+		var buf bytes.Buffer
+		host.SetOutput(&buf)
+		vm.SetHost(host)
+
+		err := vm.Run()
+		host.Response().Flush()
+		got := buf.String()
+		vm.Release()
+
+		if err != nil {
+			t.Fatalf("iteration %d: vm run failed: %v", i+1, err)
+		}
+		if got != "Maya|29|Sao Paulo" {
+			t.Fatalf("iteration %d: unexpected output: %q", i+1, got)
+		}
+	}
+}

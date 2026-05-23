@@ -141,13 +141,14 @@ const (
 	OpNewClass // [OpCode, ClassNameConstIdxHigh, ClassNameConstIdxLow]
 	OpArraySet // [OpCode, ArgCountHigh, ArgCountLow] ; stack: [..., targetArray, idx1..idxN, value]
 	OpRet
+	OpSwap // Swaps the top two elements on the stack.
 )
 
 const (
 	// OpArgGlobalRef pushes a VTArgRef for a global slot. Used at call sites so that
 	// ByRef parameters can write back to the caller's global variable on return.
 	// [OpCode, IdxHigh, IdxLow]
-	OpArgGlobalRef OpCode = iota + OpRet + 1
+	OpArgGlobalRef OpCode = iota + OpSwap + 1
 	// OpArgLocalRef pushes a VTArgRef for a local slot. Used at call sites so that
 	// ByRef parameters can write back to the caller's local variable on return.
 	// [OpCode, IdxHigh, IdxLow]
@@ -634,6 +635,8 @@ func (op OpCode) String() string {
 		return "OpNewClass"
 	case OpArraySet:
 		return "OpArraySet"
+	case OpSwap:
+		return "OpSwap"
 	case OpExtPrefix:
 		return "OpExtPrefix"
 	case OpMemberGet:

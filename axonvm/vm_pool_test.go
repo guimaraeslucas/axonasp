@@ -145,6 +145,57 @@ func TestAcquireVMFromCachedProgramResetsJScriptState(t *testing.T) {
 	}
 }
 
+// TestAcquireVMFromCachedProgramPreservesOptionalDefaults ensures CachedProgram
+// execution keeps Optional parameter default metadata (used by CLI/server paths).
+func TestAcquireVMFromCachedProgramPreservesOptionalDefaults(t *testing.T) {
+	compiler := NewASPCompiler(`<%
+Function LogMessage(ByVal level As String, _
+					ByVal msg As String, _
+					Optional timestamp As String = "now", _
+					ParamArray tags())
+	Dim result, i
+	result = "[" & level & "] " & msg
+	If timestamp <> "now" Then
+		result = result & " @" & timestamp
+	End If
+	If IsArray(tags) And UBound(tags) >= LBound(tags) Then
+		result = result & " {"
+		For i = LBound(tags) To UBound(tags)
+			If i > LBound(tags) Then result = result & ", "
+			result = result & tags(i)
+		Next
+		result = result & "}"
+	End If
+	LogMessage = result
+End Function
+
+Response.Write LogMessage("INFO", "Application started") & "|"
+Response.Write LogMessage("WARN", "High memory usage", "now", "server1", "memory")
+%>`)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	program := cachedProgramFromCompiler(compiler)
+	vm := AcquireVMFromCachedProgram(program)
+	defer vm.Release()
+
+	var out bytes.Buffer
+	host := NewMockHost()
+	host.SetOutput(&out)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "[INFO] Application started|[WARN] High memory usage {server1, memory}"
+	if got := out.String(); got != expected {
+		t.Fatalf("cached optional defaults mismatch: expected %q, got %q", expected, got)
+	}
+}
+
 func TestJScriptConcurrentPooledRunsNoStackUnderflow(t *testing.T) {
 	compiler := NewASPCompiler(`<script runat="server" language="JScript">function id(v){return v;} var out=""; for (var i=0; i<10; i++) { out += id(i); } Response.Write(out);</script>`)
 	if err := compiler.Compile(); err != nil {

@@ -961,6 +961,32 @@ func buildDimArray(bounds []int) *VBArray {
 	return array
 }
 
+// buildDimArrayVB6 creates a VBScript array tree for one or more dimensions with explicit lower/upper bounds.
+// bounds pairs are passed as [low1, high1, low2, high2, ...]
+func buildDimArrayVB6(bounds []int) *VBArray {
+	if len(bounds) < 2 {
+		return NewVBArray(0, 0)
+	}
+
+	lower := bounds[0]
+	upper := bounds[1]
+	size := upper - lower + 1
+	if size < 0 {
+		size = 0
+	}
+
+	array := NewVBArray(lower, size)
+	if len(bounds) == 2 {
+		return array
+	}
+
+	for index := range array.Values {
+		array.Values[index] = ValueFromVBArray(buildDimArrayVB6(bounds[2:]))
+	}
+
+	return array
+}
+
 // vbArrayUpperBounds returns one upper-bound list from a VBArray shape.
 func vbArrayUpperBounds(array *VBArray) []int {
 	if array == nil {
@@ -970,7 +996,7 @@ func vbArrayUpperBounds(array *VBArray) []int {
 	bounds := make([]int, 0, 4)
 	current := array
 	for {
-		bounds = append(bounds, len(current.Values)-1)
+		bounds = append(bounds, current.Upper())
 		if len(current.Values) == 0 {
 			break
 		}
@@ -984,29 +1010,51 @@ func vbArrayUpperBounds(array *VBArray) []int {
 }
 
 // copyPreservedArray copies common array elements into a resized array while preserving VBScript shape rules.
-func copyPreservedArray(target *VBArray, source *VBArray, remainingBounds []int) {
+func copyPreservedArray(target *VBArray, source *VBArray, isVB6 bool, remainingBounds []int) {
 	if target == nil || source == nil {
 		return
 	}
 
-	limit := len(target.Values)
-	if len(source.Values) < limit {
-		limit = len(source.Values)
+	// Calculate overlapping range
+	start := target.Lower
+	if source.Lower > start {
+		start = source.Lower
+	}
+	end := target.Upper()
+	if source.Upper() < end {
+		end = source.Upper()
 	}
 
-	if len(remainingBounds) == 1 {
-		copy(target.Values[:limit], source.Values[:limit])
+	if start > end {
+		// No overlap
 		return
 	}
 
-	for index := 0; index < limit; index++ {
-		sourceChild, ok := toVBArray(source.Values[index])
+	limit := end - start + 1
+	boundStep := 1
+	if isVB6 {
+		boundStep = 2
+	}
+
+	if len(remainingBounds) == boundStep {
+		copy(target.Values[start-target.Lower:start-target.Lower+limit], source.Values[start-source.Lower:start-source.Lower+limit])
+		return
+	}
+
+	for i := 0; i < limit; i++ {
+		targetIdx := start - target.Lower + i
+		sourceIdx := start - source.Lower + i
+		sourceChild, ok := toVBArray(source.Values[sourceIdx])
 		if !ok {
 			continue
 		}
-		target.Values[index] = ValueFromVBArray(buildDimArray(remainingBounds[1:]))
-		targetChild, _ := toVBArray(target.Values[index])
-		copyPreservedArray(targetChild, sourceChild, remainingBounds[1:])
+		if isVB6 {
+			target.Values[targetIdx] = ValueFromVBArray(buildDimArrayVB6(remainingBounds[2:]))
+		} else {
+			target.Values[targetIdx] = ValueFromVBArray(buildDimArray(remainingBounds[1:]))
+		}
+		targetChild, _ := toVBArray(target.Values[targetIdx])
+		copyPreservedArray(targetChild, sourceChild, isVB6, remainingBounds[boundStep:])
 	}
 }
 
@@ -1023,12 +1071,36 @@ func vbsAxonDimArray(args []Value) (Value, error) {
 	return ValueFromVBArray(buildDimArray(bounds)), nil
 }
 
+// vbsAxonDimArrayVB6 allocates a VBScript array for Dim declarations from (lower, upper) pairs.
+func vbsAxonDimArrayVB6(args []Value) (Value, error) {
+	if len(args)%2 != 0 {
+		return NewEmpty(), fmt.Errorf("invalid number of arguments for array allocation")
+	}
+	bounds := make([]int, len(args))
+	for index, arg := range args {
+		bound, err := toArrayBound(arg)
+		if err != nil {
+			return NewEmpty(), err
+		}
+		bounds[index] = bound
+	}
+	return ValueFromVBArray(buildDimArrayVB6(bounds)), nil
+}
+
 // vbsAxonRedimArray resizes a VBScript array without preserving existing contents.
 func vbsAxonRedimArray(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return ValueFromVBArray(buildDimArray(nil)), nil
 	}
 	return vbsAxonDimArray(args[1:])
+}
+
+// vbsAxonRedimArrayVB6 resizes a VBScript array without preserving existing contents using VB6 pairs.
+func vbsAxonRedimArrayVB6(args []Value) (Value, error) {
+	if len(args) == 0 {
+		return ValueFromVBArray(buildDimArrayVB6(nil)), nil
+	}
+	return vbsAxonDimArrayVB6(args[1:])
 }
 
 // vbsAxonRedimPreserveArray resizes a VBScript array while preserving common contents.
@@ -1083,11 +1155,63 @@ func vbsAxonRedimPreserveArray(args []Value) (Value, error) {
 				}
 			}
 		}
-		copyPreservedArray(resized, existing, bounds)
+		copyPreservedArray(resized, existing, false, bounds)
 		return ValueFromVBArray(resized), nil
 	}
 
 	return ValueFromVBArray(buildDimArray(bounds)), nil
+}
+
+// vbsAxonRedimPreserveArrayVB6 resizes a VBScript array while preserving common contents using VB6 pairs.
+func vbsAxonRedimPreserveArrayVB6(args []Value) (Value, error) {
+	if len(args) < 3 { // [target, low1, high1, ...]
+		return NewEmpty(), nil
+	}
+	if (len(args)-1)%2 != 0 {
+		return NewEmpty(), fmt.Errorf("invalid number of arguments for array allocation")
+	}
+
+	source, ok := toVBArray(args[0])
+	if !ok {
+		return vbsAxonRedimArrayVB6(args)
+	}
+
+	bounds := make([]int, len(args)-1)
+	for index := range bounds {
+		bound, err := toArrayBound(args[index+1])
+		if err != nil {
+			return NewEmpty(), err
+		}
+		bounds[index] = bound
+	}
+
+	// VB6 Rule: In ReDim Preserve, only the last dimension can be changed,
+	// and even for the last dimension, the lower bound cannot be changed.
+	existingBounds := vbArrayUpperBounds(source)
+	// We need lower bounds too for full check
+	current := source
+	for i := 0; i < len(existingBounds); i++ {
+		newLow := bounds[i*2]
+		newHigh := bounds[i*2+1]
+		if i < len(existingBounds)-1 {
+			// Not the last dimension: must match exactly
+			if newLow != current.Lower || newHigh != current.Upper() {
+				return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
+			}
+			if next, ok := toVBArray(current.Values[0]); ok {
+				current = next
+			}
+		} else {
+			// Last dimension: lower bound must match
+			if newLow != current.Lower {
+				return NewEmpty(), newBuiltinVBRuntimeError(vbscript.SubscriptOutOfRange, "Subscript out of range: lower bound of last dimension cannot be changed in ReDim Preserve")
+			}
+		}
+	}
+
+	target := buildDimArrayVB6(bounds)
+	copyPreservedArray(target, source, true, bounds)
+	return ValueFromVBArray(target), nil
 }
 
 // vbsAxonEnumValues normalizes supported enumerable values into a zero-based array snapshot.
@@ -1369,6 +1493,9 @@ func init() {
 	RegisterBuiltin("__AXON_DIM_ARRAY", bindBuiltin(vbsAxonDimArray))
 	RegisterBuiltin("__AXON_REDIM_ARRAY", bindBuiltin(vbsAxonRedimArray))
 	RegisterBuiltin("__AXON_REDIM_PRESERVE_ARRAY", bindBuiltin(vbsAxonRedimPreserveArray))
+	RegisterBuiltin("__AXON_DIM_ARRAY_VB6", bindBuiltin(vbsAxonDimArrayVB6))
+	RegisterBuiltin("__AXON_REDIM_ARRAY_VB6", bindBuiltin(vbsAxonRedimArrayVB6))
+	RegisterBuiltin("__AXON_REDIM_PRESERVE_ARRAY_VB6", bindBuiltin(vbsAxonRedimPreserveArrayVB6))
 	RegisterBuiltin("__AXON_ENUM_VALUES", vbsAxonEnumValues)
 	RegisterBuiltin("__AXON_ENUM_COUNT", bindBuiltin(vbsAxonEnumCount))
 	RegisterBuiltin("__AXON_ENUM_ITEM", bindBuiltin(vbsAxonEnumItem))

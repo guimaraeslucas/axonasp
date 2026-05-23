@@ -42,7 +42,7 @@ import (
 const (
 	scriptCacheDependencyMapLimit = 1000
 	scriptCacheMagicSize          = 6
-	scriptCacheBinaryVersion      = uint16(8)
+	scriptCacheBinaryVersion      = uint16(9)
 	scriptCacheDebounceWindow     = 1000 * time.Millisecond
 )
 
@@ -109,7 +109,10 @@ type CachedProgram struct {
 	// GlobalTypeNames stores VB6 As Type declarations for global variables.
 	// Each entry is "name:type" where type is the ValueType constant as an integer.
 	// This is populated from the compiler's globalVarTypes during cache creation.
-	GlobalTypeNames     []string
+	GlobalTypeNames []string
+	// FuncParamDefaults maps function entry-point offsets to per-parameter default
+	// constant indices for Optional parameters.
+	FuncParamDefaults   map[int][]int
 	IncludeDependencies []string
 	// RecordDecls and RecordDeclLookup carry compiled UDT metadata required by
 	// ExtOpInitRecord/ExtOpGetRecordMember/ExtOpSetRecordMember in cached VM startup paths.
@@ -221,6 +224,9 @@ func (p *cachedProgramBinaryPayload) Serialize(writer io.Writer) error {
 	if err := binary.Write(buffered, binary.LittleEndian, uint8(p.Program.EngineMode)); err != nil {
 		return err
 	}
+	if err := writeIntSliceMap(buffered, p.Program.FuncParamDefaults); err != nil {
+		return err
+	}
 
 	return buffered.Flush()
 }
@@ -246,7 +252,7 @@ func (p *cachedProgramBinaryPayload) Deserialize(reader io.Reader) error {
 	if err := binary.Read(reader, binary.LittleEndian, &version); err != nil {
 		return err
 	}
-	if version != 1 && version != 2 && version != scriptCacheBinaryVersion {
+	if version != 1 && version != 2 && version != 8 && version != scriptCacheBinaryVersion {
 		return NewAxonASPError(ErrInvalidCacheVersion, nil, ErrInvalidCacheVersion.String(), "", 0)
 	}
 
@@ -382,6 +388,13 @@ func (p *cachedProgramBinaryPayload) Deserialize(reader io.Reader) error {
 					return err
 				}
 				p.Program.EngineMode = EngineMode(engineMode)
+				if version >= 9 {
+					funcParamDefaults, err := readIntSliceMap(reader)
+					if err != nil {
+						return err
+					}
+					p.Program.FuncParamDefaults = funcParamDefaults
+				}
 			}
 		}
 	}
@@ -1044,6 +1057,16 @@ func NewVMFromCachedProgram(program CachedProgram) *VM {
 	vm.sourceName = program.SourceName
 	vm.engineMode = program.EngineMode
 	applyProgramGlobalMetadata(vm, program)
+	clear(vm.funcParamDefaults)
+	for entryPoint, defaults := range program.FuncParamDefaults {
+		if len(defaults) == 0 {
+			vm.funcParamDefaults[entryPoint] = nil
+			continue
+		}
+		dup := make([]int, len(defaults))
+		copy(dup, defaults)
+		vm.funcParamDefaults[entryPoint] = dup
+	}
 	vm.RecordDecls = append(vm.RecordDecls[:0], program.RecordDecls...)
 	clear(vm.RecordDeclLookup)
 	for k, v := range program.RecordDeclLookup {
@@ -1576,6 +1599,63 @@ func readStringSlice(reader io.Reader) ([]string, error) {
 	return values, nil
 }
 
+func writeIntSliceMap(writer io.Writer, values map[int][]int) error {
+	if uint64(len(values)) > uint64(^uint32(0)) {
+		return errors.New("map too large")
+	}
+	if err := binary.Write(writer, binary.LittleEndian, uint32(len(values))); err != nil {
+		return err
+	}
+	for key, slice := range values {
+		if err := binary.Write(writer, binary.LittleEndian, int32(key)); err != nil {
+			return err
+		}
+		if uint64(len(slice)) > uint64(^uint32(0)) {
+			return errors.New("slice too large")
+		}
+		if err := binary.Write(writer, binary.LittleEndian, uint32(len(slice))); err != nil {
+			return err
+		}
+		for i := 0; i < len(slice); i++ {
+			if err := binary.Write(writer, binary.LittleEndian, int32(slice[i])); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func readIntSliceMap(reader io.Reader) (map[int][]int, error) {
+	var length uint32
+	if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
+		return nil, err
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	values := make(map[int][]int, int(length))
+	for i := 0; i < int(length); i++ {
+		var rawKey int32
+		if err := binary.Read(reader, binary.LittleEndian, &rawKey); err != nil {
+			return nil, err
+		}
+		var sliceLen uint32
+		if err := binary.Read(reader, binary.LittleEndian, &sliceLen); err != nil {
+			return nil, err
+		}
+		slice := make([]int, int(sliceLen))
+		for j := 0; j < int(sliceLen); j++ {
+			var rawVal int32
+			if err := binary.Read(reader, binary.LittleEndian, &rawVal); err != nil {
+				return nil, err
+			}
+			slice[j] = int(rawVal)
+		}
+		values[int(rawKey)] = slice
+	}
+	return values, nil
+}
+
 func writeSerializedValue(writer io.Writer, value Value) error {
 	if err := binary.Write(writer, binary.LittleEndian, uint8(value.Type)); err != nil {
 		return err
@@ -1662,6 +1742,7 @@ func cloneCachedProgram(program CachedProgram) CachedProgram {
 		UserConstGlobals:    cloneStringSlice(program.UserConstGlobals),
 		GlobalZeroArgFuncs:  cloneStringSlice(program.GlobalZeroArgFuncs),
 		GlobalTypeNames:     cloneStringSlice(program.GlobalTypeNames),
+		FuncParamDefaults:   cloneIntSliceMap(program.FuncParamDefaults),
 		ProgramHash:         program.ProgramHash,
 		GlobalNamesLower:    cloneStringSlice(program.GlobalNamesLower),
 		GlobalNames:         cloneStringSlice(program.GlobalNames),
@@ -1757,8 +1838,37 @@ func immutableCachedProgramView(program CachedProgram) CachedProgram {
 	for i := range program.Constants {
 		program.Constants[i].Names = immutableStringView(program.Constants[i].Names)
 	}
+	if len(program.FuncParamDefaults) > 0 {
+		for key, values := range program.FuncParamDefaults {
+			program.FuncParamDefaults[key] = immutableIntView(values)
+		}
+	}
 
 	return program
+}
+
+func immutableIntView(values []int) []int {
+	if len(values) == 0 {
+		return nil
+	}
+	return values[:len(values):len(values)]
+}
+
+func cloneIntSliceMap(values map[int][]int) map[int][]int {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[int][]int, len(values))
+	for k, v := range values {
+		if len(v) == 0 {
+			cloned[k] = nil
+			continue
+		}
+		slice := make([]int, len(v))
+		copy(slice, v)
+		cloned[k] = slice
+	}
+	return cloned
 }
 
 func immutableRecordDeclView(values []CompiledRecordDecl) []CompiledRecordDecl {

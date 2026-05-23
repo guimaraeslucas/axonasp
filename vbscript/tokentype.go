@@ -163,6 +163,8 @@ const (
 	KeywordCompare
 	KeywordText
 	KeywordBase
+	KeywordEnum
+	KeywordStatic
 	KeywordMe
 )
 
@@ -287,6 +289,10 @@ func (k Keyword) String() string {
 		return "Text"
 	case KeywordBase:
 		return "Base"
+	case KeywordEnum:
+		return "Enum"
+	case KeywordStatic:
+		return "Static"
 	case KeywordMe:
 		return "Me"
 	default:

@@ -29,6 +29,7 @@
     * [Basic Page Creation](md/axonlive/getting_started.md)
     * [The Client-Side Script](md/axonlive/client_script.md)
     * [AxonLive Builder](md/axonlive/builder.md)
+    * [WASM Support](md/axonlive/wasm.md)
 * ASP Foundations
     * [global.asa](md/asp/global-asa.md)
     * [The #include Directive](md/asp/include.md)
@@ -51,13 +52,15 @@
 * ASP Modernization
     * [Strong Typing Variables](md/asp-modernization/strong-typing-variables.md)
     * [Global Console Object](md/asp-modernization/console-object.md)
-* Javascript (JScript support)
+    * [Enumerations (Enum)](md/asp-modernization/enums.md)
+    * [Advanced Arrays/Option Base](md/asp-modernization/advanced-arrays.md)
+    * [Static Variables (Static)](md/asp-modernization/static-variables.md)
+    * [GoTo and Jumps](md/asp-modernization/goto-jumps.md)
+    * [User-Defined Types](md/asp-modernization/udt.md)
+    * [Advanced Procedure Signatures](md/asp-modernization/advanced-procedure-signatures.md)
+* Javascript support (JScript)
     * [Use Javascript in ASP Pages](md/javascript/jscript-support.md)
     * [ES6 Features and Beyond](md/javascript/jscript-es6-support.md)
-* ASP Modernization
-    * [VB6 GoTo and Jumps](md/asp-modernization/goto-flow/overview.md)
-    * [VB6 User-Defined Types (Phase 3)](md/asp-modernization/goto-flow/vb6-udt-phase3.md)
-    * [VB6 Advanced Procedure Signatures (Phase 4)](md/asp-modernization/goto-flow/advanced-procedure-signatures.md)
 * Libraries
     * [Object Overview](md/libraries/overview.md)
     * G3AXON Functions
@@ -150,7 +153,6 @@
             * [Axpoweredbyimage](md/libraries/g3axon/methods/axpoweredbyimage.md)
     * G3AXONLIVE
         * [Overview](md/libraries/g3axonlive/overview.md)
-        * [WASM Support](md/libraries/g3axonlive/wasm.md)
         * [Methods](md/libraries/g3axonlive/methods.md)
         * [Properties](md/libraries/g3axonlive/properties.md)
            * Methods Detail

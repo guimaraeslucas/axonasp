@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"strings"
+	"time"
 
 	"g3pix.com.br/axonasp/vbscript"
 )
@@ -136,6 +137,13 @@ func (c *Compiler) parseStatement() {
 			panic(c.vbCompileError(vbscript.SyntaxError, "Expected 'Error' after 'On'"))
 		case vbscript.KeywordDim:
 			c.parseDimStatement()
+		case vbscript.KeywordEnum:
+			c.parseEnumStatement()
+		case vbscript.KeywordStatic:
+			if !c.isLocal {
+				panic(c.vbCompileError(vbscript.InvalidProcedureCallOrArgument, "'Static' is only valid within procedures"))
+			}
+			c.parseStaticStatement()
 		case vbscript.KeywordConst:
 			c.parseConstStatement()
 		case vbscript.KeywordErase:
@@ -173,6 +181,10 @@ func (c *Compiler) parseStatement() {
 			c.move()
 			if c.matchKeywordOrIdentifier(vbscript.KeywordClass, "class") {
 				c.parseClassDeclaration()
+				return
+			}
+			if c.matchKeywordOrIdentifier(vbscript.KeywordEnum, "enum") {
+				c.parseEnumStatement()
 				return
 			}
 			if c.matchKeywordOrIdentifier(vbscript.KeywordEnd, "type") || strings.EqualFold(c.nextIdentifierName(), "type") {
@@ -768,6 +780,18 @@ func (c *Compiler) parseOptionStatementAfterOptionKeyword() {
 		return
 	}
 
+	if c.checkKeyword(vbscript.KeywordBase) {
+		c.move()
+		if lit, ok := c.next.(*vbscript.DecIntegerLiteralToken); ok {
+			if lit.Value == 0 || lit.Value == 1 {
+				c.optionBase = int(lit.Value)
+				c.move()
+				return
+			}
+		}
+		panic(c.vbCompileError(vbscript.SyntaxError, "Expected '0' or '1' after 'Option Base'"))
+	}
+
 	if c.matchKeywordOrIdentifier(vbscript.KeywordCompare, "compare") {
 		c.move()
 		if c.matchKeywordOrIdentifier(vbscript.KeywordText, "text") {
@@ -1199,12 +1223,21 @@ func (c *Compiler) parseClassFieldDeclaration(className string, isPublic bool) {
 		// allocate a pre-sized array for every new class instance.
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
 			c.move() // consume '('
-			dimCount := 0
+			valCount := 0
 			// Empty parens Private arr() means dynamic (undimensioned); emit no init opcode.
 			if rp, ok2 := c.next.(*vbscript.PunctuationToken); !(ok2 && rp.Type == vbscript.PunctRParen) {
 				for {
 					c.parseExpression(PrecNone) // pushes upper-bound value onto the stack
-					dimCount++
+					if c.checkKeyword(vbscript.KeywordTo) {
+						c.move()
+						c.parseExpression(PrecNone)
+						valCount += 2
+					} else {
+						// Push default lower bound and swap
+						c.emit(OpConstant, c.addConstant(NewInteger(int64(c.optionBase))))
+						c.emit(OpSwap)
+						valCount += 2
+					}
 					if comma, ok3 := c.next.(*vbscript.PunctuationToken); ok3 && comma.Type == vbscript.PunctComma {
 						c.move()
 						continue
@@ -1216,8 +1249,8 @@ func (c *Compiler) parseClassFieldDeclaration(className string, isPublic bool) {
 				panic(c.vbCompileError(vbscript.ExpectedRParen, "Expected ')' after array bounds"))
 			}
 			c.move() // consume ')'
-			if dimCount > 0 {
-				c.emit(OpInitClassArrayField, classNameIdx, fieldNameIdx, dimCount)
+			if valCount > 0 {
+				c.emit(OpInitClassArrayField, classNameIdx, fieldNameIdx, valCount)
 			}
 		}
 
@@ -1450,6 +1483,7 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	prevLocals := c.locals
 	prevDeclared := c.declaredLocals
 	prevConstLocals := c.constLocals
+	prevStaticLocals := c.staticLocals
 	prevClassName := c.currentClassName
 	prevFunctionName := c.currentFunctionName
 	prevLabelMap := c.labelMap
@@ -1460,14 +1494,10 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
+	c.staticLocals = make(map[string]int)
 	c.labelMap = make(map[string]int)
 	c.forwardLabelPatches = make(map[string][]int)
-
-	if isFunc {
-		c.currentFunctionName = methodName
-	} else {
-		c.currentFunctionName = ""
-	}
+	c.currentFunctionName = methodName
 
 	for _, p := range paramResult.names {
 		c.locals.Add(p)
@@ -1558,6 +1588,7 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	c.locals = prevLocals
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
+	c.staticLocals = prevStaticLocals
 	c.currentFunctionName = prevFunctionName
 	c.labelMap = prevLabelMap
 	c.forwardLabelPatches = prevForwardLabelPatches
@@ -1611,6 +1642,7 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	prevLocals := c.locals
 	prevDeclared := c.declaredLocals
 	prevConstLocals := c.constLocals
+	prevStaticLocals := c.staticLocals
 	prevClassName := c.currentClassName
 	prevFunctionName := c.currentFunctionName
 	prevLabelMap := c.labelMap
@@ -1621,14 +1653,10 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
+	c.staticLocals = make(map[string]int)
 	c.labelMap = make(map[string]int)
 	c.forwardLabelPatches = make(map[string][]int)
-
-	if isFunction {
-		c.currentFunctionName = propertyName
-	} else {
-		c.currentFunctionName = ""
-	}
+	c.currentFunctionName = propertyName
 
 	for _, p := range paramResult.names {
 		c.locals.Add(p)
@@ -1715,6 +1743,7 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	c.locals = prevLocals
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
+	c.staticLocals = prevStaticLocals
 	c.currentFunctionName = prevFunctionName
 	c.labelMap = prevLabelMap
 	c.forwardLabelPatches = prevForwardLabelPatches
@@ -1833,6 +1862,90 @@ func (c *Compiler) parseParenArgumentList() int {
 	return argCount
 }
 
+// parseStaticStatement compiles Static local variable declarations as mapped global slots.
+func (c *Compiler) parseStaticStatement() {
+	c.expectKeyword(vbscript.KeywordStatic)
+	for {
+		name := c.expectIdentifier()
+		lower := strings.ToLower(name)
+
+		// Static variables should have been hoisted into staticLocals.
+		globalIdx, ok := c.staticLocals[lower]
+		if !ok {
+			// Fallback if hoisting missed it
+			prefix := ""
+			if c.currentClassName != "" {
+				prefix = c.currentClassName + "_"
+			}
+			hiddenName := fmt.Sprintf("__static_%s%s_%s", prefix, c.currentFunctionName, name)
+			globalIdx = c.Globals.Add(hiddenName)
+			c.staticLocals[lower] = globalIdx
+			c.declaredGlobals[strings.ToLower(hiddenName)] = true
+		}
+
+		declaredType, udtName := c.parseAsTypeClause()
+
+		// If it has array bounds OR As Type, we need a guard
+		isArray := false
+		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
+			isArray = true
+		}
+
+		if isArray || declaredType != VTEmpty {
+			// Guard: If IsEmpty(__static_...) Then
+			c.emitBuiltinTarget("IsEmpty")
+			c.emit(OpGetGlobal, globalIdx)
+			c.emit(OpCall, 1)
+			jumpIfNotEmpty := c.emitJump(OpJumpIfFalse)
+
+			if isArray {
+				c.tryParseArrayDeclaration(name)
+			}
+
+			// For non-array, non-record types, initialize to default
+			if declaredType != VTEmpty && declaredType != VTRecord && !isArray {
+				var val Value
+				switch declaredType {
+				case VTInteger:
+					val = NewInteger(0)
+				case VTDouble:
+					val = NewDouble(0)
+				case VTString:
+					val = NewString("")
+				case VTBool:
+					val = NewBool(false)
+				case VTDate:
+					val = NewDate(time.Time{})
+				default:
+					val = NewEmpty()
+				}
+				c.emit(OpConstant, c.addConstant(val))
+				opSet, idxSet := c.resolveSetVar(name)
+				c.emit(c.letOpCode(opSet), idxSet)
+			}
+
+			if declaredType == VTRecord {
+				// emitTypedInit will handle the initialization
+				c.emitTypedInit(name, declaredType, udtName)
+			}
+
+			c.patchJump(jumpIfNotEmpty)
+
+			// Still call emitTypedInit to register the type mappings (without re-initializing record)
+			if declaredType != VTRecord {
+				c.emitTypedInit(name, declaredType, udtName)
+			}
+		}
+
+		if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
+			c.move()
+			continue
+		}
+		break
+	}
+	c.skipStatementEnd()
+}
+
 // parseConstStatement compiles Const declarations as declared variables initialized from constant expressions.
 func (c *Compiler) parseConstStatement() {
 	c.expectKeyword(vbscript.KeywordConst)
@@ -1865,6 +1978,62 @@ func (c *Compiler) parseConstStatement() {
 	}
 }
 
+// parseEnumStatement compiles Enum declarations as compile-time constants.
+func (c *Compiler) parseEnumStatement() {
+	c.expectKeyword(vbscript.KeywordEnum)
+	_ = c.expectIdentifier() // Enum name (ignored at runtime)
+	c.skipStatementEnd()
+
+	var currentValue int64 = 0
+
+	for {
+		if c.matchKeywordOrIdentifier(vbscript.KeywordEnd, "end") {
+			c.move()
+			c.expectKeyword(vbscript.KeywordEnum)
+			c.skipStatementEnd()
+			break
+		}
+
+		if c.matchEof() {
+			panic(c.vbCompileError(vbscript.ExpectedEnd, "Expected 'End Enum'"))
+		}
+
+		if c.isStatementEnd() {
+			c.skipStatementEnd()
+			continue
+		}
+
+		name := c.expectIdentifier()
+		lower := strings.ToLower(name)
+
+		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
+			c.move()
+			// For simplicity in single-pass, we only support integer literals or existing constants in Enum.
+			if lit, ok := c.next.(*vbscript.DecIntegerLiteralToken); ok {
+				currentValue = lit.Value
+				c.move()
+			} else if lit, ok := c.next.(*vbscript.HexIntegerLiteralToken); ok {
+				currentValue = lit.Value
+				c.move()
+			} else {
+				// Try to resolve as a constant
+				constName := c.expectIdentifier()
+				if val, ok := c.constLiteralGlobals[strings.ToLower(constName)]; ok && val.Type == VTInteger {
+					currentValue = val.Num
+				} else {
+					panic(c.vbCompileError(vbscript.ExpectedConstantExpression, "Expected constant integer expression in Enum"))
+				}
+			}
+		}
+
+		c.constGlobals[lower] = true
+		c.constLiteralGlobals[lower] = NewInteger(currentValue)
+		currentValue++
+
+		c.skipStatementEnd()
+	}
+}
+
 func (c *Compiler) isStatementEnd() bool {
 	if c.matchEof() {
 		return true
@@ -1874,6 +2043,12 @@ func (c *Compiler) isStatementEnd() bool {
 		return true
 	}
 	return false
+}
+
+func (c *Compiler) skipStatementEnd() {
+	for !c.matchEof() && c.isStatementEnd() {
+		c.move()
+	}
 }
 
 // parseScopedVariableDeclaration compiles page-scope Public/Private variable declarations.
@@ -1976,7 +2151,22 @@ func (c *Compiler) emitTypedInit(name string, declaredType ValueType, udtName st
 		return // No type declaration, standard variant behavior
 	}
 	lower := strings.ToLower(name)
+
+	isStatic := false
+	var globalName string
 	if c.isLocal {
+		if globalIdx, ok := c.staticLocals[lower]; ok {
+			isStatic = true
+			globalName = strings.ToLower(c.Globals.names[globalIdx])
+		}
+	}
+
+	if isStatic {
+		c.globalVarTypes[globalName] = declaredType
+		if declaredType == VTRecord {
+			c.globalRecordTypes[globalName] = udtName
+		}
+	} else if c.isLocal {
 		c.localVarTypes[lower] = declaredType
 		if declaredType == VTRecord {
 			c.localRecordTypes[lower] = udtName
@@ -2090,11 +2280,11 @@ func (c *Compiler) parseArrayBoundsIntoBuiltinCall(name string, preserve bool) (
 	}
 
 	if preserve {
-		c.emitBuiltinTarget("__AXON_REDIM_PRESERVE_ARRAY")
+		c.emitBuiltinTarget("__AXON_REDIM_PRESERVE_ARRAY_VB6")
 		op, idx := c.resolveVar(name)
 		c.emit(op, idx)
 	} else {
-		c.emitBuiltinTarget("__AXON_DIM_ARRAY")
+		c.emitBuiltinTarget("__AXON_DIM_ARRAY_VB6")
 	}
 
 	c.move()
@@ -2102,7 +2292,18 @@ func (c *Compiler) parseArrayBoundsIntoBuiltinCall(name string, preserve bool) (
 	if closeParen, ok := c.next.(*vbscript.PunctuationToken); !ok || closeParen.Type != vbscript.PunctRParen {
 		for {
 			c.parseExpression(PrecNone)
-			argCount++
+			// Handle VB6 A To B syntax
+			if c.checkKeyword(vbscript.KeywordTo) {
+				c.move()
+				c.parseExpression(PrecNone)
+				argCount += 2
+			} else {
+				// Classic VBScript Dim arr(N) uses Option Base as lower bound
+				// Push default lower bound AFTER the upper bound, then swap.
+				c.emit(OpConstant, c.addConstant(NewInteger(int64(c.optionBase))))
+				c.emit(OpSwap)
+				argCount += 2
+			}
 			if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
 				c.move()
 				continue
@@ -3021,6 +3222,7 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	prevLocals := c.locals
 	prevDeclared := c.declaredLocals
 	prevConstLocals := c.constLocals
+	prevStaticLocals := c.staticLocals
 	prevFunctionName := c.currentFunctionName
 	prevLabelMap := c.labelMap
 	prevForwardLabelPatches := c.forwardLabelPatches
@@ -3029,14 +3231,10 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
+	c.staticLocals = make(map[string]int)
 	c.labelMap = make(map[string]int)
 	c.forwardLabelPatches = make(map[string][]int)
-
-	if isFunc {
-		c.currentFunctionName = name
-	} else {
-		c.currentFunctionName = ""
-	}
+	c.currentFunctionName = name
 
 	for _, p := range paramResult.names {
 		c.locals.Add(p)
@@ -3087,6 +3285,7 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	c.locals = prevLocals
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
+	c.staticLocals = prevStaticLocals
 	c.currentFunctionName = prevFunctionName
 	c.labelMap = prevLabelMap
 	c.forwardLabelPatches = prevForwardLabelPatches
@@ -3108,7 +3307,9 @@ func (c *Compiler) hoistProcedureDimDeclarations(endKeyword vbscript.Keyword) {
 		case *vbscript.KeywordToken:
 			switch t.Keyword {
 			case vbscript.KeywordDim:
-				c.scanProcedureDimNames(&scan)
+				c.scanProcedureDimNames(&scan, false)
+			case vbscript.KeywordStatic:
+				c.scanProcedureDimNames(&scan, true) // Static also reserves names at hoist time
 			case vbscript.KeywordEnd:
 				nextTok := scan.NextToken()
 				if c.tokenMatchesKeywordOrIdentifier(nextTok, endKeyword, strings.ToLower(endKeyword.String())) {
@@ -3129,9 +3330,9 @@ func keywordFromBool(isFunc bool) vbscript.Keyword {
 	return vbscript.KeywordSub
 }
 
-// scanProcedureDimNames consumes one Dim declaration list from a procedure-body
-// scan and predeclares each variable name in the current local symbol table.
-func (c *Compiler) scanProcedureDimNames(scan *vbscript.Lexer) {
+// scanProcedureDimNames consumes one Dim or Static declaration list from a procedure-body
+// scan and predeclares each variable name in the current scope.
+func (c *Compiler) scanProcedureDimNames(scan *vbscript.Lexer, isStatic bool) {
 	if c == nil || scan == nil {
 		return
 	}
@@ -3150,7 +3351,20 @@ func (c *Compiler) scanProcedureDimNames(scan *vbscript.Lexer) {
 		}
 
 		if strings.TrimSpace(name) != "" {
-			c.declareVar(name)
+			if isStatic {
+				lower := strings.ToLower(name)
+				// Hidden global name: __static_[ClassName_]FuncName_varName
+				prefix := ""
+				if c.currentClassName != "" {
+					prefix = c.currentClassName + "_"
+				}
+				hiddenName := fmt.Sprintf("__static_%s%s_%s", prefix, c.currentFunctionName, name)
+				globalIdx := c.Globals.Add(hiddenName)
+				c.staticLocals[lower] = globalIdx
+				c.declaredGlobals[strings.ToLower(hiddenName)] = true
+			} else {
+				c.declareVar(name)
+			}
 		}
 
 		nextTok := scan.NextToken()
@@ -3225,6 +3439,9 @@ func (c *Compiler) expectKeyword(kw vbscript.Keyword) {
 
 func (c *Compiler) checkKeyword(kw vbscript.Keyword) bool {
 	if k, ok := c.next.(*vbscript.KeywordToken); ok && k.Keyword == kw {
+		return true
+	}
+	if k, ok := c.next.(*vbscript.KeywordOrIdentifierToken); ok && k.Keyword == kw {
 		return true
 	}
 	return false

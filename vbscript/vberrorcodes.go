@@ -164,6 +164,7 @@ const (
 	DefaultCanBeSpecifiedOnlyOnPropertyFunctionOrSub VBSyntaxErrorCode = 1056
 	DefaultMustAlsoSpecifyPublic                     VBSyntaxErrorCode = 1057
 	DefaultCanOnlyBeOnPropertyGet                    VBSyntaxErrorCode = 1058
+	ExpectedConstantExpression                       VBSyntaxErrorCode = 1059
 	RequiresARegularExpressionObject                 VBSyntaxErrorCode = 5016
 	RegularExpressionSyntaxError                     VBSyntaxErrorCode = 5017
 	TheNumberOfWordsError                            VBSyntaxErrorCode = 5018
@@ -281,6 +282,7 @@ var VBScriptErrorMessages = map[VBSyntaxErrorCode]string{
 	MustBeDefinedInsideClass:                     "Must be inside a class definition",
 	ExpectedLetGetSet:                            "Missing Let, Set or Get in the property declaration",
 	ExpectedProperty:                             "Missing 'Property'",
+	ExpectedConstantExpression:                   "Expected constant expression",
 	InconsistentNumberOfArguments:                "The Number of parameters must be consistent with the attribute description",
 	CannotHaveMultipleDefault:                    "cannot have more than one default attribute / method in a class",
 	ClassInitializeOrTerminateDoNotHaveArguments: "Class did not initialize or terminate the process parameters",

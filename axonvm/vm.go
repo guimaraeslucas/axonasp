@@ -4737,6 +4737,11 @@ aspExecLoop:
 				vm.push(retVal)
 			}
 
+		case OpSwap:
+			if vm.sp >= 1 {
+				vm.stack[vm.sp], vm.stack[vm.sp-1] = vm.stack[vm.sp-1], vm.stack[vm.sp]
+			}
+
 		default:
 			// Unknown opcode: raise a runtime error instead of silently advancing past bytecode.
 			// This surfaces bugs in the compiler emitting opcodes the VM does not handle.
@@ -8347,6 +8352,7 @@ var recordPool = sync.Pool{
 
 func (vm *VM) acquireRecord(size int) *VBRecord {
 	rec := recordPool.Get().(*VBRecord)
+	rec.releaseMark = false
 	if cap(rec.Members) < size {
 		rec.Members = make([]Value, size)
 	} else {
@@ -8372,6 +8378,10 @@ func (vm *VM) releaseRecord(rec *VBRecord) {
 	if rec == nil {
 		return
 	}
+	if rec.releaseMark {
+		return
+	}
+	rec.releaseMark = true
 	for i := range rec.Members {
 		if rec.Members[i].Type == VTRecord && rec.Members[i].Rec != nil {
 			vm.releaseRecord(rec.Members[i].Rec)

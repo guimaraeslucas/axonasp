@@ -143,6 +143,7 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 		UserConstGlobals:    filterNamesByFlagSet(compiler.constGlobals, users),
 		GlobalZeroArgFuncs:  sortedTrueKeys(compiler.globalZeroArgFuncs),
 		GlobalTypeNames:     globalTypeNames,
+		FuncParamDefaults:   cloneFuncParamDefaultsMap(compiler.funcParamDefaults),
 		IncludeDependencies: compiler.IncludeDependencies(),
 		RecordDecls:         cloneRecordDeclSlice(compiler.recordDecls),
 		RecordDeclLookup:    cloneIntMap(compiler.recordDeclLookup),
@@ -171,6 +172,23 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 		program.SourceName,
 	)
 	return program
+}
+
+func cloneFuncParamDefaultsMap(values map[int][]int) map[int][]int {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[int][]int, len(values))
+	for entryPoint, defaults := range values {
+		if len(defaults) == 0 {
+			cloned[entryPoint] = nil
+			continue
+		}
+		dup := make([]int, len(defaults))
+		copy(dup, defaults)
+		cloned[entryPoint] = dup
+	}
+	return cloned
 }
 
 func applyProgramGlobalMetadata(vm *VM, program CachedProgram) {
