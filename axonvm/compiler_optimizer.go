@@ -166,7 +166,7 @@ func (c *Compiler) optimizeDeadConditionalJumpPass() bool {
 
 	for ip := 0; ip < len(c.bytecode); {
 		op := OpCode(c.bytecode[ip])
-		size := opcodeOperandSize(op)
+		size := opcodeOperandSize(op, c.bytecode, ip)
 		instrEnd := ip + 1 + size
 		if instrEnd > len(c.bytecode) {
 			break
@@ -250,7 +250,7 @@ func findPreviousInstructionStart(bytecode []byte, before int) int {
 	}
 	prev := -1
 	for ip := 0; ip < len(bytecode) && ip < before; {
-		size := opcodeOperandSize(OpCode(bytecode[ip]))
+		size := opcodeOperandSize(OpCode(bytecode[ip]), bytecode, ip)
 		next := ip + 1 + size
 		if next > before {
 			break
@@ -328,7 +328,7 @@ func (c *Compiler) optimizeIntegerArithmeticPass() bool {
 		}
 
 		op := OpCode(c.bytecode[ip])
-		size := opcodeOperandSize(op)
+		size := opcodeOperandSize(op, c.bytecode, ip)
 		instrEnd := ip + 1 + size
 		if instrEnd > len(c.bytecode) {
 			break
@@ -494,7 +494,7 @@ func (c *Compiler) optimizeLocalCopyPropagationPass() bool {
 		}
 
 		op := OpCode(c.bytecode[ip])
-		size := opcodeOperandSize(op)
+		size := opcodeOperandSize(op, c.bytecode, ip)
 		instrEnd := ip + 1 + size
 		if instrEnd > len(c.bytecode) {
 			break
@@ -714,8 +714,8 @@ func collectJumpTargets(bytecode []byte) map[int]struct{} {
 	targets := make(map[int]struct{})
 	for ip := 0; ip < len(bytecode); {
 		op := OpCode(bytecode[ip])
+		size := opcodeOperandSize(op, bytecode, ip)
 		ip++
-		size := opcodeOperandSize(op)
 		switch op {
 		case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
 			OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,

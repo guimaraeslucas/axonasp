@@ -300,12 +300,19 @@ type CompiledClassDecl struct {
 	Fields     []CompiledClassFieldDecl
 	Methods    []CompiledClassMethodDecl
 	Properties []CompiledClassPropertyDecl
+	Events     []CompiledClassEventDecl
 }
 
 // CompiledClassFieldDecl stores one compiled class field metadata entry.
 type CompiledClassFieldDecl struct {
-	Name     string
-	IsPublic bool
+	Name       string
+	IsPublic   bool
+	WithEvents bool
+}
+
+// CompiledClassEventDecl stores one compiled class event metadata entry.
+type CompiledClassEventDecl struct {
+	Name string
 }
 
 // CompiledClassMethodDecl stores one compiled class method metadata entry.
@@ -363,6 +370,38 @@ func (c *Compiler) hasClassFieldDeclaration(className string, fieldName string) 
 	trimmedFieldName := strings.TrimSpace(fieldName)
 	for i := range c.classDecls[classIdx].Fields {
 		if strings.EqualFold(c.classDecls[classIdx].Fields[i].Name, trimmedFieldName) {
+			return true
+		}
+	}
+	return false
+}
+
+// addClassEventDeclaration attaches one class event metadata entry to one class declaration.
+func (c *Compiler) addClassEventDeclaration(className string, event CompiledClassEventDecl) {
+	if c == nil {
+		return
+	}
+	lowerClassName := strings.ToLower(strings.TrimSpace(className))
+	classIdx, exists := c.classDeclLookup[lowerClassName]
+	if !exists || classIdx < 0 || classIdx >= len(c.classDecls) {
+		return
+	}
+	c.classDecls[classIdx].Events = append(c.classDecls[classIdx].Events, event)
+}
+
+// hasClassEventDeclaration reports whether one class event is known in compile metadata.
+func (c *Compiler) hasClassEventDeclaration(className string, eventName string) bool {
+	if c == nil {
+		return false
+	}
+	lowerClassName := strings.ToLower(strings.TrimSpace(className))
+	classIdx, exists := c.classDeclLookup[lowerClassName]
+	if !exists || classIdx < 0 || classIdx >= len(c.classDecls) {
+		return false
+	}
+	lowerEventName := strings.ToLower(strings.TrimSpace(eventName))
+	for _, e := range c.classDecls[classIdx].Events {
+		if strings.EqualFold(e.Name, lowerEventName) {
 			return true
 		}
 	}

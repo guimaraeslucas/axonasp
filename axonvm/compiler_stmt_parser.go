@@ -160,6 +160,8 @@ func (c *Compiler) parseStatement() {
 			c.parseDoStatement()
 		case vbscript.KeywordFor:
 			c.parseForStatement()
+		case vbscript.KeywordRaiseEvent:
+			c.parseRaiseEventStatement()
 		case vbscript.KeywordGoto:
 			c.move()
 			var name string
@@ -990,18 +992,18 @@ func (c *Compiler) parseClassDeclaration() {
 			c.parseClassPropertyDeclaration(className, isPublic, isDefaultMember)
 			continue
 		}
-		if isPublic && c.isIdentifierLikeToken(c.next) {
+		if c.matchKeywordOrIdentifier(vbscript.KeywordEvent, "event") {
 			if isDefaultMember {
-				panic(c.vbCompileError(vbscript.ExpectedSub, "Default member must be a Sub, Function, or Property"))
+				panic(c.vbCompileError(vbscript.ExpectedSub, "Events cannot be the default member of a class"))
 			}
-			c.parseClassFieldDeclaration(className, true)
+			c.parseClassEventDeclaration(className)
 			continue
 		}
-		if !isPublic && c.isIdentifierLikeToken(c.next) {
+		if c.checkKeyword(vbscript.KeywordWithEvents) || (isPublic && c.isIdentifierLikeToken(c.next)) || (!isPublic && c.isIdentifierLikeToken(c.next)) {
 			if isDefaultMember {
 				panic(c.vbCompileError(vbscript.ExpectedSub, "Default member must be a Sub, Function, or Property"))
 			}
-			c.parseClassFieldDeclaration(className, false)
+			c.parseClassFieldDeclaration(className, isPublic)
 			continue
 		}
 		if c.checkKeyword(vbscript.KeywordClass) {
@@ -1206,9 +1208,15 @@ func (c *Compiler) parseClassFieldDeclaration(className string, isPublic bool) {
 		c.move()
 	}
 
+	withEvents := false
+	if c.checkKeyword(vbscript.KeywordWithEvents) {
+		c.move()
+		withEvents = true
+	}
+
 	for {
 		fieldName := c.expectIdentifier()
-		c.addClassFieldDeclaration(className, CompiledClassFieldDecl{Name: fieldName, IsPublic: isPublic})
+		c.addClassFieldDeclaration(className, CompiledClassFieldDecl{Name: fieldName, IsPublic: isPublic, WithEvents: withEvents})
 
 		classNameIdx := c.addConstant(NewString(className))
 		fieldNameIdx := c.addConstant(NewString(fieldName))
@@ -1217,6 +1225,10 @@ func (c *Compiler) parseClassFieldDeclaration(className string, isPublic bool) {
 			isPublicOperand = 1
 		}
 		c.emit(OpRegisterClassField, classNameIdx, fieldNameIdx, isPublicOperand)
+
+		if withEvents {
+			c.emitExt(ExtOpWithEventsRegister, classNameIdx, fieldNameIdx)
+		}
 
 		// If the field has array dimensions (e.g., Private arr(5) or Private arr(3,5)),
 		// parse each upper-bound expression and emit OpInitClassArrayField so the VM can
@@ -2055,6 +2067,12 @@ func (c *Compiler) skipStatementEnd() {
 // Classic ASP accepts module-level declarations like `Private counter` as aliases for
 // page-level variable declarations; they should not be rejected as missing procedures.
 func (c *Compiler) parseScopedVariableDeclaration() {
+	withEvents := false
+	if c.checkKeyword(vbscript.KeywordWithEvents) {
+		c.move()
+		withEvents = true
+	}
+
 	for {
 		name := c.expectIdentifier()
 		c.declareVar(name)
@@ -2074,6 +2092,10 @@ func (c *Compiler) parseScopedVariableDeclaration() {
 
 		// Emit type initialization opcode if As Type was specified.
 		c.emitTypedInit(name, declaredType, udtName)
+
+		if withEvents {
+			c.emitExt(ExtOpWithEventsRegister, 0xFFFF, c.addConstant(NewString(name)))
+		}
 
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
 			c.move()
@@ -2191,6 +2213,13 @@ func (c *Compiler) emitTypedInit(name string, declaredType ValueType, udtName st
 
 func (c *Compiler) parseDimStatement() {
 	c.expectKeyword(vbscript.KeywordDim)
+
+	withEvents := false
+	if c.checkKeyword(vbscript.KeywordWithEvents) {
+		c.move()
+		withEvents = true
+	}
+
 	for {
 		name := c.expectIdentifier()
 		c.declareVar(name)
@@ -2210,6 +2239,10 @@ func (c *Compiler) parseDimStatement() {
 
 		// Emit type initialization opcode if As Type was specified.
 		c.emitTypedInit(name, declaredType, udtName)
+
+		if withEvents {
+			c.emitExt(ExtOpWithEventsRegister, 0xFFFF, c.addConstant(NewString(name)))
+		}
 
 		if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
 			c.move()
@@ -3621,4 +3654,82 @@ func (c *Compiler) parseResponseWriteFlatChain() int {
 		count++
 	}
 	return count
+}
+
+// parseClassEventDeclaration parses an Event declaration within a Class.
+func (c *Compiler) parseClassEventDeclaration(className string) {
+	c.move() // consume "Event"
+	eventName := c.expectIdentifier()
+
+	// Events can have parameters in VB6, but for now we'll support empty signatures
+	// or just parse and ignore them to match compatibility if needed.
+	// Classic ASP usually doesn't have events, so we're adding this for VB6 modernization.
+	if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
+		c.move()
+		// Parse parameter list but we don't strictly need it for dispatch yet
+		for {
+			if c.matchEof() {
+				break
+			}
+			if rp, ok2 := c.next.(*vbscript.PunctuationToken); ok2 && rp.Type == vbscript.PunctRParen {
+				break
+			}
+			c.move() // dummy skip for now
+			if comma, ok3 := c.next.(*vbscript.PunctuationToken); ok3 && comma.Type == vbscript.PunctComma {
+				c.move()
+				continue
+			}
+			break
+		}
+		if rp, ok := c.next.(*vbscript.PunctuationToken); !ok || rp.Type != vbscript.PunctRParen {
+			panic(c.vbCompileError(vbscript.SyntaxError, "Expected ')'"))
+		}
+		c.move()
+	}
+
+	c.addClassEventDeclaration(className, CompiledClassEventDecl{Name: eventName})
+
+	classNameIdx := c.addConstant(NewString(className))
+	eventNameIdx := c.addConstant(NewString(eventName))
+	c.emitExt(ExtOpRegisterClassEvent, classNameIdx, eventNameIdx)
+}
+
+// parseRaiseEventStatement parses a RaiseEvent statement.
+func (c *Compiler) parseRaiseEventStatement() {
+	c.expectKeyword(vbscript.KeywordRaiseEvent)
+	eventName := c.expectIdentifier()
+
+	argCount := 0
+	if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
+		c.move()
+		if rp, ok2 := c.next.(*vbscript.PunctuationToken); !(ok2 && rp.Type == vbscript.PunctRParen) {
+			for {
+				c.parseExpression(PrecNone)
+				argCount++
+				if comma, ok3 := c.next.(*vbscript.PunctuationToken); ok3 && comma.Type == vbscript.PunctComma {
+					c.move()
+					continue
+				}
+				break
+			}
+		}
+		if rp, ok := c.next.(*vbscript.PunctuationToken); !ok || rp.Type != vbscript.PunctRParen {
+			panic(c.vbCompileError(vbscript.SyntaxError, "Expected ')'"))
+		}
+		c.move()
+	} else if !c.isStatementEnd() {
+		// Support RaiseEvent EventName arg1, arg2
+		for {
+			c.parseExpression(PrecNone)
+			argCount++
+			if comma, ok3 := c.next.(*vbscript.PunctuationToken); ok3 && comma.Type == vbscript.PunctComma {
+				c.move()
+				continue
+			}
+			break
+		}
+	}
+
+	eventNameIdx := c.addConstant(NewString(eventName))
+	c.emitExt(ExtOpRaiseEvent, eventNameIdx, argCount)
 }

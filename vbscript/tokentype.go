@@ -165,6 +165,9 @@ const (
 	KeywordBase
 	KeywordEnum
 	KeywordStatic
+	KeywordEvent
+	KeywordRaiseEvent
+	KeywordWithEvents
 	KeywordMe
 )
 
@@ -293,6 +296,12 @@ func (k Keyword) String() string {
 		return "Enum"
 	case KeywordStatic:
 		return "Static"
+	case KeywordEvent:
+		return "Event"
+	case KeywordRaiseEvent:
+		return "RaiseEvent"
+	case KeywordWithEvents:
+		return "WithEvents"
 	case KeywordMe:
 		return "Me"
 	default:

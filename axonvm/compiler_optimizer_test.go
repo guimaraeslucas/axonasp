@@ -34,7 +34,7 @@ func scanBytecodeForOp(bytecode []byte, target OpCode) bool {
 		if op == target {
 			return true
 		}
-		i += 1 + opcodeOperandSize(op)
+		i += 1 + opcodeOperandSize(op, bytecode, i)
 	}
 	return false
 }
@@ -50,7 +50,7 @@ func scanBytecodeForExtOp(bytecode []byte, target ExtOpCode) bool {
 				return true
 			}
 		}
-		i += 1 + opcodeOperandSize(op)
+		i += 1 + opcodeOperandSize(op, bytecode, i)
 	}
 	return false
 }
@@ -63,7 +63,7 @@ func countBytecodeOp(bytecode []byte, target OpCode) int {
 		if op == target {
 			n++
 		}
-		i += 1 + opcodeOperandSize(op)
+		i += 1 + opcodeOperandSize(op, bytecode, i)
 	}
 	return n
 }
@@ -344,7 +344,7 @@ func findOpcodeOffset(bytecode []byte, target OpCode) int {
 		if op == target {
 			return i
 		}
-		i += 1 + opcodeOperandSize(op)
+		i += 1 + opcodeOperandSize(op, bytecode, i)
 	}
 	return -1
 }

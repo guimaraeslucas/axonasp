@@ -208,7 +208,7 @@ func TestJScriptModuleOpcodeEmission(t *testing.T) {
 		if op == OpJSExport {
 			hasExport = true
 		}
-		size := opcodeOperandSize(op)
+		size := opcodeOperandSize(op, compiler.bytecode, ip)
 		if op == OpJSImport {
 			if ip+4 > len(compiler.bytecode) {
 				t.Fatal("invalid JSImport bytecode")

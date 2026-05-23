@@ -545,6 +545,17 @@ const (
 	ExtOpJSMathSqrt
 	ExtOpJSMathMin
 	ExtOpJSMathMax
+
+	// Phase 4: Events
+	// ExtOpRegisterClassEvent registers one event name for a class.
+	// [OpExtPrefix, ExtOpRegisterClassEvent, ClassNameIdxHigh, ClassNameIdxLow, EventNameIdxHigh, EventNameIdxLow]
+	ExtOpRegisterClassEvent
+	// ExtOpRaiseEvent raises an event in the current class instance.
+	// [OpExtPrefix, ExtOpRaiseEvent, EventNameIdxHigh, EventNameIdxLow, ArgCountHigh, ArgCountLow]
+	ExtOpRaiseEvent
+	// ExtOpWithEventsRegister registers a WithEvents binding for a variable in a class.
+	// [OpExtPrefix, ExtOpWithEventsRegister, ClassNameIdxHigh, ClassNameIdxLow, VarNameIdxHigh, VarNameIdxLow]
+	ExtOpWithEventsRegister
 )
 
 func (op OpCode) String() string {
@@ -1046,6 +1057,12 @@ func (op ExtOpCode) String() string {
 		return "ExtOpJSMathMin"
 	case ExtOpJSMathMax:
 		return "ExtOpJSMathMax"
+	case ExtOpRegisterClassEvent:
+		return "ExtOpRegisterClassEvent"
+	case ExtOpRaiseEvent:
+		return "ExtOpRaiseEvent"
+	case ExtOpWithEventsRegister:
+		return "ExtOpWithEventsRegister"
 	default:
 		return "ExtOpUnknown"
 	}

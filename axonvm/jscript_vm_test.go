@@ -256,7 +256,7 @@ func TestJScriptMemberOpcodesReserveInlineCachePayload(t *testing.T) {
 	hasSet := false
 	for ip := 0; ip < len(bytecode); {
 		op := OpCode(bytecode[ip])
-		sz := opcodeOperandSize(op)
+		sz := opcodeOperandSize(op, bytecode, ip)
 		if ip+1+sz > len(bytecode) {
 			t.Fatalf("invalid bytecode boundary at ip=%d op=%v", ip, op)
 		}
@@ -314,7 +314,7 @@ func TestJScriptMemberInlineCachePopulatesAfterRun(t *testing.T) {
 	foundPopulated := false
 	for ip := 0; ip < len(vm.bytecode); {
 		op := OpCode(vm.bytecode[ip])
-		sz := opcodeOperandSize(op)
+		sz := opcodeOperandSize(op, vm.bytecode, ip)
 		if ip+1+sz > len(vm.bytecode) {
 			break
 		}

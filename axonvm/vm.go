@@ -230,9 +230,10 @@ type RuntimeClassMethodDef struct {
 
 // RuntimeClassFieldDef stores runtime metadata for one direct class field.
 type RuntimeClassFieldDef struct {
-	Name     string
-	IsPublic bool
-	Dims     []int // nil for plain variables; non-nil upper bounds for fixed-size arrays
+	Name       string
+	IsPublic   bool
+	WithEvents bool
+	Dims       []int // nil for plain variables; non-nil upper bounds for fixed-size arrays
 }
 
 // RuntimeClassPropertyDef stores runtime metadata for one class property.
@@ -256,14 +257,24 @@ type RuntimeClassDef struct {
 	Fields     map[string]RuntimeClassFieldDef
 	Methods    map[string]RuntimeClassMethodDef
 	Properties map[string]RuntimeClassPropertyDef
+	Events     map[string]bool
+}
+
+// EventObserver represents one registered event handler.
+type EventObserver struct {
+	Handler     Value  // VTUserSub or VTNativeObject (for future extensibility)
+	ContainerID int64  // ID of the RuntimeClassInstance that owns the handler (0 for global)
+	Prefix      string // The "objname_" prefix
 }
 
 // RuntimeClassInstance stores one allocated class instance state.
 type RuntimeClassInstance struct {
-	ClassName  string
-	Members    map[string]Value
-	refCount   int  // Reference count for deterministic termination
-	terminated bool // True if Class_Terminate has already been called
+	ClassName       string
+	Members         map[string]Value
+	Observers       map[string][]EventObserver // Key: EventName (lowercase)
+	WithEventsNames map[string]bool            // Key: MemberName (lowercase) that has WithEvents
+	refCount        int                        // Reference count for deterministic termination
+	terminated      bool                       // True if Class_Terminate has already been called
 }
 
 type callMemberICKind uint8
@@ -447,6 +458,8 @@ type VM struct {
 	// globalTypes stores the declared VB6 type (if any) for each global slot.
 	// 0 (VTEmpty) = no declared type (Variant). Non-zero = declared type for type enforcement.
 	globalTypes []ValueType
+	// globalWithEvents stores the indices of global variables declared WithEvents.
+	globalWithEvents map[uint16]bool
 	// funcLocalTypes maps function entry point bytecode offsets to local variable type
 	// declarations for VB6 As Type support. The inner map key is the local slot offset,
 	// the value is the declared ValueType (VTEmpty = Variant/no constraint).
@@ -553,6 +566,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		constants:                      constants,
 		Globals:                        make([]Value, globalCount),
 		globalTypes:                    make([]ValueType, globalCount),
+		globalWithEvents:               make(map[uint16]bool),
 		stack:                          make([]Value, StackSize),
 		sp:                             -1,
 		stmtSP:                         -1,
@@ -973,7 +987,7 @@ func (vm *VM) attachDynamicClassResolutionContext(compiler *Compiler) {
 // opcodeOperandSize returns the number of inline operand bytes that follow the opcode byte.
 // This mirrors the IP advances in the main execution loop handlers and is used by the
 // Resume-Next statement-skip mechanism to advance ip past unexecuted opcodes.
-func opcodeOperandSize(op OpCode) int {
+func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 	switch op {
 	// 2-byte operands
 	case OpConstant, OpWriteStatic, OpWriteN,
@@ -1258,7 +1272,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			ip += 4
 		default:
 			// Keep scan aligned for opcodes that do not need remapping but still carry operands.
-			ip += opcodeOperandSize(op)
+			ip += opcodeOperandSize(op, bytecode, ip)
 		}
 	}
 }
@@ -1744,6 +1758,14 @@ aspExecLoop:
 				}
 				newVal = coerced
 			}
+
+			// Phase 4: WithEvents binding
+			if vm.globalWithEvents[idx] {
+				prevVal := vm.Globals[idx]
+				vm.unbindWithEvents(nil, vm.globalNames[idx], prevVal)
+				vm.bindWithEvents(nil, vm.globalNames[idx], newVal)
+			}
+
 			// Decrement reference count only for object slots to avoid hot-path call overhead.
 			if vm.Globals[idx].Type == VTObject {
 				vm.decrementObjectRefCount(vm.Globals[idx])
@@ -1797,6 +1819,17 @@ aspExecLoop:
 					}
 				}
 			}
+
+			// Phase 4: WithEvents binding
+			if vm.activeClassObjectID != 0 {
+				instance := vm.runtimeClassItems[vm.activeClassObjectID]
+				if instance != nil && instance.WithEventsNames[strings.ToLower(memberName)] {
+					prevVal := vm.getActiveClassMemberValue(memberName)
+					vm.unbindWithEvents(instance, memberName, prevVal)
+					vm.bindWithEvents(instance, memberName, newVal)
+				}
+			}
+
 			// Decrement reference count of previous value in this member slot.
 			prevVal := vm.getActiveClassMemberValue(memberName)
 			vm.decrementObjectRefCount(prevVal)
@@ -3061,6 +3094,38 @@ aspExecLoop:
 				vm.ip += 2
 				// Push the AxonASP VBScript engine identification string.
 				vm.push(NewString("G3pix AxonASP VBScript Engine"))
+
+			case ExtOpRegisterClassEvent:
+				classNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				eventNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:])
+				vm.ip += 4
+				className := vm.constants[classNameIdx].Str
+				eventName := vm.constants[eventNameIdx].Str
+				if def, ok := vm.runtimeClasses[strings.ToLower(className)]; ok {
+					if def.Events == nil {
+						def.Events = make(map[string]bool)
+					}
+					def.Events[strings.ToLower(eventName)] = true
+					vm.runtimeClasses[strings.ToLower(className)] = def
+				}
+
+			case ExtOpRaiseEvent:
+				eventNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				argCount := binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:])
+				vm.ip += 4
+				eventName := vm.constants[eventNameIdx].Str
+				vm.handleRaiseEvent(eventName, int(argCount))
+
+			case ExtOpWithEventsRegister:
+				classNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+				varNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:])
+				vm.ip += 4
+				className := ""
+				if classNameIdx != 0xFFFF {
+					className = vm.constants[classNameIdx].Str
+				}
+				varName := vm.constants[varNameIdx].Str
+				vm.handleWithEventsRegister(className, varName)
 
 			case ExtOpJSMathSin:
 				vm.ip += 2
@@ -7457,6 +7522,7 @@ func (vm *VM) registerRuntimeClass(className string) {
 		Fields:     make(map[string]RuntimeClassFieldDef),
 		Methods:    make(map[string]RuntimeClassMethodDef),
 		Properties: make(map[string]RuntimeClassPropertyDef),
+		Events:     make(map[string]bool),
 	}
 	vm.bumpRuntimeClassVersion()
 }
@@ -8094,6 +8160,173 @@ func (vm *VM) beginUserSubCall(target Value, args []Value, discardReturn bool, b
 	return true
 }
 
+// handleWithEventsRegister registers a variable as having WithEvents.
+func (vm *VM) handleWithEventsRegister(className, varName string) {
+	lowerVarName := strings.ToLower(varName)
+	if className == "" {
+		// Global variable
+		for i, name := range vm.globalNames {
+			if strings.EqualFold(name, varName) {
+				vm.globalWithEvents[uint16(i)] = true
+				break
+			}
+		}
+	} else {
+		// Class member
+		if def, ok := vm.runtimeClasses[strings.ToLower(className)]; ok {
+			if field, ok2 := def.Fields[lowerVarName]; ok2 {
+				field.WithEvents = true
+				def.Fields[lowerVarName] = field
+				vm.runtimeClasses[strings.ToLower(className)] = def
+			}
+		}
+	}
+}
+
+// bindWithEvents scans for handlers and registers them in the target object.
+func (vm *VM) bindWithEvents(container *RuntimeClassInstance, varName string, obj Value) {
+	if obj.Type != VTObject || obj.Num == 0 {
+		return
+	}
+	target := vm.runtimeClassItems[obj.Num]
+	if target == nil {
+		return
+	}
+
+	targetDef, ok := vm.runtimeClasses[strings.ToLower(target.ClassName)]
+	if !ok {
+		return
+	}
+
+	prefix := strings.ToLower(varName) + "_"
+	containerID := int64(0)
+	if container != nil {
+		// Find container ID
+		for id, inst := range vm.runtimeClassItems {
+			if inst == container {
+				containerID = id
+				break
+			}
+		}
+	}
+
+	for eventName := range targetDef.Events {
+		handlerName := prefix + eventName
+		var handler Value
+		found := false
+
+		if container != nil {
+			// Look in container class methods
+			containerDef := vm.runtimeClasses[strings.ToLower(container.ClassName)]
+			if methodDef, ok2 := containerDef.Methods[handlerName]; ok2 {
+				handler = methodDef.Target
+				found = true
+			}
+		} else {
+			// Look in global scope
+			for i, name := range vm.globalNames {
+				if strings.EqualFold(name, handlerName) {
+					handler = vm.Globals[i]
+					if handler.Type == VTUserSub {
+						found = true
+					}
+					break
+				}
+			}
+		}
+
+		if found {
+			if target.Observers == nil {
+				target.Observers = make(map[string][]EventObserver)
+			}
+			target.Observers[eventName] = append(target.Observers[eventName], EventObserver{
+				Handler:     handler,
+				ContainerID: containerID,
+				Prefix:      prefix,
+			})
+		}
+	}
+}
+
+// unbindWithEvents removes handlers registered for a specific variable from an object.
+func (vm *VM) unbindWithEvents(container *RuntimeClassInstance, varName string, obj Value) {
+	if obj.Type != VTObject || obj.Num == 0 {
+		return
+	}
+	target := vm.runtimeClassItems[obj.Num]
+	if target == nil {
+		return
+	}
+
+	prefix := strings.ToLower(varName) + "_"
+	containerID := int64(0)
+	if container != nil {
+		for id, inst := range vm.runtimeClassItems {
+			if inst == container {
+				containerID = id
+				break
+			}
+		}
+	}
+
+	for eventName, observers := range target.Observers {
+		newObservers := observers[:0]
+		for _, obs := range observers {
+			if obs.ContainerID == containerID && obs.Prefix == prefix {
+				continue
+			}
+			newObservers = append(newObservers, obs)
+		}
+		if len(newObservers) == 0 {
+			delete(target.Observers, eventName)
+		} else {
+			target.Observers[eventName] = newObservers
+		}
+	}
+}
+
+// handleRaiseEvent dispatches an event to all registered observers.
+func (vm *VM) handleRaiseEvent(eventName string, argCount int) {
+	if vm.activeClassObjectID == 0 {
+		// RaiseEvent only allowed inside classes
+		for i := 0; i < argCount; i++ {
+			vm.pop()
+		}
+		return
+	}
+
+	instance := vm.runtimeClassItems[vm.activeClassObjectID]
+	if instance == nil {
+		for i := 0; i < argCount; i++ {
+			vm.pop()
+		}
+		return
+	}
+
+	lowerEventName := strings.ToLower(eventName)
+	observers, ok := instance.Observers[lowerEventName]
+	if !ok || len(observers) == 0 {
+		for i := 0; i < argCount; i++ {
+			vm.pop()
+		}
+		return
+	}
+
+	args := make([]Value, argCount)
+	for i := argCount - 1; i >= 0; i-- {
+		args[i] = vm.pop()
+	}
+
+	for _, obs := range observers {
+		// obs.Handler is VTUserSub
+		// We need to call it.
+		vm.beginUserSubCall(obs.Handler, args, true, obs.ContainerID)
+		// Note: beginUserSubCall will change vm.ip and continue the loop.
+		// For now, let's support only ONE observer per event for simplicity.
+		break
+	}
+}
+
 // newRuntimeClassInstance allocates a new VTObject instance with deterministic dynamic ID.
 func (vm *VM) newRuntimeClassInstance(className string) Value {
 	trimmedName := strings.TrimSpace(className)
@@ -8115,14 +8348,19 @@ func (vm *VM) newRuntimeClassInstance(className string) Value {
 	instanceID := vm.nextDynamicClassID
 	vm.nextDynamicClassID++
 	vm.runtimeClassItems[instanceID] = &RuntimeClassInstance{
-		ClassName:  classDef.Name,
-		Members:    make(map[string]Value),
-		refCount:   1, // Initial reference from creation
-		terminated: false,
+		ClassName:       classDef.Name,
+		Members:         make(map[string]Value),
+		Observers:       make(map[string][]EventObserver),
+		WithEventsNames: make(map[string]bool),
+		refCount:        1, // Initial reference from creation
+		terminated:      false,
 	}
 	// Track creation order so Class_Terminate fires in reverse-construction order at cleanup.
 	vm.classInstanceOrder = append(vm.classInstanceOrder, instanceID)
 	for fieldKey, fieldDef := range classDef.Fields {
+		if fieldDef.WithEvents {
+			vm.runtimeClassItems[instanceID].WithEventsNames[fieldKey] = true
+		}
 		if len(fieldDef.Dims) > 0 {
 			vm.runtimeClassItems[instanceID].Members[fieldKey] = ValueFromVBArray(buildDimArray(fieldDef.Dims))
 		} else {

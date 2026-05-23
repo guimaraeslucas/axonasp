@@ -58,6 +58,7 @@
     * [GoTo and Jumps](md/asp-modernization/goto-jumps.md)
     * [User-Defined Types](md/asp-modernization/udt.md)
     * [Advanced Procedure Signatures](md/asp-modernization/advanced-procedure-signatures.md)
+    * [Event Orientation (Event, RaiseEvent, WithEvents)](md/asp-modernization/event-orientation.md)
 * Javascript support (JScript)
     * [Use Javascript in ASP Pages](md/javascript/jscript-support.md)
     * [ES6 Features and Beyond](md/javascript/jscript-es6-support.md)
