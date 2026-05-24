@@ -477,6 +477,53 @@ func TestJScriptAsyncAwaitReject(t *testing.T) {
 	}
 }
 
+func TestJScriptTopLevelAwaitCompilesToAwaitOpcode(t *testing.T) {
+	compiler := NewASPCompiler(jscriptSrc(`
+		var p = Promise.resolve("ok");
+		var result = await p;
+		Response.Write(result);
+	`))
+
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	if !scanBytecodeForOp(compiler.Bytecode(), OpJSAwait) {
+		t.Fatalf("expected bytecode to contain OpJSAwait for top-level await")
+	}
+}
+
+func TestJScriptTopLevelAwaitResolvedPromise(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		var p = Promise.resolve("top-level result");
+		var result = await p;
+		Response.Write("Result: " + result);
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "Result: top-level result" {
+		t.Errorf("expected 'Result: top-level result', got %q", out)
+	}
+}
+
+func TestJScriptTopLevelAwaitRejectedPromise(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		try {
+			await Promise.reject("boom");
+			Response.Write("unreachable");
+		} catch (e) {
+			Response.Write("Caught: " + e);
+		}
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "Caught: boom" {
+		t.Errorf("expected 'Caught: boom', got %q", out)
+	}
+}
+
 func TestJScriptTemplateLiteralEscapeSequences(t *testing.T) {
 	out, err := runJScript2(t, jscriptSrc(`
 		var s = `+"`"+`A\nB\tC`+"`"+`;

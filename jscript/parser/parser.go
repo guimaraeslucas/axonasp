@@ -50,6 +50,7 @@ type Mode uint
 const (
 	IgnoreRegExpErrors Mode = 1 << iota // Ignore RegExp compatibility errors (allow backtracking)
 	ModeModule                          // Parse as an ES module (enables top-level await)
+	ModeTopLevelAwait                   // Parse as script but allow top-level await expressions
 )
 
 type options struct {
@@ -211,7 +212,7 @@ func (self *_parser) slice(idx0, idx1 file.Idx) string {
 
 func (self *_parser) parse() (*ast.Program, error) {
 	self.openScope()
-	if self.mode&ModeModule != 0 {
+	if self.mode&(ModeModule|ModeTopLevelAwait) != 0 {
 		self.scope.allowAwait = true
 	}
 	defer self.closeScope()

@@ -48,6 +48,7 @@ func (c *Compiler) compileJScriptBlock(source string) {
 	source = jscriptCallAssignmentPattern.ReplaceAllString(source, `$1($2, $3);`)
 
 	mode := jsparser.Mode(0)
+	mode |= jsparser.ModeTopLevelAwait
 	if c.isJSModule {
 		mode |= jsparser.ModeModule
 	}
@@ -129,7 +130,7 @@ func (c *Compiler) compileJScriptBlock(source string) {
 func (c *Compiler) compileJScriptEvalSnippet(source string) {
 	source = jscriptCallAssignmentPattern.ReplaceAllString(source, `$1($2, $3);`)
 
-	program, err := jsparser.ParseFile(nil, c.sourceName, source, 0)
+	program, err := jsparser.ParseFile(nil, c.sourceName, source, jsparser.ModeTopLevelAwait)
 	if err != nil {
 		panic(c.newJScriptCompileErrorFromParse(err, "jscript eval parse error"))
 	}
