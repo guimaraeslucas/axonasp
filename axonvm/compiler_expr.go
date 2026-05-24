@@ -206,6 +206,7 @@ func (c *Compiler) compileInlineEvalExpression(expr string) (ok bool) {
 	originalSourceCode := c.sourceCode
 	originalDebugLine := c.lastDebugLine
 	originalDebugColumn := c.lastDebugColumn
+	originalTokenIndex := c.tokenIndex
 
 	defer func() {
 		c.lexer = originalLexer
@@ -214,6 +215,7 @@ func (c *Compiler) compileInlineEvalExpression(expr string) (ok bool) {
 		c.sourceCode = originalSourceCode
 		c.lastDebugLine = originalDebugLine
 		c.lastDebugColumn = originalDebugColumn
+		c.tokenIndex = originalTokenIndex
 		if r := recover(); r != nil {
 			ok = false
 		}
