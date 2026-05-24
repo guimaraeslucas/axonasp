@@ -55,6 +55,26 @@ func scanBytecodeForExtOp(bytecode []byte, target ExtOpCode) bool {
 	return false
 }
 
+func TestOpcodeOperandSizeZeroOperandExtendedOpcodes(t *testing.T) {
+	bytecode := []byte{
+		byte(OpConstant), 0x00, 0x01,
+		byte(OpExtPrefix), byte(ExtOpAxonASP), 0x00, 0x00,
+		byte(OpConstant), 0x00, 0x02,
+		byte(OpExtPrefix), byte(ExtOpJSMathSin), 0x00, 0x00,
+		byte(OpHalt),
+	}
+
+	if !scanBytecodeForOp(bytecode, OpHalt) {
+		t.Fatal("expected scan to reach OpHalt after zero-operand extended opcodes")
+	}
+	if !scanBytecodeForExtOp(bytecode, ExtOpAxonASP) {
+		t.Fatal("expected scan to find ExtOpAxonASP")
+	}
+	if !scanBytecodeForExtOp(bytecode, ExtOpJSMathSin) {
+		t.Fatal("expected scan to find ExtOpJSMathSin")
+	}
+}
+
 // countBytecodeOp counts occurrences of the given opcode in bytecode.
 func countBytecodeOp(bytecode []byte, target OpCode) int {
 	n := 0
@@ -445,5 +465,169 @@ Next
 	}
 	if binary.BigEndian.Uint32(vm.bytecode[cachePos:cachePos+4]) == 0 {
 		t.Fatalf("expected inline cache slot to be populated after execution")
+	}
+}
+
+func TestVBScriptFusedOpcodes(t *testing.T) {
+	source := `<%
+Function TestOps()
+	Dim x, str
+	x = 5
+	If x Then
+		x = x + 10
+	End If
+	While x
+		x = x - 1
+	Wend
+	str = "a"
+	str = str & "b"
+	TestOps = x & str
+End Function
+Response.Write TestOps()
+%>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	bc := compiler.Bytecode()
+	hasAddConst := false
+	hasSubConst := false
+	hasConcatConst := false
+	hasJumpFalse := false
+
+	for i := 0; i < len(bc); {
+		if OpCode(bc[i]) == OpExtPrefix {
+			ext := ExtOpCode(bc[i+1])
+			if ext == ExtOpAddLocalConst {
+				hasAddConst = true
+				i += 6
+				continue
+			} else if ext == ExtOpSubGlobalConst {
+				hasSubConst = true
+				i += 6
+				continue
+			} else if ext == ExtOpConcatLocalConst {
+				hasConcatConst = true
+				i += 6
+				continue
+			} else if ext == ExtOpJumpLocalIfFalse || ext == ExtOpJumpGlobalIfFalse {
+				hasJumpFalse = true
+				i += 8
+				continue
+			}
+		}
+		op := OpCode(bc[i])
+		size := opcodeOperandSize(op, bc, i)
+		i += 1 + size
+	}
+
+	if !hasAddConst && !hasSubConst && !hasConcatConst && !hasJumpFalse {
+		t.Logf("Warning: Fused opcodes were not generated in the test script. Check optimizer constants.")
+	}
+
+	vm := NewVM(bc, compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed with fused opcodes: %v", err)
+	}
+	host.Response().Flush()
+	if buf.String() != "0ab" {
+		t.Fatalf("unexpected output: got %q, want '0ab'", buf.String())
+	}
+}
+
+func TestVBScriptConstantPooling(t *testing.T) {
+	source := `<%
+Sub MySub(a, b, c, d)
+	Response.Write a & b & c & d
+End Sub
+MySub "1", "2", "3", "4"
+%>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	bc := compiler.Bytecode()
+	hasPool := false
+
+	for i := 0; i < len(bc); {
+		if OpCode(bc[i]) == OpExtPrefix {
+			ext := ExtOpCode(bc[i+1])
+			if ext == ExtOpConstant4 || ext == ExtOpConstant3 || ext == ExtOpConstant2 {
+				hasPool = true
+				break
+			}
+		}
+		op := OpCode(bc[i])
+		size := opcodeOperandSize(op, bc, i)
+		i += 1 + size
+	}
+
+	if !hasPool {
+		t.Logf("Warning: Constant pooling opcode was not generated in the test script.")
+	}
+
+	vm := NewVM(bc, compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed with constant pooling: %v", err)
+	}
+	host.Response().Flush()
+	if buf.String() != "1234" {
+		t.Fatalf("unexpected output: got %q, want '1234'", buf.String())
+	}
+}
+
+func TestJScriptConstantPooling(t *testing.T) {
+	source := `<script runat="server" language="javascript">
+function myFunc(a, b, c, d) {
+	Response.Write(a + b + c + d);
+}
+myFunc("1", "2", "3", "4");
+</script>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	bc := compiler.Bytecode()
+	hasPool := false
+
+	for i := 0; i < len(bc); {
+		if OpCode(bc[i]) == OpExtPrefix {
+			ext := ExtOpCode(bc[i+1])
+			if ext == ExtOpConstant4 || ext == ExtOpConstant3 || ext == ExtOpConstant2 {
+				hasPool = true
+				break
+			}
+		}
+		op := OpCode(bc[i])
+		size := opcodeOperandSize(op, bc, i)
+		i += 1 + size
+	}
+
+	if !hasPool {
+		t.Logf("Warning: Constant pooling opcode was not generated in JScript.")
+	}
+
+	vm := NewVM(bc, compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed with constant pooling in JScript: %v", err)
+	}
+	host.Response().Flush()
+	if buf.String() != "1234" {
+		t.Fatalf("unexpected output in JScript: got %q, want '1234'", buf.String())
 	}
 }

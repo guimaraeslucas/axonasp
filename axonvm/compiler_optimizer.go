@@ -39,7 +39,10 @@ func (c *Compiler) optimizePeephole() {
 		intOptimized := c.optimizeIntegerArithmeticPass()
 		deadCode := c.optimizeDeadConditionalJumpPass()
 		fusedBranch := c.optimizeFusedBranchPass()
-		if !folded && !propagated && !intOptimized && !deadCode && !fusedBranch {
+		loadBranch := c.optimizeFusedLoadBranchPass()
+		inPlaceMath := c.optimizeInPlaceMathPass()
+		constPooling := c.optimizeConstantPoolingPass()
+		if !folded && !propagated && !intOptimized && !deadCode && !fusedBranch && !loadBranch && !inPlaceMath && !constPooling {
 			break
 		}
 	}
@@ -862,4 +865,264 @@ func vbsConstantToFloat(v Value) (float64, bool) {
 		return v.Flt, true
 	}
 	return 0, false
+}
+
+func (c *Compiler) optimizeFusedLoadBranchPass() bool {
+	if len(c.bytecode) < 8 {
+		return false
+	}
+	targets := collectJumpTargets(c.bytecode)
+	changed := false
+
+	for i := 0; i < len(c.bytecode); {
+		op := OpCode(c.bytecode[i])
+		if op != OpGetLocal && op != OpGetGlobal && op != OpJSGetName {
+			size := opcodeOperandSize(op, c.bytecode, i)
+			i += 1 + size
+			continue
+		}
+
+		// The load size is 1 (opcode) + 2 (operand) = 3 bytes
+		loadSize := 3
+		j := i + loadSize
+
+		// Skip OpNop padding
+		for j < len(c.bytecode) && OpCode(c.bytecode[j]) == OpNop {
+			j++
+		}
+
+		if j+5 > len(c.bytecode) {
+			i += loadSize
+			continue
+		}
+
+		jumpOp := OpCode(c.bytecode[j])
+		if jumpOp != OpJumpIfFalse && jumpOp != OpJSJumpIfFalse {
+			i += loadSize
+			continue
+		}
+
+		if hasTargetInRange(targets, i+1, j) {
+			i += loadSize
+			continue
+		}
+
+		var fusedOp ExtOpCode
+		if op == OpGetLocal && jumpOp == OpJumpIfFalse {
+			fusedOp = ExtOpJumpLocalIfFalse
+		} else if op == OpGetGlobal && jumpOp == OpJumpIfFalse {
+			fusedOp = ExtOpJumpGlobalIfFalse
+		} else if op == OpJSGetName && jumpOp == OpJSJumpIfFalse {
+			fusedOp = ExtOpJSJumpNameIfFalse
+		} else {
+			i += loadSize
+			continue
+		}
+
+		idx := binary.BigEndian.Uint16(c.bytecode[i+1 : i+3])
+		target := binary.BigEndian.Uint32(c.bytecode[j+1 : j+5])
+
+		// Fused branch is 1 (Prefix) + 1 (ExtOp) + 2 + 4 = 8 bytes.
+		c.bytecode[i] = byte(OpExtPrefix)
+		c.bytecode[i+1] = byte(fusedOp)
+		binary.BigEndian.PutUint16(c.bytecode[i+2:i+4], idx)
+		binary.BigEndian.PutUint32(c.bytecode[i+4:i+8], target)
+
+		for p := i + 8; p <= j+4; p++ {
+			c.bytecode[p] = byte(OpNop)
+		}
+
+		changed = true
+		i = j + 5
+	}
+	return changed
+}
+
+func (c *Compiler) optimizeInPlaceMathPass() bool {
+	if len(c.bytecode) < 11 {
+		return false
+	}
+	targets := collectJumpTargets(c.bytecode)
+	changed := false
+
+	for i := 0; i < len(c.bytecode); {
+		op := OpCode(c.bytecode[i])
+		if op != OpGetLocal && op != OpGetGlobal {
+			size := opcodeOperandSize(op, c.bytecode, i)
+			i += 1 + size
+			continue
+		}
+
+		idx := binary.BigEndian.Uint16(c.bytecode[i+1 : i+3])
+		loadSize := 3
+		j := i + loadSize
+
+		for j < len(c.bytecode) && OpCode(c.bytecode[j]) == OpNop {
+			j++
+		}
+
+		if j+3 > len(c.bytecode) || OpCode(c.bytecode[j]) != OpConstant {
+			i += loadSize
+			continue
+		}
+
+		constIdx := binary.BigEndian.Uint16(c.bytecode[j+1 : j+3])
+		constSize := 3
+		k := j + constSize
+
+		for k < len(c.bytecode) && OpCode(c.bytecode[k]) == OpNop {
+			k++
+		}
+
+		if k+1 > len(c.bytecode) {
+			i += loadSize
+			continue
+		}
+
+		binOp := OpCode(c.bytecode[k])
+		if binOp != OpAdd && binOp != OpSub && binOp != OpConcat {
+			i += loadSize
+			continue
+		}
+		binOpSize := 1
+		l := k + binOpSize
+
+		for l < len(c.bytecode) && OpCode(c.bytecode[l]) == OpNop {
+			l++
+		}
+
+		if l+3 > len(c.bytecode) {
+			i += loadSize
+			continue
+		}
+
+		storeOp := OpCode(c.bytecode[l])
+		if storeOp != OpSetLocal && storeOp != OpSetGlobal && storeOp != OpLetLocal && storeOp != OpLetGlobal {
+			i += loadSize
+			continue
+		}
+
+		storeIdx := binary.BigEndian.Uint16(c.bytecode[l+1 : l+3])
+		if storeIdx != idx || ((op == OpGetLocal && (storeOp == OpSetGlobal || storeOp == OpLetGlobal)) || (op == OpGetGlobal && (storeOp == OpSetLocal || storeOp == OpLetLocal))) {
+			i += loadSize
+			continue
+		}
+
+		if hasTargetInRange(targets, i+1, l) {
+			i += loadSize
+			continue
+		}
+
+		var fusedOp ExtOpCode
+		if op == OpGetLocal && binOp == OpAdd {
+			fusedOp = ExtOpAddLocalConst
+		} else if op == OpGetGlobal && binOp == OpSub {
+			fusedOp = ExtOpSubGlobalConst
+		} else if op == OpGetLocal && binOp == OpConcat {
+			fusedOp = ExtOpConcatLocalConst
+		} else {
+			i += loadSize
+			continue
+		}
+
+		// 1 byte OpExtPrefix + 1 byte ExtOpCode + 2 bytes Idx + 2 bytes ConstIdx = 6 bytes
+		c.bytecode[i] = byte(OpExtPrefix)
+		c.bytecode[i+1] = byte(fusedOp)
+		binary.BigEndian.PutUint16(c.bytecode[i+2:i+4], idx)
+		binary.BigEndian.PutUint16(c.bytecode[i+4:i+6], constIdx)
+
+		for p := i + 6; p <= l+2; p++ {
+			c.bytecode[p] = byte(OpNop)
+		}
+
+		changed = true
+		i = l + 3
+	}
+	return changed
+}
+
+func (c *Compiler) optimizeConstantPoolingPass() bool {
+	if len(c.bytecode) < 6 { // at least 2 OpConstants
+		return false
+	}
+	targets := collectJumpTargets(c.bytecode)
+	changed := false
+
+	for i := 0; i < len(c.bytecode); {
+		if OpCode(c.bytecode[i]) != OpConstant {
+			size := opcodeOperandSize(OpCode(c.bytecode[i]), c.bytecode, i)
+			i += 1 + size
+			continue
+		}
+
+		// Find contiguous sequence of OpConstant (ignoring OpNops)
+		var constIndices []uint16
+		var opPositions []int
+		var lastValidPos int
+
+		curr := i
+		for curr < len(c.bytecode) {
+			if OpCode(c.bytecode[curr]) == OpNop {
+				curr++
+				continue
+			}
+			if OpCode(c.bytecode[curr]) != OpConstant {
+				break
+			}
+			if curr+3 > len(c.bytecode) {
+				break
+			}
+			// If not the first const, check for jump targets in between
+			if len(opPositions) > 0 && hasTargetInRange(targets, lastValidPos+1, curr) {
+				break
+			}
+			constIndices = append(constIndices, binary.BigEndian.Uint16(c.bytecode[curr+1:curr+3]))
+			opPositions = append(opPositions, curr)
+			lastValidPos = curr
+			curr += 3
+			if len(constIndices) == 4 { // Max pool size is 4
+				break
+			}
+		}
+
+		if len(constIndices) < 2 {
+			i += 3
+			continue
+		}
+
+		// Replace the first OpConstant with the pooled instruction
+		firstPos := opPositions[0]
+		lastPos := opPositions[len(opPositions)-1]
+
+		c.bytecode[firstPos] = byte(OpExtPrefix)
+		var bytesWritten int
+
+		if len(constIndices) == 4 {
+			c.bytecode[firstPos+1] = byte(ExtOpConstant4)
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+2:firstPos+4], constIndices[0])
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+4:firstPos+6], constIndices[1])
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+6:firstPos+8], constIndices[2])
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+8:firstPos+10], constIndices[3])
+			bytesWritten = 10
+		} else if len(constIndices) == 3 {
+			c.bytecode[firstPos+1] = byte(ExtOpConstant3)
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+2:firstPos+4], constIndices[0])
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+4:firstPos+6], constIndices[1])
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+6:firstPos+8], constIndices[2])
+			bytesWritten = 8
+		} else { // 2 constants
+			c.bytecode[firstPos+1] = byte(ExtOpConstant2)
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+2:firstPos+4], constIndices[0])
+			binary.BigEndian.PutUint16(c.bytecode[firstPos+4:firstPos+6], constIndices[1])
+			bytesWritten = 6
+		}
+
+		for p := firstPos + bytesWritten; p <= lastPos+2; p++ {
+			c.bytecode[p] = byte(OpNop)
+		}
+
+		changed = true
+		i = lastPos + 3
+	}
+	return changed
 }

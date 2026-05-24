@@ -1273,22 +1273,18 @@ func (c *Compiler) compileJScriptForStatement(node *jsast.ForStatement) {
 				byte(OpJSForFastIntEnter),
 				byte(fastIntCounterSlot>>8), byte(fastIntCounterSlot),
 				byte(fastIntLimitSlot>>8), byte(fastIntLimitSlot),
+				0, 0, 0, 0, // jumpExit placeholder
 			)
-			c.emit(OpJSGetLocal, fastIntCounterSlot)
-			c.emit(OpJSGetLocal, fastIntLimitSlot)
-			c.emit(OpJSLess)
-			jumpExit = c.emitJSJump(OpJSJumpIfFalse)
+			jumpExit = len(c.bytecode) - 4
 		} else if fastIntVarEnabled {
 			// var fast path: same fused structure as the let path.
 			c.bytecode = append(c.bytecode,
 				byte(OpJSForFastIntEnter),
 				byte(fastIntVarCounterSlot>>8), byte(fastIntVarCounterSlot),
 				byte(fastIntVarLimitSlot>>8), byte(fastIntVarLimitSlot),
+				0, 0, 0, 0, // jumpExit placeholder
 			)
-			c.emit(OpJSGetLocal, fastIntVarCounterSlot)
-			c.emit(OpJSGetLocal, fastIntVarLimitSlot)
-			c.emit(OpJSLess)
-			jumpExit = c.emitJSJump(OpJSJumpIfFalse)
+			jumpExit = len(c.bytecode) - 4
 		} else {
 			// Fused fast path for `identifier < numericLiteral` or `identifier <= numericLiteral`
 			// when the identifier resolves to a local slot.  This avoids the full expression

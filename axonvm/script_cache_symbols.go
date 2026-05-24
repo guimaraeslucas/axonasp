@@ -139,7 +139,7 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 	// we need to use a different strategy or just store it as is if we can resolve it.
 	// Wait! VM.applyLocalVarTypes already handles this by scanning constants.
 	// So we just need to provide the maps.
-	
+
 	program := CachedProgram{
 		Bytecode:            cloneBytecode(compiler.Bytecode()),
 		Constants:           cloneValueSlice(compiler.Constants()),

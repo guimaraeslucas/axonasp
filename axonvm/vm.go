@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -470,7 +471,7 @@ type VM struct {
 	// funcLocalClassTypes maps function entry point to local slot Class/Interface names.
 	funcLocalClassTypes map[int]map[int]string
 	callStack           []CallFrame
-	jsCallStack    []jsCallFrame
+	jsCallStack         []jsCallFrame
 	// withStack holds the subject object for each active With...End With block.
 	// OpWithEnter appends, OpWithLeave shrinks, OpWithLoad peeks at the top.
 	withStack         []Value
@@ -1030,15 +1031,34 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 	case OpForNextFastInt, OpForNextFastGlobalInt:
 		return 9
 	case OpJSForFastIntEnter:
-		return 4
+		return 8
 	case OpJSForFastInt:
 		return 8
 	// 1-byte opcodes (none)
 	case OpJSSetProto, OpJSSetThis, OpJSSuperIndexGet, OpJSSuperIndexSet:
 		return 0
-	// 3-byte operands: ExtOpCode(1) + Operand(2)
 	case OpExtPrefix:
-		return 3
+		extOp := ExtOpCode(bytecode[ip+1])
+		switch extOp {
+		case ExtOpRegisterClassEvent, ExtOpRaiseEvent, ExtOpWithEventsRegister, ExtOpRegisterClassInterface:
+			return 5
+		case ExtOpJumpLocalIfFalse, ExtOpJumpGlobalIfFalse, ExtOpJSJumpNameIfFalse:
+			return 7
+		case ExtOpAddLocalConst, ExtOpSubGlobalConst, ExtOpConcatLocalConst:
+			return 5
+		case ExtOpConstant2:
+			return 5
+		case ExtOpConstant3:
+			return 7
+		case ExtOpConstant4:
+			return 9
+		case ExtOpAxonASP:
+			return 3
+		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
+			return 3
+		default:
+			return 3
+		}
 	// 4-byte operands
 	case OpLine, OpArraySet, OpCallBuiltin, OpSetDirective, OpSetOption, OpJSCallMember, OpJSTailCallMember, OpJSDefineProperty, OpJSSuperCallMember, OpJSExport:
 		return 4
@@ -1106,6 +1126,60 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			case ExtOpInitRecord, ExtOpGetRecordMember, ExtOpSetRecordMember,
 				ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
 				ip += 2
+			case ExtOpJumpLocalIfFalse, ExtOpJumpGlobalIfFalse:
+				ip += 2
+				target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
+				binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
+				ip += 4
+			case ExtOpJSJumpNameIfFalse:
+				idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
+				ip += 2
+				target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
+				binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
+				ip += 4
+			case ExtOpAddLocalConst, ExtOpConcatLocalConst:
+				ip += 2
+				idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
+				ip += 2
+			case ExtOpSubGlobalConst:
+				gidx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(gidx))
+				ip += 2
+				idx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx))
+				ip += 2
+			case ExtOpConstant2:
+				idx1 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx1))
+				ip += 2
+				idx2 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx2))
+				ip += 2
+			case ExtOpConstant3:
+				idx1 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx1))
+				ip += 2
+				idx2 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx2))
+				ip += 2
+				idx3 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx3))
+				ip += 2
+			case ExtOpConstant4:
+				idx1 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx1))
+				ip += 2
+				idx2 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx2))
+				ip += 2
+				idx3 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx3))
+				ip += 2
+				idx4 := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+				binary.BigEndian.PutUint16(bytecode[ip:], uint16(idx4))
+				ip += 2
 			default:
 				panic("unsupported extended opcode in remapExecuteGlobalBytecode")
 			}
@@ -1156,7 +1230,10 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			binary.BigEndian.PutUint32(bytecode[ip:], uint32(foExitTarget))
 			ip += 4
 		case OpJSForFastIntEnter:
-			// counterSlot(2) + limitSlot(2)
+			// counterSlot(2) + limitSlot(2) + exitTarget(4)
+			ip += 4
+			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
+			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
 			ip += 4
 		case OpJSForFastInt:
 			// counterSlot(2) + limitSlot(2) + jumpOffset(4)
@@ -1381,6 +1458,8 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	// clobbered by the caller continuing execution on the parent VM.
 	child.stack = make([]Value, len(vm.stack))
 	copy(child.stack, vm.stack)
+	child.jsCallStack = make([]jsCallFrame, len(vm.jsCallStack))
+	copy(child.jsCallStack, vm.jsCallStack)
 	// Copy the declared type arrays.
 	child.localTypes = vm.localTypes
 	child.globalTypes = make([]ValueType, len(vm.globalTypes))
@@ -1389,8 +1468,6 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	child.ip = startIP
 	child.callStack = make([]CallFrame, len(vm.callStack))
 	copy(child.callStack, vm.callStack)
-	child.withStack = make([]Value, len(vm.withStack))
-	copy(child.withStack, vm.withStack)
 	child.activeClassObjectID = vm.activeClassObjectID
 	child.terminateCursor = -1
 	child.terminatePrepared = false
@@ -1463,6 +1540,7 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 		child.jsBlockScopeTDZ[i] = cloned
 	}
 	child.jsBlockScopeDepth = len(child.jsBlockScopes)
+	child.classInstanceOrder = append(make([]int64, 0, len(vm.classInstanceOrder)), vm.classInstanceOrder...)
 	child.jsTryStack = make([]int, 0, 8)
 	child.jsErrStack = make([]Value, 0, 4)
 	// stmtSP carries over from parent; child's first OpLine will reset it.
@@ -1576,6 +1654,9 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.jsMapItems = child.jsMapItems
 	vm.jsArrayBuffers = child.jsArrayBuffers
 	vm.jsSharedArrayBuffers = child.jsSharedArrayBuffers
+	vm.jsImmediateQueue = child.jsImmediateQueue
+	vm.jsNextTickQueue = child.jsNextTickQueue
+	vm.jsMicrotaskQueue = child.jsMicrotaskQueue
 	vm.jsSymbolGlobalRegistry = child.jsSymbolGlobalRegistry
 	vm.jsNextSymbolID = child.jsNextSymbolID
 	vm.jsProxyItems = child.jsProxyItems
@@ -1692,12 +1773,12 @@ func (vm *VM) Run() (err error) {
 					err = vme
 				}
 			} else if re, ok := r.(error); ok {
-				err = re
+				err = fmt.Errorf("%w\n%s", re, debug.Stack())
 			} else {
 				if vm.onResumeNext {
 					err = nil
 				} else {
-					err = fmt.Errorf("internal runtime panic at line %d: %v", vm.lastLine, r)
+					err = fmt.Errorf("internal runtime panic at line %d: %v\n%s", vm.lastLine, r, debug.Stack())
 				}
 			}
 		}
@@ -2277,14 +2358,17 @@ aspExecLoop:
 
 		case OpJSForFastIntEnter:
 			counterOffset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
-			vm.ip += 2
-			limitOffset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
-			vm.ip += 2
+			limitOffset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip+4:]))
+			vm.ip += 8
 
 			counter := vm.stack[vm.fp+counterOffset]
 			limit := vm.stack[vm.fp+limitOffset]
 			if counter.Type != VTInteger || limit.Type != VTInteger {
 				vm.jsThrowTypeError("Fast integer loop requires VTInteger counter and limit")
+			}
+			if counter.Num >= limit.Num {
+				vm.ip = target
 			}
 
 		case OpForNextFastGlobalInt:
@@ -3123,6 +3207,86 @@ aspExecLoop:
 			ext := ExtOpCode(vm.bytecode[vm.ip])
 			vm.ip++
 			switch ext {
+			case ExtOpJumpLocalIfFalse:
+				offset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip+2:]))
+				vm.ip += 6
+				if !vm.isTruthy(vm.stack[vm.fp+offset]) {
+					vm.ip = target
+				}
+
+			case ExtOpJumpGlobalIfFalse:
+				idx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip+2:]))
+				vm.ip += 6
+				if !vm.isTruthy(vm.Globals[idx]) {
+					vm.ip = target
+				}
+
+			case ExtOpJSJumpNameIfFalse:
+				nameConstIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip+2:]))
+				vm.ip += 6
+				name := vm.constants[nameConstIdx].String()
+				val := vm.jsGetName(name)
+				if !vm.jsTruthy(val) {
+					if target < vm.ip {
+						jsBackJumpCount++
+						if jsBackJumpCount > jsBackJumpLimit {
+							return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+						}
+					}
+					vm.ip = target
+				}
+
+			case ExtOpAddLocalConst:
+				offset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				constIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+				vm.ip += 4
+				vm.stack[vm.fp+offset] = vm.addValues(vm.stack[vm.fp+offset], vm.constants[constIdx])
+
+			case ExtOpSubGlobalConst:
+				idx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				constIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+				vm.ip += 4
+				vm.Globals[idx] = vm.subtractValues(vm.Globals[idx], vm.constants[constIdx])
+
+			case ExtOpConcatLocalConst:
+				offset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				constIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+				vm.ip += 4
+				vm.stack[vm.fp+offset] = vm.concatValues(vm.stack[vm.fp+offset], vm.constants[constIdx])
+
+			case ExtOpConstant2:
+				idx1 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				idx2 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+				vm.ip += 4
+				vm.stack[vm.sp+1] = vm.constants[idx1]
+				vm.stack[vm.sp+2] = vm.constants[idx2]
+				vm.sp += 2
+
+			case ExtOpConstant3:
+				idx1 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				idx2 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+				idx3 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+4:]))
+				vm.ip += 6
+				vm.stack[vm.sp+1] = vm.constants[idx1]
+				vm.stack[vm.sp+2] = vm.constants[idx2]
+				vm.stack[vm.sp+3] = vm.constants[idx3]
+				vm.sp += 3
+
+			case ExtOpConstant4:
+				idx1 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
+				idx2 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+2:]))
+				idx3 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+4:]))
+				idx4 := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip+6:]))
+				vm.ip += 8
+				vm.stack[vm.sp+1] = vm.constants[idx1]
+				vm.stack[vm.sp+2] = vm.constants[idx2]
+				vm.stack[vm.sp+3] = vm.constants[idx3]
+				vm.stack[vm.sp+4] = vm.constants[idx4]
+				vm.sp += 4
+
 			case ExtOpInitRecord:
 				defIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 				vm.ip += 2
@@ -8507,7 +8671,7 @@ func (vm *VM) applyLocalVarTypes(compiler *Compiler) {
 }
 
 // applyLocalVarTypesFromMaps applies VB6 As Type declarations from provided maps to the VM's
-// funcLocalTypes and funcLocalClassTypes maps. It scans each VTUserSub constant, matches its 
+// funcLocalTypes and funcLocalClassTypes maps. It scans each VTUserSub constant, matches its
 // local variable names against the maps, and stores the resulting slot-to-type mapping.
 func (vm *VM) applyLocalVarTypesFromMaps(localVarTypes map[string]ValueType, localClassTypes map[string]string) {
 	if vm == nil || vm.funcLocalTypes == nil || len(localVarTypes) == 0 {

@@ -120,9 +120,9 @@ type CachedProgram struct {
 	RecordDeclLookup map[string]int
 
 	// Phase 5: Interface/Class tracking for typed variables.
-	GlobalClassNames    []string            // "name:classname"
-	LocalVarTypes       map[string]ValueType
-	LocalClassTypes     map[string]string
+	GlobalClassNames []string // "name:classname"
+	LocalVarTypes    map[string]ValueType
+	LocalClassTypes  map[string]string
 }
 
 // cachedProgramBinaryPayload stores the serialized disk representation.

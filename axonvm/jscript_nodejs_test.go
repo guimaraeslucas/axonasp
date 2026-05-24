@@ -667,6 +667,58 @@ func TestJScriptNodeFSModuleAsyncPromises(t *testing.T) {
 	}
 }
 
+func TestJScriptNodeFSModuleAsyncPromisesBytecodeDump(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		var doneBuf = "0";
+		fs.promises.readFile(p, "utf8").then(function(data) {
+			done = (data === "async-promises") ? "1" : "E";
+		}, function(err) {
+			done = "E";
+		});
+		fs.promises.readFile(p).then(function(data) {
+			doneBuf = Buffer.isBuffer(data) ? "1" : "E";
+		}, function(err) {
+			doneBuf = "E";
+		});
+		for (var i = 0; i < 60000 && (done === "0" || doneBuf === "0"); i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done === "1" ? "1" : "0");
+		Response.Write(doneBuf === "1" ? "1" : "0");
+	</script>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatal(err)
+	}
+	bytecode := compiler.Bytecode()
+	t.Logf("bytecode length=%d constants=%d", len(bytecode), len(compiler.Constants()))
+	for i, constant := range compiler.Constants() {
+		if constant.Type == VTJSFunctionTemplate || constant.Type == VTJSArrowFunctionTemplate {
+			t.Logf("const=%d type=%d start=%d end=%d name=%s", i, constant.Type, int(constant.Num), int(constant.Flt), constant.Str)
+			if i == 21 || i == 25 || i == 37 || i == 41 {
+				start := int(constant.Num)
+				end := int(constant.Flt)
+				for ip := start; ip < end; {
+					op := OpCode(bytecode[ip])
+					size := opcodeOperandSize(op, bytecode, ip)
+					t.Logf("fnconst=%d ip=%d op=%s size=%d", i, ip, op.String(), size)
+					ip += 1 + size
+				}
+			}
+		}
+	}
+	for ip := 0; ip < len(bytecode); {
+		op := OpCode(bytecode[ip])
+		size := opcodeOperandSize(op, bytecode, ip)
+		t.Logf("ip=%d op=%s size=%d", ip, op.String(), size)
+		ip += 1 + size
+	}
+}
+
 // TestJScriptTimingSetTimeout verifies that setTimeout fires the callback and passes extra args.
 func TestJScriptTimingSetTimeout(t *testing.T) {
 	source := `<script runat="server" language="JScript">
@@ -797,6 +849,50 @@ func TestJScriptTimingSetTimeoutArrowCapturesBlockScope(t *testing.T) {
 	}
 }
 
+func TestJScriptNodeFSModuleAsyncPromisesStringOnly(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		fs.promises.readFile(p, "utf8").then(function(data) {
+			done = (data === "async-promises") ? "1" : "E";
+		}, function(err) {
+			done = "E";
+		});
+		for (var i = 0; i < 60000 && done === "0"; i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done);
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	if output != "1" {
+		t.Fatalf("Expected '1', got '%s'", output)
+	}
+}
+
+func TestJScriptNodeFSModuleAsyncPromisesBufferOnly(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		fs.promises.readFile(p).then(function(data) {
+			done = Buffer.isBuffer(data) ? "1" : "E";
+		}, function(err) {
+			done = "E";
+		});
+		for (var i = 0; i < 60000 && done === "0"; i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done);
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	if output != "1" {
+		t.Fatalf("Expected '1', got '%s'", output)
+	}
+}
+
 // TestJScriptTimingSetIntervalArrowCapturesBlockScope verifies interval arrow callbacks keep let/const captures.
 func TestJScriptTimingSetIntervalArrowCapturesBlockScope(t *testing.T) {
 	source := `<script runat="server" language="JScript">
@@ -819,6 +915,35 @@ func TestJScriptTimingSetIntervalArrowCapturesBlockScope(t *testing.T) {
 	}
 }
 
+func TestJScriptNodeFSModuleAsyncPromisesTwoSimple(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		var doneBuf = "0";
+		fs.promises.readFile(p, "utf8").then(function(data) {
+			done = "1";
+		}, function(err) {
+			done = "E";
+		});
+		fs.promises.readFile(p).then(function(data) {
+			doneBuf = "1";
+		}, function(err) {
+			doneBuf = "E";
+		});
+		for (var i = 0; i < 60000 && (done === "0" || doneBuf === "0"); i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done === "1" ? "1" : "0");
+		Response.Write(doneBuf === "1" ? "1" : "0");
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	if output != "11" {
+		t.Fatalf("Expected '11', got '%s'", output)
+	}
+}
+
 // TestJScriptTimingNextTickArrowCapturesBlockScope verifies nextTick arrow callbacks keep let/const captures.
 func TestJScriptTimingNextTickArrowCapturesBlockScope(t *testing.T) {
 	source := `<script runat="server" language="JScript">
@@ -834,6 +959,66 @@ func TestJScriptTimingNextTickArrowCapturesBlockScope(t *testing.T) {
 	output := runASPSourceForTest(t, source)
 	if output != "N5" {
 		t.Fatalf("Expected 'N5', got '%s'", output)
+	}
+}
+
+func TestJScriptNodeFSModuleAsyncPromisesStringAndSimple(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		var doneBuf = "0";
+		fs.promises.readFile(p, "utf8").then(function(data) {
+			Response.Write("A");
+			done = (data === "async-promises") ? "1" : "E";
+		}, function(err) {
+			done = "E";
+		});
+		fs.promises.readFile(p).then(function(data) {
+			Response.Write("B");
+			doneBuf = "1";
+		}, function(err) {
+			doneBuf = "E";
+		});
+		for (var i = 0; i < 60000 && (done === "0" || doneBuf === "0"); i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done === "1" ? "1" : "0");
+		Response.Write(doneBuf === "1" ? "1" : "0");
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	if output != "11" {
+		t.Fatalf("Expected '11', got '%s'", output)
+	}
+}
+
+func TestJScriptNodeFSModuleAsyncPromisesSimpleAndBuffer(t *testing.T) {
+	source := `<script runat="server" language="JScript">
+		var p = "/node_fs_phase42_promises.txt";
+		fs.writeFileSync(p, "async-promises", "utf8");
+		var done = "0";
+		var doneBuf = "0";
+		fs.promises.readFile(p, "utf8").then(function(data) {
+			done = "1";
+		}, function(err) {
+			done = "E";
+		});
+		fs.promises.readFile(p).then(function(data) {
+			doneBuf = Buffer.isBuffer(data) ? "1" : "E";
+		}, function(err) {
+			doneBuf = "E";
+		});
+		for (var i = 0; i < 60000 && (done === "0" || doneBuf === "0"); i++) {
+			var spin = i + 1;
+		}
+		Response.Write(done === "1" ? "1" : "0");
+		Response.Write(doneBuf === "1" ? "1" : "0");
+	</script>`
+
+	output := runASPSourceForTest(t, source)
+	if output != "11" {
+		t.Fatalf("Expected '11', got '%s'", output)
 	}
 }
 

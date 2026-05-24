@@ -360,8 +360,9 @@ const (
 	// [OpCode, NameConstIdxHigh, NameConstIdxLow]
 	OpJSDecLocalInt
 	// OpJSForFastIntEnter validates once (pre-loop) that both local slots used by
-	// OpJSForFastInt contain VTInteger values. This keeps the hot-path type-blind.
-	// [OpCode, CounterSlotHigh, CounterSlotLow, LimitSlotHigh, LimitSlotLow]
+	// fast loop paths contain VTInteger values. It also performs the initial
+	// loop condition test (counter < limit) and jumps to the exit target if false.
+	// [OpCode, CounterSlotHigh, CounterSlotLow, LimitSlotHigh, LimitSlotLow, Target3, Target2, Target1, Target0]
 	OpJSForFastIntEnter
 
 	// OpJSForFastInt is a fused super-instruction for JScript `for (let i = 0; i < N; i++)`
@@ -559,6 +560,21 @@ const (
 	// ExtOpRegisterClassInterface registers an interface implemented by a class.
 	// [OpExtPrefix, ExtOpRegisterClassInterface, ClassNameIdxHigh, ClassNameIdxLow, InterfaceNameIdxHigh, InterfaceNameIdxLow]
 	ExtOpRegisterClassInterface
+
+	// Fused Variable Load + Branch
+	ExtOpJumpLocalIfFalse  // [OpExtPrefix, ExtOpJumpLocalIfFalse, OffsetHigh, OffsetLow, Target3, Target2, Target1, Target0]
+	ExtOpJumpGlobalIfFalse // [OpExtPrefix, ExtOpJumpGlobalIfFalse, IdxHigh, IdxLow, Target3, Target2, Target1, Target0]
+	ExtOpJSJumpNameIfFalse // [OpExtPrefix, ExtOpJSJumpNameIfFalse, NameConstIdxHigh, NameConstIdxLow, Target3, Target2, Target1, Target0]
+
+	// Fused Variable Load + Const + Binary Op + Store
+	ExtOpAddLocalConst    // [OpExtPrefix, ExtOpAddLocalConst, OffsetHigh, OffsetLow, ConstIdxHigh, ConstIdxLow]
+	ExtOpSubGlobalConst   // [OpExtPrefix, ExtOpSubGlobalConst, IdxHigh, IdxLow, ConstIdxHigh, ConstIdxLow]
+	ExtOpConcatLocalConst // [OpExtPrefix, ExtOpConcatLocalConst, OffsetHigh, OffsetLow, ConstIdxHigh, ConstIdxLow]
+
+	// Constant Pooling
+	ExtOpConstant2 // [OpExtPrefix, ExtOpConstant2, Const1High, Const1Low, Const2High, Const2Low]
+	ExtOpConstant3 // [OpExtPrefix, ExtOpConstant3, Const1High, Const1Low, Const2High, Const2Low, Const3High, Const3Low]
+	ExtOpConstant4 // [OpExtPrefix, ExtOpConstant4, Const1High, Const1Low, Const2High, Const2Low, Const3High, Const3Low, Const4High, Const4Low]
 )
 
 func (op OpCode) String() string {
@@ -1068,6 +1084,24 @@ func (op ExtOpCode) String() string {
 		return "ExtOpWithEventsRegister"
 	case ExtOpRegisterClassInterface:
 		return "ExtOpRegisterClassInterface"
+	case ExtOpJumpLocalIfFalse:
+		return "ExtOpJumpLocalIfFalse"
+	case ExtOpJumpGlobalIfFalse:
+		return "ExtOpJumpGlobalIfFalse"
+	case ExtOpJSJumpNameIfFalse:
+		return "ExtOpJSJumpNameIfFalse"
+	case ExtOpAddLocalConst:
+		return "ExtOpAddLocalConst"
+	case ExtOpSubGlobalConst:
+		return "ExtOpSubGlobalConst"
+	case ExtOpConcatLocalConst:
+		return "ExtOpConcatLocalConst"
+	case ExtOpConstant2:
+		return "ExtOpConstant2"
+	case ExtOpConstant3:
+		return "ExtOpConstant3"
+	case ExtOpConstant4:
+		return "ExtOpConstant4"
 	default:
 		return "ExtOpUnknown"
 	}
