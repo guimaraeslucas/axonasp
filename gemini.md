@@ -91,11 +91,15 @@ All work occurs within the `axonasp2` directory structure:
 * If executing test using cli, you need to use the `-r` flag followed by the path to the test file, for example: `./axonasp-cli.exe -r www/tests/test_basics.asp`, the CLI also supports global.asa, but it needs to be in the same directory as the cli executable.
 * When executing terminal commands or scripts that may hang or experience high latency, ensure you implement a maximum execution timeout of 30 seconds. This is critical to prevent indefinite execution hangs. Additionally, use non-interactive mode or flags (e.g., -y) to avoid commands that require manual user intervention or prompts.
 
-### 5. Maintenance
-* Keep the license reader. Maintain G3Pix AxonASP branding and copyright messages.
-* When creating a new go file, add a comment header with the copyright notice. When creating a new function/method, follow best Go coding practices and add a comment explaining what it does. Emphasize simplicity, clarity, and consistency over cleverness. 
-* Sync updates between `copilot-instructions` and `GEMINI.md` whenever core instructions change.
-
+### 6. Instruction Pointer Stability & Bytecode Integrity
+* **The Three-Way Sync Rule:** When adding or modifying an opcode, you MUST keep the following three areas in perfect synchronization. Any mismatch will cause instruction pointer (IP) drift, leading to memory corruption, random constant-pool panics (e.g., "index out of range"), and broken error handling:
+    1.  **Execution Loop (`axonvm/vm.go`):** The actual logic in `Run()` that consumes operands and advances `vm.ip`.
+    2.  **Metadata (`axonvm/vm.go` -> `opcodeOperandSize`):** The function that returns the operand size (excluding the opcode byte itself). This is critical for the `On Error Resume Next` skip mechanism and bytecode remapping.
+    3.  **Global Remapping (`axonvm/vm.go` -> `remapExecuteGlobalBytecode`):** The logic that iterates through bytecode to rebase constant indices and jump targets. It must skip exactly the number of bytes consumed by the execution loop.
+* **Extended Opcodes (`OpExtPrefix`):** Always ensure that `opcodeOperandSize` for `OpExtPrefix` correctly inspects the second byte (`ExtOpCode`) to return the exact operand size for that specific extended instruction.
+* **Variable-Length Instructions:** Opcodes with variable lengths (e.g., `OpJSObjectRest`, `OpJSForIterEnter`) must have their length calculation logic duplicated and identical in all three synchronization points.
+* **Diagnostics:** Every opcode MUST be included in the `OpCode.String()` or `ExtOpCode.String()` switch blocks in `axonvm/opcode.go`. Missing entries will result in "OpUnknown" or "ExtOpUnknown" during debugging, making it impossible to diagnose bytecode corruption.
+* **Verification:** After adding super-instructions or fused opcodes, always run tests that involve multiple scripts (e.g., async promises or mixed VBS/JS) to verify that bytecode remapping hasn't introduced IP drift.
 ---
 
 # 📦 LIBRARY OR CUSTOM FUNCTIONS (Ax) CREATION PROTOCOL

@@ -683,24 +683,20 @@ func (op OpCode) String() string {
 		return "OpRegisterClassPropertyLet"
 	case OpRegisterClassPropertySet:
 		return "OpRegisterClassPropertySet"
+	case OpCallMember:
+		return "OpCallMember"
+	case OpCallBuiltin:
+		return "OpCallBuiltin"
 	case OpCall:
 		return "OpCall"
 	case OpNewClass:
 		return "OpNewClass"
 	case OpArraySet:
 		return "OpArraySet"
+	case OpRet:
+		return "OpRet"
 	case OpSwap:
 		return "OpSwap"
-	case OpExtPrefix:
-		return "OpExtPrefix"
-	case OpMemberGet:
-		return "OpMemberGet"
-	case OpMe:
-		return "OpMe"
-	case OpMemberSet:
-		return "OpMemberSet"
-	case OpMemberSetSet:
-		return "OpMemberSetSet"
 	case OpArgGlobalRef:
 		return "OpArgGlobalRef"
 	case OpArgLocalRef:
@@ -719,30 +715,6 @@ func (op OpCode) String() string {
 		return "OpLetLocal"
 	case OpLetClassMember:
 		return "OpLetClassMember"
-	case OpIncLocalInt:
-		return "OpIncLocalInt"
-	case OpDecLocalInt:
-		return "OpDecLocalInt"
-	case OpIncGlobalInt:
-		return "OpIncGlobalInt"
-	case OpDecGlobalInt:
-		return "OpDecGlobalInt"
-	case OpJSIncLocalInt:
-		return "OpJSIncLocalInt"
-	case OpJSDecLocalInt:
-		return "OpJSDecLocalInt"
-	case OpJSForFastIntEnter:
-		return "OpJSForFastIntEnter"
-	case OpJSForFastInt:
-		return "OpJSForFastInt"
-	case OpJSForIterEnterFast:
-		return "OpJSForIterEnterFast"
-	case OpJSForIterExitFast:
-		return "OpJSForIterExitFast"
-	case OpJSRootFrameEnter:
-		return "OpJSRootFrameEnter"
-	case OpJSRootFrameLeave:
-		return "OpJSRootFrameLeave"
 	case OpCoerceToValue:
 		return "OpCoerceToValue"
 	case OpJSDeclareName:
@@ -781,6 +753,12 @@ func (op OpCode) String() string {
 		return "OpJSTailCallComputedMember"
 	case OpJSCreateClosure:
 		return "OpJSCreateClosure"
+	case OpJSAdd:
+		return "OpJSAdd"
+	case OpJSStrictEq:
+		return "OpJSStrictEq"
+	case OpJSStrictNeq:
+		return "OpJSStrictNeq"
 	case OpJSTryEnter:
 		return "OpJSTryEnter"
 	case OpJSTryLeave:
@@ -921,6 +899,8 @@ func (op OpCode) String() string {
 		return "OpJSModuloAssign"
 	case OpJSMemberIndexGet:
 		return "OpJSMemberIndexGet"
+	case OpJSMemberIndexSet:
+		return "OpJSMemberIndexSet"
 	case OpJSPostMemberIncrement:
 		return "OpJSPostMemberIncrement"
 	case OpJSPostMemberDecrement:
@@ -979,8 +959,6 @@ func (op OpCode) String() string {
 		return "OpJSYieldDelegate"
 	case OpJSAwait:
 		return "OpJSAwait"
-	case OpJSMemberIndexSet:
-		return "OpJSMemberIndexSet"
 	case OpJSStrictModeEnter:
 		return "OpJSStrictModeEnter"
 	case OpJSStrictModeExit:
@@ -1003,6 +981,30 @@ func (op OpCode) String() string {
 		return "OpJSForIterExit"
 	case OpJSLoadNewTarget:
 		return "OpJSLoadNewTarget"
+	case OpIncLocalInt:
+		return "OpIncLocalInt"
+	case OpDecLocalInt:
+		return "OpDecLocalInt"
+	case OpIncGlobalInt:
+		return "OpIncGlobalInt"
+	case OpDecGlobalInt:
+		return "OpDecGlobalInt"
+	case OpJSIncLocalInt:
+		return "OpJSIncLocalInt"
+	case OpJSDecLocalInt:
+		return "OpJSDecLocalInt"
+	case OpJSForFastIntEnter:
+		return "OpJSForFastIntEnter"
+	case OpJSForFastInt:
+		return "OpJSForFastInt"
+	case OpJSForIterEnterFast:
+		return "OpJSForIterEnterFast"
+	case OpJSForIterExitFast:
+		return "OpJSForIterExitFast"
+	case OpJSRootFrameEnter:
+		return "OpJSRootFrameEnter"
+	case OpJSRootFrameLeave:
+		return "OpJSRootFrameLeave"
 	case OpNop:
 		return "OpNop"
 	case OpForNextFastInt:
@@ -1041,6 +1043,8 @@ func (op OpCode) String() string {
 		return "OpJSJumpIfNotLess"
 	case OpJSJumpIfLessEqual:
 		return "OpJSJumpIfLessEqual"
+	case OpExtPrefix:
+		return "OpExtPrefix"
 	default:
 		return "OpUnknown"
 	}

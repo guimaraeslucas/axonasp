@@ -1017,9 +1017,14 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 		OpJSMemberIndexGet, OpJSMemberIndexSet,
 		OpJSPostMemberIncrement, OpJSPostMemberDecrement, OpJSPreMemberIncrement, OpJSPreMemberDecrement,
 		OpJSLetDeclare, OpJSTDZRegisterLet, OpJSTDZRegisterConst, OpJSConstInitialize, OpJSRot,
+		OpJSIncLocalInt, OpJSDecLocalInt,
 		OpJSSuperMemberGet, OpJSSuperMemberSet, OpJSSuperCallComputedMember,
 		OpJSExportAll:
 		return 2
+	case OpJSObjectRest:
+		// countH(1), countL(1) + 2*count operand indices + dynamicCountH(1), dynamicCountL(1)
+		count := int(binary.BigEndian.Uint16(bytecode[ip+1:]))
+		return 2 + 2*count + 2
 	// 4-byte operands
 	case OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel, OpSet,
 		OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,
@@ -1053,9 +1058,9 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 		case ExtOpConstant4:
 			return 9
 		case ExtOpAxonASP:
-			return 3
+			return 1
 		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
-			return 3
+			return 1
 		default:
 			return 3
 		}
@@ -1123,9 +1128,10 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			ext := ExtOpCode(bytecode[ip])
 			ip++
 			switch ext {
-			case ExtOpInitRecord, ExtOpGetRecordMember, ExtOpSetRecordMember,
-				ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
+			case ExtOpInitRecord, ExtOpGetRecordMember, ExtOpSetRecordMember:
 				ip += 2
+			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
+				// No operands to remap or skip
 			case ExtOpJumpLocalIfFalse, ExtOpJumpGlobalIfFalse:
 				ip += 2
 				target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
