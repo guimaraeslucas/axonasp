@@ -21,7 +21,10 @@
 package asp
 
 import (
+	"bytes"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -152,5 +155,55 @@ func TestRequestCollectionLazyPayloadUnicodeFold(t *testing.T) {
 	}
 	if collection.Count() != 2 {
 		t.Fatalf("expected 2 unique Unicode-folded keys, got %d", collection.Count())
+	}
+}
+
+// TestRequestFormURLEncodedMultiValue ensures repeated keys are preserved for classic multi-select posts.
+func TestRequestFormURLEncodedMultiValue(t *testing.T) {
+	req := NewRequest()
+	httpReq := httptest.NewRequest(http.MethodPost, "http://example.test/form.asp", bytes.NewBufferString("movies=Action&movies=Comedy&name=Lucas"))
+	httpReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetHTTPRequest(httpReq)
+
+	value, ok := req.Form.GetValue("movies")
+	if !ok {
+		t.Fatalf("expected movies key to be present")
+	}
+	if value.Count() != 2 {
+		t.Fatalf("expected 2 movies values, got %d", value.Count())
+	}
+	if value.Item("1") != "Action" || value.Item("2") != "Comedy" {
+		t.Fatalf("unexpected movies values: %#v", value.Values)
+	}
+}
+
+// TestRequestFormMultipartMultiValue ensures ParseForm/ParseMultipartForm path preserves repeated keys.
+func TestRequestFormMultipartMultiValue(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("movies", "Action"); err != nil {
+		t.Fatalf("failed to write multipart field: %v", err)
+	}
+	if err := writer.WriteField("movies", "Comedy"); err != nil {
+		t.Fatalf("failed to write multipart field: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("failed to finalize multipart body: %v", err)
+	}
+
+	req := NewRequest()
+	httpReq := httptest.NewRequest(http.MethodPost, "http://example.test/form.asp", &body)
+	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
+	req.SetHTTPRequest(httpReq)
+
+	value, ok := req.Form.GetValue("movies")
+	if !ok {
+		t.Fatalf("expected movies key to be present")
+	}
+	if value.Count() != 2 {
+		t.Fatalf("expected 2 movies values, got %d", value.Count())
+	}
+	if value.Item("1") != "Action" || value.Item("2") != "Comedy" {
+		t.Fatalf("unexpected movies values: %#v", value.Values)
 	}
 }

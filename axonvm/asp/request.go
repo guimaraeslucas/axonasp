@@ -763,9 +763,51 @@ func (r *Request) ensureFormLoaded() {
 				body := r.bodyBytes
 				r.mu.RUnlock()
 				r.Form.SetLazyPayload(body)
+			} else if strings.HasPrefix(contentType, "multipart/form-data") {
+				if err := req.ParseMultipartForm(32 << 20); err == nil {
+					if req.MultipartForm != nil && len(req.MultipartForm.Value) > 0 {
+						values = make(map[string][]string, len(req.MultipartForm.Value))
+						for key, vals := range req.MultipartForm.Value {
+							cloned := make([]string, len(vals))
+							copy(cloned, vals)
+							values[key] = cloned
+						}
+					} else if len(req.PostForm) > 0 {
+						values = make(map[string][]string, len(req.PostForm))
+						for key, vals := range req.PostForm {
+							cloned := make([]string, len(vals))
+							copy(cloned, vals)
+							values[key] = cloned
+						}
+					}
+				}
 			} else {
 				if err := req.ParseForm(); err == nil {
-					values = req.PostForm
+					if len(req.PostForm) > 0 {
+						values = make(map[string][]string, len(req.PostForm))
+						for key, vals := range req.PostForm {
+							cloned := make([]string, len(vals))
+							copy(cloned, vals)
+							values[key] = cloned
+						}
+					}
+					if req.MultipartForm != nil && len(req.MultipartForm.Value) > 0 {
+						if values == nil {
+							values = make(map[string][]string, len(req.MultipartForm.Value))
+						}
+						for key, vals := range req.MultipartForm.Value {
+							if existing, exists := values[key]; exists {
+								combined := make([]string, 0, len(existing)+len(vals))
+								combined = append(combined, existing...)
+								combined = append(combined, vals...)
+								values[key] = combined
+								continue
+							}
+							cloned := make([]string, len(vals))
+							copy(cloned, vals)
+							values[key] = cloned
+						}
+					}
 				}
 			}
 		}

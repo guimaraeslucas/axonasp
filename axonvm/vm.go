@@ -317,6 +317,7 @@ type VM struct {
 	nextDynamicNativeID            int64
 	nextDynamicClassID             int64
 	responseCookieItems            map[int64]string
+	requestCollectionValueItems    map[int64]asp.RequestCollectionValue
 	aspErrorItems                  map[int64]*asp.ASPError
 	g3mdItems                      map[int64]*G3MD
 	g3searchItems                  map[int64]*G3Search
@@ -609,6 +610,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		nextDynamicNativeID:            20000,
 		nextDynamicClassID:             60000,
 		responseCookieItems:            make(map[int64]string),
+		requestCollectionValueItems:    make(map[int64]asp.RequestCollectionValue),
 		aspErrorItems:                  make(map[int64]*asp.ASPError),
 		g3mdItems:                      make(map[int64]*G3MD),
 		g3searchItems:                  make(map[int64]*G3Search),
@@ -1594,6 +1596,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.runtimeClassItems = child.runtimeClassItems
 	vm.classInstanceOrder = child.classInstanceOrder
 	vm.responseCookieItems = child.responseCookieItems
+	vm.requestCollectionValueItems = child.requestCollectionValueItems
 	vm.aspErrorItems = child.aspErrorItems
 	vm.g3mdItems = child.g3mdItems
 	vm.g3searchItems = child.g3searchItems
@@ -5656,6 +5659,31 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		vm.raise(vbscript.InternalError, "Host not initialized")
 	}
 
+	if collectionValue, exists := vm.requestCollectionValueItems[objID]; exists {
+		switch {
+		case member == "":
+			if len(args) >= 1 {
+				return NewString(collectionValue.Item(args[0].String()))
+			}
+			return NewString(collectionValue.Joined())
+		case strings.EqualFold(member, "Count"):
+			return NewInteger(int64(collectionValue.Count()))
+		case strings.EqualFold(member, "Item"):
+			if len(args) >= 1 {
+				return NewString(collectionValue.Item(args[0].String()))
+			}
+			return NewString(collectionValue.Joined())
+		case strings.EqualFold(member, "Key"):
+			if len(args) >= 1 {
+				if index := vm.asInt(args[0]); index >= 1 && index <= collectionValue.Count() {
+					return NewString(strconv.Itoa(index))
+				}
+			}
+			return NewString("")
+		}
+		return Value{Type: VTEmpty}
+	}
+
 	if g3testObject, exists := vm.g3testItems[objID]; exists {
 		return g3testObject.DispatchMethod(member, args)
 	}
@@ -6076,8 +6104,8 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 					return Value{Type: VTEmpty}
 				}
 				request.MarkFormUsed()
-				if val, ok := request.GetCollectionEntry("Form", args[0].String()); ok {
-					return NewString(val)
+				if value, ok := request.Form.GetValue(args[0].String()); ok {
+					return vm.newRequestCollectionValueItem(value)
 				}
 				return Value{Type: VTEmpty}
 			}
@@ -6189,8 +6217,8 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				return Value{Type: VTEmpty}
 			}
 			vm.host.Request().MarkFormUsed()
-			if val, ok := vm.host.Request().GetCollectionEntry("Form", args[0].String()); ok {
-				return NewString(val)
+			if value, ok := vm.host.Request().Form.GetValue(args[0].String()); ok {
+				return vm.newRequestCollectionValueItem(value)
 			}
 			return Value{Type: VTEmpty}
 		}
@@ -7240,6 +7268,17 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 		}
 	}
 
+	if collectionValue, exists := vm.requestCollectionValueItems[target.Num]; exists {
+		switch {
+		case strings.EqualFold(member, "Count"):
+			return NewInteger(int64(collectionValue.Count()))
+		case strings.EqualFold(member, "Item"):
+			return vm.newNativeObjectProxy(target.Num, "Item", nil)
+		case strings.EqualFold(member, "Key"):
+			return vm.newNativeObjectProxy(target.Num, "Key", nil)
+		}
+	}
+
 	if errObj, exists := vm.aspErrorItems[target.Num]; exists {
 		return vm.aspErrorPropertyValue(errObj, member)
 	}
@@ -7552,6 +7591,9 @@ func (vm *VM) valueToString(v Value) string {
 		if cookieName, exists := vm.responseCookieItems[v.Num]; exists {
 			return vm.host.Response().GetCookieValue(cookieName)
 		}
+		if collectionValue, exists := vm.requestCollectionValueItems[v.Num]; exists {
+			return collectionValue.Joined()
+		}
 		if errObj, exists := vm.aspErrorItems[v.Num]; exists {
 			return errObj.Description
 		}
@@ -7571,6 +7613,14 @@ func (vm *VM) valueToString(v Value) string {
 		return vm.dateToLocalizedString(v)
 	}
 	return v.String()
+}
+
+// newRequestCollectionValueItem creates one native object wrapper for one Request collection entry value.
+func (vm *VM) newRequestCollectionValueItem(value asp.RequestCollectionValue) Value {
+	id := vm.nextDynamicNativeID
+	vm.nextDynamicNativeID++
+	vm.requestCollectionValueItems[id] = value
+	return Value{Type: VTNativeObject, Num: id}
 }
 
 // valueToBinaryBytes normalizes a VM value into raw bytes for Response.BinaryWrite.

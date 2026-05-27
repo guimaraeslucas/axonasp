@@ -418,3 +418,66 @@ Next
 		t.Fatalf("expected page|sort|, got %q", output.String())
 	}
 }
+
+// TestVMRequestFormCollectionItemCount verifies Classic ASP semantics where Request.Form("key").Count
+// reflects the number of submitted values for that key.
+func TestVMRequestFormCollectionItemCount(t *testing.T) {
+	source := `<%
+Response.Write Request.Form("movies").Count & "|"
+Response.Write Request.Form("movies").Item(1) & "|"
+Response.Write Request.Form("movies").Item(2) & "|"
+Response.Write Request.Form("movies")
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	host.Request().Form.AddValues("movies", []string{"Action", "Comedy"})
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "2|Action|Comedy|Action, Comedy" {
+		t.Fatalf("unexpected output: %q", output.String())
+	}
+}
+
+// TestVMRequestFormCollectionItemCountMissing verifies missing form keys still behave as Empty values.
+func TestVMRequestFormCollectionItemCountMissing(t *testing.T) {
+	source := `<%
+If IsEmpty(Request.Form("movies")) Then
+    Response.Write "empty"
+Else
+    Response.Write Request.Form("movies").Count
+End If
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "empty" {
+		t.Fatalf("unexpected output: %q", output.String())
+	}
+}
