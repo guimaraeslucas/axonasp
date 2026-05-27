@@ -6,7 +6,11 @@ The **G3AXON.FUNCTIONS** library provides a comprehensive set of native utility 
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim ax
 Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
+```
+```javascript
+var ax = Server.CreateObject("G3AXON.FUNCTIONS");
 ```
 
 ## Prerequisites

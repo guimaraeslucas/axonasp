@@ -4,7 +4,13 @@
 The G3STRINGBUILDER library provides a native low-allocation string accumulation object for G3Pix AxonASP pages. It is designed for scenarios where repeated string concatenation would otherwise create high memory pressure and CPU overhead.
 
 ## Syntax
+```asp
+Dim sb
 Set sb = Server.CreateObject("G3STRINGBUILDER")
+```
+```javascript
+var sb = Server.CreateObject("G3STRINGBUILDER");
+```
 
 ## Parameters and Arguments
 - Server.CreateObject input: String, required.

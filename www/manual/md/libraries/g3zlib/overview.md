@@ -8,6 +8,9 @@ G3ZLIB is a compression library that allows you to compress and decompress data 
 Dim obj
 Set obj = Server.CreateObject("G3ZLIB")
 ```
+```javascript
+var obj = Server.CreateObject("G3ZLIB");
+```
 
 ## Parameters and Arguments
 - ProgID (String, Required): Use `G3ZLIB` to instantiate this object.

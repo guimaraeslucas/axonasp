@@ -1,13 +1,14 @@
 # Use the G3JSON Library
 
 ## Overview
-Use **G3JSON** to parse JSON text into native G3Pix AxonASP values and serialize native values back to JSON text. The library is built into the runtime and supports object, array, and primitive JSON payloads.
+Use **G3JSON** to parse JSON text into native G3Pix AxonASP values and serialize native values back to JSON text. The library is built into the runtime and supports object, array, and primitive JSON payloads. The Javascript implementation supports the full JSON specification, including Unicode characters and special number formats, this way you can rely on it for robust JSON handling in your server-side scripts without needing this library.
 
 ## Prerequisites
 - Use a running G3Pix AxonASP environment.
 - Create the object with the primary ProgID:
 
 ```asp
+Dim json
 Set json = Server.CreateObject("G3JSON")
 ```
 

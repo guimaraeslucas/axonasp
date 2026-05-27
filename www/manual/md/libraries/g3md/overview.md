@@ -6,7 +6,11 @@ The **G3MD** library provides high-performance Markdown-to-HTML conversion servi
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim md
 Set md = Server.CreateObject("G3MD")
+```
+```javascript
+var md = Server.CreateObject("G3MD");
 ```
 
 ## Prerequisites

@@ -6,7 +6,11 @@ The **G3MAIL** library provides high-performance SMTP (Simple Mail Transfer Prot
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim mail
 Set mail = Server.CreateObject("G3MAIL")
+```
+```javascript
+var mail = Server.CreateObject("G3MAIL");
 ```
 
 ## Supported ProgIDs

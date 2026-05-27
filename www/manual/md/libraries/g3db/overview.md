@@ -9,7 +9,11 @@ Use **G3DB** to access SQL databases through the native G3Pix AxonASP runtime. T
 - Create the object with the primary ProgID:
 
 ```asp
+Dim db
 Set db = Server.CreateObject("G3DB")
+```
+```javascript
+var db = Server.CreateObject("G3DB");
 ```
 
 ## How It Works

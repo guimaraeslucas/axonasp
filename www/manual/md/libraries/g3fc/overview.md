@@ -5,7 +5,11 @@ Use the G3FC library to create, inspect, search, and extract G3FC archives in G3
 
 ## Syntax
 ```asp
+Dim fc
 Set fc = Server.CreateObject("G3FC")
+```
+```javascript
+var fc = Server.CreateObject("G3FC");
 ```
 
 ## Parameters and Arguments

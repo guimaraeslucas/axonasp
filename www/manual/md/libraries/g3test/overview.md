@@ -6,7 +6,11 @@ The **G3TESTSUITE** library provides a native assertion framework for G3Pix Axon
 ## Syntax
 To instantiate the test suite, use the following syntax:
 ```asp
+Dim t
 Set t = Server.CreateObject("G3TESTSUITE")
+```
+```javascript
+var t = Server.CreateObject("G3TESTSUITE");
 ```
 
 ## Prerequisites

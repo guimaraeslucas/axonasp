@@ -1,17 +1,32 @@
 # GetFileInfo Method
 
 ## Overview
-Extracts data related to a specified inbound form file input before you commit the asset onto system storage via the primary methods. 
+Retrieves metadata for a specific uploaded file field.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-Dim details
-Set details = uploader.GetFileInfo("document")
+fileInfo = uploader.GetFileInfo(fieldName)
 ```
 
 ## Parameters and Arguments
-- `FieldName` (String, Required): The exact string moniker denoting the form input parameter mapping to a physical attachment stream.
+- `fieldName` (String, Required): The name of the file input field.
 
 ## Return Values
-Returns a Dictionary object populated mapping string configurations, or a Dictionary representing failure (with `IsSuccess` set to false) if missing details occur, or `Empty` if no HTTP request context is completely available.
+Returns a **Dictionary** object containing file metadata, or **Empty** if the field was not found.
+
+## Remarks
+- The returned Dictionary includes keys: `OriginalFileName`, `Size`, `MimeType`, `Extension`, `IsValid`, and `ExceedsMaxSize`.
+- Like `GetAllFilesInfo`, this does not perform any disk operations.
+
+## Code Example
+```asp
+<%
+Dim uploader, info
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+Set info = uploader.GetFileInfo("userAvatar")
+
+If Not info Is Nothing Then
+    Response.Write "Client Filename: " & info("OriginalFileName")
+End If
+%>
+```

@@ -1,17 +1,37 @@
 # ProcessAll Method
 
 ## Overview
-Saves all pending multipart files embedded directly onto the stream request simultaneously parsing the system configuration. Validates limits, unique variables, and dynamically writes to the filesystem tracking the final status for each target. Also accepts the `SaveAll` alias.
+Processes and saves all files included in the multipart request. Also supports the `SaveAll` alias.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-Dim resultsList
-resultsList = uploader.ProcessAll("/uploads/")
+results = uploader.ProcessAll(targetDir)
 ```
 
 ## Parameters and Arguments
-- `TargetDir` (String, Optional): Destination virtual directory to securely organize distribution of all incoming items (Defaults to "./").
+- `targetDir` (String, Optional): The destination virtual directory. Defaults to "./".
 
 ## Return Values
-Returns a VBScript array containing separate Dictionary objects mapping independent results for each item processed (sharing attributes akin to `Process`), such as `IsSuccess` and related naming metrics to capture standard logs precisely.
+Returns an **Array of Dictionary** objects. Each Dictionary represents the result for one processed file, including `IsSuccess`, `ErrorMessage`, and file metadata.
+
+## Remarks
+- If any file fails validation (e.g., restricted extension), its entry in the result array will have `IsSuccess` set to **False**.
+- Files are saved in the order they are received in the HTTP request.
+
+## Code Example
+```asp
+<%
+Dim uploader, results, i, res
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+results = uploader.ProcessAll("/uploads/batch")
+
+For i = 0 To UBound(results)
+    Set res = results(i)
+    If res("IsSuccess") Then
+        Response.Write "Saved: " & res("OriginalFileName") & "<br>"
+    Else
+        Response.Write "Failed: " & res("OriginalFileName") & " (" & res("ErrorMessage") & ")<br>"
+    End If
+Next
+%>
+```

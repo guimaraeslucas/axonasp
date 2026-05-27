@@ -8,6 +8,9 @@ G3TAR provides robust TAR archive creation and extraction capabilities. It allow
 Dim obj
 Set obj = Server.CreateObject("G3TAR")
 ```
+```javascript
+var obj = Server.CreateObject("G3TAR");
+```
 
 ## Parameters and Arguments
 - ProgID (String, Required): Must initialize with "G3TAR".

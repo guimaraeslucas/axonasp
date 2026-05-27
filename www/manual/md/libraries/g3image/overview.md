@@ -6,7 +6,11 @@ The **G3IMAGE** library is a high-performance native image processing and 2D dra
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim image
 Set image = Server.CreateObject("G3IMAGE")
+```
+```javascript
+var image = Server.CreateObject("G3IMAGE");
 ```
 
 ## Prerequisites

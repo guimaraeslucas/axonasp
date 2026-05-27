@@ -8,6 +8,9 @@ The `G3PDF` object is a high-performance native library for generating PDF docum
 Dim pdf
 Set pdf = Server.CreateObject("G3PDF")
 ```
+```javascript
+var pdf = Server.CreateObject("G3PDF");
+```
 
 ## Parameters
 None for instantiation.

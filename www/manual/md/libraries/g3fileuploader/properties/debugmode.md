@@ -1,13 +1,28 @@
 # DebugMode Property
 
 ## Overview
-Configures whether the file uploader should run with debug-level internal tracking. By default, this is disabled.
+Gets or sets a Boolean value that enables or disables verbose debugging output for the uploader operations.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-uploader.DebugMode = True
+uploader.DebugMode = mode
+mode = uploader.DebugMode
 ```
 
+## Parameters and Arguments
+- `mode` (Boolean): Set to **True** to enable debug logging, or **False** to disable it.
+
 ## Return Values
-Sets or returns a boolean indicating whether debug mode is enabled.
+Returns a **Boolean** value.
+
+## Remarks
+- When enabled, additional operation details may be logged to the server console or log files to assist in troubleshooting upload issues.
+
+## Code Example
+```asp
+<%
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.DebugMode = True
+%>
+```

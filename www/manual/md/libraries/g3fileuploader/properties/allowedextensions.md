@@ -1,14 +1,33 @@
 # AllowedExtensions Property
 
 ## Overview
-A readonly property that returns an array of explicitly permitted file extensions currently loaded into memory.
+Returns an array of file extensions that are explicitly allowed for upload.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-Dim list
-list = uploader.AllowedExtensions
+extArray = uploader.AllowedExtensions
 ```
 
+## Parameters and Arguments
+None.
+
 ## Return Values
-Returns a VBScript array containing strings of all allowed file extensions.
+Returns an **Array of String** containing the allowed extensions.
+
+## Remarks
+- This property is read-only. Use the `AllowExtension` or `AllowExtensions` methods to modify this list.
+- This list is only enforced if `SetUseAllowedOnly` is set to **True**.
+
+## Code Example
+```asp
+<%
+Dim uploader, exts, i
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.AllowExtensions "jpg, png, gif"
+
+exts = uploader.AllowedExtensions
+For i = 0 To UBound(exts)
+    Response.Write "Allowed: " & exts(i) & "<br>"
+Next
+%>
+```

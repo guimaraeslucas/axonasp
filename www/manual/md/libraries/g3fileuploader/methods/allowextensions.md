@@ -1,16 +1,28 @@
 # AllowExtensions Method
 
 ## Overview
-Bulk injects multiple allowed file extensions by processing a comma-delimited string of formats.
+Adds multiple file extensions to the whitelist from a comma-separated string.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-uploader.AllowExtensions "pdf,doc,docx"
+uploader.AllowExtensions extensions
 ```
 
 ## Parameters and Arguments
-- `ExtensionsList` (String, Required): A comma-separated list of file extensions.
+- `extensions` (String, Required): A comma-separated list of extensions (e.g., "jpg, png, gif").
 
 ## Return Values
-Returns an `Empty` variant.
+Returns **Empty**.
+
+## Remarks
+- This is a convenience method for calling `AllowExtension` multiple times.
+- If `SetUseAllowedOnly` is **True**, the uploader restricts all files to this list.
+
+## Code Example
+```asp
+<%
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.AllowExtensions "docx, xlsx, pptx, pdf"
+%>
+```

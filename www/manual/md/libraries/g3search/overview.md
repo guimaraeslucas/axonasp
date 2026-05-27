@@ -6,7 +6,13 @@ The **G3SEARCH** object is a high-performance native library for the **G3Pix Axo
 This object allows developers to recursively scan directories for specific file types, index their contents and filenames into a persistent local index, and execute complex match queries to retrieve relevant documents.
 
 ## Syntax
-**Set** *obj* = **Server.CreateObject**("G3SEARCH")
+```asp
+Dim search
+Set search = Server.CreateObject("G3SEARCH")
+```
+```javascript
+var search = Server.CreateObject("G3SEARCH");
+```
 
 ## Remarks
 The **G3SEARCH** object is optimized for local file search scenarios, such as documentation portals, knowledge bases, or internal site searches. It requires write access to the directory specified in the **IndexPath** property to store the search index files.

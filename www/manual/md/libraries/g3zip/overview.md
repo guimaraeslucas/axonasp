@@ -6,7 +6,11 @@ The **G3ZIP** library provides high-performance compression and archive manageme
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim zip
 Set zip = Server.CreateObject("G3ZIP")
+```
+```javascript
+var zip = Server.CreateObject("G3ZIP");
 ```
 
 ## Prerequisites

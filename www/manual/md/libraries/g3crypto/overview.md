@@ -11,9 +11,12 @@ No external dependencies are required.
 ## Syntax
 
 ```asp
+Dim crypto
 Set crypto = Server.CreateObject("G3CRYPTO")
 ```
-
+```javascript
+var crypto = Server.CreateObject("G3CRYPTO");
+```
 ## How it Works
 
 The object computes digests either as hex strings (for methods such as `SHA256`) or as raw byte arrays (for `ComputeHash`).

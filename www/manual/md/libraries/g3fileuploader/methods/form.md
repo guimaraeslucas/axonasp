@@ -1,17 +1,33 @@
 # Form Method
 
 ## Overview
-Equivalent to `Request.Form("key")` but safely integrated with multipart form data upload flows. Given that normal request processing may be trapped by stream bodies, this extracts standard form field items alongside file uploads. The alias `FormValue` is also supported.
+Retrieves the value of a non-file form field from a multipart/form-data request.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-Dim description
-description = uploader.Form("fileDescription")
+value = uploader.Form(fieldName)
 ```
 
 ## Parameters and Arguments
-- `FieldName` (String, Required): The HTML element `name` variable of the standard form field.
+- `fieldName` (String, Required): The name of the form input field.
 
 ## Return Values
-Returns a string representing the extracted value, or `Empty` if not found or if form analysis fails completely.
+Returns a **String** containing the field value, or **Empty** if the field was not found or the request is not multipart.
+
+## Remarks
+- This method is an alternative to `Request.Form` when handling file uploads, as standard binary reads and form collection access cannot be mixed in Classic ASP.
+- If multiple values exist for the same field name, only the first one is returned.
+- Also supports the `FormValue` alias.
+
+## Code Example
+```asp
+<%
+Dim uploader, userName
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+userName = uploader.Form("txtName")
+
+If userName <> "" Then
+    Response.Write "Hello, " & userName
+End If
+%>
+```

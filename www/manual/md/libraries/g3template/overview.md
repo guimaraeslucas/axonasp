@@ -6,7 +6,11 @@ The **G3TEMPLATE** library provides a high-performance template rendering engine
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim template
 Set template = Server.CreateObject("G3TEMPLATE")
+```
+```javascript
+var template = Server.CreateObject("G3TEMPLATE");
 ```
 
 ## Prerequisites

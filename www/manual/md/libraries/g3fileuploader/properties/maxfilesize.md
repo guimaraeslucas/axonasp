@@ -1,13 +1,30 @@
 # MaxFileSize Property
 
 ## Overview
-Controls the maximum permitted file size (in bytes) per individual request. By default, this is set to 10 MB (10485760 bytes).
+Gets or sets the maximum allowed size in bytes for an individual uploaded file.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-uploader.MaxFileSize = 5242880 ' 5 MB maximum
+uploader.MaxFileSize = sizeInBytes
+sizeInBytes = uploader.MaxFileSize
 ```
 
+## Parameters and Arguments
+- `sizeInBytes` (Integer): The maximum file size in bytes.
+
 ## Return Values
-Sets or returns a long integer reflecting the maximum file size configured in the uploader instance.
+Returns an **Integer** representing the size in bytes.
+
+## Remarks
+- The default value is 10,485,760 bytes (10 MB).
+- Any file exceeding this limit will be rejected during the `Process` or `ProcessAll` methods.
+
+## Code Example
+```asp
+<%
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+' Set limit to 5 MB
+uploader.MaxFileSize = 5242880
+%>
+```

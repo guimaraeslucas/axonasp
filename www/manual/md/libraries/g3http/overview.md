@@ -9,7 +9,11 @@ Use **G3HTTP** to execute outbound HTTP requests from G3Pix AxonASP scripts. The
 - Create the object with the primary ProgID:
 
 ```asp
+Dim http
 Set http = Server.CreateObject("G3HTTP")
+```
+```javascript
+var http = Server.CreateObject("G3HTTP");
 ```
 
 ## How It Works

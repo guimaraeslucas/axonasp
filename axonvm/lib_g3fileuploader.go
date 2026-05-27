@@ -39,6 +39,7 @@ type G3FileUploader struct {
 	useAllowedExtOnly    bool
 	maxFileSize          int64
 	preserveOriginalName bool
+	allowAbsolutePaths   bool
 	debugMode            bool
 }
 
@@ -51,6 +52,7 @@ func (vm *VM) newG3FileUploaderObject() Value {
 		useAllowedExtOnly:    false,
 		maxFileSize:          10 * 1024 * 1024, // 10MB default
 		preserveOriginalName: false,
+		allowAbsolutePaths:   false,
 		debugMode:            false,
 	}
 	id := vm.nextDynamicNativeID
@@ -78,6 +80,10 @@ func (f *G3FileUploader) DispatchPropertyGet(propertyName string) Value {
 		return NewInteger(f.maxFileSize)
 	case "preserveoriginalname":
 		return NewBool(f.preserveOriginalName)
+	case "allowabsolutepaths":
+		return NewBool(f.allowAbsolutePaths)
+	case "formfields":
+		return f.getFormFields()
 	case "debugmode":
 		return NewBool(f.debugMode)
 	}
@@ -96,6 +102,9 @@ func (f *G3FileUploader) DispatchPropertySet(propertyName string, args []Value) 
 		return true
 	case "preserveoriginalname":
 		f.preserveOriginalName = (val.Type == VTBool && val.Num != 0) || f.vm.asInt(val) != 0
+		return true
+	case "allowabsolutepaths":
+		f.allowAbsolutePaths = (val.Type == VTBool && val.Num != 0) || f.vm.asInt(val) != 0
 		return true
 	case "debugmode":
 		f.debugMode = (val.Type == VTBool && val.Num != 0) || f.vm.asInt(val) != 0
@@ -277,7 +286,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if f.vm.host == nil || f.vm.host.Request() == nil || f.vm.host.Request().HTTPRequest() == nil {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "No HTTP request context",
+			"ErrorMessage": ErrG3FUNoHTTPRequest.String(),
 		})
 	}
 
@@ -292,14 +301,14 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if err != nil {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": fmt.Sprintf("Failed to parse form data: %v", err),
+			"ErrorMessage": fmt.Sprintf("%s: %v", ErrG3FUFormParseFailed.String(), err),
 		})
 	}
 
 	if req.MultipartForm == nil {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "No multipart form data received",
+			"ErrorMessage": ErrG3FUNoMultipartData.String(),
 		})
 	}
 
@@ -307,7 +316,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if err != nil {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": fmt.Sprintf("File field '%s' not found", fieldName),
+			"ErrorMessage": fmt.Sprintf(ErrG3FUFileFieldNotFound.String(), fieldName),
 		})
 	}
 	defer file.Close()
@@ -319,14 +328,14 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if !f.isValidExtension(ext) {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": fmt.Sprintf("File extension '%s' is not allowed", ext),
+			"ErrorMessage": fmt.Sprintf(ErrG3FUExtensionNotAllowed.String(), ext),
 		})
 	}
 
 	if f.maxFileSize > 0 && fileSize > f.maxFileSize {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "File size exceeds maximum allowed size",
+			"ErrorMessage": ErrG3FUFileSizeExceedsMax.String(),
 		})
 	}
 
@@ -343,18 +352,22 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 		}
 	}
 
-	mappedDir := f.vm.host.Server().MapPath(targetDir)
+	var mappedDir string
+	if f.allowAbsolutePaths && (filepath.IsAbs(targetDir) || strings.HasPrefix(targetDir, "\\\\")) {
+		mappedDir = filepath.Clean(targetDir)
+	} else {
+		mappedDir = f.vm.host.Server().MapPath(targetDir)
+	}
+
 	if mappedDir == "" {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "Invalid target directory",
+			"ErrorMessage": ErrG3FUInvalidTargetDir.String(),
 		})
 	}
 
 	os.MkdirAll(mappedDir, 0755)
 
-	// Since we don't have access to RootDir directly from host interface here without exposing it,
-	// let's just use os.TempDir or Server().MapPath("temp/uploads")
 	tempDir := f.vm.host.Server().MapPath("/temp/uploads")
 	if tempDir == "" {
 		tempDir = os.TempDir()
@@ -365,7 +378,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if err != nil {
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "Failed to create temporary file",
+			"ErrorMessage": ErrG3FUTempFileCreateFailed.String(),
 		})
 	}
 	tempPath := tempFile.Name()
@@ -377,7 +390,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 		os.Remove(tempPath)
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "Failed to write temporary file",
+			"ErrorMessage": ErrG3FUTempFileWriteFailed.String(),
 		})
 	}
 
@@ -387,7 +400,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 		os.Remove(tempPath)
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "Failed to sync temporary file",
+			"ErrorMessage": ErrG3FUTempFileSyncFailed.String(),
 		})
 	}
 	tempFile.Close()
@@ -398,7 +411,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 		os.Remove(tempPath)
 		return f.wrapResultAsDict(map[string]interface{}{
 			"IsSuccess":    false,
-			"ErrorMessage": "Failed to move file to final location",
+			"ErrorMessage": ErrG3FUFinalMoveFailed.String(),
 		})
 	}
 
@@ -442,13 +455,20 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, results)}
 	}
 
+	var mappedDir string
+	if f.allowAbsolutePaths && (filepath.IsAbs(targetDir) || strings.HasPrefix(targetDir, "\\\\")) {
+		mappedDir = filepath.Clean(targetDir)
+	} else {
+		mappedDir = f.vm.host.Server().MapPath(targetDir)
+	}
+
 	for _, fileHeaders := range req.MultipartForm.File {
 		for _, fileHeader := range fileHeaders {
 			file, err := fileHeader.Open()
 			if err != nil {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":    false,
-					"ErrorMessage": "Failed to open file",
+					"ErrorMessage": ErrG3FUOpenFileFailed.String(),
 				}))
 				continue
 			}
@@ -461,7 +481,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "File extension not allowed",
+					"ErrorMessage":     fmt.Sprintf(ErrG3FUExtensionNotAllowed.String(), ext),
 				}))
 				file.Close()
 				continue
@@ -471,7 +491,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "File size exceeds maximum",
+					"ErrorMessage":     ErrG3FUFileSizeExceedsMax.String(),
 				}))
 				file.Close()
 				continue
@@ -484,12 +504,11 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				finalFileName = f.generateUniqueFileName(ext)
 			}
 
-			mappedDir := f.vm.host.Server().MapPath(targetDir)
 			if mappedDir == "" {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "Invalid target directory",
+					"ErrorMessage":     ErrG3FUInvalidTargetDir.String(),
 				}))
 				file.Close()
 				continue
@@ -508,7 +527,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "Failed to create temporary file",
+					"ErrorMessage":     ErrG3FUTempFileCreateFailed.String(),
 				}))
 				file.Close()
 				continue
@@ -522,7 +541,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "Failed to write temporary file",
+					"ErrorMessage":     ErrG3FUTempFileWriteFailed.String(),
 				}))
 				file.Close()
 				continue
@@ -535,7 +554,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "Failed to sync temporary file",
+					"ErrorMessage":     ErrG3FUTempFileSyncFailed.String(),
 				}))
 				file.Close()
 				continue
@@ -550,7 +569,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 				results = append(results, f.wrapResultAsDict(map[string]interface{}{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     "Failed to move file to final location",
+					"ErrorMessage":     ErrG3FUFinalMoveFailed.String(),
 				}))
 				continue
 			}
@@ -604,6 +623,7 @@ func (f *G3FileUploader) getFileInfo(fieldName string) Value {
 	}
 
 	return f.wrapResultAsDict(map[string]interface{}{
+		"IsSuccess":        true,
 		"OriginalFileName": fileName,
 		"Size":             fileSize,
 		"MimeType":         mimeType,
@@ -630,6 +650,32 @@ func (f *G3FileUploader) getAllFilesInfo() Value {
 	}
 
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, results)}
+}
+
+func (f *G3FileUploader) getFormFields() Value {
+	dictVal := f.vm.newDictionaryObject()
+	if f.vm.host == nil || f.vm.host.Request() == nil || f.vm.host.Request().HTTPRequest() == nil {
+		return dictVal
+	}
+
+	req := f.vm.host.Request().HTTPRequest()
+	if req.MultipartForm == nil {
+		var parseLimit int64 = 32 << 20
+		if f.maxFileSize > 0 {
+			parseLimit = f.maxFileSize + (5 << 20)
+		}
+		_ = req.ParseMultipartForm(parseLimit)
+	}
+
+	if req.MultipartForm != nil && req.MultipartForm.Value != nil {
+		for k, vals := range req.MultipartForm.Value {
+			if len(vals) > 0 {
+				f.vm.dispatchDictionaryMethod(dictVal.Num, "Add", []Value{NewString(k), NewString(vals[0])})
+			}
+		}
+	}
+
+	return dictVal
 }
 
 func (f *G3FileUploader) generateUniqueFileName(ext string) string {

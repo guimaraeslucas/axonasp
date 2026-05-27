@@ -6,7 +6,11 @@ The **G3ZSTD** library provides high-performance data compression and decompress
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim zstd
 Set zstd = Server.CreateObject("G3ZSTD")
+```
+```javascript
+var zstd = Server.CreateObject("G3ZSTD");
 ```
 
 ## Prerequisites

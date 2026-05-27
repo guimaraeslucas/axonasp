@@ -1,16 +1,29 @@
 # BlockExtension Method
 
 ## Overview
-Registers a specific file extension to heavily restrict it. The system automatically rejects uploads containing this extension.
+Adds a single file extension to the blacklist of forbidden upload types.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-uploader.BlockExtension "php"
+uploader.BlockExtension extension
 ```
 
 ## Parameters and Arguments
-- `Extension` (String, Required): The prohibited file format extension.
+- `extension` (String, Required): The file extension to block (e.g., "exe" or ".bat").
 
 ## Return Values
-Returns an `Empty` variant.
+Returns **Empty**.
+
+## Remarks
+- Blocked extensions take precedence over allowed extensions.
+- This is useful for preventing the upload of potentially malicious executable files.
+
+## Code Example
+```asp
+<%
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.BlockExtension "exe"
+uploader.BlockExtension "msi"
+%>
+```

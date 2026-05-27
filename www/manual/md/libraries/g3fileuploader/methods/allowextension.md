@@ -1,16 +1,29 @@
 # AllowExtension Method
 
 ## Overview
-Appends a single file extension to the internally maintained allowed extensions permit list. Usually used in tandem with the `SetUseAllowedOnly` mechanism.
+Adds a single file extension to the whitelist of allowed upload types.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-uploader.AllowExtension ".pdf"
+uploader.AllowExtension extension
 ```
 
 ## Parameters and Arguments
-- `Extension` (String, Required): The literal file extension (with or without the leading dot).
+- `extension` (String, Required): The file extension to allow (e.g., "jpg" or ".pdf"). Leading dots are optional.
 
 ## Return Values
-Returns an `Empty` variant.
+Returns **Empty**.
+
+## Remarks
+- If `SetUseAllowedOnly` is set to **True**, only extensions added via `AllowExtension` or `AllowExtensions` will be accepted.
+- Input is case-insensitive and leading spaces are trimmed.
+
+## Code Example
+```asp
+<%
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.AllowExtension "jpg"
+uploader.AllowExtension ".png"
+%>
+```

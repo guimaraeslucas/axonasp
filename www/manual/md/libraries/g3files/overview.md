@@ -6,7 +6,11 @@ The **G3FILES** library provides high-performance file system operations for G3P
 ## Syntax
 To instantiate the library, use the following syntax:
 ```asp
+Dim files
 Set files = Server.CreateObject("G3FILES")
+```
+```javascript
+var files = Server.CreateObject("G3FILES");
 ```
 
 ## Prerequisites

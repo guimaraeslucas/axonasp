@@ -1,13 +1,29 @@
 # PreserveOriginalName Property
 
 ## Overview
-Instructs the uploader engine to bypass its internal random hash generator and save files using their exact original names as submitted by the client device.
+Gets or sets a Boolean value that determines whether the uploader should keep the client's original filename when saving to disk.
 
 ## Syntax
 ```asp
-Set uploader = Server.CreateObject("G3FILEUPLOADER")
-uploader.PreserveOriginalName = True
+uploader.PreserveOriginalName = mode
+mode = uploader.PreserveOriginalName
 ```
 
+## Parameters and Arguments
+- `mode` (Boolean): Set to **True** to keep the original filename, or **False** to generate a unique random filename.
+
 ## Return Values
-Sets or returns a boolean reflecting the name preservation rule.
+Returns a **Boolean** value.
+
+## Remarks
+- The default value is **False** (random filename generation) to prevent filename collisions and security risks associated with malicious filenames.
+- Even if set to **True**, you can still provide an explicit filename in the `Process` method's third argument.
+
+## Code Example
+```asp
+<%
+Dim uploader
+Set uploader = Server.CreateObject("G3FILEUPLOADER")
+uploader.PreserveOriginalName = True
+%>
+```

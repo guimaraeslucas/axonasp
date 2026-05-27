@@ -1,12 +1,13 @@
 <%
 Dim page, mdPath, mdContent, htmlContent, menuContent, menuHtml, apiAction
-Dim g3md, fso, indexPathDir, indexCompiledPath
+Dim g3md, fso, ax, indexPathDir, indexCompiledPath
 
 Set fso = Server.CreateObject("Scripting.FileSystemObject")
+Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
 
 ' Initialize index paths
 indexPathDir = Server.MapPath("search-index")
-indexCompiledPath = indexPathDir & "\manual"
+indexCompiledPath = indexPathDir & ax.AxDirSeparator() & "manual"
 
 apiAction = LCase(Trim(Request.QueryString("api")))
 If apiAction = "search" Then
@@ -91,8 +92,6 @@ mdPath = Server.MapPath(page & ".md")
 If fso.FileExists(mdPath) Then
     mdContent = ReadFile(mdPath)
 Else
-    Set ax = Server.CreateObject("G3AXON.FUNCTIONS")
-
     mdContent = "# 404 - Page Not Found" & vbCrLf & "The requested documentation page '" & ax.AxStripTags(page) & "' was not found."
 End If
 
@@ -805,10 +804,6 @@ End Function
     <body>
         <div id="header">
             <div class="logo">
-                <%
-                Dim ax
-                Set ax = Server.CreateObject("G3Axon.Functions")
-                %>
                 <img
                     src="<%= ax.AxGetLogo() %>"
                     alt="AxonASP"
