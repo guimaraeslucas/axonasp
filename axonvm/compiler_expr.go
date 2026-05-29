@@ -1004,20 +1004,21 @@ func (c *Compiler) Compile() (err error) {
 	}()
 
 	if c.lexerMode == vbscript.ModeASP {
+		c.sourceMap = buildIdentitySourceMap(c.sourceName)
 		c.includeDeps = c.includeDeps[:0]
 		if strings.Contains(strings.ToLower(c.sourceCode), "#include") {
 			includeOptions := includeResolveOptions{
 				siteRoot:        c.includeSiteRoot,
 				caseInsensitive: c.includeCaseInsensitive,
 			}
-			expanded, mappedLines, preprocessErr := preprocessASPIncludesWithDepsWithOptions(c.sourceCode, c.sourceName, map[string]bool{}, 0, &c.includeDeps, includeOptions)
+			expanded, mappedSource, preprocessErr := preprocessASPIncludesWithDepsWithOptions(c.sourceCode, c.sourceName, map[string]bool{}, 0, &c.includeDeps, includeOptions)
 			if preprocessErr != nil {
 				return c.normalizeCompileError(c.vbCompileError(vbscript.SyntaxError, preprocessErr.Error()))
 			}
 			if expanded != c.sourceCode {
 				c.sourceCode = expanded
 			}
-			c.lineMap = mappedLines
+			c.sourceMap = mappedSource
 		}
 
 		// Remove known empty ASP blocks before metadata scanning and lexing.
@@ -1052,30 +1053,44 @@ func (c *Compiler) Compile() (err error) {
 		return nil
 	}
 
+	c.prebindTopLevelDimDeclarations()
+	c.resetTokenStream()
 	compiledDefinitionBounds := c.compileDefinitionPreBindingPass()
 	jscriptPageMode := c.lexerMode == vbscript.ModeASP && isASPDefaultJScriptSource(c.sourceCode)
 	var jscriptProgram strings.Builder
-	appendJScriptProgram := func(segment string) {
+	jscriptProgramLine := 1
+	jscriptProgramAnchors := make([]jscriptCompileLineAnchor, 0, 16)
+	appendJScriptProgram := func(segment string, mergedLineStart int) {
 		if segment == "" {
 			return
 		}
+		generatedLineStart := jscriptProgramLine
+		if mergedLineStart > 0 {
+			if len(jscriptProgramAnchors) == 0 || jscriptProgramAnchors[len(jscriptProgramAnchors)-1].GeneratedLineStart < generatedLineStart {
+				jscriptProgramAnchors = append(jscriptProgramAnchors, jscriptCompileLineAnchor{GeneratedLineStart: generatedLineStart, MergedLineStart: mergedLineStart})
+			}
+		}
 		jscriptProgram.WriteString(segment)
-		if !strings.HasSuffix(segment, "\n") {
+		jscriptProgramLine += countLineBreaks(segment)
+		if !strings.HasSuffix(segment, "\n") && !strings.HasSuffix(segment, "\r") {
 			jscriptProgram.WriteByte('\n')
+			jscriptProgramLine++
 		}
 	}
-	appendJScriptHTMLWrite := func(content string) {
+	appendJScriptHTMLWrite := func(content string, mergedLineStart int) {
 		if content == "" {
 			return
 		}
-		appendJScriptProgram("Response.Write(" + fmt.Sprintf("%q", content) + ");")
+		appendJScriptProgram("Response.Write("+fmt.Sprintf("%q", content)+");", mergedLineStart)
 	}
 	flushJScriptProgram := func() {
 		if jscriptProgram.Len() == 0 {
 			return
 		}
-		c.compileJScriptBlock(jscriptProgram.String())
+		c.compileJScriptBlockWithLineAnchors(jscriptProgram.String(), jscriptProgramAnchors)
 		jscriptProgram.Reset()
+		jscriptProgramAnchors = jscriptProgramAnchors[:0]
+		jscriptProgramLine = 1
 	}
 
 	c.resetTokenStream()
@@ -1093,7 +1108,7 @@ func (c *Compiler) Compile() (err error) {
 		switch t := c.next.(type) {
 		case *vbscript.HTMLToken:
 			if jscriptPageMode {
-				appendJScriptHTMLWrite(t.Content)
+				appendJScriptHTMLWrite(t.Content, t.GetLineNumber())
 				c.move()
 				continue
 			}
@@ -1124,12 +1139,12 @@ func (c *Compiler) Compile() (err error) {
 			c.compileASPObjectDeclaration(t)
 		case *vbscript.ASPJScriptBlockToken:
 			if jscriptPageMode {
-				appendJScriptProgram(t.Content)
+				appendJScriptProgram(t.Content, t.GetLineNumber())
 				c.move()
 				continue
 			}
 			c.move()
-			c.compileJScriptBlock(t.Content)
+			c.compileJScriptBlockWithLineAnchors(t.Content, []jscriptCompileLineAnchor{{GeneratedLineStart: 1, MergedLineStart: t.GetLineNumber()}})
 		case *vbscript.ASPCodeStartToken, *vbscript.ASPCodeEndToken:
 			c.move()
 		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:

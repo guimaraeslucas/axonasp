@@ -40,12 +40,63 @@ var jscriptCallAssignmentPattern = regexp.MustCompile(`([A-Za-z_][A-Za-z0-9_]*)\
 
 const jsRestParamTemplatePrefix = "__js_rest__:"
 
+func normalizeJScriptCompileLineAnchors(anchors []jscriptCompileLineAnchor) []jscriptCompileLineAnchor {
+	if len(anchors) == 0 {
+		return nil
+	}
+	normalized := make([]jscriptCompileLineAnchor, 0, len(anchors))
+	lastGenerated := 0
+	for i := 0; i < len(anchors); i++ {
+		anchor := anchors[i]
+		if anchor.GeneratedLineStart <= 0 || anchor.MergedLineStart <= 0 {
+			continue
+		}
+		if anchor.GeneratedLineStart <= lastGenerated {
+			continue
+		}
+		normalized = append(normalized, anchor)
+		lastGenerated = anchor.GeneratedLineStart
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func (c *Compiler) mapJScriptParseLineToMerged(line int) int {
+	if c == nil || line <= 0 || len(c.jsCompileLineAnchors) == 0 {
+		return line
+	}
+	for i := len(c.jsCompileLineAnchors) - 1; i >= 0; i-- {
+		anchor := c.jsCompileLineAnchors[i]
+		if line < anchor.GeneratedLineStart {
+			continue
+		}
+		mappedLine := anchor.MergedLineStart + (line - anchor.GeneratedLineStart)
+		if mappedLine > 0 {
+			return mappedLine
+		}
+		break
+	}
+	return line
+}
+
 // compileJScriptBlock parses one JScript source block and emits isolated OpJS bytecode.
 func (c *Compiler) compileJScriptBlock(source string) {
+	c.compileJScriptBlockWithLineAnchors(source, nil)
+}
+
+func (c *Compiler) compileJScriptBlockWithLineAnchors(source string, anchors []jscriptCompileLineAnchor) {
 	// Classic ASP JScript commonly uses indexed default-property assignment syntax
 	// like Session("key") = value; normalize it into Session("key", value);
 	// so the GoJa parser accepts it and dispatchNativeCall(member="") can execute it.
 	source = jscriptCallAssignmentPattern.ReplaceAllString(source, `$1($2, $3);`)
+
+	prevAnchors := c.jsCompileLineAnchors
+	c.jsCompileLineAnchors = normalizeJScriptCompileLineAnchors(anchors)
+	defer func() {
+		c.jsCompileLineAnchors = prevAnchors
+	}()
 
 	mode := jsparser.Mode(0)
 	mode |= jsparser.ModeTopLevelAwait
@@ -205,6 +256,9 @@ func (c *Compiler) newJScriptCompileErrorFromParse(parseErr error, detailPrefix 
 		line = parserList[0].Position.Line
 		col = parserList[0].Position.Column
 		detail = strings.TrimSpace(parserList[0].Message)
+	}
+	if line > 0 {
+		line = c.mapJScriptParseLineToMerged(line)
 	}
 
 	jsErr := jscript.NewJSSyntaxError(jscript.SyntaxError, line, col)

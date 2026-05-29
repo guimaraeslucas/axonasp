@@ -161,6 +161,7 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 		LocalClassTypes:     compiler.LocalRecordTypes(),
 		FuncParamDefaults:   cloneFuncParamDefaultsMap(compiler.funcParamDefaults),
 		IncludeDependencies: compiler.IncludeDependencies(),
+		SourceMapEntries:    compiler.SourceMapEntries(),
 		RecordDecls:         cloneRecordDeclSlice(compiler.recordDecls),
 		RecordDeclLookup:    cloneIntMap(compiler.recordDeclLookup),
 	}

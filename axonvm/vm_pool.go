@@ -291,6 +291,7 @@ func (vm *VM) captureBaseProgramState() {
 	}
 
 	vm.baseSourceName = vm.sourceName
+	vm.baseSourceMap = vm.sourceMap.Clone()
 	vm.bytecode = immutableBytecodeView(vm.baseBytecode)
 	vm.constants = immutableValueView(vm.baseConstants)
 }
@@ -336,6 +337,7 @@ func (vm *VM) resetForReuse() {
 		vm.constGlobals[key] = value
 	}
 	vm.sourceName = vm.baseSourceName
+	vm.sourceMap = vm.baseSourceMap.Clone()
 	if vm.errObject != nil {
 		vm.errObject.Reset()
 	} else {

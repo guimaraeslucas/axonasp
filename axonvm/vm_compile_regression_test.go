@@ -852,7 +852,7 @@ Response.Write fCheckLine("<% x %>")
 }
 
 // TestASPImplicitProcedureVariablesAreProcedureLocal verifies that implicit
-// variables used inside different procedures do not share a global slot.
+// variables assigned inside different procedures do not bleed through globals.
 func TestASPImplicitProcedureVariablesAreProcedureLocal(t *testing.T) {
 	source := `<%
 Sub Inner(ByVal s)
@@ -886,6 +886,39 @@ Call Outer("<%X")
 
 	if output.String() != "X" {
 		t.Fatalf("expected X output, got %q", output.String())
+	}
+}
+
+// TestASPDeclaredGlobalVisibleInsideFunction verifies that top-level Dim globals
+// remain resolvable inside procedures even with implicit-local inference enabled.
+func TestASPDeclaredGlobalVisibleInsideFunction(t *testing.T) {
+	source := `<%
+Dim g
+g = 7
+Function ReadG()
+  ReadG = g
+End Function
+Response.Write ReadG()
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "7" {
+		t.Fatalf("expected 7 output, got %q", output.String())
 	}
 }
 

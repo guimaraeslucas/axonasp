@@ -42,7 +42,7 @@ import (
 const (
 	scriptCacheDependencyMapLimit = 1000
 	scriptCacheMagicSize          = 6
-	scriptCacheBinaryVersion      = uint16(10)
+	scriptCacheBinaryVersion      = uint16(11)
 	scriptCacheDebounceWindow     = 1000 * time.Millisecond
 )
 
@@ -115,6 +115,7 @@ type CachedProgram struct {
 	// constant indices for Optional parameters.
 	FuncParamDefaults   map[int][]int
 	IncludeDependencies []string
+	SourceMapEntries    []SourceMapEntry
 	// RecordDecls and RecordDeclLookup carry compiled UDT metadata required by
 	// ExtOpInitRecord/ExtOpGetRecordMember/ExtOpSetRecordMember in cached VM startup paths.
 	RecordDecls      []CompiledRecordDecl
@@ -241,6 +242,9 @@ func (p *cachedProgramBinaryPayload) Serialize(writer io.Writer) error {
 	if err := writeIntSliceMap(buffered, p.Program.FuncParamDefaults); err != nil {
 		return err
 	}
+	if err := writeSourceMapEntries(buffered, p.Program.SourceMapEntries); err != nil {
+		return err
+	}
 
 	return buffered.Flush()
 }
@@ -266,7 +270,7 @@ func (p *cachedProgramBinaryPayload) Deserialize(reader io.Reader) error {
 	if err := binary.Read(reader, binary.LittleEndian, &version); err != nil {
 		return err
 	}
-	if version != 1 && version != 2 && version != 8 && version != scriptCacheBinaryVersion {
+	if version != 1 && version != 2 && version != 8 && version != 10 && version != scriptCacheBinaryVersion {
 		return NewAxonASPError(ErrInvalidCacheVersion, nil, ErrInvalidCacheVersion.String(), "", 0)
 	}
 
@@ -415,6 +419,13 @@ func (p *cachedProgramBinaryPayload) Deserialize(reader io.Reader) error {
 						return err
 					}
 					p.Program.FuncParamDefaults = funcParamDefaults
+					if version >= 11 {
+						sourceMapEntries, err := readSourceMapEntries(reader)
+						if err != nil {
+							return err
+						}
+						p.Program.SourceMapEntries = sourceMapEntries
+					}
 				}
 			}
 		}
@@ -1107,6 +1118,11 @@ func NewVMFromCachedProgram(program CachedProgram) *VM {
 	vm.optionCompare = program.OptionCompare
 	vm.optionExplicit = program.OptionExplicit
 	vm.sourceName = program.SourceName
+	if len(program.SourceMapEntries) > 0 {
+		vm.sourceMap = SourceMap{entries: cloneSourceMapEntries(program.SourceMapEntries)}
+	} else {
+		vm.sourceMap = buildIdentitySourceMap(program.SourceName)
+	}
 	vm.engineMode = program.EngineMode
 	applyProgramGlobalMetadata(vm, program)
 	clear(vm.funcParamDefaults)
@@ -1709,6 +1725,59 @@ func readIntSliceMap(reader io.Reader) (map[int][]int, error) {
 	return values, nil
 }
 
+func writeSourceMapEntries(writer io.Writer, entries []SourceMapEntry) error {
+	if uint64(len(entries)) > uint64(^uint32(0)) {
+		return errors.New("source map entries too large")
+	}
+	if err := binary.Write(writer, binary.LittleEndian, uint32(len(entries))); err != nil {
+		return err
+	}
+	for i := 0; i < len(entries); i++ {
+		entry := entries[i]
+		if err := binary.Write(writer, binary.LittleEndian, int32(entry.MergedLineStart)); err != nil {
+			return err
+		}
+		if err := writeString(writer, entry.OriginalFile); err != nil {
+			return err
+		}
+		if err := binary.Write(writer, binary.LittleEndian, int32(entry.OriginalLine)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readSourceMapEntries(reader io.Reader) ([]SourceMapEntry, error) {
+	var length uint32
+	if err := binary.Read(reader, binary.LittleEndian, &length); err != nil {
+		return nil, err
+	}
+	if length == 0 {
+		return nil, nil
+	}
+	entries := make([]SourceMapEntry, int(length))
+	for i := 0; i < int(length); i++ {
+		var mergedLineStart int32
+		if err := binary.Read(reader, binary.LittleEndian, &mergedLineStart); err != nil {
+			return nil, err
+		}
+		originalFile, err := readString(reader)
+		if err != nil {
+			return nil, err
+		}
+		var originalLine int32
+		if err := binary.Read(reader, binary.LittleEndian, &originalLine); err != nil {
+			return nil, err
+		}
+		entries[i] = SourceMapEntry{
+			MergedLineStart: int(mergedLineStart),
+			OriginalFile:    originalFile,
+			OriginalLine:    int(originalLine),
+		}
+	}
+	return entries, nil
+}
+
 func writeSerializedValue(writer io.Writer, value Value) error {
 	if err := binary.Write(writer, binary.LittleEndian, uint8(value.Type)); err != nil {
 		return err
@@ -1803,6 +1872,7 @@ func cloneCachedProgram(program CachedProgram) CachedProgram {
 		DeclaredGlobalNames: cloneStringSlice(program.DeclaredGlobalNames),
 		ConstGlobalNames:    cloneStringSlice(program.ConstGlobalNames),
 		IncludeDependencies: cloneStringSlice(program.IncludeDependencies),
+		SourceMapEntries:    cloneSourceMapEntries(program.SourceMapEntries),
 		RecordDecls:         cloneRecordDeclSlice(program.RecordDecls),
 		RecordDeclLookup:    cloneIntMap(program.RecordDeclLookup),
 	}
@@ -1856,6 +1926,15 @@ func cloneRecordDeclSlice(values []CompiledRecordDecl) []CompiledRecordDecl {
 			cloned[i].Members = members
 		}
 	}
+	return cloned
+}
+
+func cloneSourceMapEntries(values []SourceMapEntry) []SourceMapEntry {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make([]SourceMapEntry, len(values))
+	copy(cloned, values)
 	return cloned
 }
 

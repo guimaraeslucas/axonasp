@@ -36,13 +36,17 @@ func CompilerErrorToASPError(err error, file string) *asp.ASPError {
 
 	var jsSyntaxErr *jscript.JSSyntaxError
 	if errors.As(err, &jsSyntaxErr) {
-		jsSyntaxErr.WithFile(file)
+		if jsSyntaxErr.File == "" {
+			jsSyntaxErr.WithFile(file)
+		}
 		return asp.NewASPErrorFromJSSyntaxError(jsSyntaxErr)
 	}
 
 	var syntaxErr *vbscript.VBSyntaxError
 	if errors.As(err, &syntaxErr) {
-		syntaxErr.WithFile(file)
+		if syntaxErr.File == "" {
+			syntaxErr.WithFile(file)
+		}
 		return asp.NewASPErrorFromVBSyntaxError(syntaxErr)
 	}
 
@@ -57,7 +61,18 @@ func RuntimeErrorToASPError(err error, file string) *asp.ASPError {
 
 	var vmErr *VMError
 	if errors.As(err, &vmErr) {
-		return vmErr.WithFile(file).ToASPError()
+		if vmErr.File == "" {
+			vmErr.WithFile(file)
+		}
+		return vmErr.ToASPError()
+	}
+
+	if axErr, ok := AsAxonASPError(err); ok {
+		resolvedFile := axErr.FileName
+		if resolvedFile == "" {
+			resolvedFile = file
+		}
+		return asp.NewASPErrorFromMessage("ASP", "AxonASP runtime error", axErr.Error(), resolvedFile, axErr.Line, 0)
 	}
 
 	return asp.NewASPErrorFromMessage("ASP", "AxonASP runtime error", err.Error(), file, 0, 0)

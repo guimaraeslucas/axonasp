@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync/atomic"
 
@@ -51,14 +52,94 @@ type SymbolTable struct {
 	lookup map[string]int
 }
 
-// SourceLineRef maps one expanded source line back to its original file and line.
-type SourceLineRef struct {
-	File string
-	Line int
+// SourceMapEntry stores one sparse merged-line boundary and original source origin.
+type SourceMapEntry struct {
+	MergedLineStart int
+	OriginalFile    string
+	OriginalLine    int
 }
 
-// LineMap stores one origin entry per expanded line (1-based by index+1).
-type LineMap []SourceLineRef
+// SourceMap maps merged lines to original source lines using sparse boundaries.
+type SourceMap struct {
+	entries []SourceMapEntry
+}
+
+// jscriptCompileLineAnchor maps generated JScript program lines back to merged source lines.
+type jscriptCompileLineAnchor struct {
+	GeneratedLineStart int
+	MergedLineStart    int
+}
+
+// AddBoundary records one sparse mapping boundary.
+func (m *SourceMap) AddBoundary(mergedLineStart int, originalFile string, originalLine int) {
+	if m == nil || mergedLineStart <= 0 {
+		return
+	}
+	entry := SourceMapEntry{MergedLineStart: mergedLineStart, OriginalFile: originalFile, OriginalLine: originalLine}
+	if len(m.entries) == 0 {
+		m.entries = append(m.entries, entry)
+		return
+	}
+	lastIdx := len(m.entries) - 1
+	last := m.entries[lastIdx]
+	if last.MergedLineStart == mergedLineStart {
+		m.entries[lastIdx] = entry
+		return
+	}
+	if last.MergedLineStart > mergedLineStart {
+		idx := sort.Search(len(m.entries), func(i int) bool {
+			return m.entries[i].MergedLineStart >= mergedLineStart
+		})
+		if idx < len(m.entries) && m.entries[idx].MergedLineStart == mergedLineStart {
+			m.entries[idx] = entry
+			return
+		}
+		m.entries = append(m.entries, SourceMapEntry{})
+		copy(m.entries[idx+1:], m.entries[idx:])
+		m.entries[idx] = entry
+		return
+	}
+	m.entries = append(m.entries, entry)
+}
+
+// ResolveLine maps one merged line to original file and local line.
+func (m *SourceMap) ResolveLine(mergedLine int) (string, int, bool) {
+	if m == nil || mergedLine <= 0 || len(m.entries) == 0 {
+		return "", 0, false
+	}
+	idx := sort.Search(len(m.entries), func(i int) bool {
+		return m.entries[i].MergedLineStart > mergedLine
+	})
+	if idx == 0 {
+		return "", 0, false
+	}
+	entry := m.entries[idx-1]
+	resolvedLine := entry.OriginalLine + (mergedLine - entry.MergedLineStart)
+	if resolvedLine <= 0 {
+		resolvedLine = entry.OriginalLine
+	}
+	return entry.OriginalFile, resolvedLine, true
+}
+
+// Entries returns a copy of sparse source-map entries.
+func (m *SourceMap) Entries() []SourceMapEntry {
+	if m == nil || len(m.entries) == 0 {
+		return nil
+	}
+	out := make([]SourceMapEntry, len(m.entries))
+	copy(out, m.entries)
+	return out
+}
+
+// Clone returns a deep copy of source-map entries.
+func (m *SourceMap) Clone() SourceMap {
+	if m == nil || len(m.entries) == 0 {
+		return SourceMap{}
+	}
+	cloned := make([]SourceMapEntry, len(m.entries))
+	copy(cloned, m.entries)
+	return SourceMap{entries: cloned}
+}
 
 type includeResolveOptions struct {
 	siteRoot        string
@@ -134,7 +215,7 @@ type Compiler struct {
 	sourceName             string
 	includeSiteRoot        string
 	includeCaseInsensitive bool
-	lineMap                LineMap
+	sourceMap              SourceMap
 	includeDeps            []string
 
 	forwardCallPatches  map[string][]int
@@ -173,6 +254,7 @@ type Compiler struct {
 	jsLocalEnabled        bool              // True when local slot lowering is enabled for current function
 	jsLocalSlotCount      int               // Number of local slots allocated for current function
 	jsInGeneratorFunction bool              // True when compiling a generator body.
+	jsCompileLineAnchors  []jscriptCompileLineAnchor
 	// withDepth tracks nesting level of With...End With blocks at compile time.
 	// A value > 0 enables the leading-dot '.' statement and expression syntax.
 	withDepth          int
@@ -880,18 +962,24 @@ func stripUTF8BOM(data []byte) []byte {
 
 // preprocessASPIncludesWithDeps expands includes and optionally records resolved dependency files.
 // Optimization: Uses manual scanning instead of regexp to avoid heap allocations.
-func preprocessASPIncludesWithDeps(source string, sourceName string, visited map[string]bool, depth int, dependencies *[]string) (string, LineMap, error) {
+func preprocessASPIncludesWithDeps(source string, sourceName string, visited map[string]bool, depth int, dependencies *[]string) (string, SourceMap, error) {
 	return preprocessASPIncludesWithDepsWithOptions(source, sourceName, visited, depth, dependencies, defaultIncludeResolveOptions())
 }
 
-func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, visited map[string]bool, depth int, dependencies *[]string, options includeResolveOptions) (string, LineMap, error) {
+func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, visited map[string]bool, depth int, dependencies *[]string, options includeResolveOptions) (string, SourceMap, error) {
 	if depth > 32 {
-		return "", nil, fmt.Errorf("include recursion limit exceeded")
+		return "", SourceMap{}, fmt.Errorf("include recursion limit exceeded")
 	}
 
-	processed := source
-	lineMap := buildIdentityLineMap(source, sourceName)
-	for {
+	var builder strings.Builder
+	builder.Grow(len(source))
+	sourceMap := SourceMap{}
+	currentMergedLine := 1
+	currentSourceLine := 1
+	sourceMap.AddBoundary(currentMergedLine, sourceName, currentSourceLine)
+
+	cursor := 0
+	for cursor < len(source) {
 		// Manual scan for <!-- #include ... -->
 		startIdx := -1
 		endIdx := -1
@@ -899,23 +987,23 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 		pathVal := ""
 		directive := ""
 
-		cursor := 0
+		searchCursor := cursor
 		for {
-			idx := strings.Index(processed[cursor:], "<!--")
+			idx := strings.Index(source[searchCursor:], "<!--")
 			if idx == -1 {
 				break
 			}
-			absStart := cursor + idx
+			absStart := searchCursor + idx
 
 			// Find closing tag
-			idxClose := strings.Index(processed[absStart:], "-->")
+			idxClose := strings.Index(source[absStart:], "-->")
 			if idxClose == -1 {
-				cursor = absStart + 4
+				searchCursor = absStart + 4
 				continue
 			}
 			absEnd := absStart + idxClose + 3
 
-			comment := processed[absStart:absEnd]
+			comment := source[absStart:absEnd]
 			upperComment := strings.ToUpper(comment)
 
 			if strings.Contains(upperComment, "#INCLUDE") {
@@ -952,33 +1040,36 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 					}
 				}
 			}
-			cursor = absStart + 4
+			searchCursor = absStart + 4
 		}
 
 		if startIdx == -1 {
+			appendMappedSegment(&builder, &sourceMap, source[cursor:], sourceName, &currentMergedLine, &currentSourceLine)
 			break
 		}
 
 		replaceStart := startIdx
 		replaceEnd := endIdx
-		if lineOnlyIncludeDirective(processed, startIdx, endIdx) {
-			replaceStart = lineStartIndex(processed, startIdx)
-			replaceEnd = lineEndIndexIncludingNewline(processed, endIdx)
+		if lineOnlyIncludeDirective(source, startIdx, endIdx) {
+			replaceStart = lineStartIndex(source, startIdx)
+			replaceEnd = lineEndIndexIncludingNewline(source, endIdx)
 		}
+
+		appendMappedSegment(&builder, &sourceMap, source[cursor:replaceStart], sourceName, &currentMergedLine, &currentSourceLine)
 
 		resolvedPath, err := resolveIncludePathWithOptions(sourceName, pathVal, kind == "virtual", options)
 		if err != nil {
-			return "", nil, fmt.Errorf("include resolve failed for %s: %w", directive, err)
+			return "", SourceMap{}, fmt.Errorf("include resolve failed for %s: %w", directive, err)
 		}
 
 		norm := strings.ToLower(filepath.Clean(resolvedPath))
 		if visited[norm] {
-			return "", nil, fmt.Errorf("circular include detected: %s", resolvedPath)
+			return "", SourceMap{}, fmt.Errorf("circular include detected: %s", resolvedPath)
 		}
 
 		contentBytes, err := os.ReadFile(resolvedPath)
 		if err != nil {
-			return "", nil, fmt.Errorf("could not read include %s: %w", resolvedPath, err)
+			return "", SourceMap{}, fmt.Errorf("could not read include %s: %w", resolvedPath, err)
 		}
 
 		// Strip UTF-8 BOM if present to prevent output corruption
@@ -991,31 +1082,17 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 		expanded, childMap, err := preprocessASPIncludesWithDepsWithOptions(string(contentBytes), resolvedPath, visited, depth+1, dependencies, options)
 		delete(visited, norm)
 		if err != nil {
-			return "", nil, err
+			return "", SourceMap{}, err
 		}
 
-		prefix := processed[:replaceStart]
-		suffix := processed[replaceEnd:]
-		prefixLines := countLines(prefix)
-		directiveLines := countLines(processed[replaceStart:replaceEnd])
-		suffixStart := prefixLines + directiveLines
-
-		newMap := make(LineMap, 0, prefixLines+len(childMap)+(len(lineMap)-suffixStart))
-		if prefixLines > 0 {
-			newMap = append(newMap, lineMap[:prefixLines]...)
-		}
-		if len(childMap) > 0 {
-			newMap = append(newMap, childMap...)
-		}
-		if suffixStart < len(lineMap) {
-			newMap = append(newMap, lineMap[suffixStart:]...)
-		}
-		lineMap = newMap
-
-		processed = prefix + expanded + suffix
+		mergeSourceMap(&sourceMap, childMap, currentMergedLine)
+		builder.WriteString(expanded)
+		currentMergedLine += countLogicalLines(expanded)
+		currentSourceLine += countLogicalLines(source[replaceStart:replaceEnd])
+		cursor = replaceEnd
 	}
 
-	return processed, lineMap, nil
+	return builder.String(), sourceMap, nil
 }
 
 // lineOnlyIncludeDirective reports whether a matched include directive occupies
@@ -1037,11 +1114,12 @@ func lineStartIndex(s string, pos int) int {
 	if pos <= 0 {
 		return 0
 	}
-	idx := strings.LastIndexByte(s[:pos], '\n')
-	if idx == -1 {
-		return 0
+	for i := pos - 1; i >= 0; i-- {
+		if s[i] == '\n' || s[i] == '\r' {
+			return i + 1
+		}
 	}
-	return idx + 1
+	return 0
 }
 
 // lineEndIndex returns the index of '\n' or end-of-string for the line that contains pos.
@@ -1049,17 +1127,27 @@ func lineEndIndex(s string, pos int) int {
 	if pos >= len(s) {
 		return len(s)
 	}
-	idx := strings.IndexByte(s[pos:], '\n')
-	if idx == -1 {
-		return len(s)
+	for i := pos; i < len(s); i++ {
+		if s[i] == '\n' || s[i] == '\r' {
+			return i
+		}
 	}
-	return pos + idx
+	return len(s)
 }
 
 // lineEndIndexIncludingNewline returns the line end index and consumes one trailing newline when present.
 func lineEndIndexIncludingNewline(s string, pos int) int {
 	le := lineEndIndex(s, pos)
-	if le < len(s) && s[le] == '\n' {
+	if le >= len(s) {
+		return le
+	}
+	if s[le] == '\r' {
+		if le+1 < len(s) && s[le+1] == '\n' {
+			return le + 2
+		}
+		return le + 1
+	}
+	if s[le] == '\n' {
 		return le + 1
 	}
 	return le
@@ -1078,25 +1166,62 @@ func isAllHorizontalWhitespace(s string) bool {
 	return true
 }
 
-// buildIdentityLineMap maps each line to the same source file and line number.
-func buildIdentityLineMap(source string, sourceName string) LineMap {
-	total := countLines(source)
-	if total <= 0 {
-		return nil
-	}
-	m := make(LineMap, total)
-	for i := 0; i < total; i++ {
-		m[i] = SourceLineRef{File: sourceName, Line: i + 1}
-	}
+// buildIdentitySourceMap maps one source to itself starting at line 1.
+func buildIdentitySourceMap(sourceName string) SourceMap {
+	m := SourceMap{}
+	m.AddBoundary(1, sourceName, 1)
 	return m
 }
 
-// countLines returns the number of logical lines using '\n' as separator, minimum 1 for non-empty source.
-func countLines(s string) int {
+// countLineBreaks counts line separators across CRLF, LF, and CR sequences.
+func countLineBreaks(s string) int {
 	if s == "" {
 		return 0
 	}
-	return strings.Count(s, "\n") + 1
+	count := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\r':
+			count++
+			if i+1 < len(s) && s[i+1] == '\n' {
+				i++
+			}
+		case '\n':
+			count++
+		}
+	}
+	return count
+}
+
+// countLogicalLines returns legacy logical-line count (minimum 1 for non-empty segments).
+func countLogicalLines(s string) int {
+	if s == "" {
+		return 0
+	}
+	return countLineBreaks(s) + 1
+}
+
+// appendMappedSegment appends one source segment and updates merged/source line cursors.
+func appendMappedSegment(builder *strings.Builder, sourceMap *SourceMap, segment string, sourceName string, currentMergedLine *int, currentSourceLine *int) {
+	if segment == "" {
+		return
+	}
+	sourceMap.AddBoundary(*currentMergedLine, sourceName, *currentSourceLine)
+	builder.WriteString(segment)
+	logicalLines := countLogicalLines(segment)
+	*currentMergedLine += logicalLines
+	*currentSourceLine += logicalLines
+}
+
+// mergeSourceMap appends one child source map into a parent map at one merged-line offset.
+func mergeSourceMap(target *SourceMap, child SourceMap, mergedLineStart int) {
+	if target == nil || mergedLineStart <= 0 || len(child.entries) == 0 {
+		return
+	}
+	for i := 0; i < len(child.entries); i++ {
+		entry := child.entries[i]
+		target.AddBoundary(mergedLineStart+entry.MergedLineStart-1, entry.OriginalFile, entry.OriginalLine)
+	}
 }
 
 // resolveIncludePath resolves one ASP include path against current source path context.
@@ -1314,6 +1439,14 @@ func (c *Compiler) resolveVar(name string) (OpCode, int) {
 
 	// 2. Check Globals
 	if idx, exists := c.Globals.Get(name); exists {
+		isTrueGlobal := idx < c.userGlobalsStart || c.declaredGlobals[lower] || c.constGlobals[lower] || c.implicitGlobals[lower]
+		if c.isLocal && !isTrueGlobal {
+			if c.optionExplicit {
+				panic(c.vbCompileError(vbscript.VariableNotDefined, fmt.Sprintf("Variable not defined: '%s'", name)))
+			}
+			lidx := c.locals.Add(name)
+			return OpGetLocal, lidx
+		}
 		// Even if not explicitly Dim'ed, if it was used once it exists in SymbolTable.
 		// We only error if Option Explicit is on and it wasn't Dim'ed.
 		// NOTE: Slots below userGlobalsStart are read-only intrinsics/constants and don't need Dim.
@@ -1429,7 +1562,10 @@ func (c *Compiler) resolveSetVar(name string) (OpCode, int) {
 
 	if c.isLocal {
 		if gidx, exists := c.Globals.Get(name); exists {
-			return OpSetGlobal, gidx
+			isTrueGlobal := gidx < c.userGlobalsStart || c.declaredGlobals[lower] || c.constGlobals[lower] || c.implicitGlobals[lower]
+			if isTrueGlobal {
+				return OpSetGlobal, gidx
+			}
 		}
 		if c.optionExplicit {
 			panic(c.vbCompileError(vbscript.VariableNotDefined, fmt.Sprintf("Variable not defined: '%s'", name)))
@@ -1625,6 +1761,125 @@ func (c *Compiler) compileDefinitionPreBindingPass() []definitionTokenBound {
 	}
 
 	return bounds
+}
+
+func isIdentifierLikeTokenForPrescan(token vbscript.Token) (string, bool) {
+	switch t := token.(type) {
+	case *vbscript.IdentifierToken:
+		return strings.TrimSpace(t.Name), true
+	case *vbscript.KeywordOrIdentifierToken:
+		return strings.TrimSpace(t.Name), true
+	case *vbscript.ExtendedIdentifierToken:
+		return strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(t.Name, "["), "]")), true
+	default:
+		return "", false
+	}
+}
+
+func (c *Compiler) skipTopLevelDefinitionBlock(endKeyword vbscript.Keyword) {
+	for !c.matchEof() {
+		if c.checkKeyword(vbscript.KeywordEnd) {
+			peek := c.peekToken()
+			if c.tokenMatchesKeywordOrIdentifier(peek, endKeyword, strings.ToLower(endKeyword.String())) {
+				c.move()
+				c.move()
+				return
+			}
+		}
+		c.move()
+	}
+}
+
+// prebindTopLevelDimDeclarations scans source-level Dim declarations before
+// definition prebinding so local procedure compilation can still resolve true
+// globals declared outside procedures.
+func (c *Compiler) prebindTopLevelDimDeclarations() {
+	if c == nil {
+		return
+	}
+
+	for !c.matchEof() {
+		if c.matchEof() {
+			return
+		}
+
+		if c.checkKeyword(vbscript.KeywordClass) {
+			c.skipTopLevelDefinitionBlock(vbscript.KeywordClass)
+			continue
+		}
+		if c.checkKeyword(vbscript.KeywordSub) {
+			c.skipTopLevelDefinitionBlock(vbscript.KeywordSub)
+			continue
+		}
+		if c.checkKeyword(vbscript.KeywordFunction) {
+			c.skipTopLevelDefinitionBlock(vbscript.KeywordFunction)
+			continue
+		}
+
+		if c.checkKeyword(vbscript.KeywordPublic) || c.checkKeyword(vbscript.KeywordPrivate) {
+			scopeTok := c.move()
+			if c.checkKeyword(vbscript.KeywordClass) {
+				c.skipTopLevelDefinitionBlock(vbscript.KeywordClass)
+				continue
+			}
+			if c.checkKeyword(vbscript.KeywordSub) {
+				c.skipTopLevelDefinitionBlock(vbscript.KeywordSub)
+				continue
+			}
+			if c.checkKeyword(vbscript.KeywordFunction) {
+				c.skipTopLevelDefinitionBlock(vbscript.KeywordFunction)
+				continue
+			}
+			if !c.checkKeyword(vbscript.KeywordDim) {
+				_ = scopeTok
+				continue
+			}
+		}
+
+		if c.checkKeyword(vbscript.KeywordDim) {
+			c.move()
+			for {
+				name, ok := isIdentifierLikeTokenForPrescan(c.next)
+				if !ok || name == "" {
+					break
+				}
+				c.declareVar(name)
+				c.move()
+
+				depth := 0
+				for !c.matchEof() {
+					if p, ok := c.next.(*vbscript.PunctuationToken); ok {
+						switch p.Type {
+						case vbscript.PunctLParen:
+							depth++
+						case vbscript.PunctRParen:
+							if depth > 0 {
+								depth--
+							}
+						case vbscript.PunctComma:
+							if depth == 0 {
+								c.move()
+								goto nextDimName
+							}
+						}
+					}
+					if depth == 0 {
+						switch c.next.(type) {
+						case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken, *vbscript.ASPCodeEndToken:
+							goto endDimList
+						}
+					}
+					c.move()
+				}
+				goto endDimList
+			nextDimName:
+			}
+		endDimList:
+			continue
+		}
+
+		c.move()
+	}
 }
 
 // isGlobalDefinitionToken reports whether the current token starts a global declaration block.
@@ -1933,6 +2188,21 @@ func (c *Compiler) IncludeDependencies() []string {
 	return deps
 }
 
+func (c *Compiler) mapMergedSourceLine(line int) (string, int, bool) {
+	if c == nil {
+		return "", 0, false
+	}
+	return c.sourceMap.ResolveLine(line)
+}
+
+// SourceMapEntries returns a stable copy of sparse source-map entries for cache/runtime error mapping.
+func (c *Compiler) SourceMapEntries() []SourceMapEntry {
+	if c == nil {
+		return nil
+	}
+	return c.sourceMap.Entries()
+}
+
 // vbSyntaxError creates a VBScript-compatible syntax error using the current compiler token.
 func (c *Compiler) vbSyntaxError(code vbscript.VBSyntaxErrorCode) *vbscript.VBSyntaxError {
 	token := c.next
@@ -1954,7 +2224,14 @@ func (c *Compiler) vbSyntaxError(code vbscript.VBSyntaxErrorCode) *vbscript.VBSy
 	lineText := c.lineSourceText(token)
 
 	err := vbscript.NewVBSyntaxError(code, line, column, tokenText, lineText)
-	if c.sourceName != "" {
+	if mappedFile, mappedLine, ok := c.mapMergedSourceLine(line); ok {
+		if mappedFile != "" {
+			err.WithFile(mappedFile)
+		}
+		if mappedLine > 0 {
+			err.Line = mappedLine
+		}
+	} else if c.sourceName != "" {
 		err.WithFile(c.sourceName)
 	}
 	return err
@@ -1978,15 +2255,13 @@ func (c *Compiler) normalizeCompileError(err error) error {
 	if errors.As(err, &jsSyntaxErr) {
 		mapped := false
 		if c != nil && jsSyntaxErr != nil {
-			line := jsSyntaxErr.Line
-			if line > 0 && line <= len(c.lineMap) {
-				ref := c.lineMap[line-1]
-				if ref.File != "" {
-					jsSyntaxErr.WithFile(ref.File)
+			if file, line, ok := c.mapMergedSourceLine(jsSyntaxErr.Line); ok {
+				if file != "" {
+					jsSyntaxErr.WithFile(file)
 					mapped = true
 				}
-				if ref.Line > 0 {
-					jsSyntaxErr.Line = ref.Line
+				if line > 0 {
+					jsSyntaxErr.Line = line
 					mapped = true
 				}
 			}
@@ -2001,15 +2276,13 @@ func (c *Compiler) normalizeCompileError(err error) error {
 	if errors.As(err, &syntaxErr) {
 		mapped := false
 		if c != nil && syntaxErr != nil {
-			line := syntaxErr.Line
-			if line > 0 && line <= len(c.lineMap) {
-				ref := c.lineMap[line-1]
-				if ref.File != "" {
-					syntaxErr.WithFile(ref.File)
+			if file, line, ok := c.mapMergedSourceLine(syntaxErr.Line); ok {
+				if file != "" {
+					syntaxErr.WithFile(file)
 					mapped = true
 				}
-				if ref.Line > 0 {
-					syntaxErr.Line = ref.Line
+				if line > 0 {
+					syntaxErr.Line = line
 					mapped = true
 				}
 			}

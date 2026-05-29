@@ -525,6 +525,7 @@ type VM struct {
 	declaredGlobals      map[string]bool // Global Dim/Const declaration state for dynamic compilation.
 	constGlobals         map[string]bool // Global Const protection state for dynamic compilation.
 	sourceName           string          // Source file path used for dynamic execution error reporting.
+	sourceMap            SourceMap       // Sparse merged-to-original source line mapping for include-aware errors.
 	dynamicProgramStarts map[uint64]int  // Per-VM start offsets for already-appended cached dynamic fragments.
 	jsStringWorkBytes    int64           // Per-run cumulative bytes produced by JScript string operations.
 
@@ -552,6 +553,7 @@ type VM struct {
 	baseDeclared            map[string]bool
 	baseConst               map[string]bool
 	baseSourceName          string
+	baseSourceMap           SourceMap
 
 	argBuffer     []Value
 	indexBuffer   []Value
@@ -570,6 +572,30 @@ type VM struct {
 
 	nextCallMemberICID uint32
 	callMemberIC       map[uint32]callMemberICEntry
+}
+
+func (vm *VM) mapRuntimeLocation(line int, column int) (string, int, int) {
+	file := vm.sourceName
+	mappedLine := line
+	if mappedFile, resolvedLine, ok := vm.sourceMap.ResolveLine(line); ok {
+		if strings.TrimSpace(mappedFile) != "" {
+			file = mappedFile
+		}
+		if resolvedLine > 0 {
+			mappedLine = resolvedLine
+		}
+	}
+	return file, mappedLine, column
+}
+
+func (vm *VM) mappedCurrentLocation() (string, int) {
+	file, line, _ := vm.mapRuntimeLocation(vm.lastLine, vm.lastColumn)
+	return file, line
+}
+
+func (vm *VM) newMappedAxonASPError(code AxonASPErrorCode, err error, description string) *AxonASPError {
+	file, line := vm.mappedCurrentLocation()
+	return NewAxonASPError(code, err, description, file, line)
 }
 
 // NewVM creates and initializes a new VM instance.
@@ -805,6 +831,7 @@ func NewVMFromCompiler(compiler *Compiler) *VM {
 	vm.optionCompare = compiler.optionCompare
 	vm.optionExplicit = compiler.optionExplicit
 	vm.sourceName = compiler.sourceName
+	vm.sourceMap = compiler.sourceMap.Clone()
 	vm.globalNames = append(vm.globalNames[:0], compiler.Globals.names...)
 	vm.rebuildGlobalNameIndex()
 	clear(vm.globalZeroArgFuncs)
@@ -1784,7 +1811,7 @@ func (vm *VM) Run() (err error) {
 				return
 			}
 			if bufferErr, ok := r.(*asp.ResponseBufferLimitError); ok {
-				err = NewAxonASPError(ErrResponseBufferLimitExceeded, bufferErr, bufferErr.Error(), vm.sourceName, vm.lastLine)
+				err = vm.newMappedAxonASPError(ErrResponseBufferLimitExceeded, bufferErr, bufferErr.Error())
 				return
 			}
 			vme, ok := r.(*VMError)
@@ -1824,7 +1851,7 @@ aspExecLoop:
 			vm.jsPumpNodeAsyncTasks(32)
 		}
 		if operationCount&1023 == 0 && vm.host != nil && vm.host.Server() != nil && vm.host.Server().HasTimedOut() {
-			return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()), vm.sourceName, vm.lastLine)
+			return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()))
 		}
 		op := OpCode(vm.bytecode[vm.ip])
 		vm.ip++
@@ -2377,7 +2404,7 @@ aspExecLoop:
 			if counter.Num < limit.Num {
 				jsBackJumpCount++
 				if jsBackJumpCount > jsBackJumpLimit {
-					return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+					return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 				}
 				vm.ip -= jumpOffset
 				continue
@@ -3260,7 +3287,7 @@ aspExecLoop:
 					if target < vm.ip {
 						jsBackJumpCount++
 						if jsBackJumpCount > jsBackJumpLimit {
-							return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+							return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 						}
 					}
 					vm.ip = target
@@ -4547,7 +4574,7 @@ aspExecLoop:
 			if target < vm.ip {
 				jsBackJumpCount++
 				if jsBackJumpCount > jsBackJumpLimit {
-					return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+					return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 				}
 			}
 			vm.ip = target
@@ -4559,7 +4586,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -4572,7 +4599,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -4635,7 +4662,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return NewAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit), vm.sourceName, vm.lastLine)
+						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -7795,10 +7822,12 @@ func (vm *VM) errRaise(args []Value) Value {
 		return Value{Type: VTEmpty}
 	}
 
+	file, line, column := vm.mapRuntimeLocation(vm.lastLine, vm.lastColumn)
 	vme := &VMError{
 		Code:           vbscript.VBSyntaxErrorCode(number),
-		Line:           vm.lastLine,
-		Column:         vm.lastColumn,
+		Line:           line,
+		Column:         column,
+		File:           file,
 		Msg:            description,
 		ASPCode:        number,
 		ASPDescription: description,
@@ -9160,10 +9189,12 @@ func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 		description = code.String()
 	}
 
+	file, line, column := vm.mapRuntimeLocation(vm.lastLine, vm.lastColumn)
 	vme := &VMError{
 		Code:           code,
-		Line:           vm.lastLine,
-		Column:         vm.lastColumn,
+		Line:           line,
+		Column:         column,
+		File:           file,
 		Msg:            description,
 		ASPCode:        int(code),
 		ASPDescription: description,
