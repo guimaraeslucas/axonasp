@@ -7410,8 +7410,8 @@ Response.Write "ok"
 		t.Fatalf("expected mapped file %q, got %q", includePath, syntaxErr.File)
 	}
 
-	if syntaxErr.Line != 4 {
-		t.Fatalf("expected mapped line 4, got %d", syntaxErr.Line)
+	if syntaxErr.Line != 3 {
+		t.Fatalf("expected mapped line 3, got %d", syntaxErr.Line)
 	}
 }
 

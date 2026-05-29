@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"g3pix.com.br/axonasp/jscript"
+	"g3pix.com.br/axonasp/vbscript"
 )
 
 func buildLargeIncludeContent(lines int) string {
@@ -199,5 +200,53 @@ func TestASPDefaultJScriptIncludeCompileErrorMapsBackToMainFileLine(t *testing.T
 	}
 	if syntaxErr.Line != 5 {
 		t.Fatalf("expected mapped line 5, got %d", syntaxErr.Line)
+	}
+}
+
+func TestASPIncludeVBCompileErrorMissingRHSMapsToMainLine(t *testing.T) {
+	tmpDir := t.TempDir()
+	mainPath := filepath.Join(tmpDir, "main.asp")
+	includePath := filepath.Join(tmpDir, "big.inc")
+
+	if err := os.WriteFile(includePath, []byte(buildLargeIncludeContent(181)), 0o600); err != nil {
+		t.Fatalf("write include failed: %v", err)
+	}
+
+	mainSource := strings.Join([]string{
+		"<%@ LANGUAGE=VBScript %>",
+		"<!--#include file=\"big.inc\"-->",
+		"<%",
+		"Dim a",
+		"a = 1",
+		"Dim b",
+		"b = 2",
+		"Dim c",
+		"c =",
+		"%>",
+	}, "\r\n")
+	if err := os.WriteFile(mainPath, []byte(mainSource), 0o600); err != nil {
+		t.Fatalf("write main failed: %v", err)
+	}
+
+	compiler := NewASPCompiler(mainSource)
+	compiler.SetSourceName(mainPath)
+	err := compiler.Compile()
+	if err == nil {
+		t.Fatal("expected compile error")
+	}
+
+	var syntaxErr *vbscript.VBSyntaxError
+	if !errors.As(err, &syntaxErr) {
+		t.Fatalf("expected VBSyntaxError, got %T: %v", err, err)
+	}
+
+	if !strings.EqualFold(filepath.Clean(syntaxErr.File), filepath.Clean(mainPath)) {
+		t.Fatalf("expected mapped file %q, got %q", mainPath, syntaxErr.File)
+	}
+	if syntaxErr.Line != 9 {
+		t.Fatalf("expected mapped line 9, got %d", syntaxErr.Line)
+	}
+	if syntaxErr.Column < 2 {
+		t.Fatalf("expected actionable column at or after assignment target, got %d", syntaxErr.Column)
 	}
 }

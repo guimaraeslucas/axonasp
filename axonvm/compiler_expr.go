@@ -480,7 +480,14 @@ func (c *Compiler) parseExpression(precedence Precedence) {
 	prefixRule := c.getPrefixRule(token)
 
 	if prefixRule == nil {
-		panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Syntax error: Unexpected token %T in expression", token)))
+		errorToken := token
+		switch token.(type) {
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.ASPCodeEndToken, *vbscript.EOFToken:
+			if c.prevToken != nil {
+				errorToken = c.prevToken
+			}
+		}
+		panic(c.vbCompileErrorAtToken(vbscript.SyntaxError, errorToken, fmt.Sprintf("Syntax error: Unexpected token %T in expression", token)))
 	}
 
 	prefixRule(c, token)

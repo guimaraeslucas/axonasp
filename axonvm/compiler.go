@@ -226,6 +226,8 @@ type Compiler struct {
 	lastCoercePos       int
 	lastDebugLine       int
 	lastDebugColumn     int
+	prevToken           vbscript.Token
+	lastToken           vbscript.Token
 	tempCounter         int
 	globalZeroArgFuncs  map[string]bool
 	classDecls          []CompiledClassDecl
@@ -1715,6 +1717,8 @@ func (c *Compiler) emitCurrentDebugLocation() {
 
 func (c *Compiler) move() vbscript.Token {
 	token := c.next
+	c.prevToken = c.lastToken
+	c.lastToken = token
 	c.next = c.lexer.NextToken()
 	c.tokenIndex++
 	return token
@@ -1738,6 +1742,8 @@ func (c *Compiler) resetTokenStream() {
 	c.tokenIndex = -1
 	c.lastDebugLine = -1
 	c.lastDebugColumn = -1
+	c.prevToken = nil
+	c.lastToken = nil
 	c.move()
 }
 
@@ -2203,9 +2209,41 @@ func (c *Compiler) SourceMapEntries() []SourceMapEntry {
 	return c.sourceMap.Entries()
 }
 
+func (c *Compiler) lineColumnFromSourceOffset(offset int) (int, int) {
+	if c == nil || offset < 0 {
+		return 0, 0
+	}
+	if offset > len(c.sourceCode) {
+		offset = len(c.sourceCode)
+	}
+	line := 1
+	lineStart := 0
+	for i := 0; i < offset; i++ {
+		switch c.sourceCode[i] {
+		case '\r':
+			line++
+			if i+1 < offset && c.sourceCode[i+1] == '\n' {
+				i++
+			}
+			lineStart = i + 1
+		case '\n':
+			line++
+			lineStart = i + 1
+		}
+	}
+	column := offset - lineStart
+	if column < 0 {
+		column = 0
+	}
+	return line, column
+}
+
 // vbSyntaxError creates a VBScript-compatible syntax error using the current compiler token.
 func (c *Compiler) vbSyntaxError(code vbscript.VBSyntaxErrorCode) *vbscript.VBSyntaxError {
-	token := c.next
+	return c.vbSyntaxErrorAtToken(code, c.next)
+}
+
+func (c *Compiler) vbSyntaxErrorAtToken(code vbscript.VBSyntaxErrorCode, token vbscript.Token) *vbscript.VBSyntaxError {
 	if token == nil {
 		err := vbscript.NewVBSyntaxError(code, 0, 0, "", "")
 		if c.sourceName != "" {
@@ -2214,11 +2252,7 @@ func (c *Compiler) vbSyntaxError(code vbscript.VBSyntaxErrorCode) *vbscript.VBSy
 		return err
 	}
 
-	line := token.GetLineNumber()
-	column := token.GetStart() - token.GetLineStart()
-	if column < 0 {
-		column = 0
-	}
+	line, column := c.lineColumnFromSourceOffset(token.GetStart())
 
 	tokenText := c.tokenSourceText(token)
 	lineText := c.lineSourceText(token)
@@ -2239,7 +2273,15 @@ func (c *Compiler) vbSyntaxError(code vbscript.VBSyntaxErrorCode) *vbscript.VBSy
 
 // vbCompileError creates a VBScript-compatible compiler error and preserves the detailed compiler message for ASP consumers.
 func (c *Compiler) vbCompileError(code vbscript.VBSyntaxErrorCode, detail string) *vbscript.VBSyntaxError {
-	err := c.vbSyntaxError(code)
+	err := c.vbSyntaxErrorAtToken(code, c.next)
+	err.WithASPDescription(detail)
+	err.Description = detail
+	return err
+}
+
+// vbCompileErrorAtToken creates a VBScript-compatible compiler error anchored to one explicit token.
+func (c *Compiler) vbCompileErrorAtToken(code vbscript.VBSyntaxErrorCode, token vbscript.Token, detail string) *vbscript.VBSyntaxError {
+	err := c.vbSyntaxErrorAtToken(code, token)
 	err.WithASPDescription(detail)
 	err.Description = detail
 	return err
@@ -2274,6 +2316,9 @@ func (c *Compiler) normalizeCompileError(err error) error {
 
 	var syntaxErr *vbscript.VBSyntaxError
 	if errors.As(err, &syntaxErr) {
+		if syntaxErr != nil && strings.TrimSpace(syntaxErr.File) != "" {
+			return syntaxErr
+		}
 		mapped := false
 		if c != nil && syntaxErr != nil {
 			if file, line, ok := c.mapMergedSourceLine(syntaxErr.Line); ok {
