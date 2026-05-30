@@ -85,6 +85,7 @@ const (
 
 const (
 	nativeResponseCookies int64 = 1201 + iota
+	nativeResponseCookiesKeyMethod
 	nativeResponseCookiesDomainMethod
 	nativeResponseCookiesPathMethod
 	nativeResponseCookiesExpiresMethod
@@ -3466,7 +3467,9 @@ aspExecLoop:
 					s := vm.valueToString(arg)
 					if isWrite {
 						if arg.Type == VTString {
-							w.WriteString("\"" + s + "\"")
+							w.WriteString("\"")
+							w.WriteString(s)
+							w.WriteString("\"")
 						} else {
 							w.WriteString(s)
 						}
@@ -6080,8 +6083,22 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			return NewString("")
 		}
 	case nativeResponseCookies:
+		if strings.EqualFold(member, "Count") {
+			return NewInteger(int64(vm.host.Response().GetCookieCount()))
+		}
+		if strings.EqualFold(member, "Key") {
+			if len(args) >= 1 {
+				return NewString(vm.host.Response().GetCookieKey(vm.asInt(args[0])))
+			}
+			return Value{Type: VTNativeObject, Num: nativeResponseCookiesKeyMethod}
+		}
 		if member == "" && len(args) >= 1 {
 			return vm.newResponseCookieItem(args[0].String())
+		}
+		return Value{Type: VTEmpty}
+	case nativeResponseCookiesKeyMethod:
+		if member == "" && len(args) >= 1 {
+			return NewString(vm.host.Response().GetCookieKey(vm.asInt(args[0])))
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesDomainMethod:
@@ -6119,8 +6136,8 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			return Value{Type: VTEmpty}
 		case strings.EqualFold(member, "QueryString"):
 			if len(args) >= 1 {
-				if val, ok := request.GetCollectionEntry("QueryString", args[0].String()); ok {
-					return NewString(val)
+				if value, ok := request.QueryString.GetValue(args[0].String()); ok {
+					return vm.newRequestCollectionValueItem(value)
 				}
 				return Value{Type: VTEmpty}
 			}
@@ -6226,8 +6243,8 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		}
 	case nativeRequestQueryString:
 		if member == "" && len(args) >= 1 {
-			if val, ok := vm.host.Request().GetCollectionEntry("QueryString", args[0].String()); ok {
-				return NewString(val)
+			if value, ok := vm.host.Request().QueryString.GetValue(args[0].String()); ok {
+				return vm.newRequestCollectionValueItem(value)
 			}
 			return Value{Type: VTEmpty}
 		}
@@ -7273,6 +7290,13 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 		switch {
 		case strings.EqualFold(member, "Count"):
 			return NewInteger(int64(len(application.GetStaticObjectsCopy())))
+		}
+	case nativeResponseCookies:
+		switch {
+		case strings.EqualFold(member, "Count"):
+			return NewInteger(int64(vm.host.Response().GetCookieCount()))
+		case strings.EqualFold(member, "Key"):
+			return Value{Type: VTNativeObject, Num: nativeResponseCookiesKeyMethod}
 		}
 	}
 

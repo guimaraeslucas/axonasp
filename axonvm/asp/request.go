@@ -139,7 +139,7 @@ func (c *RequestCollection) AddValues(key string, values []string) {
 
 	normalizedKey := strings.ToLower(key)
 	if _, exists := c.data[normalizedKey]; !exists {
-		c.keys = append(c.keys, normalizedKey)
+		c.keys = append(c.keys, key)
 	}
 	c.data[normalizedKey] = NewRequestCollectionValue(values)
 }
@@ -163,7 +163,7 @@ func (c *RequestCollection) AddCookie(key string, rawValue string) {
 
 	normalizedKey := strings.ToLower(key)
 	if _, exists := c.data[normalizedKey]; !exists {
-		c.keys = append(c.keys, normalizedKey)
+		c.keys = append(c.keys, key)
 	}
 	c.data[normalizedKey] = NewRequestCookieValue(rawValue)
 }
@@ -322,7 +322,7 @@ func (c *RequestCollection) keyByIndexLocked(index int) string {
 		}
 		remaining--
 		if remaining == 0 {
-			return strings.ToLower(c.decodeRangeLocked(c.lazyKV[i].key))
+			return c.decodeRangeLocked(c.lazyKV[i].key)
 		}
 	}
 
@@ -348,7 +348,7 @@ func (c *RequestCollection) GetKeys() []string {
 		if c.lazyHasSeenKeyBeforeLocked(i) {
 			continue
 		}
-		result = append(result, strings.ToLower(c.decodeRangeLocked(c.lazyKV[i].key)))
+		result = append(result, c.decodeRangeLocked(c.lazyKV[i].key))
 	}
 
 	return result

@@ -399,6 +399,26 @@ func TestBuiltinInteractiveDesktopFunctionsRejectASP(t *testing.T) {
 	}
 }
 
+// TestBuiltinStrConvWidthModes verifies best-effort width conversions for StrConv.
+func TestBuiltinStrConvWidthModes(t *testing.T) {
+	vm := NewVM(nil, nil, 5)
+
+	wide := callBuiltin(t, vm, "StrConv", NewString("ABC 123"), NewInteger(4))
+	if wide.Type != VTString || wide.Str != "ＡＢＣ　１２３" {
+		t.Fatalf("expected vbWide conversion, got %#v", wide)
+	}
+
+	narrow := callBuiltin(t, vm, "StrConv", NewString("ＡＢＣ　１２３"), NewInteger(8))
+	if narrow.Type != VTString || narrow.Str != "ABC 123" {
+		t.Fatalf("expected vbNarrow conversion, got %#v", narrow)
+	}
+
+	fromUnicode := callBuiltin(t, vm, "StrConv", NewString("ＡＢＣ　１２３"), NewInteger(128))
+	if fromUnicode.Type != VTString || fromUnicode.Str != "ABC 123" {
+		t.Fatalf("expected vbFromUnicode best-effort conversion, got %#v", fromUnicode)
+	}
+}
+
 // TestBuiltinSplitJoinFilter verifies array string helper compatibility.
 func TestBuiltinSplitJoinFilter(t *testing.T) {
 	vm := NewVM(nil, nil, 5)

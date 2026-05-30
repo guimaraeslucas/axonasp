@@ -24,7 +24,10 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
+
+	"g3pix.com.br/axonasp/vbscript"
 )
 
 // TestVMRequestMemberChainExpression verifies expression-chain behavior for Request collections.
@@ -479,5 +482,109 @@ End If
 
 	if output.String() != "empty" {
 		t.Fatalf("unexpected output: %q", output.String())
+	}
+}
+
+// TestVMRequestQueryStringCollectionItemCount verifies Classic ASP semantics where
+// Request.QueryString("key").Count reflects the number of values for that key.
+func TestVMRequestQueryStringCollectionItemCount(t *testing.T) {
+	source := `<%
+Response.Write Request.QueryString("movies").Count & "|"
+Response.Write Request.QueryString("movies").Item(1) & "|"
+Response.Write Request.QueryString("movies").Item(2) & "|"
+Response.Write Request.QueryString("movies")
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	host.Request().QueryString.AddValues("movies", []string{"Action", "Comedy"})
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "2|Action|Comedy|Action, Comedy" {
+		t.Fatalf("unexpected output: %q", output.String())
+	}
+}
+
+// TestVMRequestQueryStringPreservesOriginalCasing verifies request key enumeration keeps
+// the incoming casing expected by IIS-compatible output.
+func TestVMRequestQueryStringPreservesOriginalCasing(t *testing.T) {
+	source := `<%
+Response.Write Request.QueryString.Key(1) & "|" & Request.QueryString.Key(2) & "|"
+Dim k
+For Each k In Request.QueryString
+	Response.Write k & ","
+Next
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	host.Request().QueryString.SetLazyPayload([]byte("MiXeD=1&AnotherKey=2"))
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "MiXeD|AnotherKey|MiXeD,AnotherKey," {
+		t.Fatalf("unexpected key casing output: %q", output.String())
+	}
+}
+
+// TestForEachInvalidEnumerableRaisesVBError verifies For Each on non-enumerables
+// raises Invalid procedure call or argument under On Error Resume Next.
+func TestForEachInvalidEnumerableRaisesVBError(t *testing.T) {
+	source := `<%
+On Error Resume Next
+Dim x
+For Each x In 42
+Next
+Response.Write Err.Number & "|"
+Err.Clear
+Dim o
+Set o = Nothing
+For Each x In o
+Next
+Response.Write Err.Number
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := strconv.Itoa(vbscript.HRESULTFromVBScriptCode(vbscript.InvalidProcedureCallOrArgument))
+	if output.String() != expected+"|"+expected {
+		t.Fatalf("unexpected Err.Number output: got %q want %q", output.String(), expected+"|"+expected)
 	}
 }

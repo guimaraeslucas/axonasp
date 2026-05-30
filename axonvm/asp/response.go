@@ -82,9 +82,10 @@ type Response struct {
 	pics          string
 	status        string
 
-	headers    map[string]string
-	cookies    map[string]*ResponseCookie
-	logEntries []string
+	headers     map[string]string
+	cookies     map[string]*ResponseCookie
+	cookieOrder []string
+	logEntries  []string
 }
 
 // DefaultResponseBufferLimitBytes defines the default buffered response safety limit.
@@ -119,6 +120,7 @@ func NewResponse(output io.Writer) *Response {
 		status:         "200 OK",
 		headers:        make(map[string]string),
 		cookies:        make(map[string]*ResponseCookie),
+		cookieOrder:    make([]string, 0),
 		logEntries:     make([]string, 0),
 		codePage:       65001,
 	}
@@ -504,6 +506,7 @@ func (r *Response) SetCookieValue(name string, value string) {
 		return
 	}
 	r.cookies[key] = &ResponseCookie{Name: name, Value: value, Path: "/"}
+	r.cookieOrder = append(r.cookieOrder, name)
 }
 
 // GetCookieValue returns response cookie value.
@@ -529,6 +532,7 @@ func (r *Response) SetCookieProperty(cookieName string, propertyName string, pro
 	if !exists {
 		cookie = &ResponseCookie{Name: cookieName, Path: "/"}
 		r.cookies[key] = cookie
+		r.cookieOrder = append(r.cookieOrder, cookieName)
 	}
 
 	switch strings.ToLower(propertyName) {
@@ -587,11 +591,26 @@ func (r *Response) GetCookieProperty(cookieName string, propertyName string) str
 func (r *Response) GetCookieKeys() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	keys := make([]string, 0, len(r.cookies))
-	for k := range r.cookies {
-		keys = append(keys, k)
-	}
+	keys := make([]string, len(r.cookieOrder))
+	copy(keys, r.cookieOrder)
 	return keys
+}
+
+// GetCookieCount returns the number of response cookies in insertion order.
+func (r *Response) GetCookieCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.cookieOrder)
+}
+
+// GetCookieKey returns one response cookie name by ASP-compatible 1-based index.
+func (r *Response) GetCookieKey(index int) string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if index < 1 || index > len(r.cookieOrder) {
+		return ""
+	}
+	return r.cookieOrder[index-1]
 }
 
 // IsEnded reports whether response was ended.
@@ -629,7 +648,11 @@ func (r *Response) flushInternal() {
 			r.w.Header().Set("Expires", expiresTime.Format(http.TimeFormat))
 		}
 
-		for _, cookie := range r.cookies {
+		for _, cookieName := range r.cookieOrder {
+			cookie, exists := r.cookies[strings.ToLower(cookieName)]
+			if !exists || cookie == nil {
+				continue
+			}
 			httpCookie := &http.Cookie{
 				Name:     cookie.Name,
 				Value:    cookie.Value,

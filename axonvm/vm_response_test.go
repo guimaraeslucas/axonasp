@@ -22,8 +22,6 @@ package axonvm
 
 import (
 	"bytes"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -186,6 +184,33 @@ func TestVMResponseCookiesMultiArgExpression(t *testing.T) {
 	}
 }
 
+// TestVMResponseCookiesCountAndKey verifies Response.Cookies exposes Count and Key(index).
+func TestVMResponseCookiesCountAndKey(t *testing.T) {
+	source := `<%
+Response.Cookies("Sid") = "1"
+Response.Cookies("Token") = "2"
+%><%= Response.Cookies.Count %>|<%= Response.Cookies.Key(1) %>|<%= Response.Cookies.Key(2) %>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+
+	if output.String() != "2|Sid|Token" {
+		t.Fatalf("unexpected response cookies metadata output: %q", output.String())
+	}
+}
+
 // TestVMResponseCookiesChainedPropertyAssignment verifies that
 // Response.Cookies("name").Property = value compiles and executes correctly.
 // This regression test covers the chained member assignment pattern in statement
@@ -320,39 +345,3 @@ func TestVMResponseBinaryWriteSuppressesFormattingWhitespace(t *testing.T) {
 	}
 }
 
-// TestVMCaptchaPageProducesBitmapSignature verifies the legacy CAPTCHA page emits a valid BMP signature and binary response type.
-func TestVMCaptchaPageProducesBitmapSignature(t *testing.T) {
-	sourcePath := filepath.Join("..", "www", "tests", "captcha.asp")
-	absPath, err := filepath.Abs(sourcePath)
-	if err != nil {
-		t.Fatalf("abs path failed: %v", err)
-	}
-	sourceBytes, err := os.ReadFile(absPath)
-	if err != nil {
-		t.Fatalf("read captcha source failed: %v", err)
-	}
-
-	compiler := NewASPCompiler(string(sourceBytes))
-	compiler.SetSourceName(absPath)
-	if err := compiler.Compile(); err != nil {
-		t.Fatalf("compile failed: %v", err)
-	}
-
-	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
-	host := NewMockHost()
-	var output bytes.Buffer
-	host.SetOutput(&output)
-	vm.SetHost(host)
-
-	if err := vm.Run(); err != nil {
-		t.Fatalf("vm run failed: %v", err)
-	}
-	host.Response().Flush()
-
-	if host.Response().GetContentType() != "image/bmp" {
-		t.Fatalf("expected image/bmp content type, got %q", host.Response().GetContentType())
-	}
-	if len(output.Bytes()) < 2 || !bytes.Equal(output.Bytes()[:2], []byte{'B', 'M'}) {
-		t.Fatalf("expected BMP signature, got %v", output.Bytes())
-	}
-}

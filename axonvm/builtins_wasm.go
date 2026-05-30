@@ -1149,12 +1149,13 @@ func vbsAxonEnumValues(vm *VM, args []Value) (Value, error) {
 	}
 
 	target := args[0]
+	invalidEnumerable := newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
 	if target.Type == VTArray && target.Arr != nil {
 		return target, nil
 	}
 
 	if target.Type != VTNativeObject || vm == nil {
-		return ValueFromVBArray(NewVBArrayFromValues(0, nil)), nil
+		return NewEmpty(), invalidEnumerable
 	}
 
 	if target.Num == nativeObjectSessionContents {
@@ -1320,7 +1321,7 @@ func vbsAxonEnumValues(vm *VM, args []Value) (Value, error) {
 
 	obj, ok := vm.fsoItems[target.Num]
 	if !ok || obj == nil {
-		return ValueFromVBArray(NewVBArrayFromValues(0, nil)), nil
+		return NewEmpty(), invalidEnumerable
 	}
 
 	if obj.kind == fsoKindDrivesCollection {

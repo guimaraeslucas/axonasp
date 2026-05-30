@@ -201,11 +201,32 @@ func TestNewWebHostPopulatesRequestCollections(t *testing.T) {
 	if got := host.Request().ServerVars.Get("SERVER_PORT"); got != "8080" {
 		t.Fatalf("expected SERVER_PORT 8080, got %q", got)
 	}
+	if got := host.Request().ServerVars.Get("AUTH_TYPE"); got != "" {
+		t.Fatalf("expected empty AUTH_TYPE when no auth header is present, got %q", got)
+	}
+	if got := host.Request().ServerVars.Get("SERVER_ADDR"); got != "example.local" {
+		t.Fatalf("expected SERVER_ADDR example.local, got %q", got)
+	}
+	if got := host.Request().ServerVars.Get("GATEWAY_INTERFACE"); got != "CGI/1.1" {
+		t.Fatalf("expected GATEWAY_INTERFACE CGI/1.1, got %q", got)
+	}
+	if got := host.Request().ServerVars.Get("SERVER_SOFTWARE"); got != "AxonASP" {
+		t.Fatalf("expected SERVER_SOFTWARE AxonASP, got %q", got)
+	}
+	if got := host.Request().ServerVars.Get("APPL_PHYSICAL_PATH"); got != host.Server().MapPath("/") {
+		t.Fatalf("expected APPL_PHYSICAL_PATH to resolve to application root, got %q", got)
+	}
 	if got := host.Request().ServerVars.Get("SCRIPT_NAME"); got != "/tests/claude.asp" {
 		t.Fatalf("expected SCRIPT_NAME /tests/claude.asp, got %q", got)
 	}
 	if got := host.Request().ServerVars.Get("HTTP_ACCEPT_LANGUAGE"); got != "pt-BR,pt;q=0.9" {
 		t.Fatalf("expected HTTP_ACCEPT_LANGUAGE header, got %q", got)
+	}
+	if allHTTP := host.Request().ServerVars.Get("ALL_HTTP"); !strings.Contains(allHTTP, "HTTP_ACCEPT_LANGUAGE:pt-BR,pt;q=0.9") {
+		t.Fatalf("expected ALL_HTTP to contain HTTP_ACCEPT_LANGUAGE entry, got %q", allHTTP)
+	}
+	if allRaw := host.Request().ServerVars.Get("ALL_RAW"); !strings.Contains(allRaw, "Accept-Language:pt-BR,pt;q=0.9") {
+		t.Fatalf("expected ALL_RAW to contain Accept-Language entry, got %q", allRaw)
 	}
 	if got := host.Request().ServerVars.Get("REMOTE_ADDR"); got != "203.0.113.9" {
 		t.Fatalf("expected REMOTE_ADDR without port, got %q", got)

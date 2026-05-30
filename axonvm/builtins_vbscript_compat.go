@@ -1649,6 +1649,12 @@ func vbsCompatStrConv(_ *VM, args []Value) (Value, error) {
 			}
 		}
 		return NewString(string(runes)), nil
+	case 4:
+		return NewString(vbsCompatStrConvWide(input)), nil
+	case 8:
+		return NewString(vbsCompatStrConvNarrow(input)), nil
+	case 128:
+		return NewString(vbsCompatStrConvFromUnicode(input)), nil
 	case 64:
 		u16 := utf16.Encode([]rune(input))
 		bytesOut := make([]byte, 0, len(u16)*2)
@@ -1659,6 +1665,51 @@ func vbsCompatStrConv(_ *VM, args []Value) (Value, error) {
 	default:
 		return NewString(input), nil
 	}
+}
+
+func vbsCompatStrConvWide(input string) string {
+	if input == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(input) * 3)
+	for _, r := range input {
+		switch {
+		case r == ' ':
+			builder.WriteRune('\u3000')
+		case r >= 0x21 && r <= 0x7e:
+			builder.WriteRune(r + 0xFEE0)
+		default:
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
+}
+
+func vbsCompatStrConvNarrow(input string) string {
+	if input == "" {
+		return ""
+	}
+	var builder strings.Builder
+	builder.Grow(len(input))
+	for _, r := range input {
+		switch {
+		case r == '\u3000':
+			builder.WriteRune(' ')
+		case r >= 0xFF01 && r <= 0xFF5E:
+			builder.WriteRune(r - 0xFEE0)
+		default:
+			builder.WriteRune(r)
+		}
+	}
+	return builder.String()
+}
+
+func vbsCompatStrConvFromUnicode(input string) string {
+	if input == "" {
+		return ""
+	}
+	return vbsCompatStrConvNarrow(input)
 }
 
 // init registers compatibility built-ins ported from the legacy VM implementation.

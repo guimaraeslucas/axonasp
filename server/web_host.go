@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,9 +133,15 @@ func NewWebHost(w http.ResponseWriter, r *http.Request) *WebHost {
 	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_EVENTNAME", r.Header.Get("X-G3AxonLive-EventName"))
 	host.request.ServerVars.Add("HTTP_X_G3AXONLIVE_EVENTARGS", r.Header.Get("X-G3AxonLive-EventArgs"))
 	host.request.ServerVars.Add("HTTPS", httpsValue)
+	host.request.ServerVars.Add("AUTH_TYPE", requestAuthType(r))
+	host.request.ServerVars.Add("SERVER_ADDR", requestServerAddr(r))
+	host.request.ServerVars.Add("GATEWAY_INTERFACE", "CGI/1.1")
+	host.request.ServerVars.Add("SERVER_SOFTWARE", "AxonASP")
 	host.request.ServerVars.Add("SERVER_PROTOCOL", r.Proto)
 	host.request.ServerVars.Add("REQUEST_URI", requestURI)
 	host.request.ServerVars.Add("PATH_INFO", r.URL.Path)
+	host.request.ServerVars.Add("PATH_TRANSLATED", host.server.MapPath(r.URL.Path))
+	host.request.ServerVars.Add("APPL_PHYSICAL_PATH", host.server.MapPath("/"))
 	host.request.ServerVars.Add("REMOTE_ADDR", requestRemoteAddr(r.RemoteAddr))
 	host.request.ServerVars.Add("REQUEST_METHOD", r.Method)
 	host.request.ServerVars.Add("SERVER_NAME", hostName)
@@ -145,6 +152,9 @@ func NewWebHost(w http.ResponseWriter, r *http.Request) *WebHost {
 	host.request.ServerVars.Add("HTTP_ACCEPT_LANGUAGE", r.Header.Get("Accept-Language"))
 	host.request.ServerVars.Add("CONTENT_LENGTH", strconv.FormatInt(host.request.TotalBytes(), 10))
 	host.request.ServerVars.Add("CONTENT_TYPE", r.Header.Get("Content-Type"))
+	allHTTP, allRaw := buildAggregateHeaderServerVariables(r.Header)
+	host.request.ServerVars.Add("ALL_HTTP", allHTTP)
+	host.request.ServerVars.Add("ALL_RAW", allRaw)
 
 	// Expose all request headers for ASP access (HTTP_<HEADER_NAME>).
 	for headerName, values := range r.Header {
@@ -199,6 +209,45 @@ func (h *WebHost) PersistSession() {
 	// to avoid blocking the HTTP handler and release the VM back to pool faster.
 	h.session.QueueSaveIfDirty()
 	h.setSessionCookie()
+}
+
+// buildAggregateHeaderServerVariables builds Classic ASP-style ALL_HTTP and ALL_RAW values.
+func buildAggregateHeaderServerVariables(header http.Header) (string, string) {
+	if len(header) == 0 {
+		return "", ""
+	}
+
+	names := make([]string, 0, len(header))
+	for name := range header {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var allHTTP strings.Builder
+	var allRaw strings.Builder
+	for _, name := range names {
+		values := header.Values(name)
+		if len(values) == 0 {
+			continue
+		}
+		joined := strings.Join(values, ",")
+
+		if allHTTP.Len() > 0 {
+			allHTTP.WriteString("\r\n")
+		}
+		allHTTP.WriteString(serverVariableFromHeader(name))
+		allHTTP.WriteString(":")
+		allHTTP.WriteString(joined)
+
+		if allRaw.Len() > 0 {
+			allRaw.WriteString("\r\n")
+		}
+		allRaw.WriteString(name)
+		allRaw.WriteString(":")
+		allRaw.WriteString(joined)
+	}
+
+	return allHTTP.String(), allRaw.String()
 }
 
 // loadOrCreateSession resolves session from ASPSESSIONID cookie or creates a new one.
@@ -391,6 +440,32 @@ func requestServerPort(r *http.Request) string {
 		return "443"
 	}
 	return "80"
+}
+
+// requestServerAddr resolves the ASP SERVER_ADDR variable using the best available host or remote address.
+func requestServerAddr(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if host := requestServerName(r); host != "" {
+		return host
+	}
+	return requestRemoteAddr(r.RemoteAddr)
+}
+
+// requestAuthType resolves the ASP AUTH_TYPE variable from the Authorization header when available.
+func requestAuthType(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authorization == "" {
+		return ""
+	}
+	if space := strings.IndexByte(authorization, ' '); space > 0 {
+		return authorization[:space]
+	}
+	return authorization
 }
 
 // serverVariableFromHeader converts an HTTP header name to classic ASP
