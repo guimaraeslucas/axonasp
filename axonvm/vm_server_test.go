@@ -425,6 +425,141 @@ func TestVMServerG3SearchBuildAndSearch(t *testing.T) {
 	}
 }
 
+// TestVMServerG3SearchBuildIndexWithArgs verifies VB-style BuildIndex(indexPath, docsPath[, ext]).
+func TestVMServerG3SearchBuildIndexWithArgs(t *testing.T) {
+	resetG3SearchGlobalStateForTests()
+	defer resetG3SearchGlobalStateForTests()
+
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	obj := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("G3SEARCH")})
+	if obj.Type != VTNativeObject {
+		t.Fatalf("expected VTNativeObject, got %#v", obj)
+	}
+
+	docsDir := filepath.Join(t.TempDir(), "docs")
+	indexDir := filepath.Join(t.TempDir(), "index")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatalf("mkdir docs dir failed: %v", err)
+	}
+	if err := os.MkdirAll(indexDir, 0o755); err != nil {
+		t.Fatalf("mkdir index dir failed: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(docsDir, "guide.md"), []byte("linux compatibility guide"), 0o644); err != nil {
+		t.Fatalf("write docs file failed: %v", err)
+	}
+
+	_ = vm.dispatchNativeCall(obj.Num, "BuildIndex", []Value{NewString(indexDir), NewString(docsDir), NewString("md")})
+	if vm.lastError != nil {
+		t.Fatalf("BuildIndex with args produced unexpected error: %v", vm.lastError)
+	}
+
+	results := vm.dispatchNativeCall(obj.Num, "Search", []Value{NewString("linux")})
+	if results.Type != VTArray || results.Arr == nil {
+		t.Fatalf("expected VTArray result, got %#v", results)
+	}
+	if len(results.Arr.Values) == 0 {
+		t.Fatalf("expected at least one result row, got %#v", results)
+	}
+}
+
+// TestVMServerG3SearchSearchSelfHealsStaleEmptyIndex verifies Search auto-rebuilds
+// one stale/empty index directory and then returns matches.
+func TestVMServerG3SearchSearchSelfHealsStaleEmptyIndex(t *testing.T) {
+	resetG3SearchGlobalStateForTests()
+	defer resetG3SearchGlobalStateForTests()
+
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	obj := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("G3SEARCH")})
+	if obj.Type != VTNativeObject {
+		t.Fatalf("expected VTNativeObject, got %#v", obj)
+	}
+
+	docsDir := filepath.Join(t.TempDir(), "docs")
+	indexDir := filepath.Join(t.TempDir(), "index")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatalf("mkdir docs dir failed: %v", err)
+	}
+	if err := os.MkdirAll(indexDir, 0o755); err != nil {
+		t.Fatalf("mkdir index dir failed: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(docsDir, "guide.md"), []byte("AxonASP search validation content"), 0o644); err != nil {
+		t.Fatalf("write docs file failed: %v", err)
+	}
+
+	// Simulate stale state: marker says built, but no index segments exist.
+	if err := os.WriteFile(filepath.Join(indexDir, g3SearchBuiltMarkerFile), []byte("built"), 0o644); err != nil {
+		t.Fatalf("write marker file failed: %v", err)
+	}
+	globalBuiltIndexes[canonicalIndexKey(indexDir)] = true
+
+	vm.dispatchMemberSet(obj.Num, "DocsPath", NewString(docsDir))
+	vm.dispatchMemberSet(obj.Num, "IndexPath", NewString(indexDir))
+	vm.dispatchMemberSet(obj.Num, "Extension", NewString(".md"))
+
+	results := vm.dispatchNativeCall(obj.Num, "Search", []Value{NewString("AxonASP")})
+	if results.Type != VTArray || results.Arr == nil {
+		t.Fatalf("expected VTArray result, got %#v", results)
+	}
+	if len(results.Arr.Values) == 0 {
+		t.Fatalf("expected at least one result after self-heal rebuild, got %#v", results)
+	}
+}
+
+// TestVMServerG3SearchSearchSelfHealsMatchingMarkerEmptyIndex verifies Search
+// rebuilds when marker metadata matches docsPath but the index has zero documents.
+func TestVMServerG3SearchSearchSelfHealsMatchingMarkerEmptyIndex(t *testing.T) {
+	resetG3SearchGlobalStateForTests()
+	defer resetG3SearchGlobalStateForTests()
+
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	obj := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("G3SEARCH")})
+	if obj.Type != VTNativeObject {
+		t.Fatalf("expected VTNativeObject, got %#v", obj)
+	}
+
+	docsDir := filepath.Join(t.TempDir(), "docs")
+	indexDir := filepath.Join(t.TempDir(), "index")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatalf("mkdir docs dir failed: %v", err)
+	}
+	if err := os.MkdirAll(indexDir, 0o755); err != nil {
+		t.Fatalf("mkdir index dir failed: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(docsDir, "guide.md"), []byte("AxonASP linux validation content"), 0o644); err != nil {
+		t.Fatalf("write docs file failed: %v", err)
+	}
+
+	markerContent := []byte("docs=" + canonicalIndexPath(docsDir))
+	if err := os.WriteFile(filepath.Join(indexDir, g3SearchBuiltMarkerFile), markerContent, 0o644); err != nil {
+		t.Fatalf("write marker file failed: %v", err)
+	}
+	globalBuiltIndexes[canonicalIndexKey(indexDir)] = true
+
+	vm.dispatchMemberSet(obj.Num, "DocsPath", NewString(docsDir))
+	vm.dispatchMemberSet(obj.Num, "IndexPath", NewString(indexDir))
+	vm.dispatchMemberSet(obj.Num, "Extension", NewString(".md"))
+
+	results := vm.dispatchNativeCall(obj.Num, "Search", []Value{NewString("linux")})
+	if results.Type != VTArray || results.Arr == nil {
+		t.Fatalf("expected VTArray result, got %#v", results)
+	}
+	if len(results.Arr.Values) == 0 {
+		t.Fatalf("expected at least one result after empty-index self-heal, got %#v", results)
+	}
+}
+
 // TestVMServerG3SearchBuildIndexRunsOncePerPath verifies strict once-per-process behavior.
 func TestVMServerG3SearchBuildIndexRunsOncePerPath(t *testing.T) {
 	resetG3SearchGlobalStateForTests()

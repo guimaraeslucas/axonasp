@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>AxonASP VBScript | Modernization Options for Classic ASP</title>
+        <meta name="description"
+            content="Explore AxonASP VBScript modernization: Option Base arrays, optional parameters, ParamArray, strong typing, enums, UDTs, events, interfaces, static variables, GoTo support, and console diagnostics.">
+        <meta name="keywords"
+            content="VBScript modernization, AxonASP VBScript, Option Base, ParamArray, UDT, Enum, WithEvents, Implements">
+        <meta name="theme-color" content="#0f62fe">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://g3pix.com.br/axonasp/vbscript.htm">
+        <meta property="og:title" content="AxonASP VBScript Modernization">
+        <meta property="og:description"
+            content="Use modern VBScript options in AxonASP while maintaining compatibility with Classic ASP behavior.">
+        <meta property="og:image" content="https://g3pix.com.br/axonasp/opengraph-image.png">
+        <link rel="canonical" href="https://g3pix.com.br/axonasp/vbscript.htm">
+        <link rel="stylesheet" href="styles.css">
+        <link rel="icon" type="image/png" href="favicon-96x96.png?v=20260531" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260531" />
+        <link rel="shortcut icon" href="favicon.ico?v=20260531" />
+        <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260531" />
+        <meta name="apple-mobile-web-app-title" content="AxonASP" />
+        <link rel="manifest" href="site.webmanifest?v=20260531" />
+    </head>
+
+    <body>
+        <div class="site-bg">
+            <header class="site-header">
+                <div class="header-inner">
+                    <a class="brand" href="index.htm">
+                        <img src="logo.svg" alt="G3pix AxonASP logo" title="G3pix AxonASP">
+                    </a>
+                    <button class="nav-toggle" data-menu-toggle aria-expanded="false"
+                        aria-label="Toggle navigation">Menu</button>
+                    <div class="nav-shell" data-menu-shell>
+                        <nav aria-label="Primary navigation">
+                            <ul class="nav-menu">
+                                <li><a href="index.htm">Home</a></li>
+                                <li><a href="features.htm">Platform</a></li>
+                                <li><a href="vbscript.htm">VBScript</a></li>
+                                <li><a href="javascript.htm">JavaScript</a></li>
+                                <li><a href="axonlive.htm">AxonLive</a></li>
+                                <li><a href="installation.htm">Deployment</a></li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </header>
+
+            <main class="main">
+                <section class="hero reveal">
+                    <div>
+                        <span class="hero-mark">VBScript modernization</span>
+                        <h1>Take VBScript beyond legacy limits without losing compatibility.</h1>
+                        <p>
+                            AxonASP extends VBScript with VB6-inspired language features, enabling cleaner architecture,
+                            stronger contracts, and easier migration from older codebases.
+                        </p>
+                        <div class="chips">
+                            <span class="chip">Strong typing</span>
+                            <span class="chip">Enums and UDTs</span>
+                            <span class="chip">Events and interfaces</span>
+                            <span class="chip">Static and GoTo support</span>
+                        </div>
+                    </div>
+                    <aside class="hero-side">
+                        <h2>Execution approach</h2>
+                        <ul>
+                            <li>Single-pass compilation to VM bytecode.</li>
+                            <li>Low-overhead runtime checks for typed declarations.</li>
+                            <li>Backward-compatible variant behavior when As Type is omitted.</li>
+                        </ul>
+                    </aside>
+                </section>
+
+                <section class="section">
+                    <h2>Language options now available</h2>
+                    <div class="table-wrap reveal">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Feature</th>
+                                    <th>What it enables</th>
+                                    <th>Example impact</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Advanced Arrays and Option Base</td>
+                                    <td>Non-zero lower bounds and module-level default base index.</td>
+                                    <td>Range-driven indexing patterns for domain data.</td>
+                                </tr>
+                                <tr>
+                                    <td>Optional parameters and ParamArray</td>
+                                    <td>Flexible signatures with defaults and variadic argument lists.</td>
+                                    <td>Reusable utility APIs with fewer overload-style functions.</td>
+                                </tr>
+                                <tr>
+                                    <td>Explicit ByVal</td>
+                                    <td>Control pass-by-value behavior to prevent side effects.</td>
+                                    <td>Safer procedure contracts in critical paths.</td>
+                                </tr>
+                                <tr>
+                                    <td>Strong typing (As Type)</td>
+                                    <td>Runtime-enforced variable and parameter type constraints.</td>
+                                    <td>Earlier detection of mismatch errors and clearer intent.</td>
+                                </tr>
+                                <tr>
+                                    <td>User-Defined Types (UDT)</td>
+                                    <td>Structured records with named fields and nested types.</td>
+                                    <td>Model richer entities in native VBScript syntax.</td>
+                                </tr>
+                                <tr>
+                                    <td>Enum declarations</td>
+                                    <td>Named constant sets compiled as constants.</td>
+                                    <td>Readable state and option handling without magic numbers.</td>
+                                </tr>
+                                <tr>
+                                    <td>Event Orientation (Event, RaiseEvent, WithEvents)</td>
+                                    <td>Publisher-subscriber style interaction between class objects.</td>
+                                    <td>Cleaner decoupling between workflow components.</td>
+                                </tr>
+                                <tr>
+                                    <td>Interface Polymorphism (Implements)</td>
+                                    <td>Multi-interface contracts with interface-prefixed member dispatch.</td>
+                                    <td>Composable object models and stable APIs.</td>
+                                </tr>
+                                <tr>
+                                    <td>Static variables</td>
+                                    <td>Procedure-level values that persist across calls in request scope.</td>
+                                    <td>Counters, memoization, and controlled local state retention.</td>
+                                </tr>
+                                <tr>
+                                    <td>VB6-style GoTo and labels</td>
+                                    <td>Absolute flow jumps inside the same procedure.</td>
+                                    <td>Legacy migration and specialized control flow patterns.</td>
+                                </tr>
+                                <tr>
+                                    <td>Global console object</td>
+                                    <td>console.log/info/warn/error/time/dir diagnostics in VBScript.</td>
+                                    <td>Unified runtime troubleshooting in server and CLI paths.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>Example: modern signature with safety</h2>
+                    <pre class="code reveal">Function BuildLog(ByVal level As String, ByVal msg As String, Optional tag As String = "core", ParamArray labels())
+    Dim output, i
+    output = "[" & level & "] " & msg & " {" & tag & "}"
+
+    For i = LBound(labels) To UBound(labels)
+        output = output & " #" & labels(i)
+    Next
+
+    BuildLog = output
+End Function
+
+console.log BuildLog("INFO", "runtime started", "boot", "server", "health")</pre>
+                </section>
+
+                <section class="section">
+                    <h2>Important constraints</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>Native file I/O scope</h3>
+                            <p>VB6-style native file statements are available in CLI mode. For HTTP and FastCGI
+                                environments, use G3FILES for cross-environment file operations.</p>
+                        </article>
+                        <article class="card reveal">
+                            <h3>State boundaries</h3>
+                            <p>Static values and in-memory state remain request/session scoped by runtime design;
+                                persistent data should be stored in external systems.</p>
+                        </article>
+                    </div>
+                    <div class="banner reveal">
+                        <strong>Migration strategy:</strong> keep existing pages intact, then selectively adopt typed
+                        declarations, interfaces, and event patterns in modules that benefit most.
+                    </div>
+                </section>
+            </main>
+
+            <footer class="footer">
+                <div class="footer-grid">
+                    <div class="footer-brand">
+                        <img class="footer-brand-logo" src="https://g3pix.com.br/g3pix.svg" alt="G3Pix logo">
+                        <p>Copyright 2026 G3Pix. All rights reserved.</p>
+                        <p>AxonASP is an independent open source software project.</p>
+                    </div>
+
+                    <div>
+                        <h3 class="footer-nav-title">Site Navigation</h3>
+                        <div class="footer-links">
+                            <a href="index.htm">Home</a>
+                            <a href="features.htm">Platform</a>
+                            <a href="vbscript.htm">VBScript</a>
+                            <a href="javascript.htm">JavaScript</a>
+                            <a href="axonlive.htm">AxonLive</a>
+                            <a href="installation.htm">Deployment</a>
+                            <a href="privacy.htm">Privacy</a>
+                            <a href="terms.htm">Terms of Use</a>
+                        </div>
+                        <div class="footer-actions">
+                            <a class="btn" href="https://g3pix.com.br/axonasp/manual/" target="_blank"
+                                rel="noopener">Open Manual</a>
+                            <a class="btn" href="https://g3pix.com.br/axonasp/wasm/" target="_blank" rel="noopener">WASM
+                                Playground</a>
+                        </div>
+                    </div>
+
+                    <div class="footer-theme">
+                        <label for="themeSelect">Theme</label>
+                        <select id="themeSelect" class="theme-select" data-theme-select>
+                            <option value="auto">Auto</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="footer-meta">
+                    The terms "Microsoft," "Active Server Pages," "ASP," "VBScript," and "JScript" are referenced only
+                    for technical compatibility and identification purposes.
+                </div>
+            </footer>
+        </div>
+        <script src="script.js"></script>
+    </body>
+
+</html>

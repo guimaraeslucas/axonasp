@@ -79,9 +79,3 @@ Response.Write untypedPet.MakeSound() ' Output: Generic Dog Sound
 
 - AxonASP v2.0 or higher.
 - `Option Explicit` is recommended but not required for interface polymorphism.
-
-## See Also
-
-- [Strong Typing (As Type)](strong-typing.md)
-- [VB6 Event Orientation](event-orientation.md)
-- [Modernizing Classic ASP](../index.md)

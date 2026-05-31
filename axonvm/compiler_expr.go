@@ -103,6 +103,34 @@ func (c *Compiler) emitIdentifierValue(name string) {
 		}
 	}
 
+	// In local scopes, unresolved identifiers followed by '(' can target functions
+	// declared later in source. Emit a global placeholder load so OpCall sites can
+	// be patched by forward-call binding instead of creating an implicit local.
+	if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
+		if c.isLocal {
+			if c.currentClassName != "" {
+				goto resolveIdentifierNormally
+			}
+			if _, isStatic := c.staticLocals[strings.ToLower(trimmedName)]; !isStatic {
+				if _, localExists := c.locals.Get(trimmedName); !localExists {
+					globalIdx, exists := c.Globals.Get(trimmedName)
+					if !exists {
+						globalIdx = c.Globals.Add(trimmedName)
+					}
+					pos := c.emit(OpGetGlobal, globalIdx)
+					c.markLastCallTarget(trimmedName, OpGetGlobal, pos)
+					lower := strings.ToLower(strings.TrimSpace(trimmedName))
+					if !c.constGlobals[lower] {
+						c.registerForwardConstPatch(trimmedName, pos)
+					}
+					return
+				}
+			}
+		}
+	}
+
+resolveIdentifierNormally:
+
 	op, idx := c.resolveVar(trimmedName)
 	pos := c.emit(op, idx)
 	c.markLastCallTarget(trimmedName, op, pos)

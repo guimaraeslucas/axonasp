@@ -719,6 +719,11 @@ func vbsCompatWeekdayName(vm *VM, args []Value) (Value, error) {
 // case and invokes the built-in with an empty argument list so callers always receive
 // the function's return value rather than the raw function reference.
 func resolveCallable(vm *VM, v Value) Value {
+	if v.Type == VTNativeObject && vm != nil {
+		if collectionValue, exists := vm.requestCollectionValueItems[v.Num]; exists {
+			return NewString(collectionValue.Joined())
+		}
+	}
 	if v.Type != VTBuiltin {
 		return v
 	}

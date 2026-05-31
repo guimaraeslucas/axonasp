@@ -1,6 +1,4 @@
-<%
-@Language = "VBSCRIPT" CodePage = "65001"
-%>
+<%@Language="VBSCRIPT"%>
 <%
 Option Explicit
 %>

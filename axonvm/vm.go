@@ -3024,6 +3024,9 @@ aspExecLoop:
 			}
 
 			target := vm.pop()
+			if target.Type == VTArgRef {
+				target = vm.unwrapArgRefValue(target)
+			}
 			if cacheID != 0 {
 				if cacheEntry, exists := vm.callMemberIC[cacheID]; exists && cacheEntry.expectedType == target.Type && cacheEntry.expectedNum == target.Num {
 					switch cacheEntry.kind {
@@ -8513,7 +8516,6 @@ func (vm *VM) collectByRefsAndUnwrap(args []Value, byRefMask uint64) []byRefWrit
 			continue
 		}
 		isGlobal := arg.ArgRefIsGlobal()
-		isLocal := arg.ArgRefIsLocal()
 		isClassMember := arg.ArgRefIsClassMember()
 		idx := arg.ArgRefIdx()
 		// Record write-back only when the parameter is declared ByRef.
@@ -8529,23 +8531,37 @@ func (vm *VM) collectByRefsAndUnwrap(args []Value, byRefMask uint64) []byRefWrit
 			}
 			byRefs = append(byRefs, wb)
 		}
-		// Unwrap the VTArgRef to the actual current variable value.
-		var rawVal Value
-		if isClassMember {
-			rawVal = vm.getClassMemberValueByObjectID(vm.activeClassObjectID, arg.Str)
-		} else if isGlobal {
-			if idx >= 0 && idx < len(vm.Globals) {
-				rawVal = vm.Globals[idx]
-			}
-		} else if isLocal {
-			slot := vm.fp + idx
-			if slot >= 0 && slot < StackSize {
-				rawVal = vm.stack[slot]
-			}
-		}
-		args[i] = resolveCallable(vm, rawVal)
+		args[i] = vm.unwrapArgRefValue(arg)
 	}
 	return byRefs
+}
+
+// unwrapArgRefValue resolves one VTArgRef to its current underlying slot value.
+func (vm *VM) unwrapArgRefValue(arg Value) Value {
+	if arg.Type != VTArgRef {
+		return resolveCallable(vm, arg)
+	}
+
+	isGlobal := arg.ArgRefIsGlobal()
+	isLocal := arg.ArgRefIsLocal()
+	isClassMember := arg.ArgRefIsClassMember()
+	idx := arg.ArgRefIdx()
+
+	var rawVal Value
+	if isClassMember {
+		rawVal = vm.getClassMemberValueByObjectID(vm.activeClassObjectID, arg.Str)
+	} else if isGlobal {
+		if idx >= 0 && idx < len(vm.Globals) {
+			rawVal = vm.Globals[idx]
+		}
+	} else if isLocal {
+		slot := vm.fp + idx
+		if slot >= 0 && slot < StackSize {
+			rawVal = vm.stack[slot]
+		}
+	}
+
+	return resolveCallable(vm, rawVal)
 }
 
 // nativeByRefMask returns the ByRef parameter bitmask for native call targets.

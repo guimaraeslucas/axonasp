@@ -100,7 +100,7 @@ Set g3md = Server.CreateObject("G3MD")
 g3md.Unsafe = True
 htmlContent = g3md.Process(mdContent)
 If htmlContent = "" And mdContent <> "" Then
-    htmlContent = "<p style='color:red'>Error: Markdown rendering failed.</p>"
+    htmlContent = "<p class='alert alert-error'>Error: Markdown rendering failed.</p>"
 End If
 
 ' 4. Render Menu
@@ -255,7 +255,7 @@ End Function
 
 %>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="manual-root">
     <!--
         
         AxonASP Server
@@ -278,537 +278,19 @@ End Function
         made available under this same license terms.
         
         -->
+
     <head>
         <meta charset="UTF-8" />
         <title>
             AxonASP Documentation Library -<%= page %>
         </title>
-        <style>
-            :root {
-                --win-blue-dark: #003399;
-                --win-blue-light: #3366cc;
-                --win-blue-soft: #c7d7f8;
-                --win-bg: #ece9d8;
-                --win-border: #808080;
-                --win-text: #0f0f0f;
-                --win-muted: #404040;
-                --win-link: #003399;
-                --win-link-hover: #335ea8;
-                --win-gold: #ffd700;
-                --win-gold-dark: #c8a200;
-                --radius-sm: 6px;
-                --radius-md: 10px;
-                --radius-lg: 14px;
-                --shadow-card:
-                    0 4px 16px rgba(0, 51, 153, 0.1),
-                    0 2px 6px rgba(0, 0, 0, 0.07);
-            }
-
-            *,
-            *::before,
-            *::after {
-                box-sizing: border-box;
-            }
-
-            html,
-            body {
-                margin: 0;
-                padding: 0;
-                height: 100%;
-                overflow: hidden;
-                font-family: Tahoma, Verdana, Arial, sans-serif;
-                font-size: 12px;
-                color: var(--win-text);
-                background-color: var(--win-bg);
-                background-image:
-                    radial-gradient(
-                        ellipse at 10% 15%,
-                        rgba(51, 102, 204, 0.1),
-                        transparent 38%
-                    ),
-                    radial-gradient(
-                        ellipse at 88% 8%,
-                        rgba(0, 51, 153, 0.07),
-                        transparent 32%
-                    ),
-                    linear-gradient(
-                        180deg,
-                        #f2efe4 0%,
-                        #ece9d8 40%,
-                        #e4e0cc 100%
-                    );
-                background-repeat: no-repeat;
-                background-size: 100% 100%;
-            }
-
-            /* ── Header ─────────────────────────────────────────── */
-            #header {
-                background: linear-gradient(
-                    90deg,
-                    var(--win-blue-dark) 0%,
-                    #1f56bc 42%,
-                    var(--win-blue-light) 100%
-                );
-                color: #fff;
-                padding: 0 15px;
-                height: 60px;
-                display: flex;
-                align-items: center;
-                border-bottom: 3px solid var(--win-blue-light);
-                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
-                z-index: 100;
-            }
-
-            #header h1 {
-                font-family: Tahoma, Verdana, serif;
-                font-style: normal;
-                font-size: 24px;
-                margin: 0 0 0 12px;
-                font-weight: normal;
-                color: #fff;
-                text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.35);
-            }
-
-            #header .logo {
-                margin-right: 3px;
-                flex-shrink: 0;
-            }
-
-            /* ── Main Layout ─────────────────────────────────────── */
-            #main-container {
-                display: flex;
-                height: calc(100% - 82px);
-                border-top: 1px solid #fff;
-            }
-
-            /* ── Sidebar ─────────────────────────────────────────── */
-            #sidebar {
-                width: 300px;
-                background: linear-gradient(180deg, #eceae0 0%, #e2e0d6 100%);
-                border-right: 1px solid var(--win-border);
-                overflow-y: auto;
-                padding: 10px;
-                font-size: 12px;
-                flex-shrink: 0;
-            }
-
-            #sidebar .section-title {
-                padding: 5px 0;
-                margin-top: 15px;
-                margin-bottom: 10px;
-                font-weight: bold;
-                color: #1a3470;
-                border-bottom: 2px solid var(--win-blue-light);
-                text-transform: uppercase;
-                font-size: 11px;
-                letter-spacing: 0.4px;
-            }
-
-            .sidebar-tabs {
-                display: flex;
-                border-bottom: 1px solid #aca899;
-                margin-bottom: 10px;
-            }
-
-            .sidebar-tab-btn {
-                flex: 1;
-                border: 1px solid #aca899;
-                border-bottom: none;
-                background: linear-gradient(180deg, #f5f3ea 0%, #e5e2d8 100%);
-                color: #1a3470;
-                font-family: Tahoma, Verdana, sans-serif;
-                font-size: 11px;
-                font-weight: bold;
-                padding: 6px 8px;
-                cursor: pointer;
-            }
-
-            .sidebar-tab-btn + .sidebar-tab-btn {
-                border-left: none;
-            }
-
-            .sidebar-tab-btn.active {
-                background: #fff;
-                color: var(--win-blue-dark);
-            }
-
-            .sidebar-tab-panel {
-                display: none;
-            }
-
-            .sidebar-tab-panel.active {
-                display: block;
-            }
-
-            .sidebar-search-input {
-                width: 100%;
-                box-sizing: border-box;
-                font-size: 11px;
-                font-family: Tahoma, Verdana, sans-serif;
-                border: 1px solid #aca899;
-                border-radius: 4px;
-                padding: 3px 6px;
-                background: #fff;
-                transition: border-color 0.15s, box-shadow 0.15s;
-            }
-
-            .search-results {
-                margin-top: 10px;
-                border-top: 1px solid #d2d0c8;
-                padding-top: 8px;
-            }
-
-            .search-result-item {
-                padding: 6px 4px;
-                border-bottom: 1px dotted #b9b6ab;
-            }
-
-            .search-result-link {
-                display: block;
-                color: #001f66;
-                text-decoration: none;
-                font-weight: bold;
-                margin-bottom: 2px;
-            }
-
-            .search-result-link:hover {
-                color: var(--win-blue-dark);
-                text-decoration: underline;
-            }
-
-            .search-result-folder {
-                color: #5f5b4e;
-                font-size: 11px;
-            }
-
-            .search-empty,
-            .search-error {
-                color: #5f5b4e;
-                font-size: 11px;
-                padding: 6px 2px;
-            }
-
-            .search-error {
-                color: #8b0000;
-            }
-
-            #sidebar a {
-                color: #111;
-                text-decoration: none;
-                display: block;
-                padding: 2px 4px;
-            }
-
-            #sidebar a:hover {
-                color: var(--win-blue-dark);
-                text-decoration: underline;
-            }
-
-            /* ── Content Area ────────────────────────────────────── */
-            #content {
-                flex: 1;
-                background-color: #fff;
-                overflow-y: auto;
-                padding: 20px 40px;
-            }
-
-            /* ── Treeview — preserved exactly, colors updated ────── */
-            .treeview,
-            .treeview ul {
-                list-style-type: none;
-                padding-left: 15px;
-                margin: 0;
-            }
-
-            .treeview li {
-                margin: 2px 0;
-                white-space: nowrap;
-            }
-
-            .treeview li.folder > .folder-toggle {
-                cursor: pointer;
-                padding-left: 2px;
-                display: block;
-                position: relative;
-            }
-
-            .treeview li.folder > .folder-toggle::before {
-                content: "+";
-                display: inline-block;
-                width: 9px;
-                height: 9px;
-                border: 1px solid #808080;
-                line-height: 8px;
-                text-align: center;
-                margin-right: 5px;
-                background: #fff;
-                font-family: "Courier New", monospace;
-                font-weight: bold;
-                font-size: 10px;
-                vertical-align: middle;
-            }
-
-            .treeview li.folder.expanded > .folder-toggle::before {
-                content: "-";
-            }
-
-            .treeview li.folder > ul.submenu {
-                display: none;
-                padding-left: 15px;
-                border-left: 1px dotted #aca899;
-                margin-left: 7px;
-            }
-
-            .treeview li.folder.expanded > ul.submenu {
-                display: block;
-            }
-
-            .treeview li.file {
-                padding-left: 16px;
-                position: relative;
-            }
-
-            .treeview li.file::before {
-                content: "";
-                position: absolute;
-                left: -15px;
-                top: 10px;
-                width: 31px;
-                border-top: 1px dotted #aca899;
-            }
-
-            .treeview a {
-                color: #000;
-                text-decoration: none;
-                padding: 1px 2px;
-                display: inline-block;
-                border-radius: 3px;
-            }
-
-            .treeview a:hover:not(.selected-node) {
-                color: var(--win-blue-dark);
-                text-decoration: underline;
-            }
-
-            .selected-node,
-            .treeview a.selected-node {
-                background-color: var(--win-blue-dark) !important;
-                color: #fff !important;
-                text-decoration: none;
-            }
-
-            /* ── Content Typography ──────────────────────────────── */
-            #content h1 {
-                font-family: Tahoma, Verdana, sans-serif;
-                color: var(--win-blue-dark);
-                font-size: 22px;
-                border-bottom: 3px solid var(--win-blue-light);
-                padding-bottom: 6px;
-                margin-top: 0;
-                margin-bottom: 15px;
-            }
-
-            #content h2 {
-                font-family: Tahoma, Verdana, sans-serif;
-                color: var(--win-blue-dark);
-                font-size: 16px;
-                margin-top: 25px;
-                border-bottom: 1px solid #c0c8d8;
-                padding-bottom: 3px;
-                margin-bottom: 10px;
-            }
-
-            #content h3 {
-                font-family: Tahoma, Verdana, sans-serif;
-                color: #0e2f78;
-                font-size: 14px;
-                margin-top: 18px;
-                margin-bottom: 7px;
-            }
-
-            #content p,
-            #content li {
-                line-height: 1.6;
-                font-size: 12px;
-                color: #333;
-            }
-
-            #content ul,
-            #content ol {
-                padding-left: 20px;
-                margin-bottom: 12px;
-            }
-
-            #content ul {
-                list-style: disc;
-            }
-
-            #content ol {
-                list-style: decimal;
-            }
-
-            #content pre {
-                background-color: #f0f3f8;
-                border-left: 4px solid var(--win-blue-light);
-                border-right: 1px solid #ccc;
-                border-top: 1px solid #ccc;
-                border-bottom: 1px solid #ccc;
-                border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-                padding: 12px 14px;
-                overflow-x: auto;
-                font-family: "Courier New", Courier, monospace;
-                font-size: 12px;
-                line-height: 1.6;
-                margin: 15px 0;
-            }
-
-            #content code {
-                font-family: "Courier New", Courier, monospace;
-                background: rgba(0, 51, 153, 0.07);
-                border: 1px solid rgba(0, 51, 153, 0.14);
-                border-radius: 3px;
-                padding: 1px 5px;
-                font-size: 11px;
-            }
-
-            #content pre code {
-                background: none;
-                border: none;
-                padding: 0;
-                font-size: 12px;
-            }
-
-            /* ── Tables ──────────────────────────────────────────── */
-            #content table {
-                border-collapse: collapse;
-                width: 100%;
-                margin: 15px 0;
-                font-size: 12px;
-            }
-
-            #content table th,
-            #content table td {
-                border: 1px solid #aca899;
-                padding: 8px 10px;
-                text-align: left;
-            }
-
-            #content table th {
-                background: linear-gradient(
-                    180deg,
-                    #1c47a8 0%,
-                    var(--win-blue-dark) 100%
-                );
-                font-weight: bold;
-                color: #fff;
-            }
-
-            #content table tr:nth-child(even) td {
-                background-color: #f4f6fa;
-            }
-
-            #content table tr:hover td {
-                background-color: #edf3ff;
-                color: #0a1f55;
-            }
-
-            /* ── Blockquote ──────────────────────────────────────── */
-            blockquote {
-                margin: 14px 0;
-                padding: 8px 14px;
-                background: linear-gradient(135deg, #eaf0fc 0%, #dce9ff 100%);
-                border: 1px solid #8097c4;
-                border-left: 4px solid var(--win-blue-dark);
-                border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-                color: #001a4d;
-            }
-
-            /* ── Status Bar ──────────────────────────────────────── */
-            #status-bar {
-                height: 22px;
-                background-color: var(--win-bg);
-                border-top: 1px solid #aca899;
-                font-size: 11px;
-                padding: 0 10px;
-                display: flex;
-                align-items: center;
-                color: #000;
-            }
-
-            /* ── Index Loading Modal ─────────────────────────────── */
-            #index-loading-overlay {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background-color: rgba(0, 0, 0, 0.45);
-                z-index: 1000;
-                align-items: center;
-                justify-content: center;
-            }
-
-            #index-loading-overlay.show {
-                display: flex;
-            }
-
-            .index-loading-modal {
-                background-color: var(--win-bg);
-                border: 1px solid #8fa8d4;
-                border-radius: var(--radius-md);
-                box-shadow: 0 6px 24px rgba(0, 51, 153, 0.18), 0 2px 8px rgba(0, 0, 0, 0.10);
-                min-width: 400px;
-                overflow: hidden;
-            }
-
-            .index-loading-header {
-                background: linear-gradient(90deg, var(--win-blue-dark) 0%, var(--win-blue-light) 100%);
-                color: #fff;
-                padding: 8px 15px;
-                font-weight: bold;
-                font-size: 12px;
-            }
-
-            .index-loading-body {
-                padding: 25px;
-                text-align: center;
-                color: #0f0f0f;
-                font-size: 12px;
-            }
-
-            .index-loading-spinner {
-                display: inline-block;
-                width: 32px;
-                height: 32px;
-                border: 3px solid #c0c8d8;
-                border-top-color: var(--win-blue-dark);
-                border-radius: 50%;
-                animation: spin 0.8s linear infinite;
-                margin-bottom: 15px;
-            }
-
-            .index-loading-message {
-                font-size: 13px;
-                color: #0f0f0f;
-                line-height: 1.5;
-            }
-
-            @keyframes spin {
-                to {
-                    transform: rotate(360deg);
-                }
-            }
-        </style>
+        <link rel="stylesheet" href="../css/axonasp.css" />
     </head>
-    <body>
+
+    <body class="manual-page">
         <div id="header">
             <div class="logo">
-                <img
-                    src="<%= ax.AxGetLogo() %>"
-                    alt="AxonASP"
-                    width="43"
-                />
+                <img src="<%= ax.AxGetLogo() %>" alt="AxonASP" width="43" />
             </div>
             <h1>AxonASP Server Documentation Library</h1>
         </div>
@@ -816,60 +298,25 @@ End Function
         <div id="main-container">
             <div id="sidebar">
                 <div class="sidebar-tabs">
-                    <button
-                        type="button"
-                        class="sidebar-tab-btn active"
-                        data-tab-target="contents"
-                    >
+                    <button type="button" class="sidebar-tab-btn active" data-tab-target="contents">
                         Contents
                     </button>
-                    <button
-                        type="button"
-                        class="sidebar-tab-btn"
-                        data-tab-target="search"
-                    >
+                    <button type="button" class="sidebar-tab-btn" data-tab-target="search">
                         Search
                     </button>
                 </div>
 
-                <div
-                    id="sidebar-tab-contents"
-                    class="sidebar-tab-panel active"
-                    data-tab-panel="contents"
-                >
-                    <div style="margin-bottom: 10px">
-                        <input
-                            type="text"
-                            id="search-input"
-                            placeholder="Search..."
-                            class="sidebar-search-input"
-                            onfocus="this.style.borderColor='#3366cc';this.style.boxShadow='0 0 0 2px rgba(51,102,204,0.18)'"
-                            onblur="
-                                this.style.borderColor = '#aca899';
-                                this.style.boxShadow = '';
-                            "
-                        />
+                <div id="sidebar-tab-contents" class="sidebar-tab-panel active" data-tab-panel="contents">
+                    <div class="mb-10">
+                        <input type="text" id="search-input" placeholder="Search..." class="sidebar-search-input" />
                     </div>
                     <%= menuHtml %>
                 </div>
 
-                <div
-                    id="sidebar-tab-search"
-                    class="sidebar-tab-panel"
-                    data-tab-panel="search"
-                >
-                    <div style="margin-bottom: 10px">
-                        <input
-                            type="text"
-                            id="fulltext-search-input"
-                            placeholder="Search documentation..."
-                            class="sidebar-search-input"
-                            onfocus="this.style.borderColor='#3366cc';this.style.boxShadow='0 0 0 2px rgba(51,102,204,0.18)'"
-                            onblur="
-                                this.style.borderColor = '#aca899';
-                                this.style.boxShadow = '';
-                            "
-                        />
+                <div id="sidebar-tab-search" class="sidebar-tab-panel" data-tab-panel="search">
+                    <div class="mb-10">
+                        <input type="text" id="fulltext-search-input" placeholder="Search documentation..."
+                            class="sidebar-search-input" />
                     </div>
                     <div id="fulltext-search-results" class="search-results">
                         <div class="search-empty">Type to search the documentation index.</div>
@@ -902,7 +349,7 @@ End Function
 
         <script>
             // Index Loading Modal Logic
-            (function() {
+            (function () {
                 const overlay = document.getElementById('index-loading-overlay');
                 let pollIntervalId = null;
 
@@ -911,20 +358,20 @@ End Function
                         method: 'GET',
                         headers: { Accept: 'application/json' }
                     })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.exists === true && !data.building) {
-                            // Index is ready, close modal
-                            if (pollIntervalId) {
-                                clearInterval(pollIntervalId);
-                                pollIntervalId = null;
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.exists === true && !data.building) {
+                                // Index is ready, close modal
+                                if (pollIntervalId) {
+                                    clearInterval(pollIntervalId);
+                                    pollIntervalId = null;
+                                }
+                                overlay.classList.remove('show');
                             }
-                            overlay.classList.remove('show');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Index status check failed:', error);
-                    });
+                        })
+                        .catch(error => {
+                            console.error('Index status check failed:', error);
+                        });
                 }
 
                 function initializeIndexModal() {
@@ -933,32 +380,32 @@ End Function
                         method: 'GET',
                         headers: { Accept: 'application/json' }
                     })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.exists === true && data.building !== true) {
-                            return;
-                        }
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.exists === true && data.building !== true) {
+                                return;
+                            }
 
-                        // Show modal immediately while build is running or about to start.
-                        overlay.classList.add('show');
-                        if (!pollIntervalId) {
-                            pollIntervalId = setInterval(checkIndexStatus, 2000);
-                        }
+                            // Show modal immediately while build is running or about to start.
+                            overlay.classList.add('show');
+                            if (!pollIntervalId) {
+                                pollIntervalId = setInterval(checkIndexStatus, 2000);
+                            }
 
-                        if (data.building === true) {
-                            return;
-                        }
+                            if (data.building === true) {
+                                return;
+                            }
 
-                        fetch('?api=triggerindexbuild', {
-                            method: 'GET',
-                            headers: { Accept: 'application/json' }
-                        }).catch(error => {
-                            console.error('Index build trigger failed:', error);
+                            fetch('?api=triggerindexbuild', {
+                                method: 'GET',
+                                headers: { Accept: 'application/json' }
+                            }).catch(error => {
+                                console.error('Index build trigger failed:', error);
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Initial index status check failed:', error);
                         });
-                    })
-                    .catch(error => {
-                        console.error('Initial index status check failed:', error);
-                    });
                 }
 
                 // Run when DOM is ready
@@ -1036,17 +483,17 @@ End Function
 
                         const node = match
                             ? {
-                                  type: "file",
-                                  name: match[1],
-                                  page: match[2],
-                                  indent,
-                              }
+                                type: "file",
+                                name: match[1],
+                                page: match[2],
+                                indent,
+                            }
                             : {
-                                  type: "folder",
-                                  name: content,
-                                  indent,
-                                  children: [],
-                              };
+                                type: "folder",
+                                name: content,
+                                indent,
+                                children: [],
+                            };
 
                         while (
                             stack.length > 1 &&
@@ -1316,4 +763,5 @@ End Function
             });
         </script>
     </body>
+
 </html>

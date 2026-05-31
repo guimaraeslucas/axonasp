@@ -9,7 +9,7 @@ var serverTime = new Date().toLocaleString();
 %>
 <!DOCTYPE html>
 <html>
-<!--
+    <!--
             
             AxonASP Server
             Copyright (C) 2026 G3pix Ltda. All rights reserved.
@@ -31,42 +31,13 @@ var serverTime = new Date().toLocaleString();
             made available under this same license terms.
             
             -->
+
     <head>
         <title><%=pageTitle%></title>
         <link rel="stylesheet" type="text/css" href="/css/axonasp.css">
-        <style>
-            #weather-card {
-                margin-top: 20px;
-                display: none;
-            }
-
-            .forecast-detail {
-                margin-bottom: 8px;
-                font-size: 1.1em;
-            }
-
-            #raw-json {
-                background: #f8f8f8;
-                padding: 15px;
-                border: 1px solid #d0d0d0;
-                font-family: 'Courier New', Courier, monospace;
-                overflow: auto;
-                max-height: 250px;
-                margin-top: 10px;
-                border-radius: 4px;
-                font-size: 0.9em;
-                color: #333;
-            }
-
-            .main-content {
-                padding: 25px;
-                max-width: 900px;
-                margin: 0 auto;
-            }
-        </style>
     </head>
 
-    <body>
+    <body class="jsapi-page">
         <div id="header">
             <div class="logo">
                 <%
@@ -80,78 +51,72 @@ var serverTime = new Date().toLocaleString();
 
 
         <div id="main-container">
-            <div class="main-content">
+            <div class="jsapi-main-content">
                 <div id="content">
                     <div class="card card-top-blue">
                         <div class="card-header">
                             <h1>Weather Forecast API Explorer</h1>
                         </div>
                         <div class="card-body">
-                            <p style="margin-bottom: 20px;">This demonstration uses <strong>AxonASP's ES5 JScript
+                            <p class="jsapi-intro-text">This demonstration uses <strong>AxonASP's ES5 JScript
                                     Engine</strong> to power both the front-end interface and the back-end API. Select a
                                 city below to fetch real-time data from the <code>api.asp</code> endpoint.</p>
 
-                            <div class="actions-row"
-                                style="background: #f0f4f8; padding: 15px; border-radius: 8px; border: 1px solid #d0dae5;">
-                                <label for="location-select" style="margin-right: 10px; font-weight: bold;">Select
+                            <div class="actions-row jsapi-controls-wrap">
+                                <label for="location-select" class="jsapi-location-label">Select
                                     Location:</label>
-                                <select id="location-select" class="input-sm"
-                                    style="width: 250px; padding: 6px; border: 1px solid #808080; border-radius: 4px;">
+                                <select id="location-select" class="input-sm jsapi-location-select">
                                     <option value="">-- Choose a City --</option>
                                     <option value="sao_paulo">São Paulo, Brazil</option>
                                     <option value="new_york">New York, USA</option>
                                     <option value="london">London, UK</option>
                                     <option value="tokyo">Tokyo, Japan</option>
                                 </select>
-                                <button class="btn btn-primary" onclick="fetchWeather()" style="margin-left: 10px;">
+                                <button class="btn btn-primary ml-10" onclick="fetchWeather()">
                                     Get Forecast
                                 </button>
                             </div>
 
-                            <div id="loading" style="display: none; margin-top: 20px; text-align: center;">
+                            <div id="loading" class="jsapi-loading is-hidden">
                                 <span class="pill pill-primary">Contacting AxonASP JScript Engine...</span>
                             </div>
 
-                            <div id="error-alert" class="alert alert-error" style="display: none; margin-top: 20px;">
+                            <div id="error-alert" class="alert alert-error jsapi-error is-hidden">
                             </div>
 
                             <div id="weather-card">
-                                <div class="card"
-                                    style="margin-top: 20px; border: 1px solid #3366cc; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-                                    <div class="card-header"
-                                        style="background: linear-gradient(180deg, #f0f0f0 0%, #e0e0e0 100%);">
-                                        <h2 id="location-display" style="margin: 0; color: #003399;">Location</h2>
+                                <div class="card jsapi-weather-card">
+                                    <div class="card-header jsapi-weather-card-header">
+                                        <h2 id="location-display" class="jsapi-location-display">Location</h2>
                                     </div>
                                     <div class="card-body">
                                         <div class="grid-2">
                                             <div>
                                                 <div class="forecast-detail">
                                                     <strong>Condition:</strong>
-                                                    <span id="w-condition" class="badge badge-success"
-                                                        style="padding: 5px 12px; font-size: 0.9em;">-</span>
+                                                    <span id="w-condition"
+                                                        class="badge badge-success jsapi-badge-emphasis">-</span>
                                                 </div>
                                                 <div class="forecast-detail">
                                                     <strong>Temperature:</strong>
-                                                    <span id="w-temp"
-                                                        style="font-size: 1.5em; font-weight: bold; color: #cc3300;">-</span>
-                                                    <span style="font-size: 1.2em; color: #cc3300;">°C</span>
+                                                    <span id="w-temp" class="jsapi-temp-value">-</span>
+                                                    <span class="jsapi-temp-unit">°C</span>
                                                 </div>
                                             </div>
                                             <div>
                                                 <div class="forecast-detail">
                                                     <strong>Humidity:</strong>
-                                                    <span id="w-humidity" style="font-weight: bold;">-</span>%
+                                                    <span id="w-humidity" class="font-strong">-</span>%
                                                 </div>
                                                 <div class="forecast-detail">
                                                     <strong>Wind Speed:</strong>
-                                                    <span id="w-wind" style="font-weight: bold;">-</span> km/h
+                                                    <span id="w-wind" class="font-strong">-</span> km/h
                                                 </div>
                                             </div>
                                         </div>
 
-                                        <div
-                                            style="margin-top: 25px; border-top: 2px solid #3366cc; padding-top: 15px;">
-                                            <h4 style="color: #003399; margin-bottom: 10px;">System JSON Response:</h4>
+                                        <div class="jsapi-json-section">
+                                            <h4 class="jsapi-json-title">System JSON Response:</h4>
                                             <div id="raw-json"></div>
                                         </div>
                                     </div>
@@ -160,14 +125,14 @@ var serverTime = new Date().toLocaleString();
                         </div>
                     </div>
 
-                    <div class="card" style="margin-top: 30px; border-left: 5px solid #ffd700;">
-                        <div class="card-header" style="background: #fffbe6;">
-                            <h3 style="color: #856404;">Why use JScript in AxonASP?</h3>
+                    <div class="card jsapi-why-card">
+                        <div class="card-header jsapi-why-header">
+                            <h3 class="jsapi-why-title">Why use JScript in AxonASP?</h3>
                         </div>
                         <div class="card-body">
                             <div class="grid-2">
                                 <div>
-                                    <ul style="line-height: 1.6;">
+                                    <ul class="jsapi-list-relaxed">
                                         <li><strong>Universal Format:</strong> Native <code>JSON</code> object support
                                             for easy data exchange.</li>
                                         <li><strong>Modern Syntax:</strong> Support for <code>try/catch</code>,
@@ -177,8 +142,8 @@ var serverTime = new Date().toLocaleString();
                                             alongside VBScript.</li>
                                     </ul>
                                 </div>
-                                <div style="background: #f9f9f9; padding: 15px; border-radius: 8px;">
-                                    <code style="display: block; font-size: 0.85em; color: #d63384;">
+                                <div class="jsapi-code-panel">
+                                    <code class="jsapi-code-sample">
                                     // In api.asp:<br>
                                     var json = Server.CreateObject("G3JSON");<br>
                                     var data = json.LoadFile("data.json");<br>
@@ -193,8 +158,7 @@ var serverTime = new Date().toLocaleString();
         </div>
 
         <div id="status-bar">
-            <div
-                style="padding: 2px 15px; font-size: 0.85em; color: #444; display: flex; justify-content: space-between;">
+            <div class="status-bar-inner">
                 <span>Server Time: <%=serverTime%> | </span>
                 <span> AxonASP v2 JScript/JavaScript Implementation</span>
             </div>

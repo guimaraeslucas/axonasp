@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>AxonASP JavaScript | ES6+ Runtime and Module Support</title>
+        <meta name="description"
+            content="Build modern server-side JavaScript in AxonASP with ES6+ capabilities, async workflows, module imports, and partial Node-style APIs while running alongside VBScript.">
+        <meta name="keywords"
+            content="AxonASP JavaScript, ES6 ASP, async await ASP, CommonJS ASP, Node modules ASP, server-side JavaScript">
+        <meta name="theme-color" content="#0f62fe">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://g3pix.com.br/axonasp/javascript.htm">
+        <meta property="og:title" content="AxonASP JavaScript Engine">
+        <meta property="og:description"
+            content="Use ES6+ JavaScript features and module organization in AxonASP while keeping Classic ASP infrastructure.">
+        <meta property="og:image" content="https://g3pix.com.br/axonasp/opengraph-image.png">
+        <link rel="canonical" href="https://g3pix.com.br/axonasp/javascript.htm">
+        <link rel="stylesheet" href="styles.css">
+        <link rel="icon" type="image/png" href="favicon-96x96.png?v=20260531" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260531" />
+        <link rel="shortcut icon" href="favicon.ico?v=20260531" />
+        <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260531" />
+        <meta name="apple-mobile-web-app-title" content="AxonASP" />
+        <link rel="manifest" href="site.webmanifest?v=20260531" />
+    </head>
+
+    <body>
+        <div class="site-bg">
+            <header class="site-header">
+                <div class="header-inner">
+                    <a class="brand" href="index.htm">
+                        <img src="logo.svg" alt="G3pix AxonASP logo" title="G3pix AxonASP">
+                    </a>
+                    <button class="nav-toggle" data-menu-toggle aria-expanded="false"
+                        aria-label="Toggle navigation">Menu</button>
+                    <div class="nav-shell" data-menu-shell>
+                        <nav aria-label="Primary navigation">
+                            <ul class="nav-menu">
+                                <li><a href="index.htm">Home</a></li>
+                                <li><a href="features.htm">Platform</a></li>
+                                <li><a href="vbscript.htm">VBScript</a></li>
+                                <li><a href="javascript.htm">JavaScript</a></li>
+                                <li><a href="axonlive.htm">AxonLive</a></li>
+                                <li><a href="installation.htm">Deployment</a></li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </header>
+
+            <main class="main">
+                <section class="hero reveal">
+                    <div>
+                        <span class="hero-mark">JavaScript runtime</span>
+                        <h1>Build new ASP modules with modern JavaScript syntax.</h1>
+                        <p>
+                            AxonASP includes an internal JavaScript engine that supports ECMAScript 5 with broad ES6+
+                            features,
+                            enabling modern server-side development while sharing the same runtime and infrastructure as
+                            VBScript.
+                        </p>
+                        <div class="chips">
+                            <span class="chip">Promises and async/await</span>
+                            <span class="chip">Class and destructuring</span>
+                            <span class="chip">CommonJS-like and ES6 imports</span>
+                            <span class="chip">Partial Node APIs</span>
+                        </div>
+                    </div>
+                    <aside class="hero-side">
+                        <h2>What this unlocks</h2>
+                        <ul>
+                            <li>Incremental module-by-module modernization.</li>
+                            <li>Reusable server-side JavaScript utilities and architecture layers.</li>
+                            <li>Mixed-language pages where VBScript and JavaScript coexist.</li>
+                        </ul>
+                    </aside>
+                </section>
+
+                <section class="section">
+                    <h2>ES6+ capabilities in AxonASP</h2>
+                    <div class="grid-3">
+                        <article class="card reveal">
+                            <h3>Language features</h3>
+                            <p>Arrow functions, template literals, let/const, classes, spread, and destructuring for
+                                modern coding patterns.</p>
+                        </article>
+                        <article class="card reveal">
+                            <h3>Async model</h3>
+                            <p>Promise-based workflows with async/await and runtime-level exception propagation.</p>
+                        </article>
+                        <article class="card reveal">
+                            <h3>Built-in APIs</h3>
+                            <p>JSON operations, Array map/filter/reduce, and strict mode support for robust module
+                                behavior.</p>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>Module organization support</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>CommonJS-like import style</h3>
+                            <pre class="code">var tools = require("./services/tools.js");
+var result = tools.buildPayload(data);</pre>
+                        </article>
+                        <article class="card reveal">
+                            <h3>ES6-style import style</h3>
+                            <pre class="code">import { buildPayload } from "./services/tools.js";
+const result = buildPayload(data);</pre>
+                        </article>
+                    </div>
+                    <div class="banner reveal">
+                        <strong>Scope note:</strong> module import features are available for JavaScript code paths, not
+                        for VBScript code paths.
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>Partial Node-style runtime modules</h2>
+                    <div class="table-wrap reveal">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Module family</th>
+                                    <th>Status</th>
+                                    <th>Use case</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>fs, path</td>
+                                    <td><span class="status-pill ok">Available (context dependent)</span></td>
+                                    <td>File path and file-flow operations in supported contexts.</td>
+                                </tr>
+                                <tr>
+                                    <td>stream, events</td>
+                                    <td><span class="status-pill ok">Available</span></td>
+                                    <td>Event-driven and stream-oriented architecture patterns.</td>
+                                </tr>
+                                <tr>
+                                    <td>process, buffer, util, timers</td>
+                                    <td><span class="status-pill ok">Available</span></td>
+                                    <td>Runtime utility operations and asynchronous orchestration.</td>
+                                </tr>
+                                <tr>
+                                    <td>External npm ecosystem</td>
+                                    <td><span class="status-pill warn">Not included</span></td>
+                                    <td>Use built-in runtime capabilities and native G3 libraries.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>Execution caveats to plan for</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>Feature coverage is broad, not infinite</h3>
+                            <p>Some advanced ES6+ behaviors such as generator-heavy patterns and top-level await are
+                                still evolving.</p>
+                        </article>
+                        <article class="card reveal">
+                            <h3>Environment boundaries</h3>
+                            <p>Certain APIs depend on runtime context. For example, low-level file access differs
+                                between CLI and server execution modes.</p>
+                        </article>
+                    </div>
+                </section>
+            </main>
+
+            <footer class="footer">
+                <div class="footer-grid">
+                    <div class="footer-brand">
+                        <img class="footer-brand-logo" src="https://g3pix.com.br/g3pix.svg" alt="G3Pix logo">
+                        <p>Copyright 2026 G3Pix. All rights reserved.</p>
+                        <p>AxonASP is an independent open source software project.</p>
+                    </div>
+
+                    <div>
+                        <h3 class="footer-nav-title">Site Navigation</h3>
+                        <div class="footer-links">
+                            <a href="index.htm">Home</a>
+                            <a href="features.htm">Platform</a>
+                            <a href="vbscript.htm">VBScript</a>
+                            <a href="javascript.htm">JavaScript</a>
+                            <a href="axonlive.htm">AxonLive</a>
+                            <a href="installation.htm">Deployment</a>
+                            <a href="privacy.htm">Privacy</a>
+                            <a href="terms.htm">Terms of Use</a>
+                        </div>
+                        <div class="footer-actions">
+                            <a class="btn" href="https://g3pix.com.br/axonasp/manual/" target="_blank"
+                                rel="noopener">Open Manual</a>
+                            <a class="btn" href="https://g3pix.com.br/axonasp/wasm/" target="_blank" rel="noopener">WASM
+                                Playground</a>
+                        </div>
+                    </div>
+
+                    <div class="footer-theme">
+                        <label for="themeSelect">Theme</label>
+                        <select id="themeSelect" class="theme-select" data-theme-select>
+                            <option value="auto">Auto</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="footer-meta">
+                    The terms "Microsoft," "Active Server Pages," "ASP," "VBScript," and "JScript" are referenced only
+                    for technical compatibility and identification purposes.
+                </div>
+            </footer>
+        </div>
+        <script src="script.js"></script>
+    </body>
+
+</html>

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="description" content="G3Pix AxonASP 2.1 - Features, G3 Libraries, and Custom Functions">
+        <title>Features & Native Power - AxonASP 2.1</title>
+        <meta name="theme-color" content="#003399">
+        <link rel="stylesheet" href="styles.css">
+        <meta name="language" content="en-US">
+        <link rel="apple-touch-icon" sizes="57x57" href="apple-icon-57x57.png">
+        <link rel="apple-touch-icon" sizes="60x60" href="apple-icon-60x60.png">
+        <link rel="apple-touch-icon" sizes="72x72" href="apple-icon-72x72.png">
+        <link rel="apple-touch-icon" sizes="76x76" href="apple-icon-76x76.png">
+        <link rel="apple-touch-icon" sizes="114x114" href="apple-icon-114x114.png">
+        <link rel="apple-touch-icon" sizes="120x120" href="apple-icon-120x120.png">
+        <link rel="apple-touch-icon" sizes="144x144" href="apple-icon-144x144.png">
+        <link rel="apple-touch-icon" sizes="152x152" href="apple-icon-152x152.png">
+        <link rel="apple-touch-icon" sizes="180x180" href="apple-icon-180x180.png">
+        <link rel="icon" type="image/png" sizes="192x192" href="android-icon-192x192.png">
+        <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+        <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+        <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+        <link rel="icon" sizes="16x16" href="favicon.ico">
+        <link rel="manifest" href="manifest.json">
+        <meta name="msapplication-TileColor" content="#003399">
+        <meta name="msapplication-TileImage" content="ms-icon-144x144.png">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://g3pix.com.br/axonasp">
+        <meta property="og:title" content="G3Pix AxonASP - Classic ASP at Modern Speed">
+        <meta property="og:description"
+            content="Run Classic ASP with VBScript and JavaScript on Windows, Linux, and macOS with modern performance. Setup in minutes.">
+        <meta property="og:image" content="https://g3pix.com.br/axonasp/opengraph-image.png">
+        <meta property="og:image:alt" content="G3Pix AxonASP Interface and Logo">
+        <meta property="og:locale" content="en_US">
+        <meta property="og:site_name" content="G3Pix AxonASP">
+        <script type="application/ld+json">
+                {
+                  "@context": "https://schema.org",
+                  "@type": "SoftwareApplication",
+                  "name": "G3Pix AxonASP Server",
+                  "operatingSystem": "Windows, Linux, macOS",
+                  "applicationCategory": "DeveloperApplication",
+                  "offers": {
+                    "@type": "Offer",
+                    "price": "0",
+                    "priceCurrency": "USD"
+                  },
+                  "description": "High-Performance Classic ASP Runtime Engine with full VBScript and JavaScript support. Open source and cross-platform.",
+                  "author": {
+                      "@type": "Organization",
+                      "name": "G3Pix",
+                      "url": "https://g3pix.com.br"
+                  }
+                }
+                </script>
+    </head>
+
+    <body>
+
+        <nav class="navbar">
+            <div class="nav-brand">
+                <img src="apple-icon-60x60.png" alt="AxonASP Logo" class="logo">
+                <span>AxonASP Server</span>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="index.htm" class="active">Home</a></li>
+                <li><a href="features.htm">Features &amp; Docs</a></li>
+                <li><a href="installation.htm">Deployment</a></li>
+                <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank">GitHub Repo</a></li>
+                <li><a href="https://github.com/guimaraeslucas/axonasp/releases" target="_blank"
+                        class="nav-download">&#8595;
+                        Download</a></li>
+            </ul>
+        </nav>
+
+        <div class="container">
+            <div class="content-wrapper">
+                <div class="hero">
+                    <div class="hero-text">
+                        <div class="hero-title-row">
+                            <img src="axonasp.svg" alt="AxonASP" class="hero-logo">
+                            <h2>Enterprise features built right into your ASP runtime</h2>
+                        </div>
+                        <p>AxonASP 2.1 extends Classic ASP with high-performance native components so teams can build
+                            faster, scale further, and keep compatibility with production workloads that matter.</p>
+                        <div class="pill-row">
+                            <span class="pill">Native object model</span>
+                            <span class="pill">AxonLive Framework</span>
+                            <span class="pill">Selective Library Compilation</span>
+                        </div>
+                        <div class="actions-row">
+                            <a href="https://github.com/guimaraeslucas/axonasp/releases" target="_blank"
+                                class="btn btn-download">&#8595; Download Latest Release</a>
+                            <a href="installation.htm" class="btn btn-primary">Deploy This Stack</a>
+                            <a href="https://g3pix.com.br/axonasp/manual/" target="_blank" class="btn">Read Full
+                                Manual</a>
+                        </div>
+                    </div>
+
+                    <aside class="hero-panel">
+                        <h3>What makes AxonASP stand out</h3>
+                        <ul>
+                            <li>Native libraries for daily backend tasks and integrations.</li>
+                            <li>AxonLive: Reactive Component Framework for modern web apps.</li>
+                            <li>Enhanced Modern Scripting with JavaScript >ES6 support.</li>
+                            <li>Execution modes for HTTP server, FastCGI, and CLI parity.</li>
+                            <li>Experimental WASM engine for high-performance execution.</li>
+                        </ul>
+                    </aside>
+                </div>
+
+                <div class="card card-top-blue">
+                    <h3>Multi-Language Runtime Support</h3>
+                    <p>AxonASP 2.1 is no longer limited to VBScript. It now features a robust JavaScript engine with
+                        Enhanced Modern Scripting (ES6 support), allowing you to use both languages concomitantly in
+                        your project.</p>
+                    <ul>
+                        <li><strong>VBScript:</strong> Fast, single-pass bytecode compilation for legacy logic.</li>
+                        <li><strong>JavaScript:</strong> Modern AST-based execution with various EcmaScript 6 (ES6)
+                            functions.</li>
+                        <li><strong>Parity:</strong> Both languages share the same native G3 libraries and Ax functions.
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="card card-top-blue">
+                    <h3>AxonLive Framework</h3>
+                    <p>Introducing a high-performance Reactive Component Framework. AxonLive empowers developers to
+                        create dynamic, stateful, and highly responsive web applications using Classic ASP (VBScript or
+                        Server-Side JavaScript) without the need for full page reloads.</p>
+                </div>
+
+                <h1>Native G3 libraries for real production workloads</h1>
+                <p class="section-note">Each library maps common platform needs to efficient native functionality,
+                    helping eliminate bottlenecks caused by repetitive script-level processing.</p>
+
+                <div class="card card-top-blue no-animate" style="padding: 0; margin-bottom: 22px;">
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width: 28%;">Library Component</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>G3AXON</strong></td>
+                                    <td>System and utility helpers for environment, arrays, and engine-level operations.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3CRYPTO</strong></td>
+                                    <td>Hashing, encryption, and secure random byte generation with practical APIs.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3JSON</strong></td>
+                                    <td>Fast JSON parse and build operations for API and data-heavy endpoints.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3DB</strong></td>
+                                    <td>Database operations with pooling and prepared statement support.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3HTTP</strong></td>
+                                    <td>Native HTTP client support for external API orchestration.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3MAIL</strong></td>
+                                    <td>SMTP with HTML body and attachments for transactional messaging.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3IMAGE</strong></td>
+                                    <td>Image processing, conversion, and drawing routines.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3FILES</strong></td>
+                                    <td>File handling and encoding conversion tools for robust I/O flows.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3TEMPLATE</strong></td>
+                                    <td>Template rendering for text and HTML pipelines.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3ZIP and G3TAR</strong></td>
+                                    <td>Archive creation and extraction flows for deployment and backup tasks.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3ZLIB and G3ZSTD</strong></td>
+                                    <td>Fast compression and decompression for data transfer and storage.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3FC</strong></td>
+                                    <td>A storage archive format with fast compression and decompression capabilities.
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3MD</strong></td>
+                                    <td>Markdown-to-HTML conversion for content-heavy sites and docs.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3PDF</strong></td>
+                                    <td>PDF generation with text, drawing primitives, and rendering support.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3SEARCH</strong></td>
+                                    <td>Perform advanced search operations across your data with high efficiency.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3FILEUPLOADER</strong></td>
+                                    <td>Multipart processing and upload handling for secure forms.</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>G3STRINGBUILDER</strong></td>
+                                    <td>Efficient string manipulation and concatenation for dynamic content generation.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <h2>Over 60 custom Ax functions included</h2>
+                <div class="card card-top-blue">
+                    <h3>Daily coding speed with built-in helpers</h3>
+                    <p>Ax functions are globally available in both VBScript and JScript, reducing repetitive glue code
+                        in common
+                        operations.</p>
+                    <div class="grid-2">
+                        <div>
+                            <p><strong>Array operations</strong></p>
+                            <p><code>AxArrayMerge</code>, <code>AxArrayContains</code>, <code>AxArrayMap</code>,
+                                <code>AxArrayFilter</code>, <code>AxArrayReverse</code>.
+                            </p>
+                        </div>
+                        <div>
+                            <p><strong>String and formatting</strong></p>
+                            <p><code>AxStringReplace</code>, <code>AxSprintf</code>, <code>AxExplode</code>,
+                                <code>AxImplode</code>.
+                            </p>
+                        </div>
+                        <div>
+                            <p><strong>Validation and typing</strong></p>
+                            <p><code>AxIsInt</code>, <code>AxIsFloat</code>, <code>AxEmpty</code>, <code>AxIsset</code>,
+                                <code>AxFilterValidateEmail</code>.
+                            </p>
+                        </div>
+                        <div>
+                            <p><strong>Math and encoding</strong></p>
+                            <p>Base64, URL encoding, max/min helpers, and native ceil/floor behavior.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h2>Execution ecosystem for modern operations</h2>
+                <div class="grid-3">
+                    <div class="card">
+                        <h3>CLI workflows</h3>
+                        <p>Use CLI mode for scheduled routines, maintenance scripts, and high-control operations in
+                            automation pipelines.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Modern Debugging</h3>
+                        <p>Use <code>console.log</code> directly in your ASP code to output messages to the server or
+                            CLI console, simplifying development.</p>
+                    </div>
+                    <div class="card">
+                        <h3>MCP integration</h3>
+                        <p>Connect AI tools to your AxonASP environment and accelerate page creation with your exact
+                            runtime context.</p>
+                    </div>
+                    <div class="card">
+                        <h3>Test-driven confidence</h3>
+                        <p>Run <code>axonasp-testsuite</code> to discover tests automatically and keep release quality
+                            high.</p>
+                    </div>
+                </div>
+
+                <div class="cta-panel">
+                    <h3>Ready to put these features into production?</h3>
+                    <p>Open the deployment guide to launch your environment with Docker or native builds.</p>
+                    <div class="actions-row">
+                        <a href="https://github.com/guimaraeslucas/axonasp/releases" target="_blank"
+                            class="btn btn-download">&#8595; Download Latest Release</a>
+                        <a href="installation.htm" class="btn btn-primary">Proceed to Deployment</a>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="footer">
+                <p>&copy; 2026 G3Pix. Built for the Classic ASP community.</p>
+                <p>
+                    Read the <a href="https://g3pix.com.br/axonasp/manual/" target="_blank">Official Manual</a> | <a
+                        href="https://g3pix.com.br/axonasp/wasm/" target="_blank">WASM Playground</a> |
+                    View on <a href="https://github.com/guimaraeslucas/axonasp/tree/main/www/manual/md/"
+                        target="_blank">GitHub</a><br> <small>AxonASP is an independent open source software project
+                        developed by G3pix Ltda and is not affiliated
+                        with, endorsed by, or
+                        sponsored by Microsoft Corporationin any way.<br>
+
+                        The names "Microsoft," "Active Server Pages," "ASP," and "VBScript,", "Windows", "Office",
+                        "Access", "ActiveX", "JScript" as well
+                        as any related names, marks, emblems, and images relative to ASP, are registered trademarks of
+                        Microsoft Corporation.<br>
+                        The use of these trademarks within this project is purely for descriptive, identification, and
+                        reference purposes to
+                        indicate technical compatibility, and does not imply any association with the trademark
+                        holder.</small>
+                </p>
+            </div>
+        </div>
+
+        <script src="script.js"></script>
+    </body>
+
+</html>

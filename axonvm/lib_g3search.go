@@ -122,9 +122,28 @@ func hasPersistentBuildMarker(indexPath string) bool {
 }
 
 // writePersistentBuildMarker writes a durable marker after one successful build.
-func writePersistentBuildMarker(indexPath string) error {
+func writePersistentBuildMarker(indexPath string, docsPath string) error {
 	markerPath := filepath.Join(indexPath, g3SearchBuiltMarkerFile)
-	return os.WriteFile(markerPath, []byte("built"), 0o644)
+	return os.WriteFile(markerPath, []byte("docs="+canonicalIndexPath(docsPath)), 0o644)
+}
+
+// readPersistentBuildMarkerDocsPath returns docsPath metadata from the marker.
+// It returns ok=false for legacy/unparseable markers.
+func readPersistentBuildMarkerDocsPath(indexPath string) (docsPath string, ok bool) {
+	markerPath := filepath.Join(indexPath, g3SearchBuiltMarkerFile)
+	raw, err := os.ReadFile(markerPath)
+	if err != nil {
+		return "", false
+	}
+	text := strings.TrimSpace(string(raw))
+	if !strings.HasPrefix(text, "docs=") {
+		return "", false
+	}
+	value := strings.TrimSpace(strings.TrimPrefix(text, "docs="))
+	if value == "" {
+		return "", false
+	}
+	return canonicalIndexPath(value), true
 }
 
 // pathWithin reports whether candidate is inside or equal to root.
@@ -237,6 +256,18 @@ func (s *G3Search) DispatchMethod(methodName string, args []Value) Value {
 
 	switch {
 	case strings.EqualFold(methodName, "BuildIndex"):
+		if len(args) > 0 {
+			s.indexPath = canonicalIndexPath(args[0].String())
+		}
+		if len(args) > 1 {
+			s.docsPath = canonicalIndexPath(args[1].String())
+		}
+		if len(args) > 2 {
+			s.extension = args[2].String()
+			if s.extension != "" && !strings.HasPrefix(s.extension, ".") {
+				s.extension = "." + s.extension
+			}
+		}
 		return s.buildIndex()
 	case strings.EqualFold(methodName, "Search"):
 		if len(args) < 1 {
@@ -394,7 +425,7 @@ func (s *G3Search) buildIndex() Value {
 		return Value{Type: VTEmpty}
 	}
 
-	if err := writePersistentBuildMarker(indexPath); err != nil {
+	if err := writePersistentBuildMarker(indexPath, s.docsPath); err != nil {
 		globalReaderMutex.Unlock()
 		s.vm.raise(vbscript.InternalError, ErrG3SearchIndexWriteFailed.String()+": "+err.Error())
 		return Value{Type: VTEmpty}
@@ -422,45 +453,95 @@ func (s *G3Search) search(term string) Value {
 		return Value{Type: VTEmpty}
 	}
 
-	reader, release, err := s.acquireGlobalReaderForSearch()
-	if err != nil {
-		// If index doesn't exist yet, return empty array.
-		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, nil)}
-	}
-	defer release()
+	searchOnce := func() (Value, bool) {
+		reader, release, err := s.acquireGlobalReaderForSearch()
+		if err != nil {
+			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, nil)}, true
+		}
+		defer release()
 
-	query := bluge.NewMatchQuery(term).SetField("content").SetFuzziness(1)
-	searchRequest := bluge.NewAllMatches(query)
+		query := bluge.NewMatchQuery(term).SetField("content").SetFuzziness(1)
+		searchRequest := bluge.NewAllMatches(query)
 
-	iter, err := reader.Search(context.Background(), searchRequest)
-	if err != nil {
-		s.vm.raise(vbscript.InternalError, ErrG3SearchSearchFailed.String()+": "+err.Error())
-		return Value{Type: VTEmpty}
-	}
-
-	results := make([]Value, 0, 16)
-	match, iterErr := iter.Next()
-	for iterErr == nil && match != nil {
-		filename := ""
-		match.VisitStoredFields(func(field string, value []byte) bool {
-			if field == "filename" {
-				filename = string(value)
-			}
-			return true
-		})
-
-		if filename != "" {
-			tuple := [2]Value{NewString(filename), NewDouble(match.Score)}
-			results = append(results, Value{Type: VTArray, Arr: NewVBArrayFromValues(0, tuple[:])})
+		iter, searchErr := reader.Search(context.Background(), searchRequest)
+		if searchErr != nil {
+			s.vm.raise(vbscript.InternalError, ErrG3SearchSearchFailed.String()+": "+searchErr.Error())
+			return Value{Type: VTEmpty}, false
 		}
 
-		match, iterErr = iter.Next()
+		results := make([]Value, 0, 16)
+		match, iterErr := iter.Next()
+		for iterErr == nil && match != nil {
+			filename := ""
+			match.VisitStoredFields(func(field string, value []byte) bool {
+				if field == "filename" {
+					filename = string(value)
+				}
+				return true
+			})
+
+			if filename != "" {
+				tuple := [2]Value{NewString(filename), NewDouble(match.Score)}
+				results = append(results, Value{Type: VTArray, Arr: NewVBArrayFromValues(0, tuple[:])})
+			}
+
+			match, iterErr = iter.Next()
+		}
+
+		if iterErr != nil {
+			s.vm.raise(vbscript.InternalError, ErrG3SearchSearchFailed.String()+": "+iterErr.Error())
+			return Value{Type: VTEmpty}, false
+		}
+
+		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, results)}, len(results) == 0
 	}
 
-	if iterErr != nil {
-		s.vm.raise(vbscript.InternalError, ErrG3SearchSearchFailed.String()+": "+iterErr.Error())
-		return Value{Type: VTEmpty}
+	indexHasAnyDocument := func() (bool, error) {
+		reader, release, err := s.acquireGlobalReaderForSearch()
+		if err != nil {
+			return false, err
+		}
+		defer release()
+
+		iter, searchErr := reader.Search(context.Background(), bluge.NewAllMatches(bluge.NewMatchAllQuery()))
+		if searchErr != nil {
+			return false, searchErr
+		}
+
+		match, iterErr := iter.Next()
+		if iterErr != nil {
+			return false, iterErr
+		}
+		return match != nil, nil
 	}
 
-	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, results)}
+	result, empty := searchOnce()
+	if !empty || s.docsPath == "" {
+		return result
+	}
+
+	markerDocsPath, markerOK := readPersistentBuildMarkerDocsPath(s.indexPath)
+	if markerOK && strings.EqualFold(markerDocsPath, canonicalIndexPath(s.docsPath)) {
+		hasDocs, hasDocsErr := indexHasAnyDocument()
+		if hasDocsErr == nil && hasDocs {
+			return result
+		}
+	}
+
+	// Self-heal stale/empty indexes: force one rebuild and retry once.
+	indexPath := canonicalIndexPath(s.indexPath)
+	if indexPath == "" {
+		return result
+	}
+
+	globalReaderMutex.Lock()
+	_ = closeGlobalReaderLocked()
+	delete(globalBuiltIndexes, canonicalIndexKey(indexPath))
+	globalReaderMutex.Unlock()
+
+	_ = os.Remove(filepath.Join(indexPath, g3SearchBuiltMarkerFile))
+	_ = s.buildIndex()
+
+	retryResult, _ := searchOnce()
+	return retryResult
 }

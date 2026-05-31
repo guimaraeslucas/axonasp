@@ -588,6 +588,56 @@ End Function
 	}
 }
 
+// TestASPForwardFunctionCallInsideFunctionScope verifies local-scope expressions
+// can call helper functions declared later in source.
+func TestASPForwardFunctionCallInsideFunctionScope(t *testing.T) {
+	source := `<%
+Function Outer()
+	Dim base
+	base = "E:/a/b/c"
+	Outer = NormalizeSearchDocPath(base, "E:/a")
+End Function
+
+Function NormalizeSearchDocPath(rawPath, docsPath)
+	Dim normalizedPath, normalizedDocs, relPath
+	normalizedPath = Replace(CStr(rawPath), "\", "/")
+	normalizedDocs = Replace(CStr(docsPath), "\", "/")
+	relPath = normalizedPath
+	If Len(normalizedDocs) > 0 Then
+		If LCase(Left(normalizedPath, Len(normalizedDocs))) = LCase(normalizedDocs) Then
+			relPath = Mid(normalizedPath, Len(normalizedDocs) + 1)
+			If Left(relPath, 1) = "/" Then
+				relPath = Mid(relPath, 2)
+			End If
+		End If
+	End If
+	NormalizeSearchDocPath = relPath
+End Function
+
+Response.Write Outer()
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "b/c" {
+		t.Fatalf("expected b/c output, got %q", output.String())
+	}
+}
+
 // TestASPCompileRejectsNestedClassDeclaration verifies nested Class blocks are rejected.
 // Classic ASP/VBScript does not support class declarations inside another class body.
 func TestASPCompileRejectsNestedClassDeclaration(t *testing.T) {
@@ -3530,6 +3580,115 @@ Response.Write page
 	}
 }
 
+// TestASPManualSearchApiQueryNormalization verifies manual endpoint style
+// `LCase(Trim(Request.QueryString("api")))` and `Trim(Request.QueryString("q"))`
+// continue to work after Request collection proxy changes.
+func TestASPManualSearchApiQueryNormalization(t *testing.T) {
+	source := `<%
+Dim apiAction, q
+apiAction = LCase(Trim(Request.QueryString("api")))
+q = Trim(Request.QueryString("q"))
+Response.Write apiAction & "|" & q
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	host.Request().QueryString.Add("api", "search")
+	host.Request().QueryString.Add("q", "asp")
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "search|asp" {
+		t.Fatalf("expected search|asp output, got %q", output.String())
+	}
+}
+
+// TestASPManualSearchApiQueryNormalizationLazyPayload verifies the same behavior
+// when QueryString is provided through the lazy raw query payload path used by WebHost.
+func TestASPManualSearchApiQueryNormalizationLazyPayload(t *testing.T) {
+	source := `<%
+Dim apiAction, q
+apiAction = LCase(Trim(Request.QueryString("api")))
+If apiAction = "search" Then
+	q = Trim(Request.QueryString("q"))
+	Response.Write apiAction & "|" & q
+	Response.End
+End If
+Response.Write "fallback"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	host.Request().QueryString.SetLazyPayload([]byte("api=search&q=asp"))
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "search|asp" {
+		t.Fatalf("expected search|asp output, got %q", output.String())
+	}
+}
+
+// TestASPManualSearchForwardFunctionCallLazyPayload reproduces manual/default.asp
+// control flow: forward call to SearchManualJson with QueryString-derived argument.
+func TestASPManualSearchForwardFunctionCallLazyPayload(t *testing.T) {
+	source := `<%
+Dim apiAction
+apiAction = LCase(Trim(Request.QueryString("api")))
+If apiAction = "search" Then
+	Response.Write SearchManualJson(Trim(Request.QueryString("q")))
+	Response.End
+End If
+Response.Write "fallback"
+
+Function SearchManualJson(term)
+	SearchManualJson = "ok:" & term
+End Function
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	host.Request().QueryString.SetLazyPayload([]byte("api=search&q=asp"))
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "ok:asp" {
+		t.Fatalf("expected ok:asp output, got %q", output.String())
+	}
+}
+
 // TestASPManualPageDefaultFallback verifies page fallback when query string is empty.
 func TestASPManualPageDefaultFallback(t *testing.T) {
 	source := `<%
@@ -3583,6 +3742,144 @@ func TestASPQueryStringExpression(t *testing.T) {
 
 	if output.String() != "alpha" {
 		t.Fatalf("expected alpha from Request.QueryString, got %q", output.String())
+	}
+}
+
+// TestASPQueryStringSelectCaseStep verifies Request.QueryString collection-item
+// values coerce correctly in Select Case comparisons used by wizard-style flows.
+func TestASPQueryStringSelectCaseStep(t *testing.T) {
+	source := `<%
+Dim Step
+Step = Request.QueryString("step")
+If Step = "" Then Step = 0
+
+Select Case Step
+Case 0
+	Response.Write "zero"
+Case 1
+	Response.Write "one"
+Case Else
+	Response.Write "other"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	t.Run("step querystring matches numeric case", func(t *testing.T) {
+		vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+		host := NewMockHost()
+		host.Request().QueryString.Add("step", "1")
+		var output bytes.Buffer
+		host.SetOutput(&output)
+		vm.SetHost(host)
+
+		if err := vm.Run(); err != nil {
+			t.Fatalf("vm run failed: %v", err)
+		}
+		host.Response().Flush()
+
+		if output.String() != "one" {
+			t.Fatalf("expected one from Select Case step=1, got %q", output.String())
+		}
+	})
+
+	t.Run("missing querystring falls back to default case zero", func(t *testing.T) {
+		vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+		host := NewMockHost()
+		var output bytes.Buffer
+		host.SetOutput(&output)
+		vm.SetHost(host)
+
+		if err := vm.Run(); err != nil {
+			t.Fatalf("vm run failed: %v", err)
+		}
+		host.Response().Flush()
+
+		if output.String() != "zero" {
+			t.Fatalf("expected zero default branch when step is missing, got %q", output.String())
+		}
+	})
+}
+
+// TestASPSameProgramReuseAfterSearchBranchKeepsCreateObjectHealthy verifies
+// pooled reuse of the same compiled program remains stable after one request
+// executes a G3SEARCH branch with Response.End and the next request creates G3MD.
+func TestASPSameProgramReuseAfterSearchBranchKeepsCreateObjectHealthy(t *testing.T) {
+	resetG3SearchGlobalStateForTests()
+	defer resetG3SearchGlobalStateForTests()
+
+	rootDir := t.TempDir()
+	docsDir := filepath.Join(rootDir, "temp", "test-docs")
+	indexDir := filepath.Join(rootDir, "temp", "test-index")
+	if err := os.MkdirAll(docsDir, 0o755); err != nil {
+		t.Fatalf("mkdir docs dir failed: %v", err)
+	}
+	if err := os.MkdirAll(indexDir, 0o755); err != nil {
+		t.Fatalf("mkdir index dir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(docsDir, "sample.md"), []byte("asp search sample"), 0o644); err != nil {
+		t.Fatalf("write docs file failed: %v", err)
+	}
+
+	source := `<%
+Dim apiAction
+apiAction = LCase(Trim(Request.QueryString("api")))
+If apiAction = "search" Then
+	Dim s
+	Set s = Server.CreateObject("G3SEARCH")
+	s.IndexPath = Server.MapPath("/temp/test-index")
+	s.DocsPath = Server.MapPath("/temp/test-docs")
+	s.Extension = ".md"
+	Call s.BuildIndex()
+	Call s.Search(Trim(Request.QueryString("q")))
+	Response.Write "search"
+	Response.End
+End If
+
+Dim m
+Set m = Server.CreateObject("G3MD")
+m.Unsafe = True
+Response.Write m.Process("# ok")
+%>`
+
+	compiler := NewASPCompiler(source)
+	compiler.SetSourceName("/manual/default.asp")
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	program := cachedProgramFromCompiler(compiler)
+
+	runRequest := func(rawQuery string) string {
+		vm := AcquireVMFromCachedProgram(program)
+		host := NewMockHost()
+		host.Server().SetRootDir(rootDir)
+		host.Server().SetRequestPath("/manual/default.asp")
+		if rawQuery != "" {
+			host.Request().QueryString.SetLazyPayload([]byte(rawQuery))
+		}
+		var output bytes.Buffer
+		host.SetOutput(&output)
+		vm.SetHost(host)
+		err := vm.Run()
+		vm.Release()
+		if err != nil {
+			t.Fatalf("vm run failed for query %q: %v", rawQuery, err)
+		}
+		host.Response().Flush()
+		return output.String()
+	}
+
+	first := runRequest("api=search&q=asp")
+	if first != "search" {
+		t.Fatalf("expected search branch output, got %q", first)
+	}
+
+	second := runRequest("page=md/runtime/docker-installation.md")
+	if !strings.Contains(strings.ToLower(second), "ok") {
+		t.Fatalf("expected g3md output on second run, got %q", second)
 	}
 }
 

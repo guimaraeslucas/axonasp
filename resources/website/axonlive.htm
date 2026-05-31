@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>AxonLive | Reactive Components for AxonASP</title>
+        <meta name="description"
+            content="AxonLive is the reactive component framework built into AxonASP. Process async events, patch DOM fragments, keep business logic on the server, and build dynamic applications without full page reload.">
+        <meta name="keywords"
+            content="AxonLive, reactive ASP, G3AXONLIVE, server-driven UI, ASP async components, AxonASP builder">
+        <meta name="theme-color" content="#0f62fe">
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="https://g3pix.com.br/axonasp/axonlive.htm">
+        <meta property="og:title" content="AxonLive Reactive Framework">
+        <meta property="og:description"
+            content="Build responsive server-driven interfaces with AxonLive in VBScript or JavaScript.">
+        <meta property="og:image" content="https://g3pix.com.br/axonasp/opengraph-image.png">
+        <link rel="canonical" href="https://g3pix.com.br/axonasp/axonlive.htm">
+        <link rel="stylesheet" href="styles.css">
+        <link rel="icon" type="image/png" href="favicon-96x96.png?v=20260531" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260531" />
+        <link rel="shortcut icon" href="favicon.ico?v=20260531" />
+        <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260531" />
+        <meta name="apple-mobile-web-app-title" content="AxonASP" />
+        <link rel="manifest" href="site.webmanifest?v=20260531" />
+    </head>
+
+    <body>
+        <div class="site-bg">
+            <header class="site-header">
+                <div class="header-inner">
+                    <a class="brand" href="index.htm">
+                        <img src="logo.svg" alt="G3pix AxonASP logo" title="G3pix AxonASP">
+                    </a>
+                    <button class="nav-toggle" data-menu-toggle aria-expanded="false"
+                        aria-label="Toggle navigation">Menu</button>
+                    <div class="nav-shell" data-menu-shell>
+                        <nav aria-label="Primary navigation">
+                            <ul class="nav-menu">
+                                <li><a href="index.htm">Home</a></li>
+                                <li><a href="features.htm">Platform</a></li>
+                                <li><a href="vbscript.htm">VBScript</a></li>
+                                <li><a href="javascript.htm">JavaScript</a></li>
+                                <li><a href="axonlive.htm">AxonLive</a></li>
+                                <li><a href="installation.htm">Deployment</a></li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </header>
+
+            <main class="main">
+                <section class="hero reveal">
+                    <div>
+                        <span class="hero-mark">Reactive framework inside the VM</span>
+                        <h1>AxonLive brings real-time UX to Classic ASP applications.</h1>
+                        <p>
+                            AxonLive is integrated directly into AxonASP. User interactions are sent asynchronously,
+                            server logic executes securely, and only updated components are patched in the browser.
+                        </p>
+                        <div class="chips">
+                            <span class="chip">No full page reload</span>
+                            <span class="chip">Server-controlled state</span>
+                            <span class="chip">Session-bound security</span>
+                            <span class="chip">Builder support</span>
+                        </div>
+                        <div class="actions-row">
+                            <a class="btn btn-primary" href="https://g3pix.com.br/axonasp/manual/md/axonlive/index/"
+                                target="_blank" rel="noopener">Read AxonLive manual</a>
+                            <a class="btn"
+                                href="https://github.com/guimaraeslucas/axonasp/tree/main/www/axonlive/builder"
+                                target="_blank" rel="noopener">Open builder source</a>
+                        </div>
+                    </div>
+                    <aside class="hero-side">
+                        <h2>Security model</h2>
+                        <ul>
+                            <li>Async events are validated against ASPSESSIONID.</li>
+                            <li>Cross-session event injection is rejected by routing checks.</li>
+                            <li>Business logic remains on the backend instead of the browser.</li>
+                        </ul>
+                    </aside>
+                </section>
+
+                <section class="section">
+                    <h2>How AxonLive works</h2>
+                    <div class="timeline">
+                        <article class="timeline-step reveal">
+                            <h3>1. Page bootstrap</h3>
+                            <p>Server creates G3AXONLIVE object and calls InitPage to detect standard load versus async
+                                event request.</p>
+                        </article>
+                        <article class="timeline-step reveal">
+                            <h3>2. Client event capture</h3>
+                            <p>g3axonlive.js captures data-g3al attributes and sends event payloads to the runtime
+                                endpoint.</p>
+                        </article>
+                        <article class="timeline-step reveal">
+                            <h3>3. Server event routing</h3>
+                            <p>AxonLive reads EventComponentID and applies business logic using session-bound state
+                                values.</p>
+                        </article>
+                        <article class="timeline-step reveal">
+                            <h3>4. Targeted patch response</h3>
+                            <p>RegisterComponent queues updated fragments and EndAsyncResponse returns JSON patches
+                                only.</p>
+                        </article>
+                        <article class="timeline-step reveal">
+                            <h3>5. DOM update</h3>
+                            <p>The client bridge replaces affected components in place without reloading the entire
+                                page.</p>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>Implementation reference</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>Server-side lifecycle</h3>
+                            <pre class="code">Set AxonLive = Server.CreateObject("G3AXONLIVE")
+AxonLive.InitPage()
+
+If AxonLive.IsAsyncRequest Then
+    AxonLive.SetComponentProperty Session.SessionID, "main", "count", "42"
+    AxonLive.RegisterComponent "counterDisplay", "&lt;div id='counterDisplay'&gt;42&lt;/div&gt;"
+    AxonLive.EndAsyncResponse()
+End If</pre>
+                        </article>
+                        <article class="card reveal">
+                            <h3>Client-side bootstrap</h3>
+                            <pre class="code">&lt;script src="/axonlive/g3axonlive.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+    G3AxonLive.init();
+&lt;/script&gt;</pre>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>AxonLive Builder and WASM mode</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>Visual Builder</h3>
+                            <p>The builder in www/axonlive/builder offers drag-and-drop page composition and generates
+                                server-side JavaScript scaffolding for events and component routing.</p>
+                        </article>
+                        <article class="card reveal">
+                            <h3>WASM compatibility</h3>
+                            <p>AxonLive in WASM maps component operations directly to browser DOM APIs, providing
+                                near-instant updates with API compatibility to the server-side model.</p>
+                        </article>
+                    </div>
+                    <div class="banner reveal">
+                        <strong>Architectural advantage:</strong> your team keeps a single reactive model across server
+                        mode and WASM mode with shared component semantics.
+                    </div>
+                </section>
+            </main>
+
+            <footer class="footer">
+                <div class="footer-grid">
+                    <div class="footer-brand">
+                        <img class="footer-brand-logo" src="https://g3pix.com.br/g3pix.svg" alt="G3Pix logo">
+                        <p>Copyright 2026 G3Pix. All rights reserved.</p>
+                        <p>AxonASP is an independent open source software project.</p>
+                    </div>
+
+                    <div>
+                        <h3 class="footer-nav-title">Site Navigation</h3>
+                        <div class="footer-links">
+                            <a href="index.htm">Home</a>
+                            <a href="features.htm">Platform</a>
+                            <a href="vbscript.htm">VBScript</a>
+                            <a href="javascript.htm">JavaScript</a>
+                            <a href="axonlive.htm">AxonLive</a>
+                            <a href="installation.htm">Deployment</a>
+                            <a href="privacy.htm">Privacy</a>
+                            <a href="terms.htm">Terms of Use</a>
+                        </div>
+                        <div class="footer-actions">
+                            <a class="btn" href="https://g3pix.com.br/axonasp/manual/" target="_blank"
+                                rel="noopener">Open Manual</a>
+                            <a class="btn" href="https://g3pix.com.br/axonasp/wasm/" target="_blank" rel="noopener">WASM
+                                Playground</a>
+                        </div>
+                    </div>
+
+                    <div class="footer-theme">
+                        <label for="themeSelect">Theme</label>
+                        <select id="themeSelect" class="theme-select" data-theme-select>
+                            <option value="auto">Auto</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="footer-meta">
+                    The terms "Microsoft," "Active Server Pages," "ASP," "VBScript," and "JScript" are referenced only
+                    for technical compatibility and identification purposes.
+                </div>
+            </footer>
+        </div>
+        <script src="script.js"></script>
+    </body>
+
+</html>

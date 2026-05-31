@@ -344,4 +344,3 @@ func TestVMResponseBinaryWriteSuppressesFormattingWhitespace(t *testing.T) {
 		t.Fatalf("unexpected binary output with ASP block formatting: %v", output.Bytes())
 	}
 }
-

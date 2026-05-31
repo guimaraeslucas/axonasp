@@ -112,7 +112,7 @@ enable_cli_run_from_command_line = true
 force_fresh_compile = true
 
 #Set the engine mode. Can be set to: default to execute ASP pages/code, vbscript to execute vbscript only or javascript, to execute javascript only. This will also change the way the testsuite works.
-engine_mode="default"
+engine_mode = "default"
 
 #Web server configuration for AxonASP Server. This section contains settings related to the web server functionality (axonasp-http), such as the directory for error pages, the web root directory, default pages to serve, the port to listen on, and blocked file extensions. These settings help configure how the server handles incoming HTTP requests and serves content to clients. Adjust these settings according to your specific needs and server environment. This is where you can customize the behavior of the web server to ensure it serves your ASP applications correctly and securely througt the Proxy module, which is the default way to use AxonASP Server, but you can also use the FastCGI module if you prefer, which will allow you to use AxonASP Server with other web servers like Nginx or Apache, but it requires a bit more configuration and is not as straightforward as using the built-in web server, so we recommend using the built-in web server for most users, especially if you are new to web servers and ASP development.
 [server]
@@ -222,7 +222,7 @@ enable_directory_listing = true
 directory_listing_template = "./www/axonasp-pages/directory-listing.html"
 
 #Set the engine mode. Can be set to: default to execute ASP pages/code, vbscript to execute vbscript only or javascript, to execute javascript only.
-engine_mode="default"
+engine_mode = "default"
 
 # FastCGI configuration for AxonASP Server. This section contains settings related to the FastCGI server functionality (axonasp-fastcgi), such as the port to listen on and the web root directory. These settings help configure how the server handles FastCGI requests, which can be used to integrate AxonASP Server with other web servers like Nginx or Apache. Adjust these settings according to your specific needs and server environment. This is where you can customize the behavior of the FastCGI server to ensure it serves your ASP applications correctly and securely when using it with a reverse proxy or as a backend for another web server.
 [fastcgi]
@@ -241,12 +241,12 @@ default_pages = [
   "main.html",
   "main.htm",
   "index.txt",
-] 
+]
 #Set the port number to the fastcgi server. Can also be a path to socket, e.g. "unix:/tmp/axonasp.sock" on *nix systems
-server_port = 9000 
+server_port = 9000
 
 #Set the engine mode. Can be set to: default to execute ASP pages/code, vbscript to execute vbscript only or javascript, to execute javascript only.
-engine_mode="default"
+engine_mode = "default"
 
 # Database configuration for G3DB Module from AxonASP Server. Adjust these settings according to your specific database setup and requirements. Properly configuring the database settings is crucial for ensuring that your ASP applications can connect to the database efficiently and securely from the G3DB library, which is the default database library for AxonASP Server and provides support for various databases including SQLite, MySQL, PostgreSQL and SQL Server. This configuration does not affect the ADODB library for Access, which has its own configuration settings and is only available on Windows platforms. For better security, it's recommended to use environment variables or a secure secrets management solution to store sensitive information like database credentials instead of hardcoding them in the configuration file, especially in production environments. You can set a .env file in the root of the server executable with the same variables defined here, and the server will load them and override the values in this configuration file, allowing you to keep sensitive information out of your version control system and easily manage different configurations for development and production environments.
 [g3db]
@@ -328,7 +328,7 @@ enable_axservershutdown_function = false
 # The path to the CSS file used by the built-in AxonASP pages (e.g., error pages). This allows you to customize the appearance of these pages by providing your own CSS file. 
 ax_default_css_path = "./www/axonasp-pages/css/axonasp.css"
 # The path to the logo used by the built-in AxonASP pages (e.g., error pages). This allows you to customize the appearance of these pages by providing your own logo file. It will be returned as an inline base64 image, so you can use any image format supported by browsers (e.g., PNG, JPEG, SVG) and it will be displayed correctly on the pages. 
-ax_default_logo_path = "./www/axonasp-pages/images/logo.png"
+ax_default_logo_path = "./www/axonasp-pages/images/logo.svg"
 
 [mcp]
 # You can set it to "stdio" or "sse", if sse, set mcp_sse_port to the desired port. The SSE will be served at http://localhost:{mcp_sse_port}/sse, and you can send commands to http://localhost:{mcp_sse_port}/command. This setting determines the mode of communication for the MCP (Management Control Panel) tool. When set to "stdio", the MCP will communicate through standard input and output, which is suitable for local management and debugging. When set to "sse", the MCP will use Server-Sent Events (SSE) to provide a real-time interface for managing the server, which can be accessed remotely through a web browser or other SSE-compatible client. The SSE mode allows for more interactive and dynamic management of the server, but it may require additional configuration and security considerations if exposed to remote clients. If you opt for the SSE mode, make sure to secure the endpoint properly using a reverse proxy like nginx.

@@ -3,79 +3,27 @@
 
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>AxonASP WASM Playground</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                padding: 20px;
-                background: #ece9d8;
-            }
-
-            .container {
-                max-width: 800px;
-                margin: 0 auto;
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 4px 14px rgba(0, 0, 0, 0.20);
-            }
-
-            h1 {
-                color: #003399;
-                border-bottom: 3px solid #3366cc;
-                padding-bottom: 10px;
-            }
-
-            textarea {
-                width: 100%;
-                height: 250px;
-                font-family: monospace;
-                padding: 10px;
-                box-sizing: border-box;
-                border: 1px solid #808080;
-                border-radius: 6px;
-            }
-
-            button {
-                background: linear-gradient(180deg, #3366cc 0%, #003399 100%);
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                font-size: 16px;
-                border-radius: 6px;
-                cursor: pointer;
-                margin-top: 10px;
-            }
-
-            button:hover {
-                background: linear-gradient(180deg, #4076e0 0%, #0044cc 100%);
-            }
-
-            pre {
-                background: #f4f4f4;
-                padding: 15px;
-                border-radius: 6px;
-                border: 1px solid #ddd;
-                min-height: 150px;
-                overflow-x: auto;
-            }
-
-            #status {
-                font-weight: bold;
-                color: #c8a200;
-                margin-bottom: 10px;
-            }
-        </style>
+        <link rel="stylesheet" href="axonasp.css" />
         <script src="wasm_exec.js"></script>
     </head>
 
-    <body>
-        <div class="container">
-            <h1>AxonASP WASM Playground</h1>
-            <div id="status">Loading WASM module...</div>
+    <body class="wasm-playground-page">
+        <div id="header">
+            <div class="logo">
+                <img src="https://g3pix.com.br/axonasp/logo_square.svg" alt="AxonASP" width="43" height="43" />
+            </div>
+            <h1>AxonASP Server</h1>
+        </div>
 
-            <div>
-                <textarea id="code"><%
+        <main class="wasm-playground-shell">
+            <div class="card wasm-playground-card">
+                <h1>AxonASP WASM Playground</h1>
+                <div id="status" class="wasm-status is-loading">Loading WASM module...</div>
+
+                <div>
+                    <textarea id="code" class="wasm-playground-editor"><%
 Dim Axon
 Set Axon = Server.CreateObject("G3AXONLIVE")
 
@@ -119,29 +67,32 @@ Response.Write "<p>Click the buttons to interact with the AxonASP engine nativel
 Response.Write "<button id='btn1' onclick='dispatchLiveEvent(""btn1"", ""click"")'>Reactive Counter</button> "
 Response.Write "<button id='btn2' onclick='dispatchLiveEvent(""btn2"", ""ask_name"")'>Interactive Prompts</button>"
 %></textarea>
-                <button onclick="runCode()" id="runBtn" disabled>Run ASP Code</button>
-            </div>
+                    <div class="wasm-playground-actions">
+                        <button onclick="runCode()" id="runBtn" class="btn btn-primary" disabled>Run ASP Code</button>
+                    </div>
+                </div>
 
-            <h2>Output:</h2>
-            <pre id="output"></pre>
-        </div>
+                <h2>Output</h2>
+                <pre id="output" class="wasm-playground-output"></pre>
+            </div>
+        </main>
 
         <script>
             const go = new Go();
             WebAssembly.instantiateStreaming(fetch("axonasp.wasm"), go.importObject).then((result) => {
                 go.run(result.instance);
                 document.getElementById("status").innerText = "AxonASP module ready.";
-                document.getElementById("status").style.color = "green";
+                document.getElementById("status").className = "wasm-status is-ready";
                 document.getElementById("runBtn").disabled = false;
             }).catch((err) => {
                 document.getElementById("status").innerText = "Error loading AxonASP module: " + err;
-                document.getElementById("status").style.color = "red";
+                document.getElementById("status").className = "wasm-status is-error";
             });
 
             // AxonLive Shim for WASM
             window.G3AxonLive = {
                 currentCode: "",
-                dispatch: async function(componentId, eventName, eventArgs = {}) {
+                dispatch: async function (componentId, eventName, eventArgs = {}) {
                     if (typeof AxonASP !== "undefined") {
                         try {
                             // Call WASM dispatchLiveEvent
@@ -154,11 +105,11 @@ Response.Write "<button id='btn2' onclick='dispatchLiveEvent(""btn2"", ""ask_nam
             };
 
             // Global wrapper function so onclick="dispatchLiveEvent(...)" inside ASP code works
-            window.dispatchLiveEvent = function(componentId, eventName, eventArgs = {}) {
+            window.dispatchLiveEvent = function (componentId, eventName, eventArgs = {}) {
                 window.G3AxonLive.dispatch(componentId, eventName, eventArgs);
             };
 
-            // 1. Transformamos a função em async
+            // Execute the playground script in async mode.
             async function runCode() {
                 const outEl = document.getElementById("output");
                 const runBtn = document.getElementById("runBtn");
@@ -169,11 +120,11 @@ Response.Write "<button id='btn2' onclick='dispatchLiveEvent(""btn2"", ""ask_nam
 
                     try {
                         runBtn.disabled = true;
-                        outEl.innerHTML = "<em>Executando no WebAssembly...</em>";
+                        outEl.innerHTML = "<em>Running in WebAssembly...</em>";
 
                         const result = await AxonASP.execute(code);
 
-                        outEl.innerHTML = result; // Renderiza o resultado
+                        outEl.innerHTML = result; // Render the runtime output.
                     } catch (e) {
                         outEl.innerText = "Exception: " + e;
                     } finally {

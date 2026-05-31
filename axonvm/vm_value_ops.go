@@ -273,6 +273,17 @@ func (vm *VM) powValues(a Value, b Value) Value {
 
 // compareValues compares two values for equality and relational operators.
 func (vm *VM) compareValues(a Value, b Value) int {
+	if a.Type == VTNativeObject {
+		if collectionValue, exists := vm.requestCollectionValueItems[a.Num]; exists {
+			a = NewString(collectionValue.Joined())
+		}
+	}
+	if b.Type == VTNativeObject {
+		if collectionValue, exists := vm.requestCollectionValueItems[b.Num]; exists {
+			b = NewString(collectionValue.Joined())
+		}
+	}
+
 	if a.Type == VTNativeObject || b.Type == VTNativeObject || a.Type == VTObject || b.Type == VTObject || a.Type == VTBuiltin || b.Type == VTBuiltin {
 		if a.Num < b.Num {
 			return -1

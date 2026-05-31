@@ -539,6 +539,9 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.responseCookieItems == nil {
 		vm.responseCookieItems = make(map[int64]string)
 	}
+	if vm.requestCollectionValueItems == nil {
+		vm.requestCollectionValueItems = make(map[int64]asp.RequestCollectionValue)
+	}
 	if vm.aspErrorItems == nil {
 		vm.aspErrorItems = make(map[int64]*asp.ASPError)
 	}
@@ -882,6 +885,7 @@ func (vm *VM) ensureDynamicMaps() {
 
 func (vm *VM) resetDynamicMaps() {
 	clear(vm.responseCookieItems)
+	clear(vm.requestCollectionValueItems)
 	clear(vm.aspErrorItems)
 	clear(vm.g3mdItems)
 	clear(vm.g3searchItems)

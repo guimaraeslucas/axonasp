@@ -1,7 +1,0 @@
-/AdvWorks/excursions/Alaska.asp	Alaska Invitation
-/AdvWorks/excursions/Washington.asp	Washington Excursion
-/AdvWorks/excursions/Patagonia.asp	Patagonia Adventure
-
-<!-- The nextlink.txt code links the three pages noted above, and 
-inserts the icon_arrows_both_ways gif on each page; the web site visitor
-can then move back and forth among the different expeditions -->

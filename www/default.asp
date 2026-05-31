@@ -61,7 +61,7 @@
                     </li>
                 </ul>
 
-                <div class="section-title" style="margin-top: 20px">
+                <div class="section-title mt-20">
                     Resources
                 </div>
                 <ul>
@@ -93,13 +93,7 @@
                     confirm that everything is set up correctly.
                 </p>
 
-                <div style="
-                        background-color: #ffffe1;
-                        border: 1px solid #aca899;
-                        padding: 10px;
-                        margin: 15px 0;
-                        font-size: 12px;
-                    ">
+                <div class="status-highlight-box">
                     <span class="status-badge"></span>
                     <strong>System Status:</strong> The server engine is active
                     and stable.
@@ -181,7 +175,7 @@
                     </li>
                 </ul>
 
-                <div style="margin-top: 20px; text-align: right">
+                <div class="powered-by-wrap">
                     <img src="PoweredBy.png" alt="Powered by AxonASP" />
                 </div>
             </div>

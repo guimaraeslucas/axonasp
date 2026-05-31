@@ -4,167 +4,132 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="description" content="Deploying AxonASP 2.1 with Docker, FastCGI, and Reverse Proxy">
-        <title>Deployment & Docker - AxonASP 2.1</title>
-        <meta name="theme-color" content="#003399">
-        <link rel="stylesheet" href="styles.css">
-        <meta name="language" content="en-US">
-        <link rel="apple-touch-icon" sizes="57x57" href="apple-icon-57x57.png">
-        <link rel="apple-touch-icon" sizes="60x60" href="apple-icon-60x60.png">
-        <link rel="apple-touch-icon" sizes="72x72" href="apple-icon-72x72.png">
-        <link rel="apple-touch-icon" sizes="76x76" href="apple-icon-76x76.png">
-        <link rel="apple-touch-icon" sizes="114x114" href="apple-icon-114x114.png">
-        <link rel="apple-touch-icon" sizes="120x120" href="apple-icon-120x120.png">
-        <link rel="apple-touch-icon" sizes="144x144" href="apple-icon-144x144.png">
-        <link rel="apple-touch-icon" sizes="152x152" href="apple-icon-152x152.png">
-        <link rel="apple-touch-icon" sizes="180x180" href="apple-icon-180x180.png">
-        <link rel="icon" type="image/png" sizes="192x192" href="android-icon-192x192.png">
-        <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-        <link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
-        <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-        <link rel="icon" sizes="16x16" href="favicon.ico">
-        <link rel="manifest" href="manifest.json">
-        <meta name="msapplication-TileColor" content="#003399">
-        <meta name="msapplication-TileImage" content="ms-icon-144x144.png">
+        <title>Deploy AxonASP | Docker, Reverse Proxy, FastCGI, CLI</title>
+        <meta name="description"
+            content="Deploy AxonASP with Docker or native builds. Choose reverse proxy or FastCGI architecture and run ASP workflows in HTTP server and CLI environments.">
+        <meta name="keywords" content="AxonASP deployment, Docker ASP, FastCGI ASP, reverse proxy ASP, build AxonASP">
+        <meta name="theme-color" content="#0f62fe">
         <meta property="og:type" content="website">
-        <meta property="og:url" content="https://g3pix.com.br/axonasp">
-        <meta property="og:title" content="G3Pix AxonASP - Classic ASP at Modern Speed">
+        <meta property="og:url" content="https://g3pix.com.br/axonasp/installation.htm">
+        <meta property="og:title" content="Deploy AxonASP">
         <meta property="og:description"
-            content="Run Classic ASP with VBScript and JavaScript on Windows, Linux, and macOS with modern performance. Setup in minutes.">
+            content="Production deployment guide for AxonASP using Docker, reverse proxy, FastCGI, and native builds.">
         <meta property="og:image" content="https://g3pix.com.br/axonasp/opengraph-image.png">
-        <meta property="og:image:alt" content="G3Pix AxonASP Interface and Logo">
-        <meta property="og:locale" content="en_US">
-        <meta property="og:site_name" content="G3Pix AxonASP">
-        <script type="application/ld+json">
-        {
-          "@context": "https://schema.org",
-          "@type": "SoftwareApplication",
-          "name": "G3Pix AxonASP Server",
-          "operatingSystem": "Windows, Linux, macOS",
-          "applicationCategory": "DeveloperApplication",
-          "offers": {
-            "@type": "Offer",
-            "price": "0",
-            "priceCurrency": "USD"
-          },
-          "description": "High-Performance Classic ASP Runtime Engine with full VBScript and JavaScript support. Open source and cross-platform.",
-          "author": {
-              "@type": "Organization",
-              "name": "G3Pix",
-              "url": "https://g3pix.com.br"
-          }
-        }
-    </script>
+        <link rel="canonical" href="https://g3pix.com.br/axonasp/installation.htm">
+        <link rel="stylesheet" href="styles.css">
+        <link rel="icon" type="image/png" href="favicon-96x96.png?v=20260531" sizes="96x96" />
+        <link rel="icon" type="image/svg+xml" href="favicon.svg?v=20260531" />
+        <link rel="shortcut icon" href="favicon.ico?v=20260531" />
+        <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260531" />
+        <meta name="apple-mobile-web-app-title" content="AxonASP" />
+        <link rel="manifest" href="site.webmanifest?v=20260531" />
     </head>
 
     <body>
+        <div class="site-bg">
+            <header class="site-header">
+                <div class="header-inner">
+                    <a class="brand" href="index.htm">
+                        <img src="logo.svg" alt="G3pix AxonASP logo" title="G3pix AxonASP">
+                    </a>
+                    <button class="nav-toggle" data-menu-toggle aria-expanded="false"
+                        aria-label="Toggle navigation">Menu</button>
+                    <div class="nav-shell" data-menu-shell>
+                        <nav aria-label="Primary navigation">
+                            <ul class="nav-menu">
+                                <li><a href="index.htm">Home</a></li>
+                                <li><a href="features.htm">Platform</a></li>
+                                <li><a href="vbscript.htm">VBScript</a></li>
+                                <li><a href="javascript.htm">JavaScript</a></li>
+                                <li><a href="axonlive.htm">AxonLive</a></li>
+                                <li><a href="installation.htm">Deployment</a></li>
+                            </ul>
+                        </nav>
+                    </div>
+                </div>
+            </header>
 
-        <nav class="navbar">
-            <div class="nav-brand">
-                <img src="apple-icon-60x60.png" alt="AxonASP Logo" class="logo">
-                <span>AxonASP Server</span>
-            </div>
-            <ul class="nav-menu">
-                <li><a href="index.htm" class="active">Home</a></li>
-                <li><a href="features.htm">Features &amp; Docs</a></li>
-                <li><a href="installation.htm">Deployment</a></li>
-                <li><a href="https://github.com/guimaraeslucas/axonasp" target="_blank">GitHub Repo</a></li>
-                <li><a href="https://github.com/guimaraeslucas/axonasp/releases" target="_blank"
-                        class="nav-download">&#8595;
-                        Download</a></li>
-            </ul>
-        </nav>
-
-        <div class="container">
-            <div class="content-wrapper">
-                <div class="hero">
-                    <div class="hero-text">
-                        <div class="hero-title-row">
-                            <img src="axonasp.svg" alt="AxonASP" class="hero-logo">
-                            <h2>Deploy AxonASP fast, scale confidently</h2>
-                        </div>
-                        <p>From proof-of-concept to production, AxonASP 2.1 provides practical deployment paths with
-                            Docker, native build scripts, reverse proxy mode, and FastCGI support.</p>
-                        <div class="pill-row">
-                            <span class="pill">Port 8801 default proxy mode</span>
-                            <span class="pill">FastCGI integration available</span>
-                            <span class="pill">Viper configuration support</span>
+            <main class="main">
+                <section class="hero reveal">
+                    <div>
+                        <span class="hero-mark">Production-ready deployment</span>
+                        <h1>Deploy AxonASP in minutes, scale with confidence.</h1>
+                        <p>
+                            AxonASP supports fast container-based startup, native cross-platform builds, and two
+                            infrastructure
+                            topologies: reverse proxy mode and FastCGI mode.
+                        </p>
+                        <div class="chips">
+                            <span class="chip">Default proxy port: 8801</span>
+                            <span class="chip">FastCGI endpoint: 9000</span>
+                            <span class="chip">CLI execution support</span>
                         </div>
                         <div class="actions-row">
-                            <a href="https://github.com/guimaraeslucas/axonasp/releases" target="_blank"
-                                class="btn btn-download">&#8595; Download Latest Release</a>
-                            <a href="https://g3pix.com.br/axonasp/manual/" target="_blank" class="btn btn-primary">Read
-                                Full Setup Manual</a>
-                            <a href="https://github.com/guimaraeslucas/axonasp" target="_blank" class="btn">Open
-                                Repository</a>
+                            <a class="btn btn-primary" href="https://github.com/guimaraeslucas/axonasp/releases"
+                                target="_blank" rel="noopener">Download binaries</a>
+                            <a class="btn" href="https://github.com/guimaraeslucas/axonasp" target="_blank"
+                                rel="noopener">Open repository</a>
                         </div>
                     </div>
-
-                    <aside class="hero-panel">
-                        <h3>Deployment highlights</h3>
+                    <aside class="hero-side">
+                        <h2>Deployment principles</h2>
                         <ul>
-                            <li>Start quickly with containerized runtime workflows.</li>
-                            <li>Run both VBScript and JavaScript concomitantly in any environment.</li>
-                            <li>Ensure reliability with the integrated <code>AxonASP TestSuite</code>.</li>
-                            <li>Use proxy or FastCGI based on your infrastructure model.</li>
-                            <li>Keep feature parity across server, FastCGI, and CLI runtime modes.</li>
-                            <li>Centralize config with <code>axonasp.toml</code> and <code>.env</code>.</li>
+                            <li>Serve static content directly in your edge web server.</li>
+                            <li>Forward dynamic ASP requests to AxonASP runtime.</li>
+                            <li>Keep configuration centralized in axonasp.toml and environment values.</li>
                         </ul>
                     </aside>
-                </div>
+                </section>
 
-                <h1>Quick deployment and installation guide</h1>
-                <p class="section-note">Choose the deployment mode that best fits your platform and operations flow. The
-                    steps below are optimized for quick adoption and predictable production behavior.</p>
-
-                <h2>1. Docker deployment</h2>
-                <div class="card card-top-blue">
-                    <h3>Clone and launch</h3>
-                    <p>With Docker and Docker Compose installed, run:</p>
-                    <pre># 1. Clone the repository
-git clone https://github.com/guimaraeslucas/axonasp.git
-
-# 2. Enter the directory
+                <section class="section">
+                    <h2>Quick start options</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>Docker</h3>
+                            <p>Use the repository Dockerfile and docker-compose to start a full runtime quickly.</p>
+                            <pre class="code">git clone https://github.com/guimaraeslucas/axonasp.git
 cd axonasp
-
-# 3. Start services in detached mode
 docker-compose up -d</pre>
-                    <p>The container setup serves the <code>/www/</code> directory and exposes AxonASP through port
-                        <code>8801</code>.
-                    </p>
-                </div>
+                        </article>
+                        <article class="card reveal">
+                            <h3>Native build</h3>
+                            <p>Build locally with Go 1.26+ using scripts for Windows, Linux, and macOS.</p>
+                            <pre class="code"># Windows
+./build.ps1 -Platform "windows" -Architecture "amd64"
 
-                <h2>2. Native build (without Docker)</h2>
-                <p>For direct host execution, use Go 1.26+ and run the provided build scripts.</p>
-                <div class="grid-2">
-                    <div class="card">
-                        <h3>Windows (PowerShell)</h3>
-                        <pre>.\build.ps1</pre>
+# Linux/macOS
+./build.sh --platform "linux" --architecture "amd64"</pre>
+                        </article>
                     </div>
-                    <div class="card">
-                        <h3>Linux and macOS (Bash)</h3>
-                        <pre>./build.sh</pre>
-                    </div>
-                </div>
+                </section>
 
-                <h2>3. Deployment architecture options</h2>
-                <div class="grid-2">
-                    <div class="card">
-                        <h3>Reverse proxy mode (<code>axonasp-http</code>)</h3>
-                        <p>Run AxonASP HTTP directly and put Nginx or Apache in front for TLS, static assets, and edge
-                            controls.</p>
+                <section class="section">
+                    <h2>Architecture choices</h2>
+                    <div class="timeline">
+                        <article class="timeline-step reveal">
+                            <h3>Reverse proxy mode (HTTP runtime)</h3>
+                            <p>Run axonasp-http behind Nginx, Apache, Caddy, or IIS for TLS termination and static asset
+                                caching.</p>
+                        </article>
+                        <article class="timeline-step reveal">
+                            <h3>FastCGI mode</h3>
+                            <p>Route ASP execution through FastCGI directly from your web server for integrated request
+                                flow.</p>
+                        </article>
+                        <article class="timeline-step reveal">
+                            <h3>CLI mode</h3>
+                            <p>Execute ASP, VBS, and JavaScript scripts in operational tasks, background jobs, and
+                                automation pipelines.</p>
+                        </article>
                     </div>
-                    <div class="card">
-                        <h3>FastCGI mode (<code>axonasp-fastcgi</code>)</h3>
-                        <p>Integrate directly with the web server through FastCGI for low-overhead ASP handling.</p>
-                    </div>
-                </div>
+                </section>
 
-                <h2>4. Nginx examples</h2>
-                <div class="grid-2">
-                    <div class="card">
-                        <h3>Option A: Reverse proxy on port 8801</h3>
-                        <pre>server {
+                <section class="section">
+                    <h2>Nginx and Apache examples</h2>
+                    <div class="grid-2">
+                        <article class="card reveal">
+                            <h3>Nginx reverse proxy</h3>
+                            <pre class="code">server {
     listen 80;
     server_name myapp.local;
 
@@ -178,10 +143,10 @@ docker-compose up -d</pre>
         proxy_set_header X-Real-IP $remote_addr;
     }
 }</pre>
-                    </div>
-                    <div class="card">
-                        <h3>Option B: FastCGI on port 9000</h3>
-                        <pre>server {
+                        </article>
+                        <article class="card reveal">
+                            <h3>Nginx FastCGI</h3>
+                            <pre class="code">server {
     listen 80;
     server_name myapp.local;
     root /var/www/axonasp/www;
@@ -189,30 +154,24 @@ docker-compose up -d</pre>
     location ~ \.asp$ {
         include fastcgi_params;
         fastcgi_pass 127.0.0.1:9000;
-        fastcgi_param SCRIPT_FILENAME
-            $document_root$fastcgi_script_name;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
     }
 }</pre>
-                    </div>
-                </div>
-
-                <h2>5. Apache examples</h2>
-                <div class="grid-2">
-                    <div class="card">
-                        <h3>Option A: Reverse proxy</h3>
-                        <pre>&lt;VirtualHost *:80&gt;
+                        </article>
+                        <article class="card reveal">
+                            <h3>Apache reverse proxy</h3>
+                            <pre class="code">&lt;VirtualHost *:80&gt;
     ServerName myapp.local
     DocumentRoot "/var/www/axonasp/www"
 
     ProxyPassMatch "^/(.*\.jpg|png|css|js)$" "!"
-
     ProxyPass / http://127.0.0.1:8801/
     ProxyPassReverse / http://127.0.0.1:8801/
 &lt;/VirtualHost&gt;</pre>
-                    </div>
-                    <div class="card">
-                        <h3>Option B: FastCGI with mod_proxy_fcgi</h3>
-                        <pre>&lt;VirtualHost *:80&gt;
+                        </article>
+                        <article class="card reveal">
+                            <h3>Apache FastCGI</h3>
+                            <pre class="code">&lt;VirtualHost *:80&gt;
     ServerName myapp.local
     DocumentRoot "/var/www/axonasp/www"
 
@@ -220,46 +179,68 @@ docker-compose up -d</pre>
         SetHandler "proxy:fcgi://127.0.0.1:9000"
     &lt;/FilesMatch&gt;
 &lt;/VirtualHost&gt;</pre>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="section">
+                    <h2>Build-time optimization tags</h2>
+                    <div class="banner reveal">
+                        Disable selected libraries when needed using tags such as <strong>lib_g3image_disabled</strong>
+                        and <strong>lib_g3pdf_disabled</strong> to produce leaner binaries.
+                    </div>
+                    <pre class="code reveal"># Windows
+./build.ps1 -Tags "lib_adodb_disabled lib_msxml_disabled"
+
+# Linux/macOS
+./build.sh --tags "lib_g3image_disabled,lib_g3pdf_disabled"</pre>
+                </section>
+            </main>
+
+            <footer class="footer">
+                <div class="footer-grid">
+                    <div class="footer-brand">
+                        <img class="footer-brand-logo" src="https://g3pix.com.br/g3pix.svg" alt="G3Pix logo">
+                        <p>Copyright 2026 G3Pix. All rights reserved.</p>
+                        <p>AxonASP is an independent open source software project.</p>
+                    </div>
+
+                    <div>
+                        <h3 class="footer-nav-title">Site Navigation</h3>
+                        <div class="footer-links">
+                            <a href="index.htm">Home</a>
+                            <a href="features.htm">Platform</a>
+                            <a href="vbscript.htm">VBScript</a>
+                            <a href="javascript.htm">JavaScript</a>
+                            <a href="axonlive.htm">AxonLive</a>
+                            <a href="installation.htm">Deployment</a>
+                            <a href="privacy.htm">Privacy</a>
+                            <a href="terms.htm">Terms of Use</a>
+                        </div>
+                        <div class="footer-actions">
+                            <a class="btn" href="https://g3pix.com.br/axonasp/manual/" target="_blank"
+                                rel="noopener">Open Manual</a>
+                            <a class="btn" href="https://g3pix.com.br/axonasp/wasm/" target="_blank" rel="noopener">WASM
+                                Playground</a>
+                        </div>
+                    </div>
+
+                    <div class="footer-theme">
+                        <label for="themeSelect">Theme</label>
+                        <select id="themeSelect" class="theme-select" data-theme-select>
+                            <option value="auto">Auto</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
                     </div>
                 </div>
 
-                <div class="cta-panel">
-                    <h3>Configuration is centralized and simple</h3>
-                    <p>Use <code>axonasp.toml</code> and optional <code>.env</code> values to manage ports, runtime
-                        behavior, and environment-specific overrides.</p>
-                    <div class="actions-row">
-                        <a href="https://github.com/guimaraeslucas/axonasp/releases" target="_blank"
-                            class="btn btn-download">&#8595; Download Latest Release</a>
-                        <a href="https://g3pix.com.br/axonasp/manual/" target="_blank" class="btn btn-primary">Open
-                            Configuration Docs</a>
-                    </div>
+                <div class="footer-meta">
+                    The terms "Microsoft," "Active Server Pages," "ASP," "VBScript," and "JScript" are referenced only
+                    for technical compatibility and identification purposes.
                 </div>
-
-            </div>
-
-            <div class="footer">
-                <p>&copy; 2026 G3Pix. Built for the Classic ASP community.</p>
-                <p>
-                    Read the <a href="https://g3pix.com.br/axonasp/manual/" target="_blank">Official Manual</a> | <a
-                        href="https://g3pix.com.br/axonasp/wasm/" target="_blank">WASM Playground</a> |
-                    View on <a href="https://github.com/guimaraeslucas/axonasp/tree/main/www/manual/md/"
-                        target="_blank">GitHub</a><br> <small>AxonASP is an independent open source software project
-                        developed by G3pix Ltda and is not affiliated
-                        with, endorsed by, or
-                        sponsored by Microsoft Corporationin any way.<br>
-
-                        The names "Microsoft," "Active Server Pages," "ASP," and "VBScript,", "Windows", "Office",
-                        "Access", "ActiveX", "JScript" as well
-                        as any related names, marks, emblems, and images relative to ASP, are registered trademarks of
-                        Microsoft Corporation.<br>
-                        The use of these trademarks within this project is purely for descriptive, identification, and
-                        reference purposes to
-                        indicate technical compatibility, and does not imply any association with the trademark
-                        holder.</small>
-                </p>
-            </div>
+            </footer>
         </div>
-
         <script src="script.js"></script>
     </body>
 
