@@ -669,6 +669,14 @@ func (r *Response) flushInternal() {
 					httpCookie.Expires = time.Unix(unix, 0).UTC()
 				} else if parsed, err := time.Parse(time.RFC3339, cookie.ExpiresRaw); err == nil {
 					httpCookie.Expires = parsed
+				} else if parsed, err := time.Parse(time.RFC1123, cookie.ExpiresRaw); err == nil {
+					httpCookie.Expires = parsed
+				} else if parsed, err := time.Parse(time.RFC1123Z, cookie.ExpiresRaw); err == nil {
+					httpCookie.Expires = parsed
+				} else if parsed, err := time.Parse(time.RFC850, cookie.ExpiresRaw); err == nil {
+					httpCookie.Expires = parsed
+				} else if parsed, err := time.Parse(time.ANSIC, cookie.ExpiresRaw); err == nil {
+					httpCookie.Expires = parsed
 				}
 			}
 			http.SetCookie(r.w, httpCookie)
