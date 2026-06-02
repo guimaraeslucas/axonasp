@@ -78,7 +78,7 @@ clean_cache_on_startup = true
 vm_pool_size = 10
 
 # The maximum amount of memory in megabytes that the Go runtime is allowed to use. This can help prevent the server from consuming too much memory and potentially crashing. Setting it to 0 means no limit, but it's generally recommended to set a reasonable limit to ensure stability. If your server has limited memory resources, you may want to set this to a lower value to prevent out-of-memory errors. Setting this value too low may lead to performance issues or out-of-memory errors, while setting it too high may allow the server to consume more memory than is available, leading to crashes. Also note that this setting may not be strictly enforced by the Go runtime, and actual memory usage may vary based on the workload and garbage collection behavior. If your server is missing requests, low the vm_pool_size and up the memory limit, as this usually means the requests are getting blocked by the Garbage Collector. This directive is more important than  vm_pool_size, and directly influence how some libraries like zstd work.
-golang_memory_limit_mb = 256
+golang_memory_limit_mb = 128
 
 # Interval in seconds used to asynchronously flush dirty in-memory sessions to disk.
 # A value greater than 0 keeps session writes off the request hot path while still

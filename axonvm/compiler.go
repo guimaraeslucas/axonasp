@@ -191,6 +191,7 @@ type Compiler struct {
 	tokenIndex          int
 	bytecode            []byte
 	constants           []Value
+	constantMap         map[string]int // Deduplication map: content→index, populated for VTString only
 	Globals             *SymbolTable
 	locals              *SymbolTable         // Current function scope
 	declaredGlobals     map[string]bool      // Variables declared via Dim in global scope
@@ -672,7 +673,8 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		sourceCode:             code,
 		tokenIndex:             -1,
 		bytecode:               make([]byte, 0),
-		constants:              make([]Value, 0),
+		constants:              make([]Value, 0, 1024),
+		constantMap:            make(map[string]int, 1024),
 		Globals:                NewSymbolTable(),
 		locals:                 NewSymbolTable(),
 		declaredGlobals:        make(map[string]bool),
@@ -2013,7 +2015,22 @@ func usesWideJumpOperand(op OpCode) bool {
 	}
 }
 
+// addConstant appends or reuses a constant value in the compiler's constant pool.
+// String constants (VTString) are deduplicated via c.constantMap to avoid exponential
+// pool growth from repeated identifiers, property names, and string literals in JScript blocks.
+// VTEmpty is never deduplicated because it serves as a mutable placeholder in the VBScript
+// compiler (patched later with NewUserSubEx).
 func (c *Compiler) addConstant(v Value) int {
+	if v.Type == VTString {
+		key := v.Str
+		if idx, ok := c.constantMap[key]; ok {
+			return idx
+		}
+		c.constants = append(c.constants, v)
+		idx := len(c.constants) - 1
+		c.constantMap[key] = idx
+		return idx
+	}
 	c.constants = append(c.constants, v)
 	return len(c.constants) - 1
 }
