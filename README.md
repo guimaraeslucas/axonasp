@@ -1,335 +1,95 @@
-# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
+# ❖ AxonASP 2.2: The Ultimate Classic ASP Engine for the Modern Web
 
 <p align="center">
   <img src="www/axonasp.svg" alt="G3Pix AxonASP Logo" width="400"/>
 </p>
 
 <p align="center">
-  <b> Supercharge your code. Build blazing-fast modern APIs. Experience Classic ASP like never before. </b>
-  <br>
-  Run your new and legacy ASP Classic applications with modern speed and cross-platform compatibility
+  <b>Run Classic ASP on Linux, Windows, and macOS natively with extreme performance.</b>
 </p>
 
 <p align="center">
-    <img src="https://img.shields.io/badge/version-2.1-blue.svg" alt="Version 2.1"/>
+  <img src="https://img.shields.io/badge/version-2.2-blue.svg" alt="Version 2.2"/>
   <img src="https://img.shields.io/badge/Go-1.26+-00ADD8.svg" alt="Go Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MPL-green.svg" alt="License"/>
 </p>
 
+Welcome to **AxonASP 2.2**, the definitive high-performance runtime for executing Microsoft Classic ASP, VBScript, and JavaScript in GoLang. If you are looking for how to run Classic ASP on Linux or modernize legacy applications within a Docker container, AxonASP provides a robust, zero-allocation VM architecture tailored for modern infrastructure.
 
-Welcome to **AxonASP 2.1**, the definitive, high-performance runtime for executing Microsoft Classic ASP and VBScript in GoLang. We didn't just update the engine; we completely reinvented it. 
+## 🚀 Why AxonASP?
 
-If you thought Classic ASP was dead, think again. AxonASP breathes raw power, modern infrastructure compatibility, and incredible new features into the language you know and love. It's time to realize the true potential of your applications!
+AxonASP is built from the ground up for speed, low memory usage, and containerized deployments.
 
----
+* **Run Classic ASP on Linux & Cross-Platform:** Say goodbye to IIS dependencies. AxonASP runs natively on Windows, Linux, and macOS, either as a standalone web server, via FastCGI, or directly from the CLI.
+* **Modern JavaScript (ES6+) Implementation:** We support fully compliant ECMAScript 6+ alongside VBScript. Unlike Node.js, AxonASP executes JavaScript directly through our AST-based engine without forcing a Promise-based paradigm for everything.
+  * **Memory Efficiency:** A pure JavaScript API running on AxonASP uses only **18MB in idle mode** (compared to 30MB for Node.js). During execution, parsing and serving JSON takes just **30MB** versus 50MB in Node.js.
+  * **Partial Node.js Module Compatibility:** Easily organize and import JavaScript code using CommonJS/ES6 module syntax directly in your ASP environment.
+* **High Performance & Active Caching:** AxonASP is heavily optimized to run ASP pages and components swiftly with minimal CPU and memory footprints. With our active caching architecture, **2000 requests per minute** on simple pages consume only about **100MB of memory**.
+* **Zero AST for VBScript:** Our VBScript compiler is single-pass, emitting bytecode directly to a stack-based VM to achieve extreme processing speeds.
+* **AI-Ready:** Includes a built-in Model Context Protocol (MCP) server, allowing AI agents to connect directly to the runtime, analyze your environment, and autonomously author ASP pages.
 
-## 🔥 Why AxonASP? The Performance Revolution
+## ⚡ Built-in G3 Libraries
 
-We threw out the rulebook to achieve extreme performance improvements that will blow your mind:
+AxonASP extends standard ASP with native Go libraries, giving you enterprise power with zero overhead:
+- **G3JSON, G3DB, G3HTTP:** Effortlessly handle JSON, connect to databases (SQLite, MySQL, PostgreSQL, MS SQL, Oracle), and fetch external APIs.
+- **G3CRYPTO, G3MAIL, G3IMAGE:** Generate secure hashes, send SMTP emails, and process images on the fly.
+- **G3ZIP, G3TAR, G3ZLIB, G3ZSTD:** Full compression suite built right in.
+- **And much more...** Over 60 custom Axon functions are available to extend ASP's capabilities.
 
-*   **Zero AST, Pure Bytecode:** The new VBScript compiler is single-pass and emits bytecode directly to a highly optimized, stack-based Virtual Machine. By eliminating the Abstract Syntax Tree (AST), AxonASP executes scripts with virtually zero-allocation overhead. It is insanely fast and memory optimized.
-*   **IIS-Style VM Pooling & Advanced Caching:** We've implemented an advanced VM pool modeled perfectly after IIS, combined with aggressive script caching and `eval`/`execute`/`executeglobal` compilation caching. Processing times are phenomenally accelerated and better than the Windows Server ASP engine in most cases.
-*   **Standardization meets Innovation:** You get 99% adherence to Classic ASP and VBScript standards, meaning your legacy code drops right in. But we didn't stop there: we added over **60 custom Axon functions**, including advanced array manipulation, to make writing ASP a joy again, and full support to JavaScript code, that you can even mix with VBScript seamlessly.
-*   **Run ASP Anywhere:** Web server, FastCGI, or the command line! The brand new **CLI with TUI (Text User Interface)** allows you to execute ASP code directly from your terminal. This opens incredible possibilities: run scheduled ASP scripts as background jobs, cron tasks, and powerful system administration tools! You can also run VBS and JS scripts directly from the CLI, even without the ASP page structure, making it a versatile scripting engine for all your automation needs.
-*   **AI-Ready with MCP:** AxonASP includes a built-in Model Context Protocol (MCP) server. AI agents can now connect directly to your runtime, understand your specific environment, and autonomously author complete ASP pages utilizing all available native functions.
-*   **Test-Driven ASP:** Say goodbye to broken scripts and regressions. The new `axonasp-testsuite` executable allows you to write and run automated test suites directly against your ASP files natively!
-*   **High-Performance JavaScript (ES6 and newer):** AxonASP includes a dedicated, AST-based JavaScript engine, derived from Goja but compliant with ECMAScript 6 and newer versions. It supports JavaScript features like `JSON`, `Array.map/filter`, and strict mode, allowing you to modernize your logic while keeping the ASP infrastructure, and even mix JavaScript and VBScript in the same page if you want to. This is a game-changer for modernizing legacy applications without a full rewrite. Or if you want to write new applications in ASP but prefer JavaScript, you can do that too! 
-*   **Partial support to NodeJS-style Modules:** You can now organize your JavaScript code in modules and import them using a CommonJS-like or ES6 syntax. This allows for better code organization and reuse in larger applications. (Note: this is only supported in JavaScript code, not VBScript).
-
----
-
-## 🛠️ What's New in Version 2.x?
-
-*   **Smarter Networking:** The default proxy server port has been changed (now 8801) to intelligently avoid common firewall errors and system port conflicts right out of the box.
-*   **Centralized Configuration:** Say hello to `Viper`. Manage your entire server environment from a single, unified `axonasp.toml` configuration file, with simultaneous, drop-in support for `.env` environment variables.
-*   **Complete Local Documentation:** Stop endlessly searching the web for old forums. The complete, extensive manual is available right inside the repository at `./www/manual/md/`.
-*   **Access Database Converter:** Migrating away from legacy Windows servers? Use the built-in tool at `/www/database-convert/` (Windows only) to easily convert your legacy Access databases to modern formats.
-*   **Modern Architecture Templates:** Who says ASP can't be modern? We include complete, working examples for **REST, RESTful, MVC, and MVVM** architectures built purely in high-performance ASP.
-*   **Native Docker Support:** Containerize your legacy apps in seconds. Full, production-ready support is provided via the included `Dockerfile` and `docker-compose.yml`.
-*   **Extended Functionality**: 60+ custom functions inspired by PHP for enhanced productivity
-*   **Database Support**: SQLite, MySQL, PostgreSQL, MS SQL Server, Oracle, Microsoft Access (Windows)
-
----
-
-## ⚡ Native G3 Libraries: Enterprise Power, Zero Overhead
-
-AxonASP extends Classic ASP with incredibly fast, zero-allocation native Go libraries. Avoid VBScript execution bottlenecks and use these built-in powerhouses:
-
-*   **G3AXON.FUNCTIONS:** Access over 60 custom system, environment, array manipulation, and engine utility functions.
-*   **G3CRYPTO:** Generate hashes (MD5, SHA, Blake2), encrypt data, and generate secure random bytes.
-*   **G3JSON:** Parse, build, and stringify JSON data instantly.
-*   **G3DB:** High-performance database connectivity with built-in connection pooling.
-*   **G3HTTP:** Fetch external APIs and resources via a robust HTTP client.
-*   **G3MAIL:** Send SMTP emails seamlessly with HTML bodies and file attachments.
-*   **G3IMAGE:** Process, draw, manipulate, and convert images (PNG, JPG) on the fly.
-*   **G3FILES:** Perform extensive file system operations and encoding conversions safely.
-*   **G3TESTSUITE:** Integrated framework for writing and running automated ASP assertions.
-*   **G3TEMPLATE:** Render dynamic text and HTML templates effortlessly.
-*   **G3ZIP:** Create, extract, and manage ZIP archives directly from your code.
-*   **G3ZLIB:** Stream fast ZLIB compression and decompression.
-*   **G3TAR:** Create and extract TAR archives seamlessly.
-*   **G3ZSTD:** Utilize ultra-fast Zstandard (ZSTD) compression for maximum performance.
-*   **G3FC:** File compression and safe storage.
-*   **G3MD:** Convert Markdown text into clean HTML instantly.
-*   **G3PDF:** Generate native PDF documents with text, shapes, and images.
-*   **G3SEARCH:** Perform advanced search operations across your data.
-*   **G3FILEUPLOADER:** Securely and easily handle multipart form data and file uploads.
-*   **G3STRINGBUILDER:** Efficiently build and manipulate strings with minimal memory overhead.
-
-
-*(Check out `./www/manual/menu.md` and `./www/manual/md/` for full API details!)*
-
----
+For a full list of libraries and documentation on how to use them, please read our extensive manual at [`./www/manual/`](www/manual/) and explore our website source at [`./resources/website/`](resources/website/).
 
 ## 🎨 AxonLive with Visual Application Builder
 
-**AxonLive**  is a high-performance Reactive Component Framework built directly into the AxonASP Virtual Machine. It empowers developers to create dynamic, stateful, and highly responsive web applications using Classic ASP (VBScript or Server-Side JavaScript) without requiring full page reloads.
+**AxonLive** is a high-performance Reactive Component Framework built directly into the AxonASP Virtual Machine. It empowers developers to create dynamic, stateful, and highly responsive web applications using Classic ASP (VBScript or Server-Side JavaScript) without requiring full page reloads.
 
 ### Advantages of G3AxonLive
 
 * **Zero Page Reloads:** All UI interactions (button clicks, form submissions, timers) are sent to the server asynchronously. The server responds with targeted JSON patches, swapping only the modified DOM elements.
 * **Strict Backend Control:** All business logic, validation, and state mutation happen exclusively on the server. The client browser merely acts as a dumb terminal rendering the HTML patches, significantly reducing the attack surface.
-* **Authenticated Session Binding:** The /g3al endpoint binds every async event to the authenticated ASPSESSIONID cookie. Client-provided session identifiers are not used as an authority for page routing.
-* **Zero Additional Wrappers:** AxonLive is implemented directly inside the axonvm engine as a native procedural controller (G3AXONLIVE). This eliminates the need for bulky ASP class wrappers, providing bare-metal performance and zero garbage collection overhead.
-* **Granular DOM Manipulation:** Instead of re-rendering entire components, developers can push targeted instructions to modify styles, attributes, classes, or trigger external redirects natively from ASP.
-* **WASM + AxonLive:** You can use AxonLive + AxonASP WebAssembly for client-side rendering and logic, allowing you to write performance-critical code in VBScript and execute it directly in the browser just like Microsoft did with VBScript in Internet Explorer and like Blazor. This is a game-changer for modernizing legacy applications without a full rewrite, and it opens up incredible possibilities for offline-capable web applications and edge computing. 
+* **Authenticated Session Binding:** The `/g3al` endpoint binds every async event to the authenticated `ASPSESSIONID` cookie. Client-provided session identifiers are not used as an authority for page routing.
+* **Zero Additional Wrappers:** AxonLive is implemented directly inside the `axonvm` engine as a native procedural controller (`G3AXONLIVE`), providing bare-metal performance and zero garbage collection overhead.
+* **Granular DOM Manipulation:** Push targeted instructions to modify styles, attributes, classes, or trigger external redirects natively from ASP.
+* **WASM + AxonLive:** Run performance-critical VBScript directly in the browser using AxonASP WebAssembly, opening incredible possibilities for offline-capable web applications.
 
-### Getting Started with AxonLive
-
-You can use **AxonLive Builder** that is available directly in the `www/` directory of your AxonASP installation to implement the reactive components in your ASP applications. The builder provides a simple interface to create and manage your reactive components, allowing you to focus on building your application logic without worrying about the underlying implementation details.:
-
-```
-www/axonlive/builder/           (Builder engine and components)
-```
-
----
+You can use the **AxonLive Builder** available in the `www/axonlive/builder/` directory to seamlessly create and manage reactive components.
 
 ## 🚀 Quick Deployment & Execution
 
-AxonASP is designed to be built and deployed in seconds, getting your applications online faster than ever.
+AxonASP is ready for modern CI/CD pipelines and containerization.
 
 ### Prerequisites
-*   GoLang 1.26+ (to build the system binaries if not using the packaged releases)
-*   Your existing ASP codebase (or explore our awesome examples in `/www/`)
+* GoLang 1.26+ (if building from source)
 
 ### Building the Engine
-We provide robust, ready-to-use build scripts right in the root directory. You can build for Windows, Linux, or macOS with a single command. The scripts also support passing Go compilation tags to disable specific libraries for leaner binaries.
-
-**Windows:**
-```powershell
-.\build.ps1 -Platform "windows" -Architecture "amd64"
-```
+Use the provided build scripts to compile AxonASP for your target architecture:
 
 **Linux / macOS:**
 ```bash
 ./build.sh --platform "linux" --architecture "amd64"
 ```
 
-### Build with selected libraries only
-Use the build scripts to disable specific libraries. This is useful for leaner binaries or constrained environments. Use lib_<name>_disabled as the tag format. For example, to disable G3CRYPTO and G3HTTP, use lib_g3crypto_disabled and lib_g3http_disabled.
-
-**Windows (PowerShell):**
+**Windows:**
 ```powershell
-./build.ps1 -Tags "lib_adodb_disabled lib_msxml_disabled"
-./build.ps1 -Tags "lib_g3image_disabled,lib_g3pdf_disabled"
+.\build.ps1 -Platform "windows" -Architecture "amd64"
 ```
 
-**Linux / macOS (Bash):**
-```bash
-./build.sh --tags "lib_adodb_disabled lib_msxml_disabled"
-./build.sh --tags "lib_g3image_disabled,lib_g3pdf_disabled"
-```
+You can optionally disable specific libraries (e.g., `lib_g3crypto_disabled`) to create leaner binaries. See the manual for details.
 
-You can separate tags with spaces, commas, or semicolons in both scripts.
+### Deployment Architecture
+Deploy AxonASP via its built-in HTTP server (Reverse Proxy Mode) or via FastCGI (`axonasp-fastcgi`). It integrates flawlessly with Nginx and Apache. 
 
-For the complete list of supported disable tags and usage guidance, see the manual page at `www/manual/md/runtime/compilation-library-disable-tags.md`.
+See our full documentation in `www/manual/md/` for examples and complete API details.
 
-**Experience the absolute pinnacle of Classic ASP execution. Dive into the manual at [./www/manual/md/](www/manual/md/) and start building today!**
+## 🤝 Contributing & Security
 
-### Deployment Architectures: Proxy vs. FastCGI
-
-AxonASP provides total flexibility in how you expose your applications to the world. You have two primary architectural choices:
-
-1.  **Reverse Proxy Mode (`axonasp-http`):** Run AxonASP's built-in web server and place a reverse proxy (like Nginx or Apache) in front of it. The proxy handles TLS/SSL termination, caching static files, and security, while simply forwarding dynamic ASP requests to AxonASP.
-2.  **FastCGI Mode (`axonasp-fastcgi`):** Integrate directly with your web server using the FastCGI protocol. This bypasses HTTP overhead between the proxy and the application, providing native integration.
-
-*(Note: Both modes offer the exact same feature parity, except the web.config support which is only available in Reverse Proxy Mode. Choose the one that best fits your infrastructure needs.)*
-
-### Nginx Deployment Examples
-
-**Option A: Using Nginx as a Reverse Proxy**
-```nginx
-server {
-    listen 80;
-    server_name myapp.local;
-
-    # Serve static files directly via Nginx for max speed
-    location ~* \.(jpg|jpeg|png|gif|ico|css|js)$ {
-        root /var/www/axonasp/www;
-    }
-
-    # Forward ASP and other dynamic requests to AxonASP HTTP Server
-    location / {
-        proxy_pass http://127.0.0.1:8801;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-**Option B: Using Nginx with FastCGI**
-```nginx
-server {
-    listen 80;
-    server_name myapp.local;
-    root /var/www/axonasp/www;
-
-    # Pass ASP files directly to the AxonASP FastCGI daemon
-    location ~ \.asp$ {
-        include fastcgi_params;
-        fastcgi_pass 127.0.0.1:9000;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    }
-}
-```
-
-### Apache Deployment Examples
-
-**Option A: Using Apache as a Reverse Proxy**
-```apache
-<VirtualHost *:80>
-    ServerName myapp.local
-    DocumentRoot "/var/www/axonasp/www"
-
-    # Serve static assets locally to reduce load
-    ProxyPassMatch "^/(.*\.jpg|png|css|js)$" "!"
-
-    # Forward everything else to AxonASP HTTP Server
-    ProxyPass / http://127.0.0.1:8801/
-    ProxyPassReverse / http://127.0.0.1:8801/
-</VirtualHost>
-```
-
-**Option B: Using Apache with FastCGI (Requires mod_proxy_fcgi)**
-```apache
-<VirtualHost *:80>
-    ServerName myapp.local
-    DocumentRoot "/var/www/axonasp/www"
-
-    # Pass ASP requests to the AxonASP FastCGI daemon
-    <FilesMatch "\.asp$">
-        SetHandler "proxy:fcgi://127.0.0.1:9000"
-    </FilesMatch>
-</VirtualHost>
-```
-
----
-
-### Performance
-
-G3Pix AxonASP delivers exceptional performance thanks to GoLang's efficiency:
-
-- **Fast Startup**: Server starts in milliseconds
-- **Low Memory Footprint**: Minimal resource consumption
-- **Concurrent Request Handling**: Native Go concurrency for handling multiple requests
-- **Optimized Parsing**: Efficient VBScript lexer and parser and JavaScript AST engine
-- **Advanced Caching**: Script (eval, execute, execute global) and compilation caching for lightning-fast execution, which was not possible in the old ASP version
-
----
-
-### Why Choose G3Pix AxonASP?
-
-| Feature | Traditional IIS | G3Pix AxonASP |
-|---------|-----------------|---------------|
-| **Platform** | Windows only | Windows, Linux, macOS, other OSs GoLang supports |
-| **Performance** | Standard | Accelerated (Go) |
-| **Dependencies** | IIS, Windows Server | Single binary |
-| **Deployment** | Complex | Simple binary |
-| **Database Support** | Windows databases | SQLite, MySQL, PostgreSQL, SQL Server, Oracle, Access |
-| **Cost** | Windows licensing | Free & open source |
-| **Modernization** | Limited | 60+ extended functions |
-| **Container Ready** | Challenging | Docker-friendly |
-| **Web Server Integration** | IIS only | nginx, Apache, IIS, Caddy, FastCGI |
-| **URL Rewriting** | IIS modules | Built-in web.config support on proxy server |
-| **Libraries** | none | Built-in libraries for modern web standards |
-
----
-
-## 🧪 Experimental: WASM (WebAssembly) Support
-
-AxonASP now includes a **experimental support for WebAssembly**, allowing you to:
-
-*   **Run ASP on the Browser:** Compile and execute ASP/VBScript/JScript code directly in the browser using WebAssembly, enabling new use cases like offline-capable web applications and edge computing.
-*   **Hybrid Execution:** Seamlessly mix client-side ASP (via WASM) and server-side execution for optimal performance and user experience.
-
-### Using WASM
-
-WASM support is currently in active development. The implementation is located in the `wasm/` directory. To explore and experiment with WASM capabilities:
-
-1. Review the documentation and examples in `wasm/`, as some features of AxonASP are not yet supported in WASM mode
-2. Compile ASP to WebAssembly using the provided build tools
-3. Integrate the generated WASM modules into your web applications
-4. Test and provide feedback on the experimental features
-
-> **⚠️ Important:** WASM support is experimental and subject to change, but most of AxonASP's core functionality is already supported. We welcome testing and feedback from the community!
-
----
-
-### 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-
-- All code, comments, and documentation must be in **English**
-- Follow Go best practices and conventions, there is a gemini.md and a copilot-instructions.md to keep code consistent and high quality when using AI assistance.
-- Add tests for new features in `www/tests/`
-- Update documentation when adding features following the style of existing docs
-- Keep commits atomic and descriptive
-
----
-
-### AI Ready
-
-AxonASP includes a built-in Model Context Protocol (MCP) server that allows AI agents to connect directly to your runtime environment. This enables powerful capabilities such as documentation lookup and ASP code instructions generation directly from your editor or AI assistant. For details on how to connect and use the MCP server, see the [MCP Server and VS Code Integration](www/manual/md/authoring/mcp-vscode.md) documentation.
-You can also see an example prompt for using with AI Agents in the [Program Classic ASP with LLMs](www/manual/md/authoring/llm-classic-asp-coding.md) documentation.
-
+* Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute.
+* Please see [SECURITY.md](SECURITY.md) for information on reporting security vulnerabilities.
 
 ---
 
 ### License
-
-This project is licensed under the MPL License - see the [LICENSE](LICENSE.txt) file for details.
-
----
-
-### Support & Community
-
-- **Issues**: [GitHub Issues](https://github.com/guimaraeslucas/axonasp/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/guimaraeslucas/axonasp/discussions)
-- **Website**: [https://g3pix.com.br/axonasp](https://g3pix.com.br/axonasp)
-
----
-
-> [!NOTE]
-> **⚠️ Important Notice:** _AxonASP Version 1.0_ is completely **deprecated** and is not compatible with Version 2.0 or later. 
-> The architectural leaps we've made mean a clean break from the past to deliver the future of ASP.
-
----
-
-### Acknowledgments
-
-Special thanks to:
-- The Go community and Open Source community for all the contribution
-- Classic ASP developers who keep legacy applications running
-- Contributors and testers who help improve G3Pix AxonASP 
+This project is licensed under the MPL License - see the [LICENSE.txt](LICENSE.txt) file for details.
 
 ---
 
@@ -339,19 +99,5 @@ Special thanks to:
   Making Classic ASP modern, fast, and cross-platform
 </p>
 
-<p align="center">
-  <a href="https://github.com/guimaraeslucas/axonasp">⭐ Star us on GitHub</a>
-  •
-  <a href="https://github.com/guimaraeslucas/axonasp/issues">🐛 Report Bug</a>
-  •
-  <a href="https://github.com/guimaraeslucas/axonasp/issues">✨ Request Feature</a>
-</p>
-
----
-
 #### Legal Disclaimer
-
-Third-Party Trademarks and Affiliations
-AxonASP is an independent software project developed by G3pix Ltda and is **not affiliated with, endorsed by, or sponsored by Microsoft Corporation** in any way. 
-
-The names "Microsoft," "Active Server Pages," "ASP," and "VBScript,", "Windows", "Office", "Access", "ActiveX", "JScript" as well as any related names, marks, emblems, and images relative to ASP, are registered trademarks of Microsoft Corporation. The use of these trademarks within this project is purely for descriptive, identification, and reference purposes to indicate technical compatibility, and does not imply any association with the trademark holder.
+AxonASP is an independent software project developed by G3pix Ltda and is **not affiliated with, endorsed by, or sponsored by Microsoft Corporation**. Trademarks such as "Microsoft," "Active Server Pages," "ASP," "VBScript," "JScript" are registered trademarks of Microsoft Corporation.

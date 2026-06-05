@@ -1,8 +1,5 @@
 <script runat="server" language="VBScript">
-    Sub Application_OnStart
-        Application("FromASA") = "Started!"
-    End Sub
-    
+'This file is used by the console version of AxonASP
 </script>
 <object runat="server" scope="Application" id="appObj" progid="Scripting.Dictionary">
 </object>

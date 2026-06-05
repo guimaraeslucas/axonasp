@@ -41,13 +41,13 @@ param(
 
 # --- AUTOMATIC VERSION CONFIGURATION ---
 $Major = "2"
-$Minor = "1"
+$Minor = "2"
 $Patch = "0"
 $Revision = "0"
 
 # --- AUTOMATIC VERSION CONFIGURATION ---
 $Major = "2"
-$Minor = "1"
+$Minor = "2"
 $Patch = "0"
 $Revision = "0"
 
@@ -62,7 +62,6 @@ try {
         $Patch = $matches[3]
     }
     else {
-        # Fallback: Mantém o Major (2) e Minor (1) originais e usa o total de commits no Patch
         $GitCount = git rev-list --count HEAD 2>$null
         if ($LASTEXITCODE -eq 0) { $Patch = $GitCount.Trim() }
     }

@@ -1,8 +1,8 @@
-﻿# ❖ AxonASP 2.1: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
+﻿# ❖ AxonASP 2.2: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
 
 Supercharge your legacy code. Build blazing-fast modern APIs. Experience Classic ASP like never before.
 
-Welcome to **AxonASP 2.1**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JavaScript (JScript) support in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
+Welcome to **AxonASP 2.2**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JavaScript (JScript) support in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
 
 ---
 
@@ -43,7 +43,7 @@ We didn't just update Classic ASP. We completely reimagined it for the modern we
 
 ---
 
-## What's New in Version 2.1?
+## What's New in Version 2.2?
 
 - **Unified Configuration:** Centralized `axonasp.toml` configuration with `.env` support via Viper. Single source of truth for all settings.
 - **Modern Architecture Examples:** Complete, production-ready examples for REST, RESTful, MVC, and MVVM—all written in pure ASP.
@@ -117,9 +117,9 @@ For detailed API reference on any library or object, consult the menu on the lef
 
 ---
 
-## A Word About Version 2.1
+## A Word About Version 1.0
 
-Version 1.0 of AxonASP is completely deprecated and incompatible with Version 2.0. We made deliberate architectural decisions to deliver superior performance, maintainability, and feature parity with modern requirements. The investment in rewriting the engine from the ground up pays dividends in speed, reliability, and joy of development.
+Version 1.0 of AxonASP is completely deprecated and incompatible with Version >2.0. We made deliberate architectural decisions to deliver superior performance, maintainability, and feature parity with modern requirements. The investment in rewriting the engine from the ground up pays dividends in speed, reliability, and joy of development.
 
 If you're upgrading from Version 1.0, your AxonASP code and configuration *will require migration*. It's worth the effort—the improvements are transformational.
 
