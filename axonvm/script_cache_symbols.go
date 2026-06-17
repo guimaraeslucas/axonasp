@@ -79,9 +79,27 @@ func getBaseGlobalDictionary() *baseGlobalDictionary {
 	return &baseGlobalsData
 }
 
-func computeProgramHash(bytecode []byte, globalCount int, optionCompare int, optionExplicit bool, sourceName string) uint64 {
+func computeProgramHash(bytecode []byte, globalCount int, optionCompare int, optionExplicit bool, sourceName string, constants []Value) uint64 {
 	h := xxhash.New()
 	_, _ = h.Write(bytecode)
+
+	// hash constants
+	for _, c := range constants {
+		binary.Write(h, binary.LittleEndian, uint8(c.Type))
+		binary.Write(h, binary.LittleEndian, c.Num)
+		binary.Write(h, binary.LittleEndian, c.Flt)
+		switch c.Type {
+		case VTString, VTUserSub, VTJSFunctionTemplate, VTJSArrowFunctionTemplate, VTSymbol:
+			h.WriteString(c.Str)
+		}
+
+		if c.Type == VTUserSub || c.Type == VTJSFunctionTemplate || c.Type == VTJSArrowFunctionTemplate {
+			for _, name := range c.Names {
+				h.WriteString(name)
+			}
+		}
+	}
+
 	h.WriteString(strings.TrimSpace(sourceName))
 	var raw [8]byte
 	binary.LittleEndian.PutUint64(raw[:], uint64(globalCount))
@@ -188,6 +206,7 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 		program.OptionCompare,
 		program.OptionExplicit,
 		program.SourceName,
+		program.Constants,
 	)
 	return program
 }
