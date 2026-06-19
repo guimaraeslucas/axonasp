@@ -205,6 +205,7 @@ func pooledProgramKey(program CachedProgram) string {
 			program.OptionCompare,
 			program.OptionExplicit,
 			program.SourceName,
+			program.Constants,
 		)
 	}
 	if sourceName != "" {

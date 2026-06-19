@@ -452,6 +452,7 @@ func (p *cachedProgramBinaryPayload) Deserialize(reader io.Reader) error {
 			p.Program.OptionCompare,
 			p.Program.OptionExplicit,
 			p.Program.SourceName,
+			p.Program.Constants,
 		)
 	}
 
@@ -1065,6 +1066,7 @@ func (c *ScriptCache) loadDiskProgram(filePath string, sourceInfo os.FileInfo) (
 		payload.Program.OptionCompare,
 		payload.Program.OptionExplicit,
 		payload.Program.SourceName,
+		payload.Program.Constants,
 	)
 	return immutableCachedProgramView(payload.Program), true
 }
