@@ -1,6 +1,6 @@
 # Contributing to AxonASP
 
-We welcome contributions! Please follow these guidelines:
+We welcome and need contributions! Please follow these guidelines:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -10,8 +10,10 @@ We welcome contributions! Please follow these guidelines:
 
 ## Development Guidelines
 
-- All code, comments, and documentation must be in **English**
-- Follow Go best practices and conventions. There is a `gemini.md` and a `copilot-instructions.md` to keep code consistent and high quality when using AI assistance.
-- Add tests for new features in `www/tests/`
-- Update documentation when adding features following the style of existing docs
-- Keep commits atomic and descriptive
+- All code, comments, and documentation must be in **English**.
+- Follow Go and AxonASP best practices and conventions. There is a `gemini.md` and a `copilot-instructions.md` to keep code consistent and high quality when using AI assistance.
+- Add tests for new features in `www/tests/`.
+- Update documentation when adding features following the style of existing docs.
+- **Keep commits atomic:** We do not accept multiple separate commits for a single PR. If you have made several smaller commits during development, please use `git rebase -i` to **squash** them into a single, cohesive commit before pushing and opening your Pull Request.
+- **File Headers & Attribution:** - **For existing files:** Keep the original `* Developed by` comment line at the top. Append your name and GitHub username (and/or company name) to acknowledge your addition.
+  - **For new files:** Include the standard project license header at the top, followed by `* Developed by [Your Name] (@github_username) (and/or company name)`.

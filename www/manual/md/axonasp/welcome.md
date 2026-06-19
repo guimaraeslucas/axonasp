@@ -94,7 +94,7 @@ Guidelines for writing manual pages and for programming Classic ASP with LLMs. R
 **Server-Side Power:**
 - Classic ASP page execution with high compatibility for legacy behavior
 - VBScript with standard functions and operators
-- JScript support for ASP pages using `<%@ Language=JScript %>`
+- JavaScript/JScript support for ASP pages using `<%@Language=JScript%>` or `<%@Language=JavaScript%>` directives
 - Full intrinsic object support (Request, Response, Server, Session, Application)
 - Advanced error handling with line-level debugging
 

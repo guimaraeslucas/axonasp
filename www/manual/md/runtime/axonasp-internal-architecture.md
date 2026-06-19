@@ -1,167 +1,105 @@
-# Understand AxonASP Internal Architecture (Go VM and Compiler)
+# Understand AxonASP Internal Architecture (VM, Compiler, and JavaScript Engine)
 
 ## Overview
 
-AxonASP is a modern execution engine for Classic ASP with support for VBScript and JScript, implemented in Go and designed for high compatibility, high throughput, and long-term maintainability.
+AxonASP is a Classic ASP execution platform implemented in Go. It runs VBScript and JavaScript (with JScript compatibility) through one shared virtual machine core.
 
-This document explains how AxonASP works internally so that developers and automation agents can implement new runtime features, native libraries, and compatibility behaviors with confidence.
+This page explains the runtime architecture in practical terms for developers coming from IIS, COM, and ASP object-model workflows, even if they are newer to Go.
 
----
+## Use This Mental Model First
 
-## Origin Story and Mission
+Treat AxonASP like this:
 
-AxonASP started from a practical risk: once VBScript deprecation was announced by Microsoft, long-term support for Classic ASP became uncertain.
+- Lexer and compiler replace the old script host parser layer.
+- Bytecode VM replaces script host execution internals.
+- `Server.CreateObject` remains the extension boundary, but native implementations are Go structs instead of COM DLLs.
+- ASP intrinsic objects (`Request`, `Response`, `Server`, `Session`, `Application`, `Err`) are pre-registered native VM objects.
 
-The project mission is straightforward:
-- Keep Classic ASP alive for production workloads, with support to VBScript and JavaScript(JScript) dialects.
-- Preserve historical behavior where compatibility matters.
-- Evolve the platform with modern capabilities without breaking legacy applications.
+If you already understand Classic ASP request flow, the architecture will feel familiar. The main difference is that object dispatch and language execution are explicit, typed Go code.
 
-AxonASP modernizes the ecosystem by providing:
-- Cross-platform execution on Windows, Linux, and macOS.
-- Multiple runtime modes: HTTP server, FastCGI server, CLI interpreter, Test Suite, and MCP server.
-- Modern developer workflows through CLI and TUI-style interactive execution, plus MCP integration for model-assisted development and web application maintenance.
+## High-Level Execution Flow
 
----
+For each request (or CLI/TUI run), AxonASP executes this pipeline:
 
-## Core Engine Design
+1. Read ASP source and split script/content segments.
+2. Compile script segments to VM bytecode.
+3. Execute bytecode in a stack-based VM.
+4. Route object/property/method access through native dispatch maps.
+5. Write output through `Response` object semantics.
 
-## High-Level Pipeline
+All runtime modes share the same core in `axonvm/`:
 
-AxonASP executes ASP/VBScript through a direct lexer-to-bytecode pipeline:
+- HTTP server
+- FastCGI server
+- CLI
+- MCP server
+- Test suite
 
-1. Source is tokenized by the lexer in `vbscript/`.
-2. Compiler consumes tokens and emits VM opcodes directly.
-3. Stack-based VM executes bytecode against a typed `Value` model.
-4. Intrinsic ASP objects and native libraries are dispatched through VM-native object routing.
+## Language Pipeline Differences
 
-This architecture removes AST construction overhead in VBScript and minimizes intermediate allocations.
+## VBScript Path (Single-Pass, No AST)
 
-For the JavaScript (JScript) dialect that implements support to ECMAScript 5.0 standards, AxonASP execute ASP/JScript through an AST:
-1. Source is parsed into an AST by the JScript parser in `jscript/`.
-2. AST is traversed and compiled to emit bytecode for the VM.
-3. Stack-based VM executes bytecode against the same typed `Value` model, with JScript-specific semantics.
-4. Intrinsic ASP objects and native libraries are dispatched through VM-native object routing.
+VBScript compilation is direct token-to-bytecode emission:
 
+1. Lexer tokenizes script.
+2. Compiler emits opcodes immediately.
+3. VM executes opcodes against `Value` runtime.
 
-## Runtime Modes Share One Core
+Why this matters:
 
-The following executables reuse the same compiler/VM core in `axonvm/`:
-- HTTP server (`server/`)
-- FastCGI server (`fastcgi/`)
-- CLI (`cli/`)
-- MCP server (`mcp/`)
-- Test suite runner (`testsuite/`)
+- Lower compile-time memory usage.
+- Lower latency for dynamic script and `Eval` paths.
+- Compatibility logic is encoded in emission and runtime coercion rules.
 
-Feature parity is expected across all modes.
+## JavaScript Path (AST + Bytecode)
 
----
+JavaScript support uses an AST pipeline in `jscript/`:
 
-## Go Implementation Strategy and Optimizations
+1. JavaScript source is parsed into AST nodes.
+2. Compiler lowers AST to AxonASP VM bytecode.
+3. VM executes JavaScript opcodes using the same VM core and `Value` type system.
 
-## Wrapping Go Libraries as ASP Objects
+JavaScript runtime state is VM-local and explicit in `vm.go`, including:
 
-AxonASP extends Classic ASP by wrapping Go implementations behind `Server.CreateObject(...)` compatibility objects.
+- Function objects and lexical environments.
+- Object property descriptors and shape/slot caches.
+- RegExp, Promise, Generator, Proxy, Intl, ArrayBuffer, and module state containers.
+- Async task queues (`setTimeout`, microtasks, `nextTick`, immediate queue).
 
-Typical flow:
-- A ProgID (for example, `MSXML2.DOMDocument` or a custom library ProgID) is passed to `Server.CreateObject`.
-- VM creates a concrete Go struct instance for that object.
-- VM assigns a dynamic native ID and returns a `VTNativeObject` value.
-- Member access is routed through typed dispatch functions, not reflection.
+Result: VBScript and JavaScript share one execution engine while preserving language-specific semantics.
 
-This allows ASP pages to consume modern Go functionality through object semantics that feel native to Classic ASP.
+## VM Runtime Model
 
-## Performance Discipline in Go
+## Stack Machine and Typed Values
 
-AxonASP prioritizes low-overhead execution:
-- Avoid `interface{}`-centric runtime paths in VM hot loops.
-- Avoid reflection (`reflect`) for object routing.
-- Prefer explicit typed dispatch (`switch` / `strings.EqualFold`) for member resolution.
-- Keep data in compact structs and primitive fields where possible.
-- Reduce temporary allocations and unnecessary conversions in compile/execute phases.
+The VM is stack-based (`StackSize = 4096`) and bytecode-driven.
 
-The VM value model (`Value`) is a tagged struct that avoids generic boxed object payloads in the execution path.
+Runtime values are stored in `Value` (tagged union style):
 
----
+- `Type` tag (`VTEmpty`, `VTString`, `VTInteger`, `VTDouble`, `VTNativeObject`, and others).
+- Primitive payload fields (`Num`, `Flt`, `Str`).
+- Optional structured payload (arrays, names, references).
 
-## VBScript Compiler Architecture (No AST Rule)
+This avoids reflection-based dispatch and keeps hot paths predictable.
 
-## Rule: No AST
+## Call Frames, Scope, and Error Mode
 
-AxonASP does not build an Abstract Syntax Tree for script compilation.
+Each procedure call stores a call frame containing:
 
-Instead, the compiler performs immediate bytecode emission while reading tokens. This improves:
-- Compilation latency
-- Memory profile
-- Throughput under dynamic script generation workloads
+- Return instruction pointer.
+- Stack/frame restoration metadata.
+- Bound object context for class members.
+- ByRef write-back mapping.
+- `On Error Resume Next` state restoration.
 
-## What Replaces AST in VBScript
+This is how AxonASP preserves Classic ASP/VBScript error and ByRef behavior while using a modern VM core.
 
-The compiler uses:
-- Token stream parsing with direct opcode emission.
-- Constant pool indexing for names/literals.
-- Jump patching for control-flow targets.
-- Class/member registration opcodes for runtime metadata.
-- Context-aware emission for VBScript compatibility semantics.
+## Intrinsic Object Wiring
 
-Representative behavior in compiler internals:
-- Direct expression emission (`OpAdd`, `OpConcat`, comparisons, logical ops).
-- Value-context coercion (`OpCoerceToValue`) where VBScript semantics require default-property reads.
-- ByRef patching with argument reference opcodes (`OpArgGlobalRef`, `OpArgLocalRef`, `OpArgClassMemberRef`).
-- Class/property registration opcodes (`OpRegisterClass*`) consumed by VM at runtime.
+Intrinsic ASP objects are prebound as native object IDs and loaded into global slots.
 
-## Compiler Tooling for Runtime Efficiency
+Examples in VM startup include:
 
-Compiler and execution tooling includes:
-- Directive compilation support for `<%@ ... %>` blocks.
-- Dynamic expression execution support (`Eval` / dynamic compile paths).
-- Eval bytecode caching (LRU) keyed by expression and compare-mode/scope signatures.
-- Script cache layers for reducing repeated compilation work.
-
-The guiding pattern is stable bytecode reuse whenever scope and options permit.
-
----
-
-## VM Architecture
-
-## VM Type
-
-AxonASP VM is:
-- Stack-based
-- Bytecode-driven
-- Tagged-value runtime
-
-Static stack capacity is fixed (`StackSize = 4096`) and execution is opcode-oriented.
-
-## Opcode Model
-
-The opcode set is organized by category:
-- Data movement (`OpGetGlobal`, `OpSetLocal`, etc.)
-- Arithmetic and logical operations
-- Control flow and jumps
-- Output writing (`OpWrite`, `OpWriteStatic`)
-- Class registration and instantiation
-- Member calls and dispatch (`OpCallMember`, `OpMemberGet`, `OpMemberSet`)
-- Error mode handling (`OpOnErrorResumeNext`, `OpOnErrorGoto0`)
-
-This keeps runtime deterministic and predictable for compatibility-critical behaviors.
-
-## Call Frames and ByRef
-
-User-defined Sub/Function calls create VM call frames that track:
-- Return instruction pointer
-- Frame pointers and stack restoration
-- Bound object for class-member context
-- ByRef write-back mapping to caller slots
-- Error mode state restoration
-
-This enables VBScript-compatible ByRef semantics without dynamic reflection.
-
----
-
-## Intrinsic ASP Object Emulation
-
-AxonASP pre-reserves intrinsic object slots and exposes them as native VM objects:
 - `Response`
 - `Request`
 - `Server`
@@ -170,115 +108,162 @@ AxonASP pre-reserves intrinsic object slots and exposes them as native VM object
 - `ObjectContext`
 - `Err`
 
-These are available through the ASP execution environment and participate in normal member dispatch paths.
+Session state persists under `temp/session` and application state is process-memory-backed.
 
-State behavior:
-- Session state persists under `temp/session` with ASP session cookies.
-- Application state is process-resident memory.
+## Native Object Mapping Pattern (Codebase-Accurate)
 
-Error information is bridged to the ASP error surface (`ASPError`) with line, column, file, and categorized runtime diagnostics.
+This section documents the actual VM wiring pattern used in `axonvm/vm.go`, so registration steps and snippets match real runtime behavior.
 
----
+## 1. Add a typed map in VM state
 
-## Type System and Memory Model
+Each native library has a dedicated map keyed by dynamic ID:
 
-## Variant Representation in Go
+```go
+g3dbItems          map[int64]*G3DB
+msxmlServerItems   map[int64]*MsXML2ServerXMLHTTP
+msxmlDOMItems      map[int64]*MsXML2DOMDocument
+pdfItems           map[int64]*G3PDF
+```
 
-VBScript dynamic values are represented by `axonvm.Value`:
-- `Type` tag (`VTEmpty`, `VTNull`, `VTBool`, `VTInteger`, `VTDouble`, `VTString`, `VTDate`, `VTArray`, `VTObject`, `VTNativeObject`, `VTBuiltin`, `VTUserSub`, `VTArgRef`)
-- Numeric fields (`Num`, `Flt`)
-- String payload (`Str`)
-- Array pointer (`Arr`)
-- Name metadata (`Names`) for subroutines/object fields
+Pattern: one map per concrete object type, no generic reflection registry.
 
-This design supports:
-- Fast type checks in hot opcodes
-- Compatibility coercions
-- Reference-aware call behavior (ByRef)
-- Minimal object-shape ambiguity at runtime
+## 2. Initialize map in VM constructor
 
-## Compatibility Semantics
+The map is allocated in `NewVM` with `make(...)`.
 
-Core compatibility rules preserved by compiler + VM cooperation include:
-- Case-insensitive identifiers/member names
-- 1-based behaviors where required by VBScript semantics
-- Property Get/Let/Set dispatch distinctions
-- Object/value coercion behavior
-- `On Error Resume Next` and recovery behavior
+```go
+g3dbItems:        make(map[int64]*G3DB),
+msxmlServerItems: make(map[int64]*MsXML2ServerXMLHTTP),
+```
 
----
+## 3. Register ProgID in `Server.CreateObject`
 
-## Native Object and Library Lifecycle
+In native `Server` dispatch, `CreateObject` normalizes `progID` and routes by `progIDKey`.
 
-## Creation
+Typical forms used today:
 
-On `Server.CreateObject(progID)`:
-1. VM normalizes ProgID for compatibility matching.
-2. VM allocates concrete Go object instance.
-3. VM assigns dynamic native ID.
-4. Instance is stored in a VM-owned map for that library type.
-5. Return value is `Value{Type: VTNativeObject, Num: dynamicID}`.
+```go
+if progIDKey == "g3db" {
+   return vm.newG3DBObject()
+}
 
-## Dispatch
+if progIDKey == "msxml2.serverxmlhttp" || progIDKey == "msxml2.xmlhttp" || progIDKey == "microsoft.xmlhttp" {
+   obj := NewMsXML2ServerXMLHTTP(vm)
+   id := vm.nextDynamicNativeID
+   vm.nextDynamicNativeID++
+   vm.msxmlServerItems[id] = obj
+   return Value{Type: VTNativeObject, Num: id}
+}
+```
 
-Member calls are routed by VM through:
-- Native ID range/type map resolution
-- Library-specific `DispatchMethod` and `DispatchPropertyGet`/`DispatchPropertySet` logic
-- Argument conversion and return value conversion using `Value` helpers
+Key behavior:
 
-## Cleanup and Lifetime
+- ProgID matching is normalized and case-insensitive by lowercase key.
+- Object instance is stored in a typed map.
+- Returned handle is always `VTNativeObject` with dynamic numeric ID.
 
-Object lifetimes are tied to VM/request execution context and reference behavior. Deterministic cleanup patterns and map lifecycle management are critical to avoid retained objects after script completion.
+## 4. Route method calls in `dispatchNativeCall`
 
----
+Method calls resolve by object ID map membership:
 
-## Practical Extension Guide
+```go
+if g3dbObject, exists := vm.g3dbItems[objID]; exists {
+   return g3dbObject.DispatchMethod(member, args)
+}
+if g3dbRS, exists := vm.g3dbResultSetItems[objID]; exists {
+   return g3dbRS.DispatchMethod(member, args)
+}
+```
 
-## Add a New Native Library (Recommended Pattern)
+The same pattern is repeated for each library/object family.
 
-1. Create `axonvm/lib_<name>.go` with a concrete struct.
-2. Implement a `axonvm/lib_<name>_disabled.go` stub that returns errors for all dispatches, and gate it behind a build tag for opt-in disabling.
-3. Implement strongly typed dispatch members:
-   - `DispatchMethod(methodName string, args []Value) Value`
-   - `DispatchPropertyGet(propertyName string) Value`
-   - Optional property set handler when writable members exist.
-4. Register object map in VM state.
-5. Integrate ProgID creation in VM native call routing.
-6. Route method/property dispatch for that dynamic ID space.
-7. Use `Value` constructors (`NewString`, `NewInteger`, `NewBool`, etc.) consistently.
-8. Raise standardized runtime errors for invalid args/state instead of silent `Empty` on operational failures.
+## 5. Route property get in native member resolution
 
+Property reads use the same typed-map check pattern:
 
-## Add Compiler/VM Features Safely
+```go
+if g3dbObject, exists := vm.g3dbItems[target.Num]; exists {
+   return g3dbObject.DispatchPropertyGet(member)
+}
+```
 
-When adding language features or compatibility behavior:
-- Preserve no-AST direct emission architecture for VBScript and avoid introducing AST construction in the JScript path unless necessary for ECMAScript compliance.
-- Add opcodes only when necessary and wire full lifecycle (emit + execute + error handling).
-- Keep compatibility semantics explicit in compiler emission rules.
-- Verify parity in HTTP, FastCGI, CLI, and MCP execution paths.
-- Add regression tests for compile and runtime behavior.
+## 6. Route property set in native set handler
 
----
+Writable native properties must be routed explicitly to `DispatchPropertySet` in the native member set path.
 
-## Internal Files to Know First
+Pattern:
 
-Start here for architecture work:
-- `axonvm/vm.go` - VM runtime, call frames, native object routing, intrinsic object plumbing.
-- `axonvm/opcode.go` - Opcode definitions and instruction taxonomy.
-- `axonvm/value.go` - Variant representation and value helpers.
-- `axonvm/compiler*.go` - Token-to-bytecode direct emission logic.
-- `vbscript/` - Lexer and VBScript token definitions/errors.
-- `jscript/` - JScript parser and AST definitions.
-- `axonvm/lib_*.go` - Native library implementations.
+```go
+if obj, exists := vm.someLibraryItems[target.Num]; exists {
+   return obj.DispatchPropertySet(member, args)
+}
+```
 
----
+No implicit reflection fallback is used for these native maps.
 
-## Design Principles Summary
+## Why This Pattern Is Used
 
-AxonASP is built around four non-negotiable principles:
-- Compatibility first for Classic ASP/VBScript behavior.
-- Single-pass no-AST compilation for speed and memory efficiency in VBScript.
-- Stack-based bytecode VM with strict typed-value runtime.
-- Native Go extensions exposed as ASP objects without reflection-heavy dispatch.
+This design keeps the runtime deterministic:
 
-If you follow these principles, you can extend AxonASP quickly while preserving both performance and compatibility.
+- O(1) object lookup via map key.
+- No reflection overhead in hot member-call paths.
+- Explicit control of method/property behavior.
+- Easier compatibility auditing for Classic ASP semantics.
+
+## JavaScript Support Details That Matter in Practice
+
+If you are extending JavaScript behavior, these runtime facts are important:
+
+- JavaScript execution uses VM-owned registries (`jsFunctionItems`, `jsEnvItems`, `jsPropertyItems`, and others) instead of generic interface containers.
+- Module loading state is request-local (`jsModuleInstances`, `jsModuleLoading`) to avoid cross-request leakage.
+- Promise/microtask execution uses explicit VM queues, not background global schedulers.
+- Buffer and typed array backing memory is tracked in VM maps (`jsArrayBuffers`, `jsSharedArrayBuffers`) for deterministic ownership.
+- Intl-related object state is modeled in dedicated maps for each Intl type.
+
+For Microsoft-ecosystem developers: think of this as replacing hidden script engine internals with explicit, inspectable runtime tables.
+
+## Performance and Memory Behavior
+
+AxonASP performance strategy:
+
+- Avoid reflection-heavy execution paths.
+- Avoid generic boxed dispatch in VM hot loops.
+- Reuse stable bytecode where possible.
+- Keep type coercions explicit and localized.
+
+Memory safety strategy:
+
+- Request-scoped object maps bound to VM instance lifetime.
+- Explicit cleanup for native objects that hold external resources.
+- Deterministic release patterns in libraries that wrap OS or external handles.
+
+## Extension Checklist (Native Library)
+
+Use this checklist when adding a new library:
+
+1. Add `lib_<name>.go` with concrete struct and typed dispatch methods.
+2. Add `lib_<name>_disabled.go` with correct build tags and disabled behavior.
+3. Add map field to VM struct and allocate in constructor.
+4. Add ProgID route in `Server.CreateObject` path.
+5. Add method route in `dispatchNativeCall`.
+6. Add property-get route in native property resolution path.
+7. Add property-set route when writable members exist.
+8. Return explicit `Value` types and raise explicit errors for operational failures.
+9. Add Go tests for behavior and compatibility edges.
+
+## Internal Files to Start With
+
+- `axonvm/vm.go` for VM state, intrinsic objects, CreateObject routing, and native dispatch.
+- `axonvm/opcode.go` for opcode taxonomy.
+- `axonvm/value.go` for runtime value representation.
+- `axonvm/compiler*.go` for VBScript token-to-bytecode emission.
+- `jscript/` for JavaScript parser and AST logic.
+- `axonvm/lib_*.go` for native library implementation patterns.
+
+## Design Principles
+
+- Compatibility-first behavior for Classic ASP workloads.
+- Single-pass direct compilation for VBScript.
+- AST-driven compilation for JavaScript support.
+- One shared VM runtime with typed native object dispatch.
+- Explicit VM wiring over reflection for performance and maintainability.
