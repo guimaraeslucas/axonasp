@@ -3725,16 +3725,16 @@ func (c *Compiler) parseTypeDeclaration() {
 }
 
 func (c *Compiler) parseResponseWriteFlatChain() int {
-	// Parse the first operand using PrecTerm (= PrecConcat+1) so that the
-	// recursive descent stops at the outermost & without consuming it.
-	c.parseExpression(PrecTerm)
+	// Parse the first operand using PrecConcat so arithmetic binds before the
+	// outermost & chain while keeping the chain itself unconsumed here.
+	c.parseExpression(PrecConcat)
 	count := 1
 	for {
 		if p, ok := c.next.(*vbscript.PunctuationToken); !ok || p.Type != vbscript.PunctAmp {
 			break
 		}
 		c.move() // consume '&'
-		c.parseExpression(PrecTerm)
+		c.parseExpression(PrecConcat)
 		count++
 	}
 	return count

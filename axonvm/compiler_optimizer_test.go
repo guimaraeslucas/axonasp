@@ -314,6 +314,16 @@ func TestVBScriptDirectMathOpcodes(t *testing.T) {
 	}
 }
 
+// TestVBScriptResponseWriteConcatPrecedenceWithoutParens verifies that Response.Write
+// keeps arithmetic inside the first operand before flattening the outer & chain.
+func TestVBScriptResponseWriteConcatPrecedenceWithoutParens(t *testing.T) {
+	source := `<% Dim x, y : x = 5 : y = 2 : Response.Write x - y & "<br>" %>`
+	out := runVBSAndGetOutput(t, source)
+	if out != "3<br>" {
+		t.Fatalf("unexpected precedence output: got %q, want %q", out, "3<br>")
+	}
+}
+
 // TestVBScriptIntegerInferenceOpRewrite verifies arithmetic over inferred integer
 // locals is rewritten to integer VM opcodes.
 func TestVBScriptIntegerInferenceOpRewrite(t *testing.T) {

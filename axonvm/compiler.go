@@ -987,7 +987,13 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 
 	cursor := 0
 	for cursor < len(source) {
-		// Manual scan for <!-- #include ... -->
+		scriptStart := strings.Index(source[cursor:], "<%")
+		scanLimit := len(source)
+		if scriptStart != -1 {
+			scanLimit = cursor + scriptStart
+		}
+
+		// Manual scan for <!-- #include ... --> in raw HTML only.
 		startIdx := -1
 		endIdx := -1
 		kind := ""
@@ -996,17 +1002,22 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 
 		searchCursor := cursor
 		for {
-			idx := strings.Index(source[searchCursor:], "<!--")
+			if searchCursor >= scanLimit {
+				break
+			}
+			idx := strings.Index(source[searchCursor:scanLimit], "<!--")
 			if idx == -1 {
 				break
 			}
 			absStart := searchCursor + idx
+			if absStart >= scanLimit {
+				break
+			}
 
 			// Find closing tag
-			idxClose := strings.Index(source[absStart:], "-->")
+			idxClose := strings.Index(source[absStart:scanLimit], "-->")
 			if idxClose == -1 {
-				searchCursor = absStart + 4
-				continue
+				break
 			}
 			absEnd := absStart + idxClose + 3
 
@@ -1046,13 +1057,30 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 						}
 					}
 				}
+				searchCursor = absStart + 4
+				continue
 			}
+
 			searchCursor = absStart + 4
 		}
 
 		if startIdx == -1 {
-			appendMappedSegment(&builder, &sourceMap, source[cursor:], sourceName, &currentMergedLine, &currentSourceLine)
-			break
+			if scanLimit > cursor {
+				appendMappedSegment(&builder, &sourceMap, source[cursor:scanLimit], sourceName, &currentMergedLine, &currentSourceLine)
+				cursor = scanLimit
+			}
+			if scriptStart == -1 {
+				break
+			}
+			scriptEndRel := strings.Index(source[cursor:], "%>")
+			if scriptEndRel == -1 {
+				appendMappedSegment(&builder, &sourceMap, source[cursor:], sourceName, &currentMergedLine, &currentSourceLine)
+				break
+			}
+			scriptEnd := cursor + scriptEndRel + 2
+			appendMappedSegment(&builder, &sourceMap, source[cursor:scriptEnd], sourceName, &currentMergedLine, &currentSourceLine)
+			cursor = scriptEnd
+			continue
 		}
 
 		replaceStart := startIdx
@@ -1245,44 +1273,26 @@ func resolveIncludePathWithOptions(sourceName string, includePath string, isVirt
 	trimmed = strings.ReplaceAll(trimmed, "/", string(filepath.Separator))
 	trimmed = strings.ReplaceAll(trimmed, "\\", string(filepath.Separator))
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
+	if filepath.IsAbs(trimmed) {
+		return "", fmt.Errorf("absolute include file path is not allowed: %s", includePath)
 	}
 
-	isAbsSource := filepath.IsAbs(sourceName)
-	src := filepath.Clean(sourceName)
-	sourceAbs := src
-	siteRoot := normalizeIncludeSiteRoot(options.siteRoot)
-	if !isAbsSource {
-		relSource := strings.TrimLeft(src, "/\\")
-		if siteRoot != "" {
-			sourceAbs = filepath.Clean(filepath.Join(siteRoot, filepath.FromSlash(strings.ReplaceAll(relSource, "\\", "/"))))
-		} else if strings.HasPrefix(strings.ToLower(filepath.ToSlash(relSource)), "www/") {
-			sourceAbs = filepath.Clean(filepath.Join(cwd, relSource))
-		} else {
-			sourceAbs = filepath.Clean(filepath.Join(cwd, "www", relSource))
+	sourceAbs := filepath.Clean(strings.TrimSpace(sourceName))
+	if !filepath.IsAbs(sourceAbs) {
+		absSource, err := filepath.Abs(sourceAbs)
+		if err != nil {
+			return "", err
 		}
-	}
-
-	if siteRoot == "" {
-		findWebRoot := func(absSource string) string {
-			lower := strings.ToLower(filepath.Clean(absSource))
-			needle := string(filepath.Separator) + "www" + string(filepath.Separator)
-			if pos := strings.LastIndex(lower, needle); pos >= 0 {
-				return absSource[:pos+len(needle)-1]
-			}
-			if strings.HasSuffix(lower, string(filepath.Separator)+"www") {
-				return absSource
-			}
-			return filepath.Clean(filepath.Join(cwd, "www"))
-		}
-		siteRoot = findWebRoot(sourceAbs)
+		sourceAbs = filepath.Clean(absSource)
 	}
 
 	sourceDir := filepath.Dir(sourceAbs)
 
 	if isVirtual || strings.HasPrefix(includePath, "/") || strings.HasPrefix(includePath, "\\") {
+		siteRoot := normalizeIncludeSiteRoot(options.siteRoot)
+		if siteRoot == "" {
+			return "", fmt.Errorf("virtual include root is not configured: %s", includePath)
+		}
 		if filepath.IsAbs(trimmed) {
 			trimmed = strings.TrimLeft(trimmed, string(filepath.Separator))
 		}
@@ -1296,10 +1306,6 @@ func resolveIncludePathWithOptions(sourceName string, includePath string, isVirt
 			return "", fmt.Errorf("include not found: %s", includePath)
 		}
 		return resolved, nil
-	}
-
-	if filepath.IsAbs(trimmed) {
-		return "", fmt.Errorf("absolute include file path is not allowed: %s", includePath)
 	}
 
 	candidate := filepath.Clean(filepath.Join(sourceDir, trimmed))
@@ -2162,8 +2168,17 @@ func (c *Compiler) SetSourceName(sourceName string) {
 	if c == nil {
 		return
 	}
-
-	c.sourceName = strings.TrimSpace(sourceName)
+	trimmed := strings.TrimSpace(sourceName)
+	if trimmed == "" {
+		c.sourceName = ""
+		return
+	}
+	if !filepath.IsAbs(trimmed) && !strings.HasPrefix(trimmed, "/") && !strings.HasPrefix(trimmed, "\\") {
+		if absSource, err := filepath.Abs(trimmed); err == nil {
+			trimmed = absSource
+		}
+	}
+	c.sourceName = filepath.Clean(trimmed)
 }
 
 // SetIncludeSiteRoot sets the virtual site root used by SSI include virtual resolution.

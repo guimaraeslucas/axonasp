@@ -61,6 +61,7 @@ temp/
 
 #www
 www/temp/
+www/tests/tests2/
 www/manual/search-index/
 axonvm/temp
 axonvm/www

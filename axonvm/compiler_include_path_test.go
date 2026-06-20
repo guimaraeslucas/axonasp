@@ -101,3 +101,74 @@ func TestResolveIncludeCaseInsensitiveFallback(t *testing.T) {
 		t.Fatalf("unexpected resolved path: got %q want %q", resolved, includePath)
 	}
 }
+
+func TestResolveIncludeFileUsesCurrentScriptDirectory(t *testing.T) {
+	scriptRoot := t.TempDir()
+	wrongSiteRoot := t.TempDir()
+
+	sourcePath := filepath.Join(scriptRoot, "pages", "index.asp")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
+		t.Fatalf("mkdir source dir failed: %v", err)
+	}
+	if err := os.WriteFile(sourcePath, []byte("<% 'test %>"), 0o644); err != nil {
+		t.Fatalf("write source failed: %v", err)
+	}
+
+	includePath := filepath.Join(scriptRoot, "pages", "includes", "helpers.asp")
+	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
+		t.Fatalf("mkdir include dir failed: %v", err)
+	}
+	if err := os.WriteFile(includePath, []byte("helpers"), 0o644); err != nil {
+		t.Fatalf("write include failed: %v", err)
+	}
+
+	resolved, err := resolveIncludePathWithOptions(sourcePath, "includes/helpers.asp", false, includeResolveOptions{siteRoot: wrongSiteRoot, caseInsensitive: true})
+	if err != nil {
+		t.Fatalf("resolve file include failed: %v", err)
+	}
+	if filepath.Clean(resolved) != filepath.Clean(includePath) {
+		t.Fatalf("unexpected resolved path: got %q want %q", resolved, includePath)
+	}
+}
+
+func TestCompilerCompilesFileIncludeFromScriptDirectory(t *testing.T) {
+	scriptRoot := t.TempDir()
+	wrongSiteRoot := t.TempDir()
+
+	sourcePath := filepath.Join(scriptRoot, "pages", "index.asp")
+	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o755); err != nil {
+		t.Fatalf("mkdir source dir failed: %v", err)
+	}
+
+	includePath := filepath.Join(scriptRoot, "pages", "includes", "helpers.asp")
+	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
+		t.Fatalf("mkdir include dir failed: %v", err)
+	}
+	if err := os.WriteFile(includePath, []byte("<% Response.Write \"ok\" %>"), 0o644); err != nil {
+		t.Fatalf("write include failed: %v", err)
+	}
+
+	source := "<!--#include file=\"includes/helpers.asp\"-->"
+	compiler := NewASPCompiler(source)
+	compiler.SetSourceName(sourcePath)
+	compiler.SetIncludeSiteRoot(wrongSiteRoot)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+}
+
+func TestCompilerCompilesRealPageFileIncludes(t *testing.T) {
+	pagePath := filepath.Join("..", "www", "tests", "tests2", "index.asp")
+	content, err := os.ReadFile(pagePath)
+	if err != nil {
+		t.Fatalf("read sample page failed: %v", err)
+	}
+
+	wrongSiteRoot := t.TempDir()
+	compiler := NewASPCompiler(string(content))
+	compiler.SetSourceName(pagePath)
+	compiler.SetIncludeSiteRoot(wrongSiteRoot)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+}
