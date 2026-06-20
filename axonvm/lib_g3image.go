@@ -140,10 +140,7 @@ func (g *G3Image) DispatchPropertySet(propertyName string, args []Value) bool {
 		}
 		return true
 	case "jpgquality", "jpegquality":
-		q := int(g.vm.asInt(val))
-		if q < 1 {
-			q = 1
-		}
+		q := max(int(g.vm.asInt(val)), 1)
 		if q > 100 {
 			q = 100
 		}
@@ -738,7 +735,7 @@ func parseHexRGBA(hex string) (color.Color, error) {
 		return nil, errors.New("hex color must have 8 digits")
 	}
 	var rgba [4]uint8
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		var b uint8
 		_, err := fmt.Sscanf(hex[i*2:i*2+2], "%02x", &b)
 		if err != nil {

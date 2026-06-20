@@ -129,7 +129,7 @@ func newParser(filename, src string) *_parser {
 	return _newParser(filename, src, 1)
 }
 
-func ReadSource(filename string, src interface{}) ([]byte, error) {
+func ReadSource(filename string, src any) ([]byte, error) {
 	if src != nil {
 		switch src := src.(type) {
 		case string:
@@ -164,7 +164,7 @@ func ReadSource(filename string, src interface{}) ([]byte, error) {
 //
 //	// Parse some JavaScript, yielding a *ast.Program and/or an ErrorList
 //	program, err := parser.ParseFile(nil, "", `if (abc > 1) {}`, 0)
-func ParseFile(fileSet *file.FileSet, filename string, src interface{}, mode Mode, options ...Option) (*ast.Program, error) {
+func ParseFile(fileSet *file.FileSet, filename string, src any, mode Mode, options ...Option) (*ast.Program, error) {
 	str, err := ReadSource(filename, src)
 	if err != nil {
 		return nil, err

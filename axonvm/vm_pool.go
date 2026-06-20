@@ -22,6 +22,7 @@ package axonvm
 
 import (
 	"encoding/binary"
+	"maps"
 	"strings"
 	"sync"
 	"time"
@@ -127,10 +128,7 @@ func getProgramPool(program CachedProgram) *vmProgramPool {
 
 	// Pre-warming: Fill the pool with a few pre-allocated VMs to handle initial bursts.
 	// We don't fill the entire limit (250) to avoid excessive memory usage in tests/rare scripts.
-	warmLimit := 5
-	if limit < warmLimit {
-		warmLimit = limit
-	}
+	warmLimit := min(limit, 5)
 	for i := 0; i < warmLimit; i++ {
 		vm := NewVMFromCachedProgram(entry.program)
 		vm.pooledFrom = entry
@@ -218,7 +216,7 @@ func programFingerprintHex(fingerprint uint64) string {
 	var raw [8]byte
 	binary.BigEndian.PutUint64(raw[:], fingerprint)
 	encoded := make([]byte, 16)
-	for i := 0; i < len(raw); i++ {
+	for i := range len(raw) {
 		encoded[i*2] = hexNibble(raw[i] >> 4)
 		encoded[i*2+1] = hexNibble(raw[i])
 	}
@@ -267,9 +265,7 @@ func (vm *VM) captureBaseProgramState() {
 	} else {
 		clear(vm.baseGlobalZeroArgFuncs)
 	}
-	for key, value := range vm.globalZeroArgFuncs {
-		vm.baseGlobalZeroArgFuncs[key] = value
-	}
+	maps.Copy(vm.baseGlobalZeroArgFuncs, vm.globalZeroArgFuncs)
 
 	vm.baseRuntimeClassVersion = vm.runtimeClassVersion
 
@@ -278,18 +274,14 @@ func (vm *VM) captureBaseProgramState() {
 	} else {
 		clear(vm.baseDeclared)
 	}
-	for key, value := range vm.declaredGlobals {
-		vm.baseDeclared[key] = value
-	}
+	maps.Copy(vm.baseDeclared, vm.declaredGlobals)
 
 	if vm.baseConst == nil {
 		vm.baseConst = make(map[string]bool, len(vm.constGlobals))
 	} else {
 		clear(vm.baseConst)
 	}
-	for key, value := range vm.constGlobals {
-		vm.baseConst[key] = value
-	}
+	maps.Copy(vm.baseConst, vm.constGlobals)
 
 	vm.baseSourceName = vm.sourceName
 	vm.baseSourceMap = vm.sourceMap.Clone()
@@ -324,19 +316,13 @@ func (vm *VM) resetForReuse() {
 	vm.rebuildGlobalNameIndex()
 
 	clear(vm.globalZeroArgFuncs)
-	for key, value := range vm.baseGlobalZeroArgFuncs {
-		vm.globalZeroArgFuncs[key] = value
-	}
+	maps.Copy(vm.globalZeroArgFuncs, vm.baseGlobalZeroArgFuncs)
 
 	clear(vm.dynamicProgramStarts)
 	clear(vm.declaredGlobals)
-	for key, value := range vm.baseDeclared {
-		vm.declaredGlobals[key] = value
-	}
+	maps.Copy(vm.declaredGlobals, vm.baseDeclared)
 	clear(vm.constGlobals)
-	for key, value := range vm.baseConst {
-		vm.constGlobals[key] = value
-	}
+	maps.Copy(vm.constGlobals, vm.baseConst)
 	vm.sourceName = vm.baseSourceName
 	vm.sourceMap = vm.baseSourceMap.Clone()
 	if vm.errObject != nil {

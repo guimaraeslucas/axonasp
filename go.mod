@@ -1,6 +1,6 @@
 module g3pix.com.br/axonasp
 
-go 1.26.2
+go 1.26.4
 
 require (
 	codeberg.org/go-pdf/fpdf v0.12.0

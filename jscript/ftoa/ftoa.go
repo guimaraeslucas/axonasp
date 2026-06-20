@@ -354,11 +354,7 @@ func ftoa(d float64, mode int, biasUp bool, ndigits int, buf []byte) ([]byte, in
 	/* We still have d/10^k = (b * 2^b2 * 5^b5) / (2^s2 * 5^s5).  Reduce common factors in
 	   b2, m2, and s2 without changing the equalities. */
 	if m2 > 0 && s2 > 0 {
-		if m2 < s2 {
-			i = m2
-		} else {
-			i = s2
-		}
+		i = min(m2, s2)
 		b2 -= i
 		m2 -= i
 		s2 -= i
@@ -414,7 +410,7 @@ func ftoa(d float64, mode int, biasUp bool, ndigits int, buf []byte) ([]byte, in
 	if s5 != 0 {
 		S_bytes := S.Bytes()
 		var S_hiWord uint32
-		for idx := 0; idx < 4; idx++ {
+		for idx := range 4 {
 			S_hiWord = S_hiWord << 8
 			if idx < len(S_bytes) {
 				S_hiWord |= uint32(S_bytes[idx])

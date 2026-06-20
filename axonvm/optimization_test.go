@@ -195,7 +195,7 @@ func TestAsyncSessionPersistence(t *testing.T) {
 
 	// Wait for background worker to process it.
 	// We give it some time since it involves disk I/O.
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		time.Sleep(50 * time.Millisecond)
 		if !session.IsDirty() {
 			break
@@ -216,7 +216,7 @@ func TestAsyncSessionPersistence(t *testing.T) {
 // TestFSODirectorySingleflight verifies that concurrent directory reads are collapsed.
 func TestFSODirectorySingleflight(t *testing.T) {
 	tempDir := t.TempDir()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		os.WriteFile(filepath.Join(tempDir, fmt.Sprintf("file%d.txt", i)), []byte("test"), 0644)
 	}
 
@@ -226,7 +226,7 @@ func TestFSODirectorySingleflight(t *testing.T) {
 
 	start := make(chan struct{})
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			defer wg.Done()
 			<-start

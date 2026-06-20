@@ -210,7 +210,7 @@ func localizedWeekdayNames(tag string, abbrev bool) []string {
 	}
 	baseSunday := time.Date(2026, time.January, 4, 0, 0, 0, 0, time.UTC)
 	names := make([]string, 0, 7)
-	for offset := 0; offset < 7; offset++ {
+	for offset := range 7 {
 		names = append(names, localizedFormat(baseSunday.AddDate(0, 0, offset), layout, profile))
 	}
 	for _, name := range names {

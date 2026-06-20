@@ -88,7 +88,7 @@ func TestVMServerFSOTimestampProperties(t *testing.T) {
 	folderModified := vm.dispatchMemberGet(folderObj, "DateLastModified")
 
 	dateValues := []Value{fileCreated, fileAccessed, fileModified, folderCreated, folderAccessed, folderModified}
-	for i := 0; i < len(dateValues); i++ {
+	for i := range dateValues {
 		if dateValues[i].Type != VTDate {
 			t.Fatalf("expected VTDate value at index %d, got %#v", i, dateValues[i])
 		}
@@ -646,7 +646,7 @@ func TestVMServerG3SearchBuildIndexConcurrentSingleRun(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(workers)
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			defer wg.Done()
 			search := NewG3Search(vm)

@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -857,15 +858,9 @@ func NewVMFromCompiler(compiler *Compiler) *VM {
 	vm.globalNames = append(vm.globalNames[:0], compiler.Globals.names...)
 	vm.rebuildGlobalNameIndex()
 	clear(vm.globalZeroArgFuncs)
-	for key, value := range compiler.globalZeroArgFuncs {
-		vm.globalZeroArgFuncs[key] = value
-	}
-	for key, value := range compiler.declaredGlobals {
-		vm.declaredGlobals[key] = value
-	}
-	for key, value := range compiler.constGlobals {
-		vm.constGlobals[key] = value
-	}
+	maps.Copy(vm.globalZeroArgFuncs, compiler.globalZeroArgFuncs)
+	maps.Copy(vm.declaredGlobals, compiler.declaredGlobals)
+	maps.Copy(vm.constGlobals, compiler.constGlobals)
 	// Apply VB6 As Type declarations for global variables.
 	vm.applyGlobalVarTypes(compiler.GlobalVarTypes(), compiler.GlobalRecordTypes())
 	// Apply VB6 As Type declarations for local variables (function-scoped).
@@ -873,9 +868,7 @@ func NewVMFromCompiler(compiler *Compiler) *VM {
 
 	// Copy UDT declarations
 	vm.RecordDecls = append(vm.RecordDecls[:0], compiler.recordDecls...)
-	for k, v := range compiler.recordDeclLookup {
-		vm.RecordDeclLookup[k] = v
-	}
+	maps.Copy(vm.RecordDeclLookup, compiler.recordDeclLookup)
 
 	// Copy parameter default values for Optional parameters.
 	clear(vm.funcParamDefaults)
@@ -907,15 +900,9 @@ func (vm *VM) newExecuteGlobalCompiler(code string) *Compiler {
 		}
 		compiler.Globals.Add(name)
 	}
-	for key, value := range vm.globalZeroArgFuncs {
-		compiler.globalZeroArgFuncs[key] = value
-	}
-	for key, value := range vm.declaredGlobals {
-		compiler.declaredGlobals[key] = value
-	}
-	for key, value := range vm.constGlobals {
-		compiler.constGlobals[key] = value
-	}
+	maps.Copy(compiler.globalZeroArgFuncs, vm.globalZeroArgFuncs)
+	maps.Copy(compiler.declaredGlobals, vm.declaredGlobals)
+	maps.Copy(compiler.constGlobals, vm.constGlobals)
 	vm.seedCompilerClassDeclarationsFromRuntime(compiler)
 	vm.attachDynamicClassResolutionContext(compiler)
 
@@ -956,15 +943,9 @@ func (vm *VM) newExecuteLocalCompiler(code string, localSub Value, isEval bool) 
 		}
 		compiler.Globals.Add(name)
 	}
-	for key, value := range vm.globalZeroArgFuncs {
-		compiler.globalZeroArgFuncs[key] = value
-	}
-	for key, value := range vm.declaredGlobals {
-		compiler.declaredGlobals[key] = value
-	}
-	for key, value := range vm.constGlobals {
-		compiler.constGlobals[key] = value
-	}
+	maps.Copy(compiler.globalZeroArgFuncs, vm.globalZeroArgFuncs)
+	maps.Copy(compiler.declaredGlobals, vm.declaredGlobals)
+	maps.Copy(compiler.constGlobals, vm.constGlobals)
 	vm.seedCompilerClassDeclarationsFromRuntime(compiler)
 	vm.attachDynamicClassResolutionContext(compiler)
 
@@ -1562,9 +1543,7 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 			continue
 		}
 		bindings := make(map[string]Value, len(env.bindings))
-		for name, value := range env.bindings {
-			bindings[name] = value
-		}
+		maps.Copy(bindings, env.bindings)
 		child.jsEnvItems[id] = &jsEnvFrame{parentID: env.parentID, bindings: bindings}
 	}
 	child.jsArgumentsItems = make(map[int64]*jsArgumentsBinding, len(vm.jsArgumentsItems))
@@ -1574,13 +1553,9 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 			continue
 		}
 		indexToParam := make(map[string]string, len(binding.indexToParam))
-		for key, value := range binding.indexToParam {
-			indexToParam[key] = value
-		}
+		maps.Copy(indexToParam, binding.indexToParam)
 		paramToIndex := make(map[string]string, len(binding.paramToIndex))
-		for key, value := range binding.paramToIndex {
-			paramToIndex[key] = value
-		}
+		maps.Copy(paramToIndex, binding.paramToIndex)
 		child.jsArgumentsItems[id] = &jsArgumentsBinding{
 			envID:        binding.envID,
 			indexToParam: indexToParam,
@@ -1593,9 +1568,7 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 			continue
 		}
 		cloned := make(map[string]Value, len(scope))
-		for name, value := range scope {
-			cloned[name] = value
-		}
+		maps.Copy(cloned, scope)
 		child.jsBlockScopes[i] = cloned
 	}
 	child.jsBlockScopeConst = make([]map[string]struct{}, len(vm.jsBlockScopeConst))
@@ -3036,7 +3009,7 @@ aspExecLoop:
 				}
 				// Accumulate all parts into the reusable scratch buffer, then write once.
 				vm.stringWorkBuffer = vm.stringWorkBuffer[:0]
-				for i := 0; i < n; i++ {
+				for i := range n {
 					vm.stringWorkBuffer = append(vm.stringWorkBuffer, vm.valueToString(parts[i])...)
 				}
 				if len(vm.stringWorkBuffer) > 0 {
@@ -3044,7 +3017,7 @@ aspExecLoop:
 				}
 			} else {
 				// Drain stack even if output is nil.
-				for i := 0; i < n; i++ {
+				for range n {
 					vm.pop()
 				}
 			}
@@ -4054,13 +4027,13 @@ aspExecLoop:
 				if vm.ip != savedIP+5 {
 					goto aspExecLoop
 				}
-				for i := 0; i < specCount; i++ {
+				for range specCount {
 					vm.ip += 4
 				}
 				continue
 			}
 			moduleLoading := vm.jsIsModuleLoading(moduleSpecifier)
-			for i := 0; i < specCount; i++ {
+			for range specCount {
 				importedIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 				vm.ip += 2
 				localIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -4102,10 +4075,7 @@ aspExecLoop:
 			localCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
 			if localCount > 0 {
-				base := vm.fp
-				if base < 0 {
-					base = 0
-				}
+				base := max(vm.fp, 0)
 				end := base + localCount - 1
 				if end >= len(vm.stack) {
 					vm.jsThrowOutOfStackSpace()
@@ -4607,14 +4577,14 @@ aspExecLoop:
 			staticCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
 			excluded := make(map[string]struct{}, staticCount+4)
-			for i := 0; i < staticCount; i++ {
+			for range staticCount {
 				keyIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 				vm.ip += 2
 				excluded[vm.constants[keyIdx].Str] = struct{}{}
 			}
 			dynamicCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
-			for i := 0; i < dynamicCount; i++ {
+			for range dynamicCount {
 				keyVal := vm.pop()
 				excluded[vm.jsPropertyKeyFromValue(keyVal)] = struct{}{}
 			}
@@ -5383,7 +5353,7 @@ aspExecLoop:
 			parentID := vm.jsActiveEnvID
 			childID := vm.allocJSID()
 			bindings := make(map[string]Value, numVars+2)
-			for j := 0; j < numVars; j++ {
+			for range numVars {
 				nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 				vm.ip += 2
 				varName := vm.constants[nameIdx].Str
@@ -5411,7 +5381,7 @@ aspExecLoop:
 				break
 			}
 			parentID := currentEnv.parentID
-			for j := 0; j < numVars; j++ {
+			for range numVars {
 				nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 				vm.ip += 2
 				varName := vm.constants[nameIdx].Str
@@ -5545,7 +5515,7 @@ func (vm *VM) prepareTransactionEventCall() bool {
 	})
 	vm.fp = vm.sp + 1
 	localCount := handler.UserSubLocalCount()
-	for i := 0; i < localCount; i++ {
+	for i := range localCount {
 		vm.stack[vm.fp+i] = Value{Type: VTEmpty}
 	}
 	if localCount > 0 {
@@ -5624,7 +5594,7 @@ func (vm *VM) readArrayElement(target Value, indexes []Value) Value {
 	}
 
 	current := target.Arr
-	for i := 0; i < len(indexes); i++ {
+	for i := range indexes {
 		idx := vm.asInt(indexes[i])
 		if idx < current.Lower || idx > current.Upper() {
 			vm.raise(vbscript.SubscriptOutOfRange, "Subscript out of range")
@@ -6854,7 +6824,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			keys := session.GetAllKeys()
 			sort.Strings(keys)
 			values := make([]Value, len(keys))
-			for i := 0; i < len(keys); i++ {
+			for i := range keys {
 				values[i] = NewString(keys[i])
 			}
 			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}
@@ -6862,7 +6832,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			keys := session.GetAllKeys()
 			sort.Strings(keys)
 			values := make([]Value, 0, len(keys))
-			for i := 0; i < len(keys); i++ {
+			for i := range keys {
 				if sessionValue, ok := session.Get(keys[i]); ok {
 					values = append(values, vm.applicationValueToValue(sessionValue))
 				}
@@ -7744,7 +7714,7 @@ func (vm *VM) valueToBinaryBytes(v Value) []byte {
 			return []byte{}
 		}
 		out := make([]byte, len(values))
-		for i := 0; i < len(values); i++ {
+		for i := range values {
 			n := vm.asInt(values[i])
 			out[i] = byte(n)
 		}
@@ -8674,7 +8644,7 @@ func bytesToVBByteString(data []byte) string {
 		return ""
 	}
 	runes := make([]rune, len(data))
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		runes[i] = rune(data[i])
 	}
 	return string(runes)
@@ -8725,10 +8695,7 @@ func (vm *VM) beginUserSubCall(target Value, args []Value, discardReturn bool, b
 	vm.skipToNextStmt = false
 	vm.fp = vm.sp + 1
 	paramCount := target.UserSubParamCount()
-	localCount := target.UserSubLocalCount()
-	if localCount < paramCount {
-		localCount = paramCount
-	}
+	localCount := max(target.UserSubLocalCount(), paramCount)
 
 	frameLast := vm.fp + localCount - 1
 	if localCount > 0 && frameLast >= StackSize {
@@ -8765,10 +8732,7 @@ func (vm *VM) beginUserSubCall(target Value, args []Value, discardReturn bool, b
 		// If this is the ParamArray slot, pack remaining args into an array.
 		if hasParamArray && paramIdx == paramArrayIdx {
 			// Copy remaining args into a new array to avoid aliasing the argBuffer.
-			remaining := len(args) - argIdx
-			if remaining < 0 {
-				remaining = 0
-			}
+			remaining := max(len(args)-argIdx, 0)
 			vba := NewVBArray(0, remaining)
 			for j := 0; j < remaining; j++ {
 				vba.Values[j] = args[argIdx+j]
@@ -8952,7 +8916,7 @@ func (vm *VM) unbindWithEvents(container *RuntimeClassInstance, varName string, 
 func (vm *VM) handleRaiseEvent(eventName string, argCount int) {
 	if vm.activeClassObjectID == 0 {
 		// RaiseEvent only allowed inside classes
-		for i := 0; i < argCount; i++ {
+		for range argCount {
 			vm.pop()
 		}
 		return
@@ -8960,7 +8924,7 @@ func (vm *VM) handleRaiseEvent(eventName string, argCount int) {
 
 	instance := vm.runtimeClassItems[vm.activeClassObjectID]
 	if instance == nil {
-		for i := 0; i < argCount; i++ {
+		for range argCount {
 			vm.pop()
 		}
 		return
@@ -8969,7 +8933,7 @@ func (vm *VM) handleRaiseEvent(eventName string, argCount int) {
 	lowerEventName := strings.ToLower(eventName)
 	observers, ok := instance.Observers[lowerEventName]
 	if !ok || len(observers) == 0 {
-		for i := 0; i < argCount; i++ {
+		for range argCount {
 			vm.pop()
 		}
 		return
@@ -9415,7 +9379,7 @@ func (vm *VM) StackTop() Value {
 }
 
 var recordPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return &VBRecord{}
 	},
 }

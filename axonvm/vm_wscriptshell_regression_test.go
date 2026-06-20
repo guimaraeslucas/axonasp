@@ -76,14 +76,8 @@ func TestRunWScriptShellPage_NoBytecodeCorruption(t *testing.T) {
 	}
 
 	ip := vm.ip
-	start := ip - 12
-	if start < 0 {
-		start = 0
-	}
-	end := ip + 12
-	if end > len(vm.bytecode) {
-		end = len(vm.bytecode)
-	}
+	start := max(ip-12, 0)
+	end := min(ip+12, len(vm.bytecode))
 
 	before := bytecode[start:end]
 	after := vm.bytecode[start:end]

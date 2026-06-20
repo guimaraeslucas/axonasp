@@ -405,7 +405,7 @@ func TestASPLargeScriptJumpTargets(t *testing.T) {
 	var source strings.Builder
 	source.Grow(320000)
 	source.WriteString("<%\nIf False Then\n")
-	for i := 0; i < 9000; i++ {
+	for range 9000 {
 		source.WriteString("Response.Write \"xxxxxxxxxx\"\n")
 	}
 	source.WriteString("End If\nResponse.Write \"ok\"\n%>")
@@ -7214,7 +7214,7 @@ Response.Write result & "|" & myStr
 func buildNestedWriteCallHighIndexSource(padCount int) string {
 	var source strings.Builder
 	source.WriteString("<%\n")
-	for i := 0; i < padCount; i++ {
+	for i := range padCount {
 		source.WriteString("Dim pad")
 		source.WriteString(strconv.Itoa(i))
 		source.WriteString("\n")
@@ -7242,7 +7242,7 @@ Response.Write f("type")
 func TestASPNoParenMemberCallNestedCallHighGlobalIndex(t *testing.T) {
 	var compiler *Compiler
 	padCount := -1
-	for i := 0; i < 512; i++ {
+	for i := range 512 {
 		candidate := NewASPCompiler(buildNestedWriteCallHighIndexSource(i))
 		if err := candidate.Compile(); err != nil {
 			t.Fatalf("compile failed during padding search at %d: %v", i, err)

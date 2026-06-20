@@ -195,8 +195,8 @@ func TestDockerASPEnvironment(t *testing.T) {
 	}
 
 	// Verify no individual test failed
-	lines := strings.Split(body, "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(body, "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "[FAIL]") {
 			t.Errorf("ASP test failed: %s", line)
@@ -296,7 +296,7 @@ func TestDockerConcurrentRequests(t *testing.T) {
 	const workers = 10
 	results := make(chan error, workers)
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			status, _ := get(t, "/tests/test_hello.asp")
 			if status != http.StatusOK {
@@ -307,7 +307,7 @@ func TestDockerConcurrentRequests(t *testing.T) {
 		}()
 	}
 
-	for i := 0; i < workers; i++ {
+	for range workers {
 		if err := <-results; err != nil {
 			t.Errorf("concurrent request failed: %v", err)
 		}

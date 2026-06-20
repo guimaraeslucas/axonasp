@@ -871,7 +871,7 @@ func (vm *VM) fsoReleasePathObjects(path string) {
 // Windows sharing delays after recent stream close and rename operations.
 func (vm *VM) fsoRemoveWithRetry(path string, recursive bool) error {
 	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
+	for range 5 {
 		_ = os.Chmod(path, 0666)
 		if recursive {
 			lastErr = os.RemoveAll(path)

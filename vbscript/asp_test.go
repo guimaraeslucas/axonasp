@@ -3,6 +3,7 @@ package vbscript
 import (
 	"fmt"
 	"g3pix.com.br/axonasp/vbscript/ast"
+	"strings"
 	"testing"
 )
 
@@ -44,22 +45,22 @@ func printStmt(stmt ast.Statement, indent int) {
 	if stmt == nil {
 		return
 	}
-	prefix := ""
-	for i := 0; i < indent; i++ {
-		prefix += "  "
+	var prefix strings.Builder
+	for range indent {
+		prefix.WriteString("  ")
 	}
 
 	switch s := stmt.(type) {
 	case *ast.HTMLStatement:
-		fmt.Printf("%sHTML: %q\n", prefix, s.Content)
+		fmt.Printf("%sHTML: %q\n", prefix.String(), s.Content)
 	case *ast.ASPExpressionStatement:
-		fmt.Printf("%sASP Expression: %T\n", prefix, s.Expression)
+		fmt.Printf("%sASP Expression: %T\n", prefix.String(), s.Expression)
 	case *ast.VariablesDeclaration:
-		fmt.Printf("%sDim statement\n", prefix)
+		fmt.Printf("%sDim statement\n", prefix.String())
 	case *ast.AssignmentStatement:
-		fmt.Printf("%sAssignment\n", prefix)
+		fmt.Printf("%sAssignment\n", prefix.String())
 	case *ast.IfStatement:
-		fmt.Printf("%sIf statement\n", prefix)
+		fmt.Printf("%sIf statement\n", prefix.String())
 		if list, ok := s.Consequent.(*ast.StatementList); ok {
 			for i := 0; i < list.Count(); i++ {
 				printStmt(list.Get(i), indent+1)
@@ -68,11 +69,11 @@ func printStmt(stmt ast.Statement, indent int) {
 			printStmt(s.Consequent, indent+1)
 		}
 		if s.Alternate != nil {
-			fmt.Printf("%sElse\n", prefix)
+			fmt.Printf("%sElse\n", prefix.String())
 			printStmt(s.Alternate, indent+1)
 		}
 	case *ast.ElseIfStatement:
-		fmt.Printf("%sElseIf\n", prefix)
+		fmt.Printf("%sElseIf\n", prefix.String())
 		if list, ok := s.Consequent.(*ast.StatementList); ok {
 			for i := 0; i < list.Count(); i++ {
 				printStmt(list.Get(i), indent+1)
@@ -84,10 +85,10 @@ func printStmt(stmt ast.Statement, indent int) {
 			printStmt(s.Alternate, indent)
 		}
 	case *ast.ASPDirectiveStatement:
-		fmt.Printf("%sASP Directive: %v\n", prefix, s.Attributes)
+		fmt.Printf("%sASP Directive: %v\n", prefix.String(), s.Attributes)
 	case *ast.IncludeStatement:
-		fmt.Printf("%sInclude: %s (virtual=%v)\n", prefix, s.Path, s.Virtual)
+		fmt.Printf("%sInclude: %s (virtual=%v)\n", prefix.String(), s.Path, s.Virtual)
 	default:
-		fmt.Printf("%sStatement: %T\n", prefix, s)
+		fmt.Printf("%sStatement: %T\n", prefix.String(), s)
 	}
 }

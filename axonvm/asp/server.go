@@ -239,8 +239,8 @@ func (s *Server) MapPath(path string) string {
 	}
 
 	normalized := strings.ReplaceAll(path, "\\", "/")
-	if strings.HasPrefix(normalized, "/") {
-		fullPath := filepath.Join(rootDir, strings.TrimPrefix(normalized, "/"))
+	if after, ok := strings.CutPrefix(normalized, "/"); ok {
+		fullPath := filepath.Join(rootDir, after)
 		absPath, err := filepath.Abs(fullPath)
 		if err != nil {
 			return fullPath

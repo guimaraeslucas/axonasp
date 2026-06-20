@@ -425,7 +425,7 @@ func (p *G3PDF) Rect(x, y, w, h float64, style string) {
 }
 
 // Cell prints a rectangular cell with text at the current position
-func (p *G3PDF) Cell(w, h float64, txt string, border interface{}, ln int, align string, fill bool, link interface{}) {
+func (p *G3PDF) Cell(w, h float64, txt string, border any, ln int, align string, fill bool, link any) {
 	// Convert border parameter (can be 0, 1, string like "LTRB")
 	var borderStr string
 	if b, ok := border.(string); ok {
@@ -454,7 +454,7 @@ func (p *G3PDF) Cell(w, h float64, txt string, border interface{}, ln int, align
 }
 
 // MultiCell prints text with multiple lines
-func (p *G3PDF) MultiCell(w, h float64, txt string, border interface{}, align string, fill bool) {
+func (p *G3PDF) MultiCell(w, h float64, txt string, border any, align string, fill bool) {
 	// Convert border parameter
 	var borderStr string
 	if b, ok := border.(string); ok {
@@ -473,7 +473,7 @@ func (p *G3PDF) MultiCell(w, h float64, txt string, border interface{}, align st
 
 // Write prints flowing text starting at current position
 // link can be an integer link ID (from AddLink) or a URL string
-func (p *G3PDF) Write(h float64, txt string, link interface{}) {
+func (p *G3PDF) Write(h float64, txt string, link any) {
 	switch l := link.(type) {
 	case int:
 		if l > 0 {
@@ -501,7 +501,7 @@ func (p *G3PDF) Text(x, y float64, txt string) {
 
 // Image inserts an image at specified position
 // typ can be "JPG", "PNG", "GIF", "BMP" etc
-func (p *G3PDF) Image(path string, x, y, w, h float64, typ string, link interface{}) {
+func (p *G3PDF) Image(path string, x, y, w, h float64, typ string, link any) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return
@@ -777,7 +777,7 @@ func htmlColorToRGB(color string) (int, int, int, bool) {
 // "D" = HTTP download with name
 // "F" = save to file
 // "S" = return as byte string
-func (p *G3PDF) Output(dest, fileName string, isUTF8 bool) (interface{}, error) {
+func (p *G3PDF) Output(dest, fileName string, isUTF8 bool) (any, error) {
 	dest = strings.ToUpper(strings.TrimSpace(dest))
 	if dest == "" {
 		dest = "S"
@@ -802,7 +802,7 @@ func (p *G3PDF) Output(dest, fileName string, isUTF8 bool) (interface{}, error) 
 		if err := p.pdf.Output(buf); err != nil {
 			return nil, fmt.Errorf("pdf generation failed: %w", err)
 		}
-		return map[string]interface{}{
+		return map[string]any{
 			"content":  buf.Bytes(),
 			"filename": fileName,
 			"inline":   false,
@@ -1043,10 +1043,7 @@ func (p *G3PDF) handleHTMLOpenTag(tagName string, attrs map[string]string) {
 		if p.pdf.GetX() > left+0.1 {
 			p.pdf.Ln(lineHeight)
 		}
-		size := 28 - (len(tagName) * 2)
-		if size < 10 {
-			size = 10
-		}
+		size := max(28-(len(tagName)*2), 10)
 		p.htmlState.fontSize = float64(size)
 		p.htmlState.bold = true
 
@@ -1441,8 +1438,8 @@ func parseHTMLAttributes(input string) map[string]string {
 // parseHTMLStyleDeclarations parses a CSS inline style string into a simple map.
 func parseHTMLStyleDeclarations(input string) map[string]string {
 	styleMap := make(map[string]string)
-	parts := strings.Split(input, ";")
-	for _, part := range parts {
+	parts := strings.SplitSeq(input, ";")
+	for part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -1786,11 +1783,11 @@ func (p *G3PDF) DispatchMethod(name string, args []Value) Value {
 		w := toFloat(legacyValueToInterface(args[0], p.vm))
 		h := 0.0
 		txt := ""
-		border := interface{}(0)
+		border := any(0)
 		ln := 0
 		align := ""
 		fill := false
-		link := interface{}("")
+		link := any("")
 
 		if len(args) > 1 {
 			h = toFloat(legacyValueToInterface(args[1], p.vm))
@@ -1824,7 +1821,7 @@ func (p *G3PDF) DispatchMethod(name string, args []Value) Value {
 		w := toFloat(legacyValueToInterface(args[0], p.vm))
 		h := toFloat(legacyValueToInterface(args[1], p.vm))
 		txt := fmt.Sprintf("%v", legacyValueToInterface(args[2], p.vm))
-		border := interface{}(0)
+		border := any(0)
 		align := "J"
 		fill := false
 
@@ -1847,7 +1844,7 @@ func (p *G3PDF) DispatchMethod(name string, args []Value) Value {
 		}
 		h := toFloat(legacyValueToInterface(args[0], p.vm))
 		txt := fmt.Sprintf("%v", legacyValueToInterface(args[1], p.vm))
-		link := interface{}("")
+		link := any("")
 
 		if len(args) > 2 {
 			link = legacyValueToInterface(args[2], p.vm)
@@ -1907,7 +1904,7 @@ func (p *G3PDF) DispatchMethod(name string, args []Value) Value {
 		x, y := math.NaN(), math.NaN()
 		w, h := 0.0, 0.0
 		typ := ""
-		link := interface{}("")
+		link := any("")
 
 		if len(args) > 1 {
 			x = toFloat(legacyValueToInterface(args[1], p.vm))

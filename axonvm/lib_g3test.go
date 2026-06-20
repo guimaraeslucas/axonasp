@@ -23,7 +23,7 @@
 package axonvm
 
 import (
-	"sort"
+	"slices"
 	"strings"
 
 	"g3pix.com.br/axonasp/axonvm/asp"
@@ -165,7 +165,7 @@ func (vm *VM) GetG3TestReports() []G3TestReport {
 	for id := range vm.g3testItems {
 		ids = append(ids, id)
 	}
-	sort.Slice(ids, func(i int, j int) bool { return ids[i] < ids[j] })
+	slices.Sort(ids)
 
 	reports := make([]G3TestReport, 0, len(ids))
 	for _, id := range ids {

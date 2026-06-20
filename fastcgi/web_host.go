@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -226,20 +227,8 @@ func (h *FastCGIHost) ExecuteASPFile(absPath string) error {
 
 		var compiler *axonvm.Compiler
 		ext := strings.ToLower(filepath.Ext(absPath))
-		isVBS := false
-		for _, e := range ExecuteAsVBScriptExtensions {
-			if e == ext {
-				isVBS = true
-				break
-			}
-		}
-		isJS := false
-		for _, e := range ExecuteAsJavaScriptExtensions {
-			if e == ext {
-				isJS = true
-				break
-			}
-		}
+		isVBS := slices.Contains(ExecuteAsVBScriptExtensions, ext)
+		isJS := slices.Contains(ExecuteAsJavaScriptExtensions, ext)
 
 		if isJS {
 			compiler = axonvm.NewJavaScriptCompiler(string(content))

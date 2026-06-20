@@ -206,7 +206,7 @@ func (z *G3ZSTD) methodDecompressToString(input Value) Value {
 func (z *G3ZSTD) methodCompressMany(input Value, level int) Value {
 	items := g3zlibNormalizeBatchInput(input)
 	output := make([]Value, 0, len(items))
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		compressed := z.methodCompress(items[i], level)
 		if compressed.Type == VTEmpty {
 			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}
@@ -220,7 +220,7 @@ func (z *G3ZSTD) methodCompressMany(input Value, level int) Value {
 func (z *G3ZSTD) methodDecompressMany(input Value) Value {
 	items := g3zlibNormalizeBatchInput(input)
 	output := make([]Value, 0, len(items))
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		decoded := z.methodDecompress(items[i])
 		if decoded.Type == VTEmpty {
 			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}

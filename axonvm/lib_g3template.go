@@ -62,7 +62,7 @@ func (t *G3Template) DispatchMethod(methodName string, args []Value) Value {
 			fullPath = t.vm.host.Server().MapPath(relPath)
 		}
 
-		var data interface{}
+		var data any
 		if len(args) > 1 {
 			data = t.vmValueToGoValue(args[1])
 		}
@@ -84,20 +84,20 @@ func (t *G3Template) DispatchMethod(methodName string, args []Value) Value {
 }
 
 // vmValueToGoValue converts VM types to Go types for html/template consumption
-func (t *G3Template) vmValueToGoValue(v Value) interface{} {
+func (t *G3Template) vmValueToGoValue(v Value) any {
 	switch v.Type {
 	case VTArray:
 		if v.Arr == nil {
-			return []interface{}{}
+			return []any{}
 		}
-		arr := make([]interface{}, len(v.Arr.Values))
+		arr := make([]any, len(v.Arr.Values))
 		for i, item := range v.Arr.Values {
 			arr[i] = t.vmValueToGoValue(item)
 		}
 		return arr
 	case VTNativeObject:
 		if _, ok := t.vm.dictionaryItems[v.Num]; ok {
-			m := make(map[string]interface{})
+			m := make(map[string]any)
 			keysVal, _ := t.vm.dispatchDictionaryMethod(v.Num, "Keys", nil)
 			itemsVal, _ := t.vm.dispatchDictionaryMethod(v.Num, "Items", nil)
 			if keysVal.Type == VTArray && itemsVal.Type == VTArray && keysVal.Arr != nil && itemsVal.Arr != nil {

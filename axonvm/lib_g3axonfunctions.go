@@ -75,7 +75,7 @@ func filterEnvironmentEntries(envList []string) []string {
 		return envList
 	}
 	filtered := make([]string, 0, len(envList))
-	for i := 0; i < len(envList); i++ {
+	for i := range envList {
 		entry := envList[i]
 		if entry == "" {
 			continue
@@ -222,7 +222,7 @@ func newAxonConfigViper() (*viper.Viper, bool) {
 
 // loadAxConfigValue reads one configuration key from axonasp.toml using Viper.
 // When global.viper_automatic_env is enabled, environment variables take precedence over file values.
-func loadAxConfigValue(configKey string) (interface{}, bool) {
+func loadAxConfigValue(configKey string) (any, bool) {
 	key := strings.TrimSpace(configKey)
 	if key == "" {
 		return nil, false
@@ -265,7 +265,7 @@ func axonConfigCandidates() []string {
 // resolveAxonConfigPath returns the first existing config path, or a stable absolute fallback.
 func resolveAxonConfigPath() string {
 	candidates := axonConfigCandidates()
-	for i := 0; i < len(candidates); i++ {
+	for i := range candidates {
 		candidate := candidates[i]
 		if _, err := os.Stat(candidate); err == nil {
 			if abs, absErr := filepath.Abs(candidate); absErr == nil {
@@ -399,7 +399,7 @@ func buildAxRuntimeInfoReport(vm *VM) string {
 	} else {
 		b.WriteString("Config status: loaded\n")
 		keys := v.AllKeys()
-		for i := 0; i < len(keys); i++ {
+		for i := range keys {
 			key := keys[i]
 			b.WriteString("- ")
 			b.WriteString(key)
@@ -423,7 +423,7 @@ func buildAxRuntimeInfoReport(vm *VM) string {
 }
 
 // axConfigValueToVMValue converts Viper config values into VM-compatible Value types.
-func axConfigValueToVMValue(raw interface{}) Value {
+func axConfigValueToVMValue(raw any) Value {
 	switch v := raw.(type) {
 	case nil:
 		return NewEmpty()
@@ -457,13 +457,13 @@ func axConfigValueToVMValue(raw interface{}) Value {
 		return NewDouble(v)
 	case []string:
 		values := make([]Value, len(v))
-		for i := 0; i < len(v); i++ {
+		for i := range v {
 			values[i] = NewString(v[i])
 		}
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}
-	case []interface{}:
+	case []any:
 		values := make([]Value, len(v))
-		for i := 0; i < len(v); i++ {
+		for i := range v {
 			values[i] = axConfigValueToVMValue(v[i])
 		}
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}
@@ -634,7 +634,7 @@ func (al *AxonLibrary) DispatchMethod(methodName string, args []Value) Value {
 			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}
 		}
 		values := make([]Value, len(keys))
-		for i := 0; i < len(keys); i++ {
+		for i := range keys {
 			values[i] = NewString(keys[i])
 		}
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}
@@ -1072,10 +1072,7 @@ func (al *AxonLibrary) DispatchMethod(methodName string, args []Value) Value {
 			return NewString("")
 		}
 		str := args[0].String()
-		times := int(al.vm.asInt(args[1]))
-		if times < 0 {
-			times = 0
-		}
+		times := max(int(al.vm.asInt(args[1])), 0)
 		return NewString(strings.Repeat(str, times))
 
 	case "axucfirst":

@@ -179,7 +179,7 @@ func TestAxGetConfigKeysReturnsArray(t *testing.T) {
 	// Verify that a well-known key is present in the returned list.
 	found := false
 	length := got.Arr.Len()
-	for i := 0; i < length; i++ {
+	for i := range length {
 		v, _ := got.Arr.Get(i)
 		if v.String() == "global.golang_memory_limit_mb" {
 			found = true
@@ -400,7 +400,7 @@ func TestAxRuntimeInfoContainsRequiredSections(t *testing.T) {
 		"Attribution Notice:",
 		"Contribution Policy:",
 	}
-	for i := 0; i < len(required); i++ {
+	for i := range required {
 		if !strings.Contains(text, required[i]) {
 			t.Fatalf("missing required runtime info token %q", required[i])
 		}

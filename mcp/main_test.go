@@ -89,7 +89,7 @@ func TestSearchAndReadWorkflow(t *testing.T) {
 	req := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "search_axonasp_docs",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"query": "globa.asa",
 			},
 		},
@@ -119,7 +119,7 @@ func TestSearchAndReadWorkflow(t *testing.T) {
 	readReq := mcp.CallToolRequest{
 		Params: mcp.CallToolParams{
 			Name: "read_axonasp_doc",
-			Arguments: map[string]interface{}{
+			Arguments: map[string]any{
 				"path": "asp/global-asa.md",
 			},
 		},

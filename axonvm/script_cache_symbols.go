@@ -121,17 +121,11 @@ func buildCachedProgramFromCompiler(compiler *Compiler) CachedProgram {
 	}
 	base := getBaseGlobalDictionary()
 	allGlobals := compiler.Globals.names
-	userStart := compiler.userGlobalsStart
-	if userStart < 0 {
-		userStart = 0
-	}
+	userStart := max(compiler.userGlobalsStart, 0)
 	if userStart > len(allGlobals) {
 		userStart = len(allGlobals)
 	}
-	baseCount := len(base.names)
-	if baseCount > userStart {
-		baseCount = userStart
-	}
+	baseCount := min(len(base.names), userStart)
 	prelude := cloneStringSlice(allGlobals[baseCount:userStart])
 	users := cloneStringSlice(allGlobals[userStart:])
 
@@ -374,10 +368,7 @@ func migrateLegacyCachedProgramSymbols(program *CachedProgram) {
 		return
 	}
 	base := getBaseGlobalDictionary()
-	baseCount := len(base.names)
-	if baseCount > len(program.GlobalNames) {
-		baseCount = len(program.GlobalNames)
-	}
+	baseCount := min(len(base.names), len(program.GlobalNames))
 	program.GlobalPreludeNames = cloneStringSlice(program.GlobalNames[baseCount:baseCount])
 	if len(program.GlobalNames) > baseCount {
 		program.UserGlobalNames = cloneStringSlice(program.GlobalNames[baseCount:])

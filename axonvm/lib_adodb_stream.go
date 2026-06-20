@@ -184,10 +184,7 @@ func (vm *VM) dispatchADODBStreamPropertySet(objID int64, member string, val Val
 	case strings.EqualFold(member, "LineSeparator"):
 		stream.lineSeparator = vm.asInt(val)
 	case strings.EqualFold(member, "Position"):
-		newPosition := int64(vm.asInt(val))
-		if newPosition < 0 {
-			newPosition = 0
-		}
+		newPosition := max(int64(vm.asInt(val)), 0)
 		if newPosition > stream.size {
 			newPosition = stream.size
 		}
@@ -503,14 +500,14 @@ func adodbEncodeText(text string, charset string) []byte {
 	case "unicode", "utf-16", "utf-16le":
 		runes := []rune(text)
 		data := make([]byte, len(runes)*2)
-		for i := 0; i < len(runes); i++ {
+		for i := range runes {
 			binary.LittleEndian.PutUint16(data[i*2:], uint16(runes[i]))
 		}
 		return data
 	case "utf-16be":
 		runes := []rune(text)
 		data := make([]byte, len(runes)*2)
-		for i := 0; i < len(runes); i++ {
+		for i := range runes {
 			binary.BigEndian.PutUint16(data[i*2:], uint16(runes[i]))
 		}
 		return data

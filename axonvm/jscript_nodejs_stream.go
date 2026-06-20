@@ -155,7 +155,7 @@ func (vm *VM) jsNodeStreamCollectSourceChunks(source Value, encoding string) [][
 	length, isArrayLike, deferred := vm.jsArrayLikeLength(source)
 	if isArrayLike && !deferred {
 		chunks := make([][]byte, 0, length)
-		for i := 0; i < length; i++ {
+		for i := range length {
 			item, ok := vm.jsArrayLikeGetIndex(source, i)
 			if !ok {
 				continue

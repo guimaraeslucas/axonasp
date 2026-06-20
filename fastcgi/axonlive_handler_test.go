@@ -27,6 +27,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/fcgi"
@@ -163,9 +164,7 @@ func newFCGIRequestWithBody(t *testing.T, method, urlPath string, cgiEnv map[str
 		"SCRIPT_NAME":     urlPath,
 		"REQUEST_URI":     urlPath,
 	}
-	for k, v := range cgiEnv {
-		params[k] = v
-	}
+	maps.Copy(params, cgiEnv)
 
 	var paramContent []byte
 	for k, v := range params {

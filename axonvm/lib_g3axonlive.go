@@ -174,10 +174,7 @@ func G3ALStartCleanup(idleMinutes int) {
 	scriptTimeout := viper.GetInt("global.default_script_timeout")
 	var idle time.Duration
 	if scriptTimeout > 0 {
-		idle = time.Duration(scriptTimeout*20) * time.Second
-		if idle < 30*time.Minute {
-			idle = 30 * time.Minute
-		}
+		idle = max(time.Duration(scriptTimeout*20)*time.Second, 30*time.Minute)
 	} else {
 		if idleMinutes <= 0 {
 			idleMinutes = 30

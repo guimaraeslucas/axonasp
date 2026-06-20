@@ -240,13 +240,13 @@ func (lib *G3AdRotator) GetAdvertisement(scheduleFile string) string {
 
 type G3BrowserType struct {
 	vm         *VM
-	properties map[string]interface{}
+	properties map[string]any
 }
 
 func (vm *VM) newG3BrowserTypeObject() Value {
 	lib := &G3BrowserType{
 		vm:         vm,
-		properties: make(map[string]interface{}),
+		properties: make(map[string]any),
 	}
 	lib.detect()
 	id := vm.nextDynamicNativeID
@@ -679,7 +679,7 @@ func saveCounters() {
 	}
 	defer file.Close()
 
-	countersMap.Range(func(key, value interface{}) bool {
+	countersMap.Range(func(key, value any) bool {
 		fmt.Fprintf(file, "%s=%v\n", key, value)
 		return true
 	})
@@ -965,7 +965,7 @@ func savePageCounts() {
 
 	// Fast Snapshotting: copy current key-value pairs to a temporary local map.
 	snapshot := make(map[string]int)
-	pageCounterMap.Range(func(key, value interface{}) bool {
+	pageCounterMap.Range(func(key, value any) bool {
 		if k, ok := key.(string); ok {
 			if v, ok := value.(int); ok {
 				snapshot[k] = v

@@ -69,7 +69,7 @@ func NewMsXML2ServerXMLHTTP(ctx *VM) *MsXML2ServerXMLHTTP {
 	}
 }
 
-func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) interface{} {
+func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	switch strings.ToLower(name) {
 	case "responsetext":
 		return s.responseText
@@ -95,7 +95,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) interface{} {
 	return nil
 }
 
-func (s *MsXML2ServerXMLHTTP) legacySetProperty(name string, value interface{}) error {
+func (s *MsXML2ServerXMLHTTP) legacySetProperty(name string, value any) error {
 	switch strings.ToLower(name) {
 	case "timeout":
 		s.timeout = time.Duration(toInt(value)) * time.Second
@@ -103,7 +103,7 @@ func (s *MsXML2ServerXMLHTTP) legacySetProperty(name string, value interface{}) 
 	return nil
 }
 
-func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...interface{}) (interface{}, error) {
+func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...any) (any, error) {
 	switch strings.ToLower(name) {
 	case "open":
 		return s.open(args), nil
@@ -124,7 +124,7 @@ func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...interface{})
 
 // open initializes the HTTP request
 // Syntax: Open(method, url, [async], [user], [password])
-func (s *MsXML2ServerXMLHTTP) open(args []interface{}) interface{} {
+func (s *MsXML2ServerXMLHTTP) open(args []any) any {
 	if len(args) < 2 {
 		return nil
 	}
@@ -144,7 +144,7 @@ func (s *MsXML2ServerXMLHTTP) open(args []interface{}) interface{} {
 
 // setRequestHeader adds a custom header to the request
 // Syntax: SetRequestHeader(header, value)
-func (s *MsXML2ServerXMLHTTP) setRequestHeader(args []interface{}) interface{} {
+func (s *MsXML2ServerXMLHTTP) setRequestHeader(args []any) any {
 	if len(args) < 2 {
 		return nil
 	}
@@ -157,7 +157,7 @@ func (s *MsXML2ServerXMLHTTP) setRequestHeader(args []interface{}) interface{} {
 
 // send executes the HTTP request
 // Syntax: Send([body])
-func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
+func (s *MsXML2ServerXMLHTTP) send(args []any) any {
 	if s.url == "" {
 		s.status = 0
 		s.statusText = "URL not set"
@@ -252,7 +252,7 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 		doc := NewMsXML2DOMDocument(s.ctx)
 		if doc != nil {
 			if ok := doc.loadXMLBytes(data, contentType); !ok {
-				doc.loadXML([]interface{}{s.responseText})
+				doc.loadXML([]any{s.responseText})
 			}
 			s.responseXMLDoc = doc
 		}
@@ -265,7 +265,7 @@ func (s *MsXML2ServerXMLHTTP) send(args []interface{}) interface{} {
 
 // getResponseHeader retrieves a specific response header
 // Syntax: GetResponseHeader(header)
-func (s *MsXML2ServerXMLHTTP) getResponseHeader(args []interface{}) interface{} {
+func (s *MsXML2ServerXMLHTTP) getResponseHeader(args []any) any {
 	if len(args) < 1 {
 		return ""
 	}
@@ -286,7 +286,7 @@ func (s *MsXML2ServerXMLHTTP) getResponseHeader(args []interface{}) interface{} 
 }
 
 // getAllResponseHeaders returns all response headers
-func (s *MsXML2ServerXMLHTTP) getAllResponseHeaders() interface{} {
+func (s *MsXML2ServerXMLHTTP) getAllResponseHeaders() any {
 	var result strings.Builder
 	for k, v := range s.responseHeaders {
 		result.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
@@ -294,7 +294,7 @@ func (s *MsXML2ServerXMLHTTP) getAllResponseHeaders() interface{} {
 	return result.String()
 }
 
-func (s *MsXML2ServerXMLHTTP) buildRequestBody(arg interface{}) (io.Reader, bool) {
+func (s *MsXML2ServerXMLHTTP) buildRequestBody(arg any) (io.Reader, bool) {
 	switch v := arg.(type) {
 	case *VBArray:
 		buf := vbArrayToBytes(v.Values)
@@ -443,7 +443,7 @@ type XMLNodeList struct {
 	next  int
 }
 
-func (l *XMLNodeList) legacyGetProperty(name string) interface{} {
+func (l *XMLNodeList) legacyGetProperty(name string) any {
 	switch strings.ToLower(name) {
 	case "length":
 		return len(l.items)
@@ -453,11 +453,11 @@ func (l *XMLNodeList) legacyGetProperty(name string) interface{} {
 	return nil
 }
 
-func (l *XMLNodeList) legacySetProperty(name string, value interface{}) error {
+func (l *XMLNodeList) legacySetProperty(name string, value any) error {
 	return nil
 }
 
-func (l *XMLNodeList) legacyCallMethod(name string, args ...interface{}) (interface{}, error) {
+func (l *XMLNodeList) legacyCallMethod(name string, args ...any) (any, error) {
 	method := strings.ToLower(strings.TrimSpace(name))
 	if method == "" {
 		method = "item"
@@ -483,8 +483,8 @@ func (l *XMLNodeList) legacyCallMethod(name string, args ...interface{}) (interf
 	return nil, nil
 }
 
-func (l *XMLNodeList) Enumeration() []interface{} {
-	items := make([]interface{}, 0, len(l.items))
+func (l *XMLNodeList) Enumeration() []any {
+	items := make([]any, 0, len(l.items))
 	for _, item := range l.items {
 		items = append(items, item)
 	}
@@ -494,7 +494,7 @@ func (l *XMLNodeList) Enumeration() []interface{} {
 // GetName returns the name of the ParseError object
 
 // GetProperty gets a property from the ParseError
-func (p *ParseError) legacyGetProperty(name string) interface{} {
+func (p *ParseError) legacyGetProperty(name string) any {
 	switch strings.ToLower(name) {
 	case "errorcode":
 		return p.ErrorCode
@@ -515,12 +515,12 @@ func (p *ParseError) legacyGetProperty(name string) interface{} {
 }
 
 // SetProperty sets a property on the ParseError (read-only, no-op)
-func (p *ParseError) legacySetProperty(name string, value interface{}) error {
+func (p *ParseError) legacySetProperty(name string, value any) error {
 	return nil
 }
 
 // CallMethod calls a method on ParseError (none available)
-func (p *ParseError) legacyCallMethod(name string, args ...interface{}) (interface{}, error) {
+func (p *ParseError) legacyCallMethod(name string, args ...any) (any, error) {
 	return nil, nil
 }
 
@@ -546,7 +546,7 @@ func NewMsXML2DOMDocument(ctx *VM) *MsXML2DOMDocument {
 	}
 }
 
-func (d *MsXML2DOMDocument) legacyGetProperty(name string) interface{} {
+func (d *MsXML2DOMDocument) legacyGetProperty(name string) any {
 	switch strings.ToLower(name) {
 	case "documentelement":
 		// Ensure root is parsed if we have XML content
@@ -589,7 +589,7 @@ func (d *MsXML2DOMDocument) legacyGetProperty(name string) interface{} {
 	return nil
 }
 
-func (d *MsXML2DOMDocument) legacySetProperty(name string, value interface{}) error {
+func (d *MsXML2DOMDocument) legacySetProperty(name string, value any) error {
 	switch strings.ToLower(name) {
 	case "async":
 		if v, ok := value.(bool); ok {
@@ -619,7 +619,7 @@ func (d *MsXML2DOMDocument) legacySetProperty(name string, value interface{}) er
 	return nil
 }
 
-func (d *MsXML2DOMDocument) legacyCallMethod(name string, args ...interface{}) (interface{}, error) {
+func (d *MsXML2DOMDocument) legacyCallMethod(name string, args ...any) (any, error) {
 	switch strings.ToLower(name) {
 	case "getproperty":
 		if len(args) < 1 {
@@ -657,7 +657,7 @@ func (d *MsXML2DOMDocument) legacyCallMethod(name string, args ...interface{}) (
 
 // loadXML parses an XML string
 // Syntax: LoadXML(xmlString)
-func (d *MsXML2DOMDocument) loadXML(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) loadXML(args []any) any {
 	if len(args) < 1 {
 		d.setParseErrorFromReason(-1, "No XML provided", "", "")
 		return false
@@ -679,7 +679,7 @@ func (d *MsXML2DOMDocument) loadXML(args []interface{}) interface{} {
 
 // load loads an XML file from URL or path
 // Syntax: Load(url)
-func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) load(args []any) any {
 	if len(args) < 1 {
 		d.setParseErrorFromReason(-1, "No URL provided", "", "")
 		return false
@@ -754,7 +754,7 @@ func (d *MsXML2DOMDocument) load(args []interface{}) interface{} {
 
 // save saves the XML to a file
 // Syntax: Save(filename)
-func (d *MsXML2DOMDocument) save(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) save(args []any) any {
 	if len(args) < 1 {
 		return false
 	}
@@ -776,7 +776,7 @@ func (d *MsXML2DOMDocument) save(args []interface{}) interface{} {
 
 // getElementsByTagName finds all elements with a given tag name
 // Syntax: GetElementsByTagName(tagName)
-func (d *MsXML2DOMDocument) getElementsByTagName(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) getElementsByTagName(args []any) any {
 	if len(args) < 1 {
 		return &XMLNodeList{ctx: d.ctx, items: []*XMLElement{}}
 	}
@@ -793,7 +793,7 @@ func (d *MsXML2DOMDocument) getElementsByTagName(args []interface{}) interface{}
 
 // selectSingleNode returns the first node that matches the XPath expression.
 // Syntax: SelectSingleNode(xpath)
-func (d *MsXML2DOMDocument) selectSingleNode(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) selectSingleNode(args []any) any {
 	nodes := d.selectNodesInternal(args)
 	if len(nodes) == 0 {
 		return nil
@@ -803,11 +803,11 @@ func (d *MsXML2DOMDocument) selectSingleNode(args []interface{}) interface{} {
 
 // selectNodes returns all nodes that match the XPath expression.
 // Syntax: SelectNodes(xpath)
-func (d *MsXML2DOMDocument) selectNodes(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) selectNodes(args []any) any {
 	return &XMLNodeList{ctx: d.ctx, items: d.selectNodesInternal(args)}
 }
 
-func (d *MsXML2DOMDocument) selectNodesInternal(args []interface{}) []*XMLElement {
+func (d *MsXML2DOMDocument) selectNodesInternal(args []any) []*XMLElement {
 	if len(args) < 1 {
 		return []*XMLElement{}
 	}
@@ -1019,8 +1019,8 @@ func parseQName(name string) (string, string) {
 	if name == "*" {
 		return "", "*"
 	}
-	if idx := strings.Index(name, ":"); idx >= 0 {
-		return name[:idx], name[idx+1:]
+	if before, after, ok := strings.Cut(name, ":"); ok {
+		return before, after
 	}
 	return "", name
 }
@@ -1339,11 +1339,11 @@ func evaluateNodePredicate(node *XMLElement, predicate string, position int, set
 	if m := substringAfterRe.FindStringSubmatch(predicate); len(m) >= 3 {
 		lhs := evaluateXPathValueExpr(node, m[1], nsContext)
 		search := trimXPathLiteral(m[2])
-		idx := strings.Index(lhs, search)
-		if idx < 0 {
+		_, after, ok := strings.Cut(lhs, search)
+		if !ok {
 			return false
 		}
-		result := lhs[idx+len(search):]
+		result := after
 		if len(m) >= 5 && m[3] != "" {
 			op := m[3]
 			rhs := trimXPathLiteral(m[4])
@@ -1357,11 +1357,11 @@ func evaluateNodePredicate(node *XMLElement, predicate string, position int, set
 	if m := substringBeforeRe.FindStringSubmatch(predicate); len(m) >= 3 {
 		lhs := evaluateXPathValueExpr(node, m[1], nsContext)
 		search := trimXPathLiteral(m[2])
-		idx := strings.Index(lhs, search)
-		if idx < 0 {
+		before, _, ok := strings.Cut(lhs, search)
+		if !ok {
 			return false
 		}
-		result := lhs[:idx]
+		result := before
 		if len(m) >= 5 && m[3] != "" {
 			op := m[3]
 			rhs := trimXPathLiteral(m[4])
@@ -1459,8 +1459,8 @@ func evaluateXPathValueExpr(node *XMLElement, expr string, nsContext map[string]
 	if strings.EqualFold(expr, "normalize-space(text())") {
 		return normalizeXPathSpace(getNodeText(node))
 	}
-	if strings.HasPrefix(expr, "@") {
-		step := xpathStep{nodeTest: "attribute", name: strings.TrimPrefix(expr, "@")}
+	if after, ok := strings.CutPrefix(expr, "@"); ok {
+		step := xpathStep{nodeTest: "attribute", name: after}
 		step.prefix, step.localName = parseQName(step.name)
 		_, value, _, ok := lookupAttribute(node, step, nsContext)
 		if ok {
@@ -1751,7 +1751,7 @@ func parseSelectionNamespaces(raw string) map[string]string {
 
 // createElement creates a new element
 // Syntax: CreateElement(tagName)
-func (d *MsXML2DOMDocument) createElement(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) createElement(args []any) any {
 	if len(args) < 1 {
 		return nil
 	}
@@ -1770,7 +1770,7 @@ func (d *MsXML2DOMDocument) createElement(args []interface{}) interface{} {
 
 // createTextNode creates a text node
 // Syntax: CreateTextNode(text)
-func (d *MsXML2DOMDocument) createTextNode(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) createTextNode(args []any) any {
 	if len(args) < 1 {
 		return nil
 	}
@@ -1785,7 +1785,7 @@ func (d *MsXML2DOMDocument) createTextNode(args []interface{}) interface{} {
 
 // createAttribute creates a new attribute
 // Syntax: CreateAttribute(name)
-func (d *MsXML2DOMDocument) createAttribute(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) createAttribute(args []any) any {
 	if len(args) < 1 {
 		return nil
 	}
@@ -1801,7 +1801,7 @@ func (d *MsXML2DOMDocument) createAttribute(args []interface{}) interface{} {
 
 // appendChild adds a child element
 // Syntax: AppendChild(newChild)
-func (d *MsXML2DOMDocument) appendChild(args []interface{}) interface{} {
+func (d *MsXML2DOMDocument) appendChild(args []any) any {
 	if len(args) < 1 {
 		return nil
 	}
@@ -1823,7 +1823,7 @@ func (d *MsXML2DOMDocument) appendChild(args []interface{}) interface{} {
 
 // Helper methods for XMLElement (implements Component interface)
 
-func (e *XMLElement) legacyGetProperty(name string) interface{} {
+func (e *XMLElement) legacyGetProperty(name string) any {
 	switch strings.ToLower(name) {
 	case "nodename":
 		return e.Name
@@ -1840,16 +1840,16 @@ func (e *XMLElement) legacyGetProperty(name string) interface{} {
 		return e.toXML(0)
 	case "attributes":
 		// Return attributes collection
-		var attrs []interface{}
+		var attrs []any
 		for k, v := range e.Attributes {
-			attrs = append(attrs, map[string]interface{}{
+			attrs = append(attrs, map[string]any{
 				"name":  k,
 				"value": v,
 			})
 		}
 		return attrs
 	case "childnodes":
-		var children []interface{}
+		var children []any
 		for _, child := range e.Children {
 			children = append(children, child)
 		}
@@ -1870,7 +1870,7 @@ func (e *XMLElement) legacyGetProperty(name string) interface{} {
 		return len(e.Children)
 	case "children":
 		// Alias for childnodes
-		var children []interface{}
+		var children []any
 		for _, child := range e.Children {
 			children = append(children, child)
 		}
@@ -1879,7 +1879,7 @@ func (e *XMLElement) legacyGetProperty(name string) interface{} {
 	return nil
 }
 
-func (e *XMLElement) legacySetProperty(name string, value interface{}) error {
+func (e *XMLElement) legacySetProperty(name string, value any) error {
 	switch strings.ToLower(name) {
 	case "nodevalue":
 		e.Value = fmt.Sprintf("%v", value)
@@ -1889,7 +1889,7 @@ func (e *XMLElement) legacySetProperty(name string, value interface{}) error {
 	return nil
 }
 
-func (e *XMLElement) legacyCallMethod(name string, args ...interface{}) (interface{}, error) {
+func (e *XMLElement) legacyCallMethod(name string, args ...any) (any, error) {
 	switch strings.ToLower(name) {
 	case "appendchild":
 		if len(args) > 0 {
@@ -1903,7 +1903,7 @@ func (e *XMLElement) legacyCallMethod(name string, args ...interface{}) (interfa
 			tagName := strings.ToLower(fmt.Sprintf("%v", args[0]))
 			var results []*XMLElement
 			e.findElements(tagName, &results)
-			var interfaceResults []interface{}
+			var interfaceResults []any
 			for _, elem := range results {
 				interfaceResults = append(interfaceResults, elem)
 			}
@@ -2219,10 +2219,7 @@ func parseXMLDeclEncoding(data []byte) string {
 	if len(data) == 0 {
 		return ""
 	}
-	limit := len(data)
-	if limit > 512 {
-		limit = 512
-	}
+	limit := min(len(data), 512)
 	chunk := string(data[:limit])
 	re := regexp.MustCompile(`(?i)encoding\s*=\s*['\"]([^'\"]+)['\"]`)
 	match := re.FindStringSubmatch(chunk)
@@ -2348,7 +2345,7 @@ func (x *MsXML2ServerXMLHTTP) DispatchPropertySet(name string, args []Value) boo
 }
 
 func (x *MsXML2ServerXMLHTTP) DispatchMethod(name string, args []Value) Value {
-	var iArgs []interface{}
+	var iArgs []any
 	for _, a := range args {
 		iArgs = append(iArgs, legacyValueToInterface(a, x.ctx))
 	}
@@ -2368,7 +2365,7 @@ func (x *MsXML2DOMDocument) DispatchPropertySet(name string, args []Value) bool 
 }
 
 func (x *MsXML2DOMDocument) DispatchMethod(name string, args []Value) Value {
-	var iArgs []interface{}
+	var iArgs []any
 	for _, a := range args {
 		iArgs = append(iArgs, legacyValueToInterface(a, x.ctx))
 	}
@@ -2388,7 +2385,7 @@ func (x *XMLNodeList) DispatchPropertySet(name string, args []Value) bool {
 }
 
 func (x *XMLNodeList) DispatchMethod(name string, args []Value) Value {
-	var iArgs []interface{}
+	var iArgs []any
 	for _, a := range args {
 		iArgs = append(iArgs, legacyValueToInterface(a, x.ctx))
 	}
@@ -2408,7 +2405,7 @@ func (x *ParseError) DispatchPropertySet(name string, args []Value) bool {
 }
 
 func (x *ParseError) DispatchMethod(name string, args []Value) Value {
-	var iArgs []interface{}
+	var iArgs []any
 	for _, a := range args {
 		iArgs = append(iArgs, legacyValueToInterface(a, x.ctx))
 	}
@@ -2428,7 +2425,7 @@ func (x *XMLElement) DispatchPropertySet(name string, args []Value) bool {
 }
 
 func (x *XMLElement) DispatchMethod(name string, args []Value) Value {
-	var iArgs []interface{}
+	var iArgs []any
 	for _, a := range args {
 		iArgs = append(iArgs, legacyValueToInterface(a, x.ctx))
 	}

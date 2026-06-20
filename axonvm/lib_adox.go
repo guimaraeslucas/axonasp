@@ -233,7 +233,7 @@ func listADOXTables(oleConn *ole.IDispatch) []*ADOXTable {
 	return tables
 }
 
-func oleRecordsetFieldValue(rs *ole.IDispatch, fieldName string) interface{} {
+func oleRecordsetFieldValue(rs *ole.IDispatch, fieldName string) any {
 	if rs == nil {
 		return nil
 	}

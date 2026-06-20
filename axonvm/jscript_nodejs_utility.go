@@ -140,7 +140,7 @@ func (vm *VM) jsCallPathMethod(methodName string, args []Value) (Value, bool) {
 	switch strings.ToLower(methodName) {
 	case "join":
 		parts := make([]string, 0, len(args))
-		for i := 0; i < len(args); i++ {
+		for i := range args {
 			parts = append(parts, vm.valueToString(args[i]))
 		}
 		if len(parts) == 0 {
@@ -156,7 +156,7 @@ func (vm *VM) jsCallPathMethod(methodName string, args []Value) (Value, bool) {
 			return NewString(cwd), true
 		}
 		parts := make([]string, 0, len(args))
-		for i := 0; i < len(args); i++ {
+		for i := range args {
 			parts = append(parts, vm.valueToString(args[i]))
 		}
 		resolved, err := filepath.Abs(filepath.Join(parts...))
@@ -233,10 +233,7 @@ func (vm *VM) jsCallOSMethod(methodName string, _ []Value) (Value, bool) {
 		runtime.ReadMemStats(&mem)
 		return NewDouble(float64(mem.Sys)), true
 	case "cpus":
-		cpuCount := runtime.NumCPU()
-		if cpuCount < 0 {
-			cpuCount = 0
-		}
+		cpuCount := max(runtime.NumCPU(), 0)
 		entries := make([]Value, cpuCount)
 		for i := 0; i < cpuCount; i++ {
 			timesID := vm.allocJSID()
@@ -300,7 +297,7 @@ func (vm *VM) jsCallQueryStringMethod(methodName string, args []Value) (Value, b
 		source := args[0]
 		if source.Type == VTJSObject || source.Type == VTJSFunction {
 			keys := vm.jsObjectOwnPropertyNames(source)
-			for i := 0; i < len(keys); i++ {
+			for i := range keys {
 				k := keys[i]
 				if strings.HasPrefix(k, "__js_") {
 					continue
@@ -419,7 +416,7 @@ func (vm *VM) jsConstructURLSearchParams(args []Value) Value {
 			} else {
 				values := make(neturl.Values)
 				keys := vm.jsObjectOwnPropertyNames(source)
-				for i := 0; i < len(keys); i++ {
+				for i := range keys {
 					k := keys[i]
 					if strings.HasPrefix(k, "__js_") {
 						continue

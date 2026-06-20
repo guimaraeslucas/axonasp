@@ -617,7 +617,7 @@ func (vm *VM) jsDataViewCallMember(obj Value, member string, args []Value) (Valu
 			return v
 		}
 		var out uint64
-		for i := 0; i < 8; i++ {
+		for i := range 8 {
 			out |= ((v >> (i * 8)) & 0xFF) << ((7 - i) * 8)
 		}
 		return out
@@ -835,7 +835,7 @@ func (vm *VM) jsTypedArraySet(obj Value, args []Value) Value {
 				vm.jsThrowRangeError("TypedArray.set: source is too large")
 				return Value{Type: VTJSUndefined}
 			}
-			for i := 0; i < srcLen; i++ {
+			for i := range srcLen {
 				v := jsReadTypedArrayElement(srcTypeName, srcElemSize, srcBuf, srcByteOffset, i)
 				vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], targetOffset+i, v)
 			}
@@ -855,7 +855,7 @@ func (vm *VM) jsTypedArraySet(obj Value, args []Value) Value {
 		vm.jsThrowRangeError("TypedArray.set: source is too large")
 		return Value{Type: VTJSUndefined}
 	}
-	for i := 0; i < srcLen; i++ {
+	for i := range srcLen {
 		v, _ := vm.jsArrayLikeGetIndex(src, i)
 		vm.jsWriteTypedArrayElement(typeName, elemSize, buf[byteOffset:], targetOffset+i, v)
 	}
@@ -1059,7 +1059,7 @@ func (vm *VM) jsTypedArrayValues(obj Value) []Value {
 	}
 	length := byteLength / elemSize
 	out := make([]Value, length)
-	for i := 0; i < length; i++ {
+	for i := range length {
 		out[i] = jsReadTypedArrayElement(typeName, elemSize, buf, byteOffset, i)
 	}
 	return out

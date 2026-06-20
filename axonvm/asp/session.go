@@ -25,6 +25,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"hash/fnv"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -66,7 +67,7 @@ var sessionWriteQueue = make(chan *Session, 10000)
 func init() {
 	// Start background session writers to offload disk I/O from request threads.
 	// 4 workers provide controlled concurrency to avoid OS thread starvation.
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		go sessionWriterWorker()
 	}
 }
@@ -238,9 +239,7 @@ func (s *Session) GetStaticObjectsCopy() map[string]ApplicationValue {
 	defer s.mu.RUnlock()
 
 	copyMap := make(map[string]ApplicationValue, len(s.staticObjects))
-	for k, v := range s.staticObjects {
-		copyMap[k] = v
-	}
+	maps.Copy(copyMap, s.staticObjects)
 	return copyMap
 }
 
@@ -250,9 +249,7 @@ func (s *Session) GetContentsCopy() map[string]ApplicationValue {
 	defer s.mu.RUnlock()
 
 	copyMap := make(map[string]ApplicationValue, len(s.data))
-	for key, value := range s.data {
-		copyMap[key] = value
-	}
+	maps.Copy(copyMap, s.data)
 	return copyMap
 }
 
@@ -902,13 +899,13 @@ func newSessionID() string {
 		}
 		ts = ts[:24]
 		result := make([]byte, 24)
-		for i := 0; i < 24; i++ {
+		for i := range 24 {
 			result[i] = 'A' + (ts[i]-'0')%26
 		}
 		return string(result)
 	}
 	result := make([]byte, 24)
-	for i := 0; i < 24; i++ {
+	for i := range 24 {
 		result[i] = 'A' + (b[i] % 26)
 	}
 	return string(result)
@@ -977,7 +974,7 @@ func serializeApplicationMap(buf *bytes.Buffer, m map[string]ApplicationValue) {
 func deserializeApplicationMap(r *bytes.Reader) map[string]ApplicationValue {
 	count := readUint32(r)
 	m := make(map[string]ApplicationValue, count)
-	for i := uint32(0); i < count; i++ {
+	for range count {
 		kLen := readUint32(r)
 		kBuf := make([]byte, kLen)
 		_, _ = r.Read(kBuf)
@@ -1044,7 +1041,7 @@ func deserializeApplicationValue(r *bytes.Reader) (ApplicationValue, error) {
 		v.ArrLower = int(readUint32(r))
 		l := readUint32(r)
 		v.Arr = make([]ApplicationValue, l)
-		for i := uint32(0); i < l; i++ {
+		for i := range l {
 			elem, err := deserializeApplicationValue(r)
 			if err != nil {
 				return v, err

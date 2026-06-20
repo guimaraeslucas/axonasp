@@ -9,7 +9,7 @@ func TestRegExp(t *testing.T) {
 	tt(t, func() {
 		{
 			// err
-			test := func(input string, expect interface{}) {
+			test := func(input string, expect any) {
 				_, err := TransformRegExp(input, false, false)
 				_, incompat := err.(RegexpErrorIncompatible)
 				is(incompat, false)
@@ -32,7 +32,7 @@ func TestRegExp(t *testing.T) {
 
 		{
 			// incompatible
-			test := func(input string, expectErr interface{}) {
+			test := func(input string, expectErr any) {
 				_, err := TransformRegExp(input, false, false)
 				_, incompat := err.(RegexpErrorIncompatible)
 				is(incompat, true)

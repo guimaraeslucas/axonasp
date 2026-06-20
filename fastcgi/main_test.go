@@ -23,6 +23,7 @@ package main
 import (
 	"bytes"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/fcgi"
@@ -166,9 +167,7 @@ func newFCGIRequest(t *testing.T, method, urlPath string, cgiEnv map[string]stri
 		"SCRIPT_NAME":     urlPath,
 		"REQUEST_URI":     urlPath,
 	}
-	for k, v := range cgiEnv {
-		params[k] = v
-	}
+	maps.Copy(params, cgiEnv)
 
 	// Encode all params as FastCGI name-value pairs.
 	var paramContent []byte

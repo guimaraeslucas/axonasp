@@ -40,7 +40,7 @@ func tt(t *testing.T, f func()) {
 	f()
 }
 
-func is(a, b interface{}) {
+func is(a, b any) {
 	as := fmt.Sprintf("%v", a)
 	bs := fmt.Sprintf("%v", b)
 	if as != bs {

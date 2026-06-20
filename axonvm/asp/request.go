@@ -433,7 +433,7 @@ func (c *RequestCollection) lazyKeyExistsInEagerLocked(pair requestKVPair) bool 
 
 func (c *RequestCollection) lazyHasSeenKeyBeforeLocked(current int) bool {
 	target := c.lazyKeyAtLocked(current)
-	for i := 0; i < current; i++ {
+	for i := range current {
 		if strings.EqualFold(c.lazyKeyAtLocked(i), target) {
 			return true
 		}

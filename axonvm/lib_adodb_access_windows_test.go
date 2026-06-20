@@ -515,7 +515,7 @@ func parseCompatDateValue(text string) (time.Time, bool) {
 		"01/02/2006 15:04:05",
 		"01/02/2006",
 	}
-	for i := 0; i < len(layouts); i++ {
+	for i := range layouts {
 		parsed, err := time.ParseInLocation(layouts[i], trimmed, time.Local)
 		if err == nil {
 			return parsed, true

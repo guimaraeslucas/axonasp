@@ -185,22 +185,22 @@ Response.Write j.Stringify(responseObj)
 		t.Fatal("expected non-empty JSON output")
 	}
 
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal(output.Bytes(), &parsed); err != nil {
 		t.Fatalf("invalid JSON output %q: %v", output.String(), err)
 	}
 
-	componentsVal, ok := parsed["components"].([]interface{})
+	componentsVal, ok := parsed["components"].([]any)
 	if !ok || len(componentsVal) != 1 {
 		t.Fatalf("expected components array with one element, got %#v", parsed["components"])
 	}
 
-	patchObj, ok := componentsVal[0].(map[string]interface{})
+	patchObj, ok := componentsVal[0].(map[string]any)
 	if !ok {
 		t.Fatalf("expected patch object, got %#v", componentsVal[0])
 	}
 
-	rows, ok := patchObj["rows"].([]interface{})
+	rows, ok := patchObj["rows"].([]any)
 	if !ok || len(rows) != 2 {
 		t.Fatalf("expected rows array with two objects, got %#v", patchObj["rows"])
 	}

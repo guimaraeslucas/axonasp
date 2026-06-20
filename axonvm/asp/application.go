@@ -21,6 +21,7 @@
 package asp
 
 import (
+	"maps"
 	"strings"
 	"sync"
 )
@@ -276,9 +277,7 @@ func (app *Application) GetContentsCopy() map[string]ApplicationValue {
 	defer app.mutex.RUnlock()
 
 	copyMap := make(map[string]ApplicationValue, len(app.contents))
-	for key, value := range app.contents {
-		copyMap[key] = value
-	}
+	maps.Copy(copyMap, app.contents)
 	return copyMap
 }
 
@@ -288,9 +287,7 @@ func (app *Application) GetStaticObjectsCopy() map[string]ApplicationValue {
 	defer app.mutex.RUnlock()
 
 	copyMap := make(map[string]ApplicationValue, len(app.staticObjects))
-	for key, value := range app.staticObjects {
-		copyMap[key] = value
-	}
+	maps.Copy(copyMap, app.staticObjects)
 	return copyMap
 }
 

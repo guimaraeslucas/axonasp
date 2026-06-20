@@ -70,7 +70,7 @@ func hashByteFNV1a(hash uint64, b byte) uint64 {
 // hashInt64FNV1a appends one int64 value to an FNV-1a running hash.
 func hashInt64FNV1a(hash uint64, value int64) uint64 {
 	u := uint64(value)
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		hash = hashByteFNV1a(hash, byte(u))
 		u >>= 8
 	}
@@ -89,7 +89,7 @@ func hashStringFNV1a(hash uint64, text string) uint64 {
 // hashStringSliceFNV1a computes one deterministic hash for a string slice order and values.
 func hashStringSliceFNV1a(values []string) uint64 {
 	hash := uint64(fnvOffset64)
-	for i := 0; i < len(values); i++ {
+	for i := range values {
 		hash = hashStringFNV1a(hash, values[i])
 	}
 	return hash

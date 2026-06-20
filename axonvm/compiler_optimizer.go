@@ -74,14 +74,8 @@ func (c *Compiler) validateBytecodeIndices(tag string) {
 			idx := int(binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3]))
 			if idx < 0 || idx >= len(c.constants) {
 				// Dump bytecode window around the fault.
-				winStart := ip - 12
-				if winStart < 0 {
-					winStart = 0
-				}
-				winEnd := ip + 12
-				if winEnd > len(c.bytecode) {
-					winEnd = len(c.bytecode)
-				}
+				winStart := max(ip-12, 0)
+				winEnd := min(ip+12, len(c.bytecode))
 				panic(fmt.Sprintf("[%s] out-of-range constant index %d at ip %d for %s (constants=%d)\nbytecode[%d:%d] = %v", tag, idx, ip, op.String(), len(c.constants), winStart, winEnd, c.bytecode[winStart:winEnd]))
 			}
 
@@ -563,7 +557,7 @@ func (c *Compiler) optimizeIntegerArithmeticPass() bool {
 
 		case OpWriteN:
 			count := int(binary.BigEndian.Uint16(c.bytecode[ip+1 : ip+3]))
-			for i := 0; i < count; i++ {
+			for range count {
 				_ = popIntStack(&stack)
 			}
 

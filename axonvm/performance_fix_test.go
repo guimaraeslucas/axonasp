@@ -68,7 +68,7 @@ func TestPerformanceFixItem1_ShareImmutableState(t *testing.T) {
 }
 
 // getSliceBackingPtr returns the pointer to the underlying array of a slice.
-func getSliceBackingPtr(slice interface{}) uintptr {
+func getSliceBackingPtr(slice any) uintptr {
 	return reflect.ValueOf(slice).Pointer()
 }
 

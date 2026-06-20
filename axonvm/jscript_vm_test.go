@@ -235,7 +235,7 @@ func TestJScriptForLoopBytecodeContainsUpdateOpcodes(t *testing.T) {
 	bytecode := compiler.Bytecode()
 	hasFastInc := false
 	hasAddAssign := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		switch OpCode(bytecode[i]) {
 		// OpJSForFastInt is the fused single-opcode fast path for var/let integer loops;
 		// it subsumes the separate increment opcode (OpJSIncLocalInt).
@@ -357,7 +357,7 @@ func TestJScriptForLoopAssignmentUpdateUsesIncrementFastPath(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 	hasFastInc := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		if OpCode(bytecode[i]) == OpJSIncLocalInt {
 			hasFastInc = true
 			break
@@ -383,7 +383,7 @@ func TestJScriptForLoopFastUpdateAvoidsStackPop(t *testing.T) {
 	bytecode := compiler.Bytecode()
 	hasFastInc := false
 	hasPop := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		switch OpCode(bytecode[i]) {
 		// OpJSForFastInt is the fused fast path that replaces OpJSIncLocalInt.
 		case OpJSIncLocalInt, OpJSForFastInt:
@@ -416,7 +416,7 @@ func TestJScriptTailCallOpcodeEmission(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 	hasTailCall := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		if OpCode(bytecode[i]) == OpJSTailCall {
 			hasTailCall = true
 			break
@@ -445,7 +445,7 @@ func TestJScriptTailCallNotEmittedInsideTryCatch(t *testing.T) {
 	}
 
 	bytecode := compiler.Bytecode()
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		switch OpCode(bytecode[i]) {
 		case OpJSTailCall, OpJSTailCallMember:
 			t.Fatalf("did not expect tail-call opcode inside try/catch, got bytecode %v", bytecode)
@@ -469,7 +469,7 @@ func TestJScriptTailCallMemberOpcodeEmission(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 	hasTailMemberCall := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		if OpCode(bytecode[i]) == OpJSTailCallMember {
 			hasTailMemberCall = true
 			break
@@ -496,7 +496,7 @@ func TestJScriptTailCallComputedMemberOpcodeEmission(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 	hasTailComputedMemberCall := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		if OpCode(bytecode[i]) == OpJSTailCallComputedMember {
 			hasTailComputedMemberCall = true
 			break
@@ -1201,7 +1201,7 @@ func TestJScriptBinaryOperatorsUseJSOpcodes(t *testing.T) {
 		return c2.Bytecode()
 	}()
 	hasJSSubtract, hasJSMultiply, hasJSDivide, hasJSModulo, hasJSLooseEq, hasJSLess := false, false, false, false, false, false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		switch OpCode(bytecode[i]) {
 		case OpJSSubtract:
 			hasJSSubtract = true

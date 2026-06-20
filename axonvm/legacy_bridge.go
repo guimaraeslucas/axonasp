@@ -25,7 +25,7 @@ import (
 	"strconv"
 )
 
-func legacyValueToInterface(v Value, vm *VM) interface{} {
+func legacyValueToInterface(v Value, vm *VM) any {
 	switch v.Type {
 	case VTString:
 		return v.String()
@@ -37,7 +37,7 @@ func legacyValueToInterface(v Value, vm *VM) interface{} {
 		return v.Num != 0
 	case VTArray:
 		if v.Arr != nil {
-			var res []interface{}
+			var res []any
 			for _, item := range v.Arr.Values {
 				res = append(res, legacyValueToInterface(item, vm))
 			}
@@ -66,7 +66,7 @@ func legacyValueToInterface(v Value, vm *VM) interface{} {
 	return nil
 }
 
-func legacyInterfaceToValue(i interface{}, vm *VM) Value {
+func legacyInterfaceToValue(i any, vm *VM) Value {
 	if i == nil {
 		return NewEmpty()
 	}
@@ -85,7 +85,7 @@ func legacyInterfaceToValue(i interface{}, vm *VM) Value {
 		return NewDouble(float64(v))
 	case bool:
 		return NewBool(v)
-	case []interface{}:
+	case []any:
 		var vals []Value
 		for _, item := range v {
 			vals = append(vals, legacyInterfaceToValue(item, vm))
@@ -133,7 +133,7 @@ func legacyInterfaceToValue(i interface{}, vm *VM) Value {
 	return NewString(fmt.Sprintf("%v", i))
 }
 
-func toInt(v interface{}) int {
+func toInt(v any) int {
 	if v == nil {
 		return 0
 	}
@@ -152,7 +152,7 @@ func toInt(v interface{}) int {
 	return 0
 }
 
-func toFloat(v interface{}) float64 {
+func toFloat(v any) float64 {
 	if v == nil {
 		return 0
 	}
@@ -171,7 +171,7 @@ func toFloat(v interface{}) float64 {
 	return 0
 }
 
-func toBool(v interface{}) bool {
+func toBool(v any) bool {
 	if v == nil {
 		return false
 	}

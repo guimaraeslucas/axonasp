@@ -33,6 +33,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -956,10 +957,8 @@ func (vm *VM) jsTrackObjectKey(objID int64, key string) {
 	}
 	order := vm.jsObjectKeyOrder[objID]
 	// Check if already exists to maintain insertion order (only add if new)
-	for _, k := range order {
-		if k == key {
-			return
-		}
+	if slices.Contains(order, key) {
+		return
 	}
 	vm.jsObjectKeyOrder[objID] = append(order, key)
 }
@@ -990,7 +989,7 @@ func (vm *VM) jsObjectOwnPropertyNames(target Value) []string {
 	// 1. Virtual properties for TypedArrays
 	if buf, _, byteLength, elemSize, ok := vm.jsGetTypedArrayInfo(target); ok {
 		length := byteLength / elemSize
-		for i := 0; i < length; i++ {
+		for i := range length {
 			indices = append(indices, i)
 			seen[strconv.Itoa(i)] = struct{}{}
 		}
@@ -1088,7 +1087,7 @@ func (vm *VM) jsObjectOwnPropertySymbols(target Value) []Value {
 	for id := range ids {
 		ordered = append(ordered, id)
 	}
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+	slices.Sort(ordered)
 	out := make([]Value, len(ordered))
 	for i := 0; i < len(ordered); i++ {
 		out[i] = Value{Type: VTSymbol, Num: ordered[i]}
@@ -1108,7 +1107,7 @@ func (vm *VM) jsObjectSeal(target Value) Value {
 		return target
 	}
 	names := vm.jsObjectOwnPropertyNames(target)
-	for i := 0; i < len(names); i++ {
+	for i := range names {
 		desc, ok := vm.jsGetDescriptor(target.Num, names[i])
 		if !ok {
 			continue
@@ -1125,7 +1124,7 @@ func (vm *VM) jsObjectFreeze(target Value) Value {
 		return target
 	}
 	names := vm.jsObjectOwnPropertyNames(target)
-	for i := 0; i < len(names); i++ {
+	for i := range names {
 		desc, ok := vm.jsGetDescriptor(target.Num, names[i])
 		if !ok {
 			continue
@@ -1148,7 +1147,7 @@ func (vm *VM) jsObjectIsSealed(target Value) bool {
 		return false
 	}
 	names := vm.jsObjectOwnPropertyNames(target)
-	for i := 0; i < len(names); i++ {
+	for i := range names {
 		desc, ok := vm.jsGetDescriptor(target.Num, names[i])
 		if ok && desc.Configurable {
 			return false
@@ -1162,7 +1161,7 @@ func (vm *VM) jsObjectIsFrozen(target Value) bool {
 		return false
 	}
 	names := vm.jsObjectOwnPropertyNames(target)
-	for i := 0; i < len(names); i++ {
+	for i := range names {
 		desc, ok := vm.jsGetDescriptor(target.Num, names[i])
 		if ok && desc.HasValue && desc.Writable {
 			return false
@@ -1671,7 +1670,7 @@ func (vm *VM) jsObjectOwnEnumerableKeys(objID int64) []string {
 		return nil
 	}
 	keys := make([]string, 0, len(names))
-	for i := 0; i < len(names); i++ {
+	for i := range names {
 		desc, hasDesc := vm.jsGetDescriptor(objID, names[i])
 		if hasDesc && !desc.Enumerable {
 			continue
@@ -1701,7 +1700,7 @@ func (vm *VM) jsFromGoJSON(payload any) Value {
 		return NewString(v)
 	case []any:
 		values := make([]Value, len(v))
-		for i := 0; i < len(v); i++ {
+		for i := range v {
 			values[i] = vm.jsFromGoJSON(v[i])
 		}
 		return ValueFromVBArray(NewVBArrayFromValues(0, values))
@@ -1775,7 +1774,7 @@ func (vm *VM) jsJSONStringifyValue(v Value) string {
 		keys := vm.jsObjectOwnEnumerableKeys(v.Num)
 		var b strings.Builder
 		b.WriteByte('{')
-		for i := 0; i < len(keys); i++ {
+		for i := range keys {
 			if i > 0 {
 				b.WriteByte(',')
 			}
@@ -2259,8 +2258,8 @@ func (vm *VM) jsMapKeyToValue(key string) Value {
 	if strings.HasPrefix(key, "b:") {
 		return NewBool(key == "b:1")
 	}
-	if strings.HasPrefix(key, "num:") {
-		numText := strings.TrimPrefix(key, "num:")
+	if after, ok := strings.CutPrefix(key, "num:"); ok {
+		numText := after
 		if numText == "nan" {
 			return NewDouble(math.NaN())
 		}
@@ -2271,17 +2270,17 @@ func (vm *VM) jsMapKeyToValue(key string) Value {
 			return NewDouble(f)
 		}
 	}
-	if strings.HasPrefix(key, "s:") {
-		return NewString(strings.TrimPrefix(key, "s:"))
+	if after, ok := strings.CutPrefix(key, "s:"); ok {
+		return NewString(after)
 	}
-	if strings.HasPrefix(key, "big:") {
-		text := strings.TrimPrefix(key, "big:")
+	if after, ok := strings.CutPrefix(key, "big:"); ok {
+		text := after
 		if bi, ok := new(big.Int).SetString(text, 10); ok {
 			return Value{Type: VTJSBigInt, Big: bi}
 		}
 	}
-	if strings.HasPrefix(key, "sym:") {
-		if n, err := strconv.ParseInt(strings.TrimPrefix(key, "sym:"), 10, 64); err == nil {
+	if after, ok := strings.CutPrefix(key, "sym:"); ok {
+		if n, err := strconv.ParseInt(after, 10, 64); err == nil {
 			return Value{Type: VTSymbol, Num: n}
 		}
 	}
@@ -3034,14 +3033,14 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 	isAsync := false
 	for i := 0; i < len(template.Names); i++ {
 		name := template.Names[i]
-		if strings.HasPrefix(name, "__js_local_count__:") {
-			if n, err := strconv.Atoi(strings.TrimPrefix(name, "__js_local_count__:")); err == nil && n > 0 {
+		if after, ok := strings.CutPrefix(name, "__js_local_count__:"); ok {
+			if n, err := strconv.Atoi(after); err == nil && n > 0 {
 				localCount = n
 			}
 			continue
 		}
-		if strings.HasPrefix(name, jsRestParamPrefix) {
-			restParam = strings.TrimPrefix(name, jsRestParamPrefix)
+		if after, ok := strings.CutPrefix(name, jsRestParamPrefix); ok {
+			restParam = after
 			continue
 		}
 		if name == jsClassConstructorFlag {
@@ -3082,10 +3081,7 @@ func (vm *VM) jsCreateClosure(template Value) Value {
 		isGenerator:        isGenerator,
 	}
 	if vm.jsBlockScopeDepth > 0 {
-		activeDepth := vm.jsBlockScopeDepth
-		if activeDepth > len(vm.jsBlockScopes) {
-			activeDepth = len(vm.jsBlockScopes)
-		}
+		activeDepth := min(vm.jsBlockScopeDepth, len(vm.jsBlockScopes))
 		if activeDepth > len(vm.jsBlockScopeConst) {
 			activeDepth = len(vm.jsBlockScopeConst)
 		}
@@ -3386,7 +3382,7 @@ func (vm *VM) jsRefreshArgumentsObject(objID int64, args []Value, params []strin
 	} else {
 		clear(obj)
 	}
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		obj[strconv.Itoa(i)] = args[i]
 	}
 	obj["length"] = NewInteger(int64(len(args)))
@@ -3408,10 +3404,7 @@ func (vm *VM) jsRefreshArgumentsObject(objID int64, args []Value, params []strin
 		} else {
 			clear(alias.paramToIndex)
 		}
-		max := len(params)
-		if len(args) < max {
-			max = len(args)
-		}
+		max := min(len(args), len(params))
 		for i := 0; i < max; i++ {
 			key := strconv.Itoa(i)
 			paramName := params[i]
@@ -3526,7 +3519,7 @@ func (vm *VM) jsTailCallValue(callee Value, thisVal Value, args []Value) bool {
 func (vm *VM) jsCreateArgumentsObject(args []Value, params []string, envID int64) Value {
 	objID := vm.allocJSID()
 	obj := make(map[string]Value, len(args)+1)
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		obj[strconv.Itoa(i)] = args[i]
 	}
 	obj["length"] = NewInteger(int64(len(args)))
@@ -3538,10 +3531,7 @@ func (vm *VM) jsCreateArgumentsObject(args []Value, params []string, envID int64
 			indexToParam: make(map[string]string, len(params)),
 			paramToIndex: make(map[string]string, len(params)),
 		}
-		max := len(params)
-		if len(args) < max {
-			max = len(args)
-		}
+		max := min(len(args), len(params))
 		for i := 0; i < max; i++ {
 			key := strconv.Itoa(i)
 			paramName := params[i]
@@ -3675,7 +3665,7 @@ func (vm *VM) jsExtractApplyArgs(argArray Value) []Value {
 			return nil
 		}
 		out := make([]Value, lengthNum)
-		for i := 0; i < lengthNum; i++ {
+		for i := range lengthNum {
 			key := strconv.Itoa(i)
 			if v, exists := obj[key]; exists {
 				out[i] = v
@@ -3843,7 +3833,7 @@ func jsEncodeURIValue(input string, component bool) string {
 
 		var buf [utf8.UTFMax]byte
 		n := utf8.EncodeRune(buf[:], r)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			b := buf[i]
 			out.WriteByte('%')
 			out.WriteByte(jsHexUpperDigits[b>>4])
@@ -4067,10 +4057,7 @@ func (vm *VM) jsArrayLikeLength(target Value) (int, bool, bool) {
 			}
 			return 0, false, false
 		}
-		n := int(vm.jsToNumber(lengthVal).Flt)
-		if n < 0 {
-			n = 0
-		}
+		n := max(int(vm.jsToNumber(lengthVal).Flt), 0)
 		return n, true, false
 	default:
 		return 0, false, false
@@ -4312,8 +4299,8 @@ func (vm *VM) jsReturn(retVal Value) {
 }
 
 func (vm *VM) jsPropertyKeyToValue(key string) Value {
-	if strings.HasPrefix(key, jsSymbolPropertyPrefix) {
-		idStr := strings.TrimPrefix(key, jsSymbolPropertyPrefix)
+	if after, ok := strings.CutPrefix(key, jsSymbolPropertyPrefix); ok {
+		idStr := after
 		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
 			return Value{Type: VTSymbol, Num: id}
 		}
@@ -4519,7 +4506,7 @@ func (vm *VM) jsProxyOwnKeys(proxy Value) []string {
 		lengthVal, _ := vm.jsMemberGet(result, "length")
 		length := int(vm.jsToNumber(lengthVal).Flt)
 		keys = make([]string, length)
-		for i := 0; i < length; i++ {
+		for i := range length {
 			val := vm.jsIndexGet(result, NewInteger(int64(i)))
 			keys[i] = vm.valueToString(val)
 		}
@@ -5309,7 +5296,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return Value{Type: VTJSUndefined}, true
 				}
 				thisArg := jsArgOrUndefined(args, 1)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if !vm.jsArrayLikeHasIndex(target, i) {
 						continue
 					}
@@ -5324,7 +5311,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				}
 				thisArg := jsArgOrUndefined(args, 1)
 				A := vm.jsArraySpeciesCreate(target, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if !vm.jsArrayLikeHasIndex(target, i) {
 						continue
 					}
@@ -5335,7 +5322,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				return A, true
 			case strings.EqualFold(member, "toReversed"):
 				out := make([]Value, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if v, ok := vm.jsArrayLikeGetIndex(target, length-1-i); ok {
 						out[i] = v
 					} else {
@@ -5345,7 +5332,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				return ValueFromVBArray(NewVBArrayFromValues(0, out)), true
 			case strings.EqualFold(member, "toSorted"):
 				out := make([]Value, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if v, ok := vm.jsArrayLikeGetIndex(target, i); ok {
 						out[i] = v
 					} else {
@@ -5377,7 +5364,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return Value{Type: VTJSUndefined}, true
 				}
 				out := make([]Value, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if i == index {
 						out[i] = value
 					} else if v, ok := vm.jsArrayLikeGetIndex(target, i); ok {
@@ -5395,10 +5382,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				} else if len(args) == 1 {
 					deleteCount = length - start
 				} else {
-					deleteCount = int(vm.jsToNumber(args[1]).Flt)
-					if deleteCount < 0 {
-						deleteCount = 0
-					}
+					deleteCount = max(int(vm.jsToNumber(args[1]).Flt), 0)
 					if start+deleteCount > length {
 						deleteCount = length - start
 					}
@@ -5441,7 +5425,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				flatten = func(v Value, currentDepth int, out *[]Value) {
 					vLen, isArrLike, _ := vm.jsArrayLikeLength(v)
 					if isArrLike && currentDepth < depth {
-						for i := 0; i < vLen; i++ {
+						for i := range vLen {
 							if item, ok := vm.jsArrayLikeGetIndex(v, i); ok {
 								flatten(item, currentDepth+1, out)
 							}
@@ -5451,7 +5435,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					}
 				}
 				out := make([]Value, 0, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if item, ok := vm.jsArrayLikeGetIndex(target, i); ok {
 						flatten(item, 0, &out)
 					}
@@ -5464,7 +5448,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				}
 				thisArg := jsArgOrUndefined(args, 1)
 				out := make([]Value, 0, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if !vm.jsArrayLikeHasIndex(target, i) {
 						continue
 					}
@@ -5472,7 +5456,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					result := vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
 					resLen, isArrLike, _ := vm.jsArrayLikeLength(result)
 					if isArrLike {
-						for j := 0; j < resLen; j++ {
+						for j := range resLen {
 							if subItem, ok := vm.jsArrayLikeGetIndex(result, j); ok {
 								out = append(out, subItem)
 							}
@@ -5506,7 +5490,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				}
 				thisArg := jsArgOrUndefined(args, 1)
 				filtered := make([]Value, 0, length)
-				for i := 0; i < length; i++ {
+				for i := range length {
 					if !vm.jsArrayLikeHasIndex(target, i) {
 						continue
 					}
@@ -5675,25 +5659,16 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		case strings.EqualFold(member, "substr"):
 			start := int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt)
 			if start < 0 {
-				start = len(runes) + start
-				if start < 0 {
-					start = 0
-				}
+				start = max(len(runes)+start, 0)
 			}
 			if start > len(runes) {
 				start = len(runes)
 			}
 			length := len(runes) - start
 			if len(args) > 1 && args[1].Type != VTJSUndefined {
-				length = int(vm.jsToNumber(args[1]).Flt)
-				if length < 0 {
-					length = 0
-				}
+				length = max(int(vm.jsToNumber(args[1]).Flt), 0)
 			}
-			end := start + length
-			if end > len(runes) {
-				end = len(runes)
-			}
+			end := min(start+length, len(runes))
 			out := string(runes[start:end])
 			if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 				return Value{Type: VTJSUndefined}, true
@@ -5717,7 +5692,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			total := len(text)
 			parts := make([]string, 0, len(args)+1)
 			parts = append(parts, text)
-			for i := 0; i < len(args); i++ {
+			for i := range args {
 				part := vm.valueToString(args[i])
 				total += len(part)
 				parts = append(parts, part)
@@ -5824,10 +5799,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			sepVal := args[0]
 			limit := -1
 			if len(args) > 1 && args[1].Type != VTJSUndefined {
-				limit = int(vm.jsToNumber(args[1]).Flt)
-				if limit < 0 {
-					limit = 0
-				}
+				limit = max(int(vm.jsToNumber(args[1]).Flt), 0)
 			}
 
 			if sepVal.Type == VTJSObject && vm.jsObjectStringProperty(sepVal, "__js_type") == "RegExp" {
@@ -6113,7 +6085,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			thisArg := jsArgOrUndefined(args, 1)
 			length := len(target.Arr.Values)
 			out := make([]Value, 0, length)
-			for i := 0; i < length; i++ {
+			for i := range length {
 				item := target.Arr.Values[i]
 				res := vm.jsCall(callback, thisArg, []Value{item, NewInteger(int64(i)), target})
 				if res.Type == VTArray && res.Arr != nil {
@@ -6141,7 +6113,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		case strings.EqualFold(member, "toReversed"):
 			length := len(target.Arr.Values)
 			newVals := make([]Value, length)
-			for i := 0; i < length; i++ {
+			for i := range length {
 				newVals[i] = target.Arr.Values[length-1-i]
 			}
 			return ValueFromVBArray(NewVBArrayFromValues(0, newVals)), true
@@ -6150,10 +6122,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			start := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
 			deleteCount := length - start
 			if len(args) > 1 {
-				deleteCount = int(vm.jsToNumber(args[1]).Flt)
-				if deleteCount < 0 {
-					deleteCount = 0
-				}
+				deleteCount = max(int(vm.jsToNumber(args[1]).Flt), 0)
 				if deleteCount > length-start {
 					deleteCount = length - start
 				}
@@ -6178,10 +6147,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if end < from {
 				end = from
 			}
-			count := end - from
-			if count > length-to {
-				count = length - to
-			}
+			count := min(end-from, length-to)
 			if count > 0 {
 				copy(target.Arr.Values[to:to+count], target.Arr.Values[from:from+count])
 			}
@@ -6198,7 +6164,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 			outLen := end - start
 			A := vm.jsArraySpeciesCreate(target, outLen)
-			for i := 0; i < outLen; i++ {
+			for i := range outLen {
 				vm.jsIndexSet(A, NewInteger(int64(i)), target.Arr.Values[start+i])
 			}
 			return A, true
@@ -6207,10 +6173,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			start := jsNormalizeRelativeIndex(int(vm.jsToNumber(jsArgOrUndefined(args, 0)).Flt), length)
 			deleteCount := length - start
 			if len(args) > 1 {
-				deleteCount = int(vm.jsToNumber(args[1]).Flt)
-				if deleteCount < 0 {
-					deleteCount = 0
-				}
+				deleteCount = max(int(vm.jsToNumber(args[1]).Flt), 0)
 				if deleteCount > length-start {
 					deleteCount = length - start
 				}
@@ -6263,7 +6226,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 		case strings.EqualFold(member, "concat"):
 			out := make([]Value, 0, len(target.Arr.Values)+len(args))
 			out = append(out, target.Arr.Values...)
-			for i := 0; i < len(args); i++ {
+			for i := range args {
 				arg := args[i]
 				if vm.jsIsConcatSpreadable(arg) {
 					// Extract values from array or array-like
@@ -6275,10 +6238,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					} else {
 						// It could be a bridge object or a JS object marked as spreadable
 						lenVal, _ := vm.jsMemberGet(arg, "length")
-						length := int(vm.jsToNumber(lenVal).Flt)
-						if length < 0 {
-							length = 0
-						}
+						length := max(int(vm.jsToNumber(lenVal).Flt), 0)
 						values = make([]Value, length)
 						for j := 0; j < length; j++ {
 							if vm.jsArrayLikeHasIndex(arg, j) {
@@ -6305,10 +6265,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				start = int(vm.jsToNumber(args[1]).Flt)
 			}
 			if start < 0 {
-				start = len(target.Arr.Values) + start
-				if start < 0 {
-					start = 0
-				}
+				start = max(len(target.Arr.Values)+start, 0)
 			}
 			for i := start; i < len(target.Arr.Values); i++ {
 				if vm.jsStrictEquals(target.Arr.Values[i], needle) {
@@ -6388,7 +6345,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 			start := len(target.Arr.Values)
 			target.Arr.Values = append(target.Arr.Values, make([]Value, length)...)
-			for i := 0; i < length; i++ {
+			for i := range length {
 				if v, ok := vm.jsArrayLikeGetIndex(source, i); ok {
 					target.Arr.Values[start+i] = v
 				} else {
@@ -6471,7 +6428,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			thisArg := jsArgOrUndefined(args, 1)
 			length := len(target.Arr.Values)
 			A := vm.jsArraySpeciesCreate(target, length)
-			for i := 0; i < length; i++ {
+			for i := range length {
 				result := vm.jsCall(callback, thisArg, []Value{target.Arr.Values[i], NewInteger(int64(i)), target})
 				vm.jsIndexSet(A, NewInteger(int64(i)), result)
 			}
@@ -6689,7 +6646,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				case VTString:
 					r := []rune(source.Str)
 					vals := make([]Value, len(r))
-					for i := 0; i < len(r); i++ {
+					for i := range r {
 						vals[i] = NewString(string(r[i]))
 					}
 					return ValueFromVBArray(NewVBArrayFromValues(0, vals)), true
@@ -6703,7 +6660,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 						return Value{Type: VTJSUndefined}, true
 					}
 					vals := make([]Value, length)
-					for i := 0; i < length; i++ {
+					for i := range length {
 						if v, ok := vm.jsArrayLikeGetIndex(source, i); ok {
 							vals[i] = v
 						} else {
@@ -6722,7 +6679,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return NewString(""), true
 				}
 				var runes []rune
-				for i := 0; i < len(args); i++ {
+				for i := range args {
 					codePointVal := vm.jsToNumber(args[i])
 					codePoint := int64(codePointVal.Flt)
 					// Convert to integer by truncating towards zero
@@ -6862,7 +6819,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				case VTString:
 					runes := []rune(source.Str)
 					keys = make([]string, len(runes))
-					for i := 0; i < len(runes); i++ {
+					for i := range runes {
 						keys[i] = strconv.Itoa(i)
 					}
 				}
@@ -6882,7 +6839,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				case VTJSObject, VTJSFunction:
 					keys := vm.jsObjectOwnEnumerableKeys(source.Num)
 					values = make([]Value, len(keys))
-					for i := 0; i < len(keys); i++ {
+					for i := range keys {
 						v, deferred := vm.jsMemberGet(source, keys[i])
 						if deferred {
 							return Value{Type: VTJSUndefined}, true
@@ -6897,7 +6854,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				case VTString:
 					runes := []rune(source.Str)
 					values = make([]Value, len(runes))
-					for i := 0; i < len(runes); i++ {
+					for i := range runes {
 						values[i] = NewString(string(runes[i]))
 					}
 				}
@@ -6934,7 +6891,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					runes := []rune(source.Str)
 					keys = make([]string, len(runes))
 					vals = make([]Value, len(runes))
-					for i := 0; i < len(runes); i++ {
+					for i := range runes {
 						keys[i] = strconv.Itoa(i)
 						vals[i] = NewString(string(runes[i]))
 					}
@@ -7017,7 +6974,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					switch source.Type {
 					case VTJSObject, VTJSFunction:
 						keys := vm.jsObjectOwnEnumerableKeys(source.Num)
-						for i := 0; i < len(keys); i++ {
+						for i := range keys {
 							v, deferred := vm.jsMemberGet(source, keys[i])
 							if deferred {
 								return Value{Type: VTJSUndefined}, true
@@ -7044,7 +7001,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 						}
 					case VTString:
 						runes := []rune(source.Str)
-						for i := 0; i < len(runes); i++ {
+						for i := range runes {
 							v := NewString(string(runes[i]))
 							if targetObj.Type == VTArray {
 								vm.jsIndexSet(targetObj, NewInteger(int64(i)), v)
@@ -7126,7 +7083,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				vm.jsObjectItems[resultID] = resultObj
 				vm.jsPropertyItems[resultID] = make(map[string]jsPropertyDescriptor, 8)
 				names := vm.jsObjectOwnPropertyNames(args[0])
-				for i := 0; i < len(names); i++ {
+				for i := range names {
 					desc, ok := vm.jsGetDescriptor(args[0].Num, names[i])
 					if !ok {
 						continue
@@ -7268,7 +7225,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return NewInteger(0), true
 				}
 				hyp := 0.0
-				for i := 0; i < len(args); i++ {
+				for i := range args {
 					n := vm.jsToNumber(args[i]).Flt
 					hyp = math.Hypot(hyp, n)
 				}
@@ -8281,7 +8238,7 @@ func (vm *VM) jsVBArrayGetItem(obj Value, args []Value) Value {
 	if len(args) == 0 {
 		return Value{Type: VTJSUndefined}
 	}
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		if current.Type != VTArray || current.Arr == nil {
 			return Value{Type: VTJSUndefined}
 		}
@@ -8329,8 +8286,8 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 		if vm.jsTypedArrayMemberSet(target, member, val) {
 			return
 		}
-		if strings.HasPrefix(member, jsAccessorGetterPrefix) {
-			name := strings.TrimPrefix(member, jsAccessorGetterPrefix)
+		if after, ok := strings.CutPrefix(member, jsAccessorGetterPrefix); ok {
+			name := after
 			desc, _ := vm.jsGetDescriptor(targetID, name)
 			desc.Getter = val
 			desc.HasGetter = true
@@ -8341,8 +8298,8 @@ func (vm *VM) jsMemberSet(target Value, member string, val Value) {
 			vm.jsSetDescriptor(targetID, name, desc)
 			return
 		}
-		if strings.HasPrefix(member, jsAccessorSetterPrefix) {
-			name := strings.TrimPrefix(member, jsAccessorSetterPrefix)
+		if after, ok := strings.CutPrefix(member, jsAccessorSetterPrefix); ok {
+			name := after
 			desc, _ := vm.jsGetDescriptor(targetID, name)
 			desc.Setter = val
 			desc.HasSetter = true
@@ -8663,7 +8620,7 @@ func (vm *VM) jsEnumerateForOfValues(source Value) []Value {
 			lengthVal, _ := vm.jsMemberGet(source, "length")
 			n := int(vm.jsToNumber(lengthVal).Flt)
 			out := make([]Value, 0, n)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				out = append(out, vm.jsIndexGet(source, NewInteger(int64(i))))
 			}
 			return out
@@ -10407,10 +10364,7 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 				return ValueFromVBArray(NewVBArrayFromValues(0, nil))
 			}
 			if len(args) == 1 && (args[0].Type == VTInteger || args[0].Type == VTDouble) {
-				length := int(vm.jsToNumber(args[0]).Flt)
-				if length < 0 {
-					length = 0
-				}
+				length := max(int(vm.jsToNumber(args[0]).Flt), 0)
 				return ValueFromVBArray(NewVBArrayFromValues(0, make([]Value, length)))
 			}
 			vals := make([]Value, len(args))
@@ -10527,7 +10481,7 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 			if source.Type == VTJSObject {
 				keys := vm.jsEnumerateForInKeys(source)
 				keyVals := make([]Value, len(keys))
-				for i := 0; i < len(keys); i++ {
+				for i := range keys {
 					keyVals[i] = NewString(keys[i])
 				}
 				obj["__js_enum_keys"] = ValueFromVBArray(NewVBArrayFromValues(0, keyVals))
@@ -10982,10 +10936,7 @@ func (vm *VM) jsRegExpExec(reVal Value, input string) Value {
 	isSticky := strings.Contains(flags, "y")
 
 	lastIndexVal, _ := vm.jsMemberGet(reVal, "lastIndex")
-	lastIndex := int(vm.jsToNumber(lastIndexVal).Flt)
-	if lastIndex < 0 {
-		lastIndex = 0
-	}
+	lastIndex := max(int(vm.jsToNumber(lastIndexVal).Flt), 0)
 
 	if !isGlobal && !isSticky {
 		lastIndex = 0
@@ -11123,7 +11074,7 @@ func (vm *VM) jsRuneToByteOffset(s string, runeIdx int) int {
 		return 0
 	}
 	byteIdx := 0
-	for i := 0; i < runeIdx; i++ {
+	for range runeIdx {
 		if byteIdx >= len(s) {
 			break
 		}

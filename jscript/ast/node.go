@@ -214,7 +214,7 @@ type (
 	NumberLiteral struct {
 		Idx     file.Idx
 		Literal string
-		Value   interface{}
+		Value   any
 	}
 
 	ObjectLiteral struct {

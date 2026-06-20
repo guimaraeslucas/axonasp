@@ -136,7 +136,7 @@ Response.Write p.Name & "|" & p.Age & "|" & p.Home.City
 	}
 
 	program := cachedProgramFromCompiler(compiler)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		vm := AcquireVMFromCachedProgram(program)
 		host := NewMockHost()
 		var buf bytes.Buffer

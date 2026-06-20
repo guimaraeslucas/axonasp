@@ -359,10 +359,7 @@ func vbsMid(args []Value) (Value, error) {
 		return Value{Type: VTEmpty}, nil
 	}
 	runes := []rune(args[0].String())
-	start := int(args[1].Num) - 1
-	if start < 0 {
-		start = 0
-	}
+	start := max(int(args[1].Num)-1, 0)
 	if start >= len(runes) {
 		return NewString(""), nil
 	}
@@ -944,10 +941,7 @@ func buildDimArray(bounds []int) *VBArray {
 		return NewVBArray(0, 0)
 	}
 
-	size := bounds[0] + 1
-	if size < 0 {
-		size = 0
-	}
+	size := max(bounds[0]+1, 0)
 
 	array := NewVBArray(0, size)
 	if len(bounds) == 1 {
@@ -970,10 +964,7 @@ func buildDimArrayVB6(bounds []int) *VBArray {
 
 	lower := bounds[0]
 	upper := bounds[1]
-	size := upper - lower + 1
-	if size < 0 {
-		size = 0
-	}
+	size := max(upper-lower+1, 0)
 
 	array := NewVBArray(lower, size)
 	if len(bounds) == 2 {
@@ -1016,14 +1007,8 @@ func copyPreservedArray(target *VBArray, source *VBArray, isVB6 bool, remainingB
 	}
 
 	// Calculate overlapping range
-	start := target.Lower
-	if source.Lower > start {
-		start = source.Lower
-	}
-	end := target.Upper()
-	if source.Upper() < end {
-		end = source.Upper()
-	}
+	start := max(source.Lower, target.Lower)
+	end := min(source.Upper(), target.Upper())
 
 	if start > end {
 		// No overlap
@@ -1041,7 +1026,7 @@ func copyPreservedArray(target *VBArray, source *VBArray, isVB6 bool, remainingB
 		return
 	}
 
-	for i := 0; i < limit; i++ {
+	for i := range limit {
 		targetIdx := start - target.Lower + i
 		sourceIdx := start - source.Lower + i
 		sourceChild, ok := toVBArray(source.Values[sourceIdx])
@@ -1122,10 +1107,7 @@ func vbsAxonRedimPreserveArray(args []Value) (Value, error) {
 		existingBounds := vbArrayUpperBounds(existing)
 		// Optimization: O(log N) allocations for 1D arrays by leveraging slice capacity.
 		if len(existingBounds) == 1 && len(bounds) == 1 {
-			newSize := bounds[0] + 1
-			if newSize < 0 {
-				newSize = 0
-			}
+			newSize := max(bounds[0]+1, 0)
 
 			var newValues []Value
 			if newSize <= cap(existing.Values) {
@@ -1137,10 +1119,7 @@ func vbsAxonRedimPreserveArray(args []Value) (Value, error) {
 				}
 			} else {
 				// Grow with 2x capacity buffer to achieve amortized O(1) growth.
-				newCap := newSize
-				if newCap < cap(existing.Values)*2 {
-					newCap = cap(existing.Values) * 2
-				}
+				newCap := max(newSize, cap(existing.Values)*2)
 				newValues = make([]Value, newSize, newCap)
 				copy(newValues, existing.Values)
 			}
@@ -1190,7 +1169,7 @@ func vbsAxonRedimPreserveArrayVB6(args []Value) (Value, error) {
 	existingBounds := vbArrayUpperBounds(source)
 	// We need lower bounds too for full check
 	current := source
-	for i := 0; i < len(existingBounds); i++ {
+	for i := range existingBounds {
 		newLow := bounds[i*2]
 		newHigh := bounds[i*2+1]
 		if i < len(existingBounds)-1 {
@@ -1399,7 +1378,7 @@ func vbsAxonEnumValues(vm *VM, args []Value) (Value, error) {
 	if obj.kind == fsoKindDrivesCollection {
 		drives := vm.fsoEnumerateDriveNames()
 		values := make([]Value, 0, len(drives))
-		for i := 0; i < len(drives); i++ {
+		for i := range drives {
 			values = append(values, vm.newFSODriveObject(drives[i]))
 		}
 		return ValueFromVBArray(NewVBArrayFromValues(0, values)), nil
@@ -1438,10 +1417,7 @@ func vbsAxonEnumValues(vm *VM, args []Value) (Value, error) {
 }
 
 func compareASCIINameFold(left string, right string) int {
-	limit := len(left)
-	if len(right) < limit {
-		limit = len(right)
-	}
+	limit := min(len(right), len(left))
 	for i := 0; i < limit; i++ {
 		lb := toLowerASCIIByte(left[i])
 		rb := toLowerASCIIByte(right[i])

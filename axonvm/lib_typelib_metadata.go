@@ -156,11 +156,11 @@ func parseMetadataComment(comment string) detectedMetadataLibrary {
 		}
 
 		valPart = valPart[1:]
-		endIdx := strings.IndexByte(valPart, quote)
-		if endIdx == -1 {
+		before, _, ok := strings.Cut(valPart, string(quote))
+		if !ok {
 			return ""
 		}
-		return valPart[:endIdx]
+		return before
 	}
 
 	lib.uuid = strings.ToUpper(strings.Trim(extractAttr(comment, "UUID"), "{}"))

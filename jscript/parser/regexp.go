@@ -506,7 +506,7 @@ func (self *_RegExp_parser) passString(start, end int) {
 	self.goRegexp.WriteString(self.str[start:end])
 }
 
-func (self *_RegExp_parser) error(fatal bool, msg string, msgValues ...interface{}) {
+func (self *_RegExp_parser) error(fatal bool, msg string, msgValues ...any) {
 	if self.err != nil {
 		return
 	}

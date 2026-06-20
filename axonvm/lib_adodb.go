@@ -25,6 +25,7 @@ package axonvm
 import (
 	"database/sql"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"os"
@@ -1181,7 +1182,7 @@ func (vm *VM) adodbRecordsetOpen(rs *adodbRecordset, sqlText string, conn *adodb
 			return
 		}
 
-		openArgs := make([]interface{}, 0, 5)
+		openArgs := make([]any, 0, 5)
 		openArgs = append(openArgs, sqlText, conn.oleConnection, cursorType, lockType)
 		if len(args) >= 5 && args[4].Type != VTEmpty {
 			openArgs = append(openArgs, vm.adodbOLEVariantArg(args[4]))
@@ -1323,7 +1324,7 @@ func (vm *VM) adodbRecordsetResolveColumnKey(rs *adodbRecordset, selector Value)
 }
 
 // adodbOLEVariantArg converts one VM value to the compact OLE argument form accepted by oleutil.
-func (vm *VM) adodbOLEVariantArg(val Value) interface{} {
+func (vm *VM) adodbOLEVariantArg(val Value) any {
 	switch val.Type {
 	case VTEmpty, VTNull:
 		return nil
@@ -1377,8 +1378,8 @@ func (vm *VM) adodbRecordsetLoadCurrentSQLResultSet(rs *adodbRecordset) {
 		if rs.maxRecords > 0 && len(rs.data) >= rs.maxRecords {
 			break
 		}
-		rowValues := make([]interface{}, len(cols))
-		rowPointers := make([]interface{}, len(cols))
+		rowValues := make([]any, len(cols))
+		rowPointers := make([]any, len(cols))
 		for i := range rowValues {
 			rowPointers[i] = &rowValues[i]
 		}
@@ -1603,10 +1604,7 @@ func (vm *VM) adodbRecordsetFind(rs *adodbRecordset, args []Value) {
 		vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, nil, "ADODB.Recordset.Find criteria is invalid", "axonvm/lib_adodb.go", 0).Error())
 		return
 	}
-	start := rs.currentRow + 1
-	if start < 0 {
-		start = 0
-	}
+	start := max(rs.currentRow+1, 0)
 	for i := start; i < len(rs.data); i++ {
 		row := rs.data[i]
 		if row == nil {
@@ -1657,27 +1655,17 @@ func (vm *VM) adodbRecordsetClone(rs *adodbRecordset) Value {
 	clone.columns = append(clone.columns[:0], rs.columns...)
 	vm.adodbRecordsetRebuildColumnIndex(clone)
 	clone.columnTypes = append(clone.columnTypes[:0], rs.columnTypes...)
-	for k, v := range rs.columnTypeByName {
-		clone.columnTypeByName[k] = v
-	}
-	for k, v := range rs.columnSizeByName {
-		clone.columnSizeByName[k] = v
-	}
-	for k, v := range rs.columnAttrByName {
-		clone.columnAttrByName[k] = v
-	}
-	for k, v := range rs.columnScaleByName {
-		clone.columnScaleByName[k] = v
-	}
+	maps.Copy(clone.columnTypeByName, rs.columnTypeByName)
+	maps.Copy(clone.columnSizeByName, rs.columnSizeByName)
+	maps.Copy(clone.columnAttrByName, rs.columnAttrByName)
+	maps.Copy(clone.columnScaleByName, rs.columnScaleByName)
 	clone.data = make([]map[string]Value, len(rs.data))
 	for i := 0; i < len(rs.data); i++ {
 		if rs.data[i] == nil {
 			continue
 		}
 		rowCopy := make(map[string]Value, len(rs.data[i]))
-		for k, v := range rs.data[i] {
-			rowCopy[k] = v
-		}
+		maps.Copy(rowCopy, rs.data[i])
 		clone.data[i] = rowCopy
 	}
 	return cloneVal
@@ -1926,9 +1914,9 @@ func (vm *VM) adodbRecordsetGetRows(rs *adodbRecordset, args []Value) Value {
 	cols := len(rs.columns)
 
 	colArray := NewVBArray(0, cols)
-	for c := 0; c < cols; c++ {
+	for c := range cols {
 		rowArray := NewVBArray(0, rows)
-		for r := 0; r < rows; r++ {
+		for r := range rows {
 			rowArray.Values[r] = rs.data[r][strings.ToLower(rs.columns[c])]
 		}
 		colArray.Values[c] = Value{Type: VTArray, Arr: rowArray}
@@ -2358,16 +2346,10 @@ func (vm *VM) dispatchADODBFieldMethod(objID int64, member string, args []Value)
 	case strings.EqualFold(member, "GetChunk"):
 		value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
 		all := value.String()
-		offset := vm.adodbFieldChunkOffsetGet(field)
-		if offset > len(all) {
-			offset = len(all)
-		}
+		offset := min(vm.adodbFieldChunkOffsetGet(field), len(all))
 		want := len(all) - offset
 		if len(args) >= 1 {
-			requested := vm.asInt(args[0])
-			if requested < 0 {
-				requested = 0
-			}
+			requested := max(vm.asInt(args[0]), 0)
 			if requested < want {
 				want = requested
 			}
@@ -2375,10 +2357,7 @@ func (vm *VM) dispatchADODBFieldMethod(objID int64, member string, args []Value)
 		if want <= 0 {
 			return NewString(""), true
 		}
-		end := offset + want
-		if end > len(all) {
-			end = len(all)
-		}
+		end := min(offset+want, len(all))
 		vm.adodbFieldChunkOffsetSet(field, end)
 		return NewString(all[offset:end]), true
 	}
@@ -2833,7 +2812,7 @@ func (vm *VM) adodbInferKeyFieldFromWhere(whereClause string) string {
 
 // adodbInferIdentityColumn selects the most likely auto-increment key column name.
 func (vm *VM) adodbInferIdentityColumn(columns []string) string {
-	for i := 0; i < len(columns); i++ {
+	for i := range columns {
 		if strings.EqualFold(columns[i], "id") || strings.EqualFold(columns[i], "iid") {
 			return columns[i]
 		}
@@ -2951,7 +2930,7 @@ func (vm *VM) adodbParseDateLiteral(text string) (time.Time, bool) {
 		"01/02/2006 15:04:05",
 		"01/02/2006",
 	}
-	for i := 0; i < len(layouts); i++ {
+	for i := range layouts {
 		parsed, err := time.ParseInLocation(layouts[i], trimmed, time.Local)
 		if err == nil {
 			return parsed, true
@@ -3237,7 +3216,7 @@ func (vm *VM) adodbQuoteIdentifier(conn *adodbConnection, identifier string) str
 	return strings.Join(quoted, ".")
 }
 
-func (vm *VM) adodbValueToVMValue(v interface{}) Value {
+func (vm *VM) adodbValueToVMValue(v any) Value {
 	if v == nil {
 		return NewNull()
 	}
@@ -3294,7 +3273,7 @@ func (vm *VM) adodbValueToVMValue(v interface{}) Value {
 //
 //	Execute sql, valuesArray
 //	Execute sql, singleValue
-func (vm *VM) adodbExecuteArgs(args []Value) []interface{} {
+func (vm *VM) adodbExecuteArgs(args []Value) []any {
 	if len(args) < 2 {
 		return nil
 	}
@@ -3302,18 +3281,18 @@ func (vm *VM) adodbExecuteArgs(args []Value) []interface{} {
 	payload := args[1]
 	if payload.Type == VTArray && payload.Arr != nil {
 		values := payload.Arr.Values
-		params := make([]interface{}, 0, len(values))
-		for i := 0; i < len(values); i++ {
+		params := make([]any, 0, len(values))
+		for i := range values {
 			params = append(params, vm.adodbDriverValue(values[i]))
 		}
 		return params
 	}
 
-	return []interface{}{vm.adodbDriverValue(payload)}
+	return []any{vm.adodbDriverValue(payload)}
 }
 
 // adodbDriverValue maps VM values to driver-compatible Go values.
-func (vm *VM) adodbDriverValue(v Value) interface{} {
+func (vm *VM) adodbDriverValue(v Value) any {
 	switch v.Type {
 	case VTEmpty, VTNull:
 		return nil
@@ -3499,7 +3478,7 @@ func (vm *VM) adodbBuildViewsSchemaRows(conn *adodbConnection, restrictions []st
 	case "sqlite":
 		tables := vm.adodbBuildTablesSchemaRows(conn, []string{"", "", viewFilter, "VIEW"})
 		results := make([]map[string]Value, 0, len(tables))
-		for i := 0; i < len(tables); i++ {
+		for i := range tables {
 			results = append(results, map[string]Value{
 				"table_name": NewString(tables[i]["table_name"].String()),
 			})
@@ -3621,7 +3600,7 @@ func (vm *VM) adodbBuildSQLiteColumnsSchemaRows(conn *adodbConnection, restricti
 	columnFilter := vm.adodbSchemaRestriction(restrictions, 3)
 	tables := vm.adodbBuildTablesSchemaRows(conn, []string{"", "", tableFilter, ""})
 	results := make([]map[string]Value, 0, 16)
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		tableName := tables[i]["table_name"].String()
 		pragma := "PRAGMA table_info('" + strings.ReplaceAll(tableName, "'", "''") + "')"
 		rows, err := conn.db.Query(pragma)
@@ -3722,7 +3701,7 @@ func (vm *VM) adodbBuildSQLiteIndexesSchemaRows(conn *adodbConnection, restricti
 		origin    string
 	}
 
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		tableName := tables[i]["table_name"].String()
 		listQuery := "PRAGMA index_list('" + strings.ReplaceAll(tableName, "'", "''") + "')"
 		listRows, err := conn.db.Query(listQuery)
@@ -3790,7 +3769,7 @@ func (vm *VM) adodbBuildSQLiteForeignKeysSchemaRows(conn *adodbConnection, restr
 	fkTableFilter := vm.adodbSchemaRestriction(restrictions, 5)
 	tables := vm.adodbBuildTablesSchemaRows(conn, []string{"", "", fkTableFilter, "TABLE"})
 	results := make([]map[string]Value, 0, 8)
-	for i := 0; i < len(tables); i++ {
+	for i := range tables {
 		fkTableName := tables[i]["table_name"].String()
 		pragma := "PRAGMA foreign_key_list('" + strings.ReplaceAll(fkTableName, "'", "''") + "')"
 		rows, err := conn.db.Query(pragma)
@@ -4137,7 +4116,7 @@ func (vm *VM) adodbBuildOracleForeignKeysSchemaRows(conn *adodbConnection, restr
 
 // adodbHasNonEmptyRestriction reports whether one OpenSchema restrictions array carries any effective filter.
 func adodbHasNonEmptyRestriction(restrictions []string) bool {
-	for i := 0; i < len(restrictions); i++ {
+	for i := range restrictions {
 		if strings.TrimSpace(restrictions[i]) != "" {
 			return true
 		}
@@ -4413,8 +4392,8 @@ func (vm *VM) adodbResolvePersistPath(path string) (string, bool) {
 // adodbParseConnectionStringParams parses one semicolon-delimited connection string.
 func adodbParseConnectionStringParams(connStr string) map[string]string {
 	params := make(map[string]string)
-	parts := strings.Split(connStr, ";")
-	for _, part := range parts {
+	parts := strings.SplitSeq(connStr, ";")
+	for part := range parts {
 		if idx := strings.Index(part, "="); idx > 0 {
 			key := strings.ToLower(strings.TrimSpace(part[:idx]))
 			val := strings.Trim(strings.TrimSpace(part[idx+1:]), "{}")
@@ -4567,7 +4546,7 @@ func adodbAlternateAccessProviderConnectionString(connStr string) (string, bool)
 // adodbUpsertConnectionStringValue replaces or appends one semicolon-delimited connection-string key.
 func adodbUpsertConnectionStringValue(connStr string, key string, value string) string {
 	parts := strings.Split(connStr, ";")
-	for i := 0; i < len(parts); i++ {
+	for i := range parts {
 		segment := strings.TrimSpace(parts[i])
 		if segment == "" {
 			continue
@@ -4859,7 +4838,7 @@ func (vm *VM) adodbPopulateRecordsetFromOLEGetRowsResult(rs *adodbRecordset, row
 
 // adodbHydrateRecordsetDataFromFieldMajorValues materialises rows from a field-major
 // flattened value list where index = field + row*fieldCount.
-func (vm *VM) adodbHydrateRecordsetDataFromFieldMajorValues(rs *adodbRecordset, values []interface{}, fieldCount int, rowCount int) bool {
+func (vm *VM) adodbHydrateRecordsetDataFromFieldMajorValues(rs *adodbRecordset, values []any, fieldCount int, rowCount int) bool {
 	if rs == nil || fieldCount < 0 || rowCount < 0 {
 		return false
 	}
@@ -4873,10 +4852,10 @@ func (vm *VM) adodbHydrateRecordsetDataFromFieldMajorValues(rs *adodbRecordset, 
 	}
 
 	data := make([]map[string]Value, rowCount)
-	for rowIdx := 0; rowIdx < rowCount; rowIdx++ {
+	for rowIdx := range rowCount {
 		row := make(map[string]Value, fieldCount)
 		base := rowIdx * fieldCount
-		for colIdx := 0; colIdx < fieldCount; colIdx++ {
+		for colIdx := range fieldCount {
 			key := strings.ToLower(strings.TrimSpace(rs.columns[colIdx]))
 			if key == "" {
 				continue
@@ -4901,13 +4880,13 @@ func (vm *VM) adodbPopulateRecordsetFromOLEFieldWalk(rs *adodbRecordset, fields 
 	if eofRes == nil {
 		return
 	}
-	for rowIdx := 0; rowIdx < adodbOLEMaxRows; rowIdx++ {
+	for range adodbOLEMaxRows {
 		eofRaw := eofRes.Value()
 		if eofRaw == nil || vm.asBool(vm.adodbValueToVMValue(eofRaw)) {
 			break
 		}
 		row := make(map[string]Value, count)
-		for i := 0; i < count; i++ {
+		for i := range count {
 			itemRes, _ := oleutil.GetProperty(fields, "Item", i)
 			if itemRes == nil {
 				continue

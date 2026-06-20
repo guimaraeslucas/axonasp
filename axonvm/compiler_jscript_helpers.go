@@ -23,6 +23,7 @@ package axonvm
 import (
 	"math"
 	"math/big"
+	"slices"
 	"strconv"
 
 	jsast "g3pix.com.br/axonasp/jscript/ast"
@@ -34,21 +35,11 @@ func jsFunctionPreventsLocalSlots(fn *jsast.FunctionLiteral) bool {
 	if fn == nil || fn.Body == nil {
 		return false
 	}
-	for i := range fn.Body.List {
-		if jsStatementPreventsLocalSlots(fn.Body.List[i]) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(fn.Body.List, jsStatementPreventsLocalSlots)
 }
 
 func jsProgramPreventsLocalSlots(stmts []jsast.Statement) bool {
-	for i := range stmts {
-		if jsStatementPreventsLocalSlots(stmts[i]) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(stmts, jsStatementPreventsLocalSlots)
 }
 
 func jsStatementPreventsLocalSlots(stmt jsast.Statement) bool {
@@ -61,10 +52,8 @@ func jsStatementPreventsLocalSlots(stmt jsast.Statement) bool {
 	case *jsast.WithStatement:
 		return true
 	case *jsast.BlockStatement:
-		for i := range node.List {
-			if jsStatementPreventsLocalSlots(node.List[i]) {
-				return true
-			}
+		if slices.ContainsFunc(node.List, jsStatementPreventsLocalSlots) {
+			return true
 		}
 	case *jsast.ExpressionStatement:
 		return jsExpressionPreventsLocalSlots(node.Expression)
@@ -123,10 +112,8 @@ func jsStatementPreventsLocalSlots(stmt jsast.Statement) bool {
 			if jsExpressionPreventsLocalSlots(clause.Test) {
 				return true
 			}
-			for j := range clause.Consequent {
-				if jsStatementPreventsLocalSlots(clause.Consequent[j]) {
-					return true
-				}
+			if slices.ContainsFunc(clause.Consequent, jsStatementPreventsLocalSlots) {
+				return true
 			}
 		}
 	case *jsast.TryStatement:
@@ -174,19 +161,15 @@ func jsExpressionPreventsLocalSlots(expr jsast.Expression) bool {
 		if jsExpressionPreventsLocalSlots(node.Callee) {
 			return true
 		}
-		for i := range node.ArgumentList {
-			if jsExpressionPreventsLocalSlots(node.ArgumentList[i]) {
-				return true
-			}
+		if slices.ContainsFunc(node.ArgumentList, jsExpressionPreventsLocalSlots) {
+			return true
 		}
 	case *jsast.NewExpression:
 		if jsExpressionPreventsLocalSlots(node.Callee) {
 			return true
 		}
-		for i := range node.ArgumentList {
-			if jsExpressionPreventsLocalSlots(node.ArgumentList[i]) {
-				return true
-			}
+		if slices.ContainsFunc(node.ArgumentList, jsExpressionPreventsLocalSlots) {
+			return true
 		}
 	case *jsast.ObjectLiteral:
 		for i := range node.Value {
@@ -202,24 +185,18 @@ func jsExpressionPreventsLocalSlots(expr jsast.Expression) bool {
 			}
 		}
 	case *jsast.ArrayLiteral:
-		for i := range node.Value {
-			if jsExpressionPreventsLocalSlots(node.Value[i]) {
-				return true
-			}
+		if slices.ContainsFunc(node.Value, jsExpressionPreventsLocalSlots) {
+			return true
 		}
 	case *jsast.ConditionalExpression:
 		return jsExpressionPreventsLocalSlots(node.Test) || jsExpressionPreventsLocalSlots(node.Consequent) || jsExpressionPreventsLocalSlots(node.Alternate)
 	case *jsast.SequenceExpression:
-		for i := range node.Sequence {
-			if jsExpressionPreventsLocalSlots(node.Sequence[i]) {
-				return true
-			}
+		if slices.ContainsFunc(node.Sequence, jsExpressionPreventsLocalSlots) {
+			return true
 		}
 	case *jsast.TemplateLiteral:
-		for i := range node.Expressions {
-			if jsExpressionPreventsLocalSlots(node.Expressions[i]) {
-				return true
-			}
+		if slices.ContainsFunc(node.Expressions, jsExpressionPreventsLocalSlots) {
+			return true
 		}
 	}
 	return false

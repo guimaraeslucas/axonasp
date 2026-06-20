@@ -224,8 +224,8 @@ func (f *G3FileUploader) blockExtension(ext string) {
 }
 
 func (f *G3FileUploader) blockExtensions(exts string) {
-	parts := strings.Split(exts, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(exts, ",")
+	for part := range parts {
 		f.blockExtension(strings.TrimSpace(part))
 	}
 }
@@ -239,8 +239,8 @@ func (f *G3FileUploader) allowExtension(ext string) {
 }
 
 func (f *G3FileUploader) allowExtensions(exts string) {
-	parts := strings.Split(exts, ",")
-	for _, part := range parts {
+	parts := strings.SplitSeq(exts, ",")
+	for part := range parts {
 		f.allowExtension(strings.TrimSpace(part))
 	}
 }
@@ -259,7 +259,7 @@ func (f *G3FileUploader) isValidExtension(ext string) bool {
 	return true
 }
 
-func (f *G3FileUploader) wrapResultAsDict(m map[string]interface{}) Value {
+func (f *G3FileUploader) wrapResultAsDict(m map[string]any) Value {
 	dictVal := f.vm.newDictionaryObject()
 	for k, v := range m {
 		var mapped Value
@@ -284,7 +284,7 @@ func (f *G3FileUploader) wrapResultAsDict(m map[string]interface{}) Value {
 
 func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string) Value {
 	if f.vm.host == nil || f.vm.host.Request() == nil || f.vm.host.Request().HTTPRequest() == nil {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUNoHTTPRequest.String(),
 		})
@@ -299,14 +299,14 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 
 	err := req.ParseMultipartForm(parseLimit)
 	if err != nil {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": fmt.Sprintf("%s: %v", ErrG3FUFormParseFailed.String(), err),
 		})
 	}
 
 	if req.MultipartForm == nil {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUNoMultipartData.String(),
 		})
@@ -314,7 +314,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 
 	file, fileHeader, err := req.FormFile(fieldName)
 	if err != nil {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": fmt.Sprintf(ErrG3FUFileFieldNotFound.String(), fieldName),
 		})
@@ -326,14 +326,14 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	ext := strings.ToLower(filepath.Ext(fileName))
 
 	if !f.isValidExtension(ext) {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": fmt.Sprintf(ErrG3FUExtensionNotAllowed.String(), ext),
 		})
 	}
 
 	if f.maxFileSize > 0 && fileSize > f.maxFileSize {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUFileSizeExceedsMax.String(),
 		})
@@ -360,7 +360,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	}
 
 	if mappedDir == "" {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUInvalidTargetDir.String(),
 		})
@@ -376,7 +376,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 
 	tempFile, err := os.CreateTemp(tempDir, "upload_*.tmp")
 	if err != nil {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUTempFileCreateFailed.String(),
 		})
@@ -388,7 +388,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if err != nil {
 		tempFile.Close()
 		os.Remove(tempPath)
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUTempFileWriteFailed.String(),
 		})
@@ -398,7 +398,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	if err != nil {
 		tempFile.Close()
 		os.Remove(tempPath)
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUTempFileSyncFailed.String(),
 		})
@@ -409,7 +409,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	err = os.Rename(tempPath, finalPath)
 	if err != nil {
 		os.Remove(tempPath)
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": ErrG3FUFinalMoveFailed.String(),
 		})
@@ -422,7 +422,7 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 
 	relPath := targetDir + "/" + finalFileName
 
-	return f.wrapResultAsDict(map[string]interface{}{
+	return f.wrapResultAsDict(map[string]any{
 		"IsSuccess":        true,
 		"OriginalFileName": fileName,
 		"NewFileName":      finalFileName,
@@ -466,7 +466,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 		for _, fileHeader := range fileHeaders {
 			file, err := fileHeader.Open()
 			if err != nil {
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":    false,
 					"ErrorMessage": ErrG3FUOpenFileFailed.String(),
 				}))
@@ -478,7 +478,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			ext := strings.ToLower(filepath.Ext(fileName))
 
 			if !f.isValidExtension(ext) {
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     fmt.Sprintf(ErrG3FUExtensionNotAllowed.String(), ext),
@@ -488,7 +488,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			}
 
 			if f.maxFileSize > 0 && fileSize > f.maxFileSize {
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     ErrG3FUFileSizeExceedsMax.String(),
@@ -505,7 +505,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			}
 
 			if mappedDir == "" {
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     ErrG3FUInvalidTargetDir.String(),
@@ -524,7 +524,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 
 			tempFile, err := os.CreateTemp(tempDir, "upload_*.tmp")
 			if err != nil {
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     ErrG3FUTempFileCreateFailed.String(),
@@ -538,7 +538,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			if err != nil {
 				tempFile.Close()
 				os.Remove(tempPath)
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     ErrG3FUTempFileWriteFailed.String(),
@@ -551,7 +551,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			if err != nil {
 				tempFile.Close()
 				os.Remove(tempPath)
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     ErrG3FUTempFileSyncFailed.String(),
@@ -566,7 +566,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			err = os.Rename(tempPath, finalPath)
 			if err != nil {
 				os.Remove(tempPath)
-				results = append(results, f.wrapResultAsDict(map[string]interface{}{
+				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
 					"ErrorMessage":     ErrG3FUFinalMoveFailed.String(),
@@ -581,7 +581,7 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 
 			relPath := targetDir + "/" + finalFileName
 
-			results = append(results, f.wrapResultAsDict(map[string]interface{}{
+			results = append(results, f.wrapResultAsDict(map[string]any{
 				"IsSuccess":        true,
 				"OriginalFileName": fileName,
 				"NewFileName":      finalFileName,
@@ -608,7 +608,7 @@ func (f *G3FileUploader) getFileInfo(fieldName string) Value {
 
 	_, fileHeader, err := req.FormFile(fieldName)
 	if err != nil {
-		return f.wrapResultAsDict(map[string]interface{}{
+		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
 			"ErrorMessage": "File not found",
 		})
@@ -622,7 +622,7 @@ func (f *G3FileUploader) getFileInfo(fieldName string) Value {
 		mimeType = "application/octet-stream"
 	}
 
-	return f.wrapResultAsDict(map[string]interface{}{
+	return f.wrapResultAsDict(map[string]any{
 		"IsSuccess":        true,
 		"OriginalFileName": fileName,
 		"Size":             fileSize,

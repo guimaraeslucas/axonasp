@@ -21,6 +21,7 @@
 package axonvm
 
 import (
+	"maps"
 	"strings"
 	"sync"
 
@@ -79,9 +80,7 @@ func cloneBoolMap(values map[string]bool) map[string]bool {
 		return map[string]bool{}
 	}
 	cloned := make(map[string]bool, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
+	maps.Copy(cloned, values)
 	return cloned
 }
 
@@ -95,17 +94,11 @@ func (vm *VM) applyCompilerSnapshot(compiled *dynamicCachedProgram) {
 	vm.globalNames = append(vm.globalNames[:0], compiled.compilerGlobals...)
 	vm.rebuildGlobalNameIndex()
 	clear(vm.globalZeroArgFuncs)
-	for key, value := range compiled.compilerZeroArg {
-		vm.globalZeroArgFuncs[key] = value
-	}
+	maps.Copy(vm.globalZeroArgFuncs, compiled.compilerZeroArg)
 	clear(vm.declaredGlobals)
-	for key, value := range compiled.compilerDeclared {
-		vm.declaredGlobals[key] = value
-	}
+	maps.Copy(vm.declaredGlobals, compiled.compilerDeclared)
 	clear(vm.constGlobals)
-	for key, value := range compiled.compilerConst {
-		vm.constGlobals[key] = value
-	}
+	maps.Copy(vm.constGlobals, compiled.compilerConst)
 	vm.sourceName = compiled.sourceName
 }
 

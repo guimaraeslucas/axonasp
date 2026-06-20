@@ -118,7 +118,7 @@ func (self *_parser) scanIdentifier() (string, unistring.String, bool, string) {
 					return "", "", false, "Invalid Unicode escape sequence"
 				}
 			} else {
-				for j := 0; j < 4; j++ {
+				for range 4 {
 					self.read()
 					decimal, ok := hex2decimal(byte(self.chr))
 					if !ok {
@@ -901,7 +901,7 @@ func hex2decimal(chr byte) (value rune, ok bool) {
 	}
 }
 
-func parseNumberLiteral(literal string) (value interface{}, err error) {
+func parseNumberLiteral(literal string) (value any, err error) {
 	// TODO Is Uint okay? What about -MAX_UINT
 	value, err = strconv.ParseInt(literal, 0, 64)
 	if err == nil {

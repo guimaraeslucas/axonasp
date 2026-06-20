@@ -39,7 +39,7 @@ func TestJScriptMathOptimizations(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 	foundExt := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		if OpCode(bytecode[i]) == OpExtPrefix {
 			foundExt = true
 			break
@@ -69,7 +69,7 @@ func TestJScriptBitwiseOptimization(t *testing.T) {
 
 	bytecode := compiler.Bytecode()
 	rightShiftCount := 0
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		if OpCode(bytecode[i]) == OpJSRightShift {
 			rightShiftCount++
 		}
@@ -100,7 +100,7 @@ func TestJScriptIntegerArithmeticSpecialization(t *testing.T) {
 	bytecode := compiler.Bytecode()
 	hasAdd := false
 	hasSub := false
-	for i := 0; i < len(bytecode); i++ {
+	for i := range bytecode {
 		op := OpCode(bytecode[i])
 		if op == OpJSAdd {
 			hasAdd = true

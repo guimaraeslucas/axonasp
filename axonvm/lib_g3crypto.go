@@ -28,6 +28,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
+	sha30 "crypto/sha3"
 	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
@@ -37,7 +38,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/blake2b"
 	"golang.org/x/crypto/pbkdf2"
-	"golang.org/x/crypto/sha3"
 )
 
 // G3Crypto stores the runtime state for one native crypto object instance.
@@ -380,10 +380,10 @@ func (c *G3Crypto) hashBytes(algorithm string, input Value) []byte {
 		sum := sha512.Sum512(data)
 		return sum[:]
 	case "sha3_256":
-		sum := sha3.Sum256(data)
+		sum := sha30.Sum256(data)
 		return sum[:]
 	case "sha3_512":
-		sum := sha3.Sum512(data)
+		sum := sha30.Sum512(data)
 		return sum[:]
 	case "blake2b256":
 		sum := blake2b.Sum256(data)
@@ -490,7 +490,7 @@ func g3cryptoNormalizeInput(value Value) []byte {
 	if value.Type == VTArray && value.Arr != nil {
 		count := len(value.Arr.Values)
 		buf := make([]byte, count)
-		for i := 0; i < count; i++ {
+		for i := range count {
 			byteVal := g3cryptoValueToInt(value.Arr.Values[i])
 			if byteVal < 0 {
 				byteVal = 0
@@ -512,7 +512,7 @@ func g3cryptoBytesToVBArray(data []byte) Value {
 	}
 
 	values := make([]Value, len(data))
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		values[i] = NewInteger(int64(data[i]))
 	}
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}

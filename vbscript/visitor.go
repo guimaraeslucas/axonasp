@@ -48,8 +48,7 @@
 package vbscript
 
 // Node is the base interface for all AST nodes
-type Node interface {
-}
+type Node any
 
 // Program represents the root of the AST
 type Program interface {
@@ -374,82 +373,82 @@ type WithStatement interface {
 // Visitor is a base interface for implementing the Visitor pattern
 // It provides Visit methods for all AST node types
 type Visitor interface {
-	Visit(node Node) interface{}
+	Visit(node Node) any
 
-	VisitProgram(node Program) interface{}
-	VisitParameter(node Parameter) interface{}
-	VisitConstDeclaration(node ConstDeclaration) interface{}
-	VisitReDimDeclaration(node ReDimDeclaration) interface{}
+	VisitProgram(node Program) any
+	VisitParameter(node Parameter) any
+	VisitConstDeclaration(node ConstDeclaration) any
+	VisitReDimDeclaration(node ReDimDeclaration) any
 
-	VisitVariableDeclarationNode(node VariableDeclarationNode) interface{}
-	VisitVariableDeclaration(node VariableDeclaration) interface{}
-	VisitFieldDeclaration(node FieldDeclaration) interface{}
+	VisitVariableDeclarationNode(node VariableDeclarationNode) any
+	VisitVariableDeclaration(node VariableDeclaration) any
+	VisitFieldDeclaration(node FieldDeclaration) any
 
-	VisitStatement(stmt Statement) interface{}
+	VisitStatement(stmt Statement) any
 
-	VisitProcedureDeclaration(stmt ProcedureDeclaration) interface{}
-	VisitSubDeclaration(stmt SubDeclaration) interface{}
-	VisitInitializeSubDeclaration(stmt InitializeSubDeclaration) interface{}
-	VisitTerminateSubDeclaration(stmt TerminateSubDeclaration) interface{}
-	VisitFunctionDeclaration(stmt FunctionDeclaration) interface{}
+	VisitProcedureDeclaration(stmt ProcedureDeclaration) any
+	VisitSubDeclaration(stmt SubDeclaration) any
+	VisitInitializeSubDeclaration(stmt InitializeSubDeclaration) any
+	VisitTerminateSubDeclaration(stmt TerminateSubDeclaration) any
+	VisitFunctionDeclaration(stmt FunctionDeclaration) any
 
-	VisitPropertyDeclaration(stmt PropertyDeclaration) interface{}
-	VisitPropertyGetDeclaration(stmt PropertyGetDeclaration) interface{}
-	VisitPropertySetDeclaration(stmt PropertySetDeclaration) interface{}
-	VisitPropertyLetDeclaration(stmt PropertyLetDeclaration) interface{}
+	VisitPropertyDeclaration(stmt PropertyDeclaration) any
+	VisitPropertyGetDeclaration(stmt PropertyGetDeclaration) any
+	VisitPropertySetDeclaration(stmt PropertySetDeclaration) any
+	VisitPropertyLetDeclaration(stmt PropertyLetDeclaration) any
 
-	VisitExpression(expr Expression) interface{}
+	VisitExpression(expr Expression) any
 
-	VisitLiteralExpression(expr LiteralExpression) interface{}
-	VisitBooleanLiteral(expr BooleanLiteral) interface{}
-	VisitDateLiteral(expr DateLiteral) interface{}
-	VisitFloatLiteral(expr FloatLiteral) interface{}
-	VisitNullLiteral(expr NullLiteral) interface{}
-	VisitStringLiteral(expr StringLiteral) interface{}
-	VisitIntegerLiteral(expr IntegerLiteral) interface{}
-	VisitNothingLiteral(expr NothingLiteral) interface{}
-	VisitEmptyLiteral(expr EmptyLiteral) interface{}
+	VisitLiteralExpression(expr LiteralExpression) any
+	VisitBooleanLiteral(expr BooleanLiteral) any
+	VisitDateLiteral(expr DateLiteral) any
+	VisitFloatLiteral(expr FloatLiteral) any
+	VisitNullLiteral(expr NullLiteral) any
+	VisitStringLiteral(expr StringLiteral) any
+	VisitIntegerLiteral(expr IntegerLiteral) any
+	VisitNothingLiteral(expr NothingLiteral) any
+	VisitEmptyLiteral(expr EmptyLiteral) any
 
-	VisitIdentifier(expr Identifier) interface{}
-	VisitUnaryExpression(expr UnaryExpression) interface{}
-	VisitBinaryExpression(expr BinaryExpression) interface{}
-	VisitIndexOrCallExpression(expr IndexOrCallExpression) interface{}
-	VisitMemberExpression(expr MemberExpression) interface{}
-	VisitMissingValueExpression(expr MissingValueExpression) interface{}
-	VisitNewExpression(expr NewExpression) interface{}
-	VisitWithMemberAccessExpression(expr WithMemberAccessExpression) interface{}
+	VisitIdentifier(expr Identifier) any
+	VisitUnaryExpression(expr UnaryExpression) any
+	VisitBinaryExpression(expr BinaryExpression) any
+	VisitIndexOrCallExpression(expr IndexOrCallExpression) any
+	VisitMemberExpression(expr MemberExpression) any
+	VisitMissingValueExpression(expr MissingValueExpression) any
+	VisitNewExpression(expr NewExpression) any
+	VisitWithMemberAccessExpression(expr WithMemberAccessExpression) any
 
-	VisitAssignmentStatement(stmt AssignmentStatement) interface{}
-	VisitCallStatement(stmt CallStatement) interface{}
-	VisitCallSubStatement(stmt CallSubStatement) interface{}
-	VisitCaseStatement(stmt CaseStatement) interface{}
-	VisitClassDeclaration(stmt ClassDeclaration) interface{}
-	VisitConstsDeclaration(stmt ConstsDeclaration) interface{}
-	VisitDoStatement(stmt DoStatement) interface{}
-	VisitElseIfStatement(stmt ElseIfStatement) interface{}
-	VisitEraseStatement(stmt EraseStatement) interface{}
+	VisitAssignmentStatement(stmt AssignmentStatement) any
+	VisitCallStatement(stmt CallStatement) any
+	VisitCallSubStatement(stmt CallSubStatement) any
+	VisitCaseStatement(stmt CaseStatement) any
+	VisitClassDeclaration(stmt ClassDeclaration) any
+	VisitConstsDeclaration(stmt ConstsDeclaration) any
+	VisitDoStatement(stmt DoStatement) any
+	VisitElseIfStatement(stmt ElseIfStatement) any
+	VisitEraseStatement(stmt EraseStatement) any
 
-	VisitExitStatement(stmt ExitStatement) interface{}
-	VisitExitDoStatement(stmt ExitDoStatement) interface{}
-	VisitExitForStatement(stmt ExitForStatement) interface{}
-	VisitExitFunctionStatement(stmt ExitFunctionStatement) interface{}
-	VisitExitPropertyStatement(stmt ExitPropertyStatement) interface{}
-	VisitExitSubStatement(stmt ExitSubStatement) interface{}
+	VisitExitStatement(stmt ExitStatement) any
+	VisitExitDoStatement(stmt ExitDoStatement) any
+	VisitExitForStatement(stmt ExitForStatement) any
+	VisitExitFunctionStatement(stmt ExitFunctionStatement) any
+	VisitExitPropertyStatement(stmt ExitPropertyStatement) any
+	VisitExitSubStatement(stmt ExitSubStatement) any
 
-	VisitFieldsDeclaration(stmt FieldsDeclaration) interface{}
-	VisitForEachStatement(stmt ForEachStatement) interface{}
-	VisitForStatement(stmt ForStatement) interface{}
-	VisitIfStatement(stmt IfStatement) interface{}
-	VisitOnErrorGoTo0Statement(stmt OnErrorGoTo0Statement) interface{}
-	VisitOnErrorResumeNextStatement(stmt OnErrorResumeNextStatement) interface{}
-	VisitOnErrorGoToLabelStatement(stmt OnErrorGoToLabelStatement) interface{}
-	VisitLabelStatement(stmt LabelStatement) interface{}
+	VisitFieldsDeclaration(stmt FieldsDeclaration) any
+	VisitForEachStatement(stmt ForEachStatement) any
+	VisitForStatement(stmt ForStatement) any
+	VisitIfStatement(stmt IfStatement) any
+	VisitOnErrorGoTo0Statement(stmt OnErrorGoTo0Statement) any
+	VisitOnErrorResumeNextStatement(stmt OnErrorResumeNextStatement) any
+	VisitOnErrorGoToLabelStatement(stmt OnErrorGoToLabelStatement) any
+	VisitLabelStatement(stmt LabelStatement) any
 
-	VisitReDimStatement(stmt ReDimStatement) interface{}
-	VisitSelectStatement(stmt SelectStatement) interface{}
-	VisitStatementList(stmt StatementList) interface{}
+	VisitReDimStatement(stmt ReDimStatement) any
+	VisitSelectStatement(stmt SelectStatement) any
+	VisitStatementList(stmt StatementList) any
 
-	VisitVariablesDeclaration(stmt VariablesDeclaration) interface{}
-	VisitWhileStatement(stmt WhileStatement) interface{}
-	VisitWithStatement(stmt WithStatement) interface{}
+	VisitVariablesDeclaration(stmt VariablesDeclaration) any
+	VisitWhileStatement(stmt WhileStatement) any
+	VisitWithStatement(stmt WithStatement) any
 }

@@ -77,10 +77,7 @@ func Slice(str string, start, end int) string {
 	// Convert negative indices
 	from := start
 	if from < 0 {
-		from = length + from
-		if from < 0 {
-			from = 0
-		}
+		from = max(length+from, 0)
 	}
 	if from > length {
 		from = length
@@ -88,10 +85,7 @@ func Slice(str string, start, end int) string {
 
 	to := end
 	if to < 0 {
-		to = length + to
-		if to < 0 {
-			to = 0
-		}
+		to = max(length+to, 0)
 	}
 	if to > length {
 		to = length

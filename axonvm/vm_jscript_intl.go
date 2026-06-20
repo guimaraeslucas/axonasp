@@ -1186,7 +1186,7 @@ func (vm *VM) jsIntlLocaleTagFromValue(locales Value) string {
 		return ""
 	case VTJSObject, VTJSFunction:
 		if length, ok, deferred := vm.jsArrayLikeLength(locales); ok && !deferred {
-			for i := 0; i < length; i++ {
+			for i := range length {
 				if v, exists := vm.jsArrayLikeGetIndex(locales, i); exists {
 					tag := jsNormalizeLocaleTag(v.String())
 					if tag != "" {

@@ -171,7 +171,7 @@ func (vm *VM) jsCallBufferMethod(methodName string, args []Value) (Value, bool) 
 				fillByte = byte(int(vm.jsToNumber(fill).Flt) & 0xFF)
 			}
 
-			for i := 0; i < size; i++ {
+			for i := range size {
 				bufData[i] = fillByte
 			}
 		}
@@ -223,10 +223,7 @@ func (vm *VM) jsCallBufferInstanceMethod(bufObj Value, methodName string, args [
 
 		start := 0
 		if len(args) > 1 && args[1].Type != VTJSUndefined {
-			start = int(vm.jsToNumber(args[1]).Flt)
-			if start < 0 {
-				start = 0
-			}
+			start = max(int(vm.jsToNumber(args[1]).Flt), 0)
 			if start > len(bufItem.data) {
 				start = len(bufItem.data)
 			}
@@ -234,10 +231,7 @@ func (vm *VM) jsCallBufferInstanceMethod(bufObj Value, methodName string, args [
 
 		end := len(bufItem.data)
 		if len(args) > 2 && args[2].Type != VTJSUndefined {
-			end = int(vm.jsToNumber(args[2]).Flt)
-			if end < 0 {
-				end = 0
-			}
+			end = max(int(vm.jsToNumber(args[2]).Flt), 0)
 			if end > len(bufItem.data) {
 				end = len(bufItem.data)
 			}

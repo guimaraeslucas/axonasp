@@ -181,7 +181,7 @@ func (z *G3ZLIB) methodDecompressToString(input Value) Value {
 func (z *G3ZLIB) methodCompressMany(input Value, level int) Value {
 	items := g3zlibNormalizeBatchInput(input)
 	output := make([]Value, 0, len(items))
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		compressed := z.methodCompress(items[i], level)
 		if compressed.Type == VTEmpty {
 			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}
@@ -195,7 +195,7 @@ func (z *G3ZLIB) methodCompressMany(input Value, level int) Value {
 func (z *G3ZLIB) methodDecompressMany(input Value) Value {
 	items := g3zlibNormalizeBatchInput(input)
 	output := make([]Value, 0, len(items))
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		decoded := z.methodDecompress(items[i])
 		if decoded.Type == VTEmpty {
 			return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}
@@ -325,7 +325,7 @@ func g3zlibVBArrayToBytes(vm *VM, input Value) ([]byte, bool) {
 	}
 	values := input.Arr.Values
 	out := make([]byte, len(values))
-	for i := 0; i < len(values); i++ {
+	for i := range values {
 		n := vm.asInt(values[i])
 		if n < 0 || n > 255 {
 			return nil, false
@@ -341,7 +341,7 @@ func g3zlibBytesToVBArray(data []byte) Value {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}
 	}
 	items := make([]Value, len(data))
-	for i := 0; i < len(data); i++ {
+	for i := range data {
 		items[i] = NewInteger(int64(data[i]))
 	}
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, items)}

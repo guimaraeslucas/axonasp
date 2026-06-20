@@ -31,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -270,13 +271,7 @@ func normalizeExtensions(values []string) []string {
 		if !strings.HasPrefix(ext, ".") {
 			ext = "." + ext
 		}
-		duplicate := false
-		for i := range cleaned {
-			if cleaned[i] == ext {
-				duplicate = true
-				break
-			}
-		}
+		duplicate := slices.Contains(cleaned, ext)
 		if !duplicate {
 			cleaned = append(cleaned, ext)
 		}

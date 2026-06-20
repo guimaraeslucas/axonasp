@@ -119,7 +119,7 @@ func TestADODBOLERecordsetOpenOptionsForceStaticForActiveConnection(t *testing.T
 func TestADODBOLEHydrateFieldMajorValues(t *testing.T) {
 	vm := NewVM(nil, nil, 5)
 	rs := &adodbRecordset{columns: []string{"Id", "Name"}}
-	values := []interface{}{int32(1), "alice", int32(2), "bob"}
+	values := []any{int32(1), "alice", int32(2), "bob"}
 
 	ok := vm.adodbHydrateRecordsetDataFromFieldMajorValues(rs, values, 2, 2)
 	if !ok {
@@ -145,7 +145,7 @@ func TestADODBOLEHydrateFieldMajorValues(t *testing.T) {
 func TestADODBOLEHydrateFieldMajorValuesRejectsShortPayload(t *testing.T) {
 	vm := NewVM(nil, nil, 5)
 	rs := &adodbRecordset{columns: []string{"Id", "Name"}}
-	values := []interface{}{int32(1), "alice", int32(2)}
+	values := []any{int32(1), "alice", int32(2)}
 
 	ok := vm.adodbHydrateRecordsetDataFromFieldMajorValues(rs, values, 2, 2)
 	if ok {

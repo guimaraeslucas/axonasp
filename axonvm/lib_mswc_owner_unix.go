@@ -1,5 +1,4 @@
 //go:build !windows && !lib_mswc_disabled
-// +build !windows,!lib_mswc_disabled
 
 /*
  * AxonASP Server

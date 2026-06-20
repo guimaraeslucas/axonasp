@@ -678,8 +678,8 @@ func (rs *G3DBResultSet) moveNext() {
 	rs.bof = false
 
 	// sql.Scan requires []interface{} at the API boundary; convert immediately to []Value.
-	dest := make([]interface{}, len(rs.columns))
-	ptrs := make([]interface{}, len(rs.columns))
+	dest := make([]any, len(rs.columns))
+	ptrs := make([]any, len(rs.columns))
 	for i := range dest {
 		ptrs[i] = &dest[i]
 	}
@@ -727,8 +727,8 @@ func (rs *G3DBResultSet) getRows(maxRows int) Value {
 	}
 
 	// Read remaining rows.
-	dest := make([]interface{}, cols)
-	ptrs := make([]interface{}, cols)
+	dest := make([]any, cols)
+	ptrs := make([]any, cols)
 	for i := range dest {
 		ptrs[i] = &dest[i]
 	}
@@ -755,9 +755,9 @@ func (rs *G3DBResultSet) getRows(maxRows int) Value {
 
 	// Build [cols][rows] nested arrays.
 	colArray := NewVBArray(0, cols)
-	for c := 0; c < cols; c++ {
+	for c := range cols {
 		rowArray := NewVBArray(0, rowCount)
-		for r := 0; r < rowCount; r++ {
+		for r := range rowCount {
 			rowArray.Values[r] = collected[r][c]
 		}
 		colArray.Values[c] = Value{Type: VTArray, Arr: rowArray}
@@ -885,7 +885,7 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 		colCount := len(args)
 		if colCount == 0 {
 			// Single-value scan.
-			var raw interface{}
+			var raw any
 			if err := r.row.Scan(&raw); err != nil {
 				return NewEmpty()
 			}
@@ -893,8 +893,8 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 			return g3dbRawToValue(raw)
 		}
 		// Multi-value scan: build dest slice and convert.
-		dest := make([]interface{}, colCount)
-		ptrs := make([]interface{}, colCount)
+		dest := make([]any, colCount)
+		ptrs := make([]any, colCount)
 		for i := range dest {
 			ptrs[i] = &dest[i]
 		}
@@ -914,8 +914,8 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 		if r.row == nil || len(args) == 0 {
 			return NewEmpty()
 		}
-		dest := make([]interface{}, len(args))
-		ptrs := make([]interface{}, len(args))
+		dest := make([]any, len(args))
+		ptrs := make([]any, len(args))
 		for i := range dest {
 			ptrs[i] = &dest[i]
 		}
@@ -1274,7 +1274,7 @@ func (r *G3DBResult) DispatchMethod(methodName string, _ []Value) Value {
 
 // g3dbRawToValue converts a value returned by sql.Rows.Scan into a VM Value.
 // interface{} is confined here at the SQL driver boundary and is not used elsewhere.
-func g3dbRawToValue(raw interface{}) Value {
+func g3dbRawToValue(raw any) Value {
 	if raw == nil {
 		return NewNull()
 	}
@@ -1305,11 +1305,11 @@ func g3dbRawToValue(raw interface{}) Value {
 // g3dbValueSliceToInterface converts a []Value parameter list into []interface{}
 // for passing to sql.DB/Tx/Stmt methods. This is the only other required
 // interface{} boundary — dictated by the database/sql API.
-func g3dbValueSliceToInterface(vals []Value) []interface{} {
+func g3dbValueSliceToInterface(vals []Value) []any {
 	if len(vals) == 0 {
 		return nil
 	}
-	out := make([]interface{}, len(vals))
+	out := make([]any, len(vals))
 	for i, v := range vals {
 		switch v.Type {
 		case VTEmpty, VTNull:

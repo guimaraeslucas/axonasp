@@ -61,7 +61,7 @@ func (j *G3JSON) DispatchMethod(methodName string, args []Value) Value {
 		if jsonStr == "" {
 			return NewEmpty()
 		}
-		var result interface{}
+		var result any
 		err := json.Unmarshal([]byte(jsonStr), &result)
 		if err != nil {
 			return NewEmpty()
@@ -97,7 +97,7 @@ func (j *G3JSON) DispatchMethod(methodName string, args []Value) Value {
 		if err != nil {
 			return NewEmpty()
 		}
-		var result interface{}
+		var result any
 		err = json.Unmarshal(content, &result)
 		if err != nil {
 			return NewEmpty()
@@ -110,13 +110,13 @@ func (j *G3JSON) DispatchMethod(methodName string, args []Value) Value {
 }
 
 // goValueToVMValue recursively converts Go nested maps/slices into VBScript Dictionaries/Arrays
-func (j *G3JSON) goValueToVMValue(data interface{}) Value {
+func (j *G3JSON) goValueToVMValue(data any) Value {
 	if data == nil {
 		return Value{Type: VTNull}
 	}
 
 	switch v := data.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		dictVal := j.vm.newDictionaryObject()
 		if _, ok := j.vm.dictionaryItems[dictVal.Num]; ok {
 			for key, val := range v {
@@ -126,7 +126,7 @@ func (j *G3JSON) goValueToVMValue(data interface{}) Value {
 		}
 		return dictVal
 
-	case []interface{}:
+	case []any:
 		arr := make([]Value, len(v))
 		for i, item := range v {
 			arr[i] = j.goValueToVMValue(item)
@@ -151,18 +151,18 @@ func (j *G3JSON) goValueToVMValue(data interface{}) Value {
 // vmValueToGoValue recursively converts VM values into json.Marshal-compatible
 // Go values. It guards against native-object/array cycles and normalizes
 // unsupported VM-only value kinds into JSON-safe fallbacks.
-func (j *G3JSON) vmValueToGoValue(v Value, seenNative map[int64]bool, seenArrays map[*VBArray]bool) interface{} {
+func (j *G3JSON) vmValueToGoValue(v Value, seenNative map[int64]bool, seenArrays map[*VBArray]bool) any {
 	switch v.Type {
 	case VTArray:
 		if v.Arr == nil {
-			return []interface{}{}
+			return []any{}
 		}
 		if seenArrays[v.Arr] {
 			return nil
 		}
 		seenArrays[v.Arr] = true
 		defer delete(seenArrays, v.Arr)
-		arr := make([]interface{}, len(v.Arr.Values))
+		arr := make([]any, len(v.Arr.Values))
 		for i, item := range v.Arr.Values {
 			arr[i] = j.vmValueToGoValue(item, seenNative, seenArrays)
 		}
@@ -176,15 +176,12 @@ func (j *G3JSON) vmValueToGoValue(v Value, seenNative map[int64]bool, seenArrays
 		defer delete(seenNative, v.Num)
 
 		if _, ok := j.vm.dictionaryItems[v.Num]; ok {
-			m := make(map[string]interface{})
+			m := make(map[string]any)
 			// We can iterate the dictionary keys
 			keysVal, _ := j.vm.dispatchDictionaryMethod(v.Num, "Keys", nil)
 			itemsVal, _ := j.vm.dispatchDictionaryMethod(v.Num, "Items", nil)
 			if keysVal.Type == VTArray && itemsVal.Type == VTArray && keysVal.Arr != nil && itemsVal.Arr != nil {
-				limit := len(keysVal.Arr.Values)
-				if len(itemsVal.Arr.Values) < limit {
-					limit = len(itemsVal.Arr.Values)
-				}
+				limit := min(len(itemsVal.Arr.Values), len(keysVal.Arr.Values))
 				for i := 0; i < limit; i++ {
 					k := keysVal.Arr.Values[i].String()
 					m[k] = j.vmValueToGoValue(itemsVal.Arr.Values[i], seenNative, seenArrays)

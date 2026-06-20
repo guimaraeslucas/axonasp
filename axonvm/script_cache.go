@@ -27,9 +27,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -538,24 +540,18 @@ func (c *ScriptCache) resolveEngineMode(filePath string) EngineMode {
 	ext := strings.ToLower(filepath.Ext(filePath))
 
 	// Check if it matches VBScript extensions
-	for _, e := range c.executeAsVBS {
-		if e == ext {
-			return EngineModeVBScript
-		}
+	if slices.Contains(c.executeAsVBS, ext) {
+		return EngineModeVBScript
 	}
 
 	// Check if it matches JavaScript extensions
-	for _, e := range c.executeAsJS {
-		if e == ext {
-			return EngineModeJavaScript
-		}
+	if slices.Contains(c.executeAsJS, ext) {
+		return EngineModeJavaScript
 	}
 
 	// Always check ASP extensions or as default
-	for _, e := range c.executeAsASP {
-		if e == ext {
-			return EngineModeDefault
-		}
+	if slices.Contains(c.executeAsASP, ext) {
+		return EngineModeDefault
 	}
 
 	// Legacy behavior: if it's .js/.mjs, it's JScript.
@@ -776,7 +772,7 @@ func (c *ScriptCache) StopInvalidator() {
 		_ = watcher.Close()
 	}
 	// Wait briefly for goroutine to exit
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		c.mu.RLock()
 		active := c.watcherActive
 		c.mu.RUnlock()
@@ -918,7 +914,7 @@ func (c *ScriptCache) LoadOrCompileWithModeAndOptions(filePath string, mode Exec
 
 	// singleflight deduplicates concurrent compilations for the same cache key,
 	// preventing cache-stampede memory exhaustion under concurrent cache misses.
-	resultIface, err, _ := c.sg.Do(cacheKey, func() (interface{}, error) {
+	resultIface, err, _ := c.sg.Do(cacheKey, func() (any, error) {
 		// Re-check memory cache after acquiring the singleflight slot;
 		// another goroutine may have populated it while this call was queued.
 		if program, found := c.getByCacheKey(cacheKey); found {
@@ -1141,9 +1137,7 @@ func NewVMFromCachedProgram(program CachedProgram) *VM {
 	}
 	vm.RecordDecls = append(vm.RecordDecls[:0], program.RecordDecls...)
 	clear(vm.RecordDeclLookup)
-	for k, v := range program.RecordDeclLookup {
-		vm.RecordDeclLookup[k] = v
-	}
+	maps.Copy(vm.RecordDeclLookup, program.RecordDeclLookup)
 	if program.JSICNodeCount > 0 {
 		vm.icState = make([]InlineCacheSlot, program.JSICNodeCount)
 	}
@@ -1663,7 +1657,7 @@ func writeIntSliceMap(writer io.Writer, values map[int][]int) error {
 		if err := binary.Write(writer, binary.LittleEndian, uint32(len(slice))); err != nil {
 			return err
 		}
-		for i := 0; i < len(slice); i++ {
+		for i := range slice {
 			if err := binary.Write(writer, binary.LittleEndian, int32(slice[i])); err != nil {
 				return err
 			}
@@ -1710,7 +1704,7 @@ func writeSourceMapEntries(writer io.Writer, entries []SourceMapEntry) error {
 	if err := binary.Write(writer, binary.LittleEndian, uint32(len(entries))); err != nil {
 		return err
 	}
-	for i := 0; i < len(entries); i++ {
+	for i := range entries {
 		entry := entries[i]
 		if err := binary.Write(writer, binary.LittleEndian, int32(entry.MergedLineStart)); err != nil {
 			return err
@@ -1921,9 +1915,7 @@ func cloneIntMap(values map[string]int) map[string]int {
 		return nil
 	}
 	cloned := make(map[string]int, len(values))
-	for k, v := range values {
-		cloned[k] = v
-	}
+	maps.Copy(cloned, values)
 	return cloned
 }
 

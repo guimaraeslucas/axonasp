@@ -198,10 +198,7 @@ func vbsCompatSpace(_ *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	n := int(args[0].Num)
-	if n < 0 {
-		n = 0
-	}
+	n := max(int(args[0].Num), 0)
 	return NewString(strings.Repeat(" ", n)), nil
 }
 
@@ -319,24 +316,15 @@ func vbsCompatMidB(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	bs := ansiBytes(args[0].String())
-	start := int(args[1].Num)
-	if start < 1 {
-		start = 1
-	}
+	start := max(int(args[1].Num), 1)
 	start--
 	if start >= len(bs) {
 		return NewString(""), nil
 	}
 	end := len(bs)
 	if len(args) > 2 {
-		n := int(args[2].Num)
-		if n < 0 {
-			n = 0
-		}
-		end = start + n
-		if end > len(bs) {
-			end = len(bs)
-		}
+		n := max(int(args[2].Num), 0)
+		end = min(start+n, len(bs))
 	}
 	return NewString(bytesToVBByteString(bs[start:end])), nil
 }
@@ -347,10 +335,7 @@ func vbsCompatLeftB(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	bs := ansiBytes(args[0].String())
-	n := int(args[1].Num)
-	if n < 0 {
-		n = 0
-	}
+	n := max(int(args[1].Num), 0)
 	if n > len(bs) {
 		n = len(bs)
 	}
@@ -363,10 +348,7 @@ func vbsCompatRightB(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	bs := ansiBytes(args[0].String())
-	n := int(args[1].Num)
-	if n < 0 {
-		n = 0
-	}
+	n := max(int(args[1].Num), 0)
 	if n > len(bs) {
 		n = len(bs)
 	}
@@ -391,10 +373,7 @@ func vbsCompatInStrB(_ *VM, args []Value) (Value, error) {
 	if len(bs2) == 0 {
 		return NewInteger(int64(start)), nil
 	}
-	startPos := start - 1
-	if startPos < 0 {
-		startPos = 0
-	}
+	startPos := max(start-1, 0)
 	if startPos >= len(bs1) {
 		return NewInteger(0), nil
 	}
@@ -473,7 +452,7 @@ func vbsCompatSplit(_ *VM, args []Value) (Value, error) {
 	if delim == "" {
 		runes := []rune(s)
 		values := make([]Value, len(runes))
-		for i := 0; i < len(runes); i++ {
+		for i := range runes {
 			values[i] = NewString(string(runes[i]))
 		}
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
@@ -505,7 +484,7 @@ func vbsCompatJoin(_ *VM, args []Value) (Value, error) {
 		delim = args[1].String()
 	}
 	parts := make([]string, len(args[0].Arr.Values))
-	for i := 0; i < len(parts); i++ {
+	for i := range parts {
 		parts[i] = args[0].Arr.Values[i].String()
 	}
 	return NewString(strings.Join(parts, delim)), nil
@@ -1374,8 +1353,8 @@ func vbsCompatGetRef(vm *VM, args []Value) (Value, error) {
 	}
 
 	name := strings.TrimSpace(vm.valueToString(resolveCallable(vm, args[0])))
-	if strings.HasSuffix(name, "()") {
-		name = strings.TrimSpace(strings.TrimSuffix(name, "()"))
+	if before, ok := strings.CutSuffix(name, "()"); ok {
+		name = strings.TrimSpace(before)
 	}
 	if name == "" {
 		return NewEmpty(), nil
@@ -1643,7 +1622,7 @@ func vbsCompatStrConv(_ *VM, args []Value) (Value, error) {
 	case 3:
 		runes := []rune(strings.ToLower(input))
 		newWord := true
-		for i := 0; i < len(runes); i++ {
+		for i := range runes {
 			if unicode.IsSpace(runes[i]) {
 				newWord = true
 				continue

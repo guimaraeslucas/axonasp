@@ -1288,8 +1288,8 @@ func (l *Lexer) isObjectStart() (int, bool, map[string]string) {
 				if idx := strings.Index(attrLower, key); idx != -1 {
 					// find next = then quotes
 					sub := attrStr[idx+len(key):]
-					if eqIdx := strings.Index(sub, "="); eqIdx != -1 {
-						valSub := sub[eqIdx+1:]
+					if _, after, ok := strings.Cut(sub, "="); ok {
+						valSub := after
 						valSub = strings.TrimSpace(valSub)
 						if len(valSub) > 0 {
 							quote := valSub[0]
@@ -2199,10 +2199,7 @@ func (l *Lexer) currentLineText() string {
 		return ""
 	}
 	// Find start and end of current line using rune indices
-	start := l.CurrentLineStart
-	if start < 0 {
-		start = 0
-	}
+	start := max(l.CurrentLineStart, 0)
 	// Scan forward until newline or EOF
 	end := start
 	for end < l.Length {

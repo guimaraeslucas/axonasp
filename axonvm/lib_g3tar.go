@@ -342,7 +342,7 @@ func (t *G3TAR) AddFolder(sourceRelPath string, nameInTar string) bool {
 func (t *G3TAR) AddFiles(paths Value, prefix string) bool {
 	items := g3zlibNormalizeBatchInput(paths)
 	prefix = filepath.ToSlash(strings.TrimLeft(strings.TrimSpace(prefix), "\\/"))
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		source := items[i].String()
 		base := filepath.Base(source)
 		nameInTar := base

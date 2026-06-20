@@ -263,7 +263,7 @@ func createSnippet(content string, length int) string {
 
 // searchHandler executes the fuzzy search logic using Bluge and returns a list of paths.
 func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, ok := request.Params.Arguments.(map[string]interface{})
+	args, ok := request.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("Invalid arguments format. Expected a map."), nil
 	}
@@ -344,7 +344,7 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 
 // readDocHandler retrieves the full content of a specific documentation file.
 func readDocHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	args, ok := request.Params.Arguments.(map[string]interface{})
+	args, ok := request.Params.Arguments.(map[string]any)
 	if !ok {
 		return mcp.NewToolResultError("Invalid arguments format. Expected a map."), nil
 	}

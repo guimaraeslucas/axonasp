@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -1033,9 +1034,9 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 							quote := valPart[0]
 							if quote == '"' || quote == '\'' {
 								valPart = valPart[1:]
-								quoteEndIdx := strings.IndexByte(valPart, quote)
-								if quoteEndIdx != -1 {
-									pathVal = valPart[:quoteEndIdx]
+								before, _, ok := strings.Cut(valPart, string(quote))
+								if ok {
+									pathVal = before
 									startIdx = absStart
 									endIdx = absEnd
 									directive = comment
@@ -1709,10 +1710,7 @@ func (c *Compiler) emitCurrentDebugLocation() {
 	}
 
 	line := c.next.GetLineNumber()
-	column := c.next.GetStart() - c.next.GetLineStart()
-	if column < 0 {
-		column = 0
-	}
+	column := max(c.next.GetStart()-c.next.GetLineStart(), 0)
 	column++
 
 	if line == c.lastDebugLine && column == c.lastDebugColumn {
@@ -1768,10 +1766,7 @@ func (c *Compiler) compileDefinitionPreBindingPass() []definitionTokenBound {
 
 		start := c.tokenIndex
 		c.parseStatement()
-		end := c.tokenIndex - 1
-		if end < start {
-			end = start
-		}
+		end := max(c.tokenIndex-1, start)
 		bounds = append(bounds, definitionTokenBound{start: start, end: end})
 	}
 
@@ -2128,9 +2123,7 @@ func (c *Compiler) GlobalVarTypes() map[string]ValueType {
 		return nil
 	}
 	out := make(map[string]ValueType, len(c.globalVarTypes))
-	for k, v := range c.globalVarTypes {
-		out[k] = v
-	}
+	maps.Copy(out, c.globalVarTypes)
 	return out
 }
 
@@ -2140,9 +2133,7 @@ func (c *Compiler) GlobalRecordTypes() map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(c.globalRecordTypes))
-	for k, v := range c.globalRecordTypes {
-		out[k] = v
-	}
+	maps.Copy(out, c.globalRecordTypes)
 	return out
 }
 
@@ -2152,9 +2143,7 @@ func (c *Compiler) LocalVarTypes() map[string]ValueType {
 		return nil
 	}
 	out := make(map[string]ValueType, len(c.localVarTypes))
-	for k, v := range c.localVarTypes {
-		out[k] = v
-	}
+	maps.Copy(out, c.localVarTypes)
 	return out
 }
 
@@ -2164,9 +2153,7 @@ func (c *Compiler) LocalRecordTypes() map[string]string {
 		return nil
 	}
 	out := make(map[string]string, len(c.localRecordTypes))
-	for k, v := range c.localRecordTypes {
-		out[k] = v
-	}
+	maps.Copy(out, c.localRecordTypes)
 	return out
 }
 
@@ -2250,10 +2237,7 @@ func (c *Compiler) lineColumnFromSourceOffset(offset int) (int, int) {
 			lineStart = i + 1
 		}
 	}
-	column := offset - lineStart
-	if column < 0 {
-		column = 0
-	}
+	column := max(offset-lineStart, 0)
 	return line, column
 }
 
@@ -2446,10 +2430,7 @@ func (c *Compiler) tokenSourceText(token vbscript.Token) string {
 	}
 
 	start := token.GetStart()
-	end := token.GetEnd()
-	if end < start {
-		end = start
-	}
+	end := max(token.GetEnd(), start)
 
 	return c.sourceSlice(start, end)
 }
@@ -2460,10 +2441,7 @@ func (c *Compiler) lineSourceText(token vbscript.Token) string {
 		return ""
 	}
 
-	start := token.GetLineStart()
-	if start < 0 {
-		start = 0
-	}
+	start := max(token.GetLineStart(), 0)
 
 	codeRunes := []rune(c.lexer.Code)
 	if start >= len(codeRunes) {

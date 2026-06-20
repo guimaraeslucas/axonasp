@@ -69,7 +69,7 @@ func (self Error) Error() string {
 	)
 }
 
-func (self *_parser) error(place interface{}, msg string, msgValues ...interface{}) *Error {
+func (self *_parser) error(place any, msg string, msgValues ...any) *Error {
 	idx := file.Idx(0)
 	switch place := place.(type) {
 	case int:

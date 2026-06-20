@@ -170,7 +170,7 @@ func consoleSerializeArgs(vm *VM, args []Value) string {
 	}
 
 	parts := make([]string, len(args))
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		parts[i] = consoleSerializeArg(vm, args[i])
 	}
 	return strings.Join(parts, " ")
@@ -449,7 +449,7 @@ func consoleSerializeDictionary(vm *VM, v Value, visited map[int64]struct{}) str
 }
 
 // consoleValueToInterface recursively converts a VM Value to a Go interface{} for JSON marshaling.
-func consoleValueToInterface(vm *VM, v Value) interface{} {
+func consoleValueToInterface(vm *VM, v Value) any {
 	switch v.Type {
 	case VTBool:
 		return v.Num != 0
@@ -465,9 +465,9 @@ func consoleValueToInterface(vm *VM, v Value) interface{} {
 		return nil
 	case VTArray:
 		if v.Arr == nil {
-			return []interface{}{}
+			return []any{}
 		}
-		items := make([]interface{}, len(v.Arr.Values))
+		items := make([]any, len(v.Arr.Values))
 		for i, item := range v.Arr.Values {
 			items[i] = consoleValueToInterface(vm, item)
 		}
@@ -475,7 +475,7 @@ func consoleValueToInterface(vm *VM, v Value) interface{} {
 	case VTJSObject:
 		if vm != nil {
 			if obj, ok := vm.jsObjectItems[v.Num]; ok && obj != nil {
-				result := make(map[string]interface{}, len(obj))
+				result := make(map[string]any, len(obj))
 				for k, val := range obj {
 					if strings.HasPrefix(k, "__js_") {
 						continue
@@ -485,7 +485,7 @@ func consoleValueToInterface(vm *VM, v Value) interface{} {
 				return result
 			}
 		}
-		return map[string]interface{}{}
+		return map[string]any{}
 	case VTNativeObject:
 		if vm != nil {
 			switch v.Num {
@@ -507,7 +507,7 @@ func consoleValueToInterface(vm *VM, v Value) interface{} {
 				itemsVal, _ := vm.dispatchDictionaryMethod(v.Num, "Items", nil)
 				if keysVal.Type == VTArray && itemsVal.Type == VTArray &&
 					keysVal.Arr != nil && itemsVal.Arr != nil {
-					m := make(map[string]interface{}, len(keysVal.Arr.Values))
+					m := make(map[string]any, len(keysVal.Arr.Values))
 					for i := 0; i < len(keysVal.Arr.Values) && i < len(itemsVal.Arr.Values); i++ {
 						k := keysVal.Arr.Values[i].String()
 						m[k] = consoleValueToInterface(vm, itemsVal.Arr.Values[i])

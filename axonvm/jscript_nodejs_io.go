@@ -581,7 +581,7 @@ func (vm *VM) jsPumpAsyncFSReadResults(limit int) {
 	if vm.jsAsyncFSReadResults == nil || limit <= 0 {
 		return
 	}
-	for i := 0; i < limit; i++ {
+	for range limit {
 		select {
 		case result := <-vm.jsAsyncFSReadResults:
 			vm.jsHandleAsyncFSReadResult(result)
@@ -953,7 +953,7 @@ func (vm *VM) jsNodeReadHeadersObject(v Value) http.Header {
 		return headers
 	}
 	keys := vm.jsObjectOwnPropertyNames(v)
-	for i := 0; i < len(keys); i++ {
+	for i := range keys {
 		k := keys[i]
 		if strings.HasPrefix(k, "__js_") {
 			continue
@@ -1099,7 +1099,7 @@ func (vm *VM) jsNodeDoHTTPRequest(moduleType string, method string, args []Value
 		if ok {
 			headers := vm.jsNodeReadHeadersObject(headersVal)
 			for key, vals := range headers {
-				for i := 0; i < len(vals); i++ {
+				for i := range vals {
 					req.Header.Add(key, vals[i])
 				}
 			}

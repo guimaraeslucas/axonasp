@@ -26,7 +26,7 @@ import "github.com/go-ole/go-ole"
 
 // adodbDecodeGetRowsVariant decodes an ADODB.GetRows VARIANT SAFEARRAY payload into
 // a field-major flattened list where index = field + row*fieldCount.
-func adodbDecodeGetRowsVariant(rowsRes *ole.VARIANT, fieldCount int) ([]interface{}, int, bool) {
+func adodbDecodeGetRowsVariant(rowsRes *ole.VARIANT, fieldCount int) ([]any, int, bool) {
 	// Disabled on Windows for safety: direct oleaut32 SafeArray probing via syscall
 	// can trigger native heap corruption with some provider payloads.
 	// The ADODB code path will automatically fall back to safe field-walk decoding.

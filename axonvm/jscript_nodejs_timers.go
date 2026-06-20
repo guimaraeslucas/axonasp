@@ -157,10 +157,7 @@ func jsDurationFromMS(ms int64) time.Duration {
 	if ms < 4 {
 		ms = 4
 	}
-	dur := time.Duration(ms) * time.Millisecond
-	if dur > jsNodeTimerMaxDelay {
-		dur = jsNodeTimerMaxDelay
-	}
+	dur := min(time.Duration(ms)*time.Millisecond, jsNodeTimerMaxDelay)
 	return dur
 }
 
@@ -344,7 +341,7 @@ func (vm *VM) jsClearImmediate(args []Value) Value {
 // jsPumpTimerResults drains up to max pending timer-fired results and
 // schedules their callbacks as microtasks.
 func (vm *VM) jsPumpTimerResults(max int) {
-	for i := 0; i < max; i++ {
+	for range max {
 		select {
 		case result := <-vm.jsTimerResultQueue:
 			vm.jsHandleTimerFired(result)

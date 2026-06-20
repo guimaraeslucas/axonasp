@@ -46,7 +46,7 @@ func normalizeJScriptCompileLineAnchors(anchors []jscriptCompileLineAnchor) []js
 	}
 	normalized := make([]jscriptCompileLineAnchor, 0, len(anchors))
 	lastGenerated := 0
-	for i := 0; i < len(anchors); i++ {
+	for i := range anchors {
 		anchor := anchors[i]
 		if anchor.GeneratedLineStart <= 0 || anchor.MergedLineStart <= 0 {
 			continue
@@ -821,7 +821,7 @@ func (c *Compiler) compileJScriptImportDeclaration(node *jsast.ImportDeclaration
 	c.bytecode = append(c.bytecode, byte(moduleIdx>>8), byte(moduleIdx&0xFF))
 	specCount := len(node.Specifiers)
 	c.bytecode = append(c.bytecode, byte(specCount>>8), byte(specCount&0xFF))
-	for i := 0; i < specCount; i++ {
+	for i := range specCount {
 		importedName := ""
 		localName := ""
 		if node.Specifiers[i].IsDefault {
@@ -936,7 +936,7 @@ func (c *Compiler) compileJScriptExportDeclaration(node *jsast.ExportDeclaration
 	if node.Declaration != nil {
 		c.compileJScriptStatement(node.Declaration)
 		names := jsCollectDeclarationBindingNames(node.Declaration)
-		for i := 0; i < len(names); i++ {
+		for i := range names {
 			c.emitJScriptExport(names[i], names[i])
 		}
 		return
@@ -986,7 +986,7 @@ func (c *Compiler) compileJScriptExportDeclaration(node *jsast.ExportDeclaration
 
 // emitJSLeaveWithScopes emits OpWithLeave for each active JScript with-scope.
 func (c *Compiler) emitJSLeaveWithScopes(count int) {
-	for i := 0; i < count; i++ {
+	for range count {
 		c.emit(OpWithLeave)
 	}
 }
@@ -2662,10 +2662,7 @@ func (c *Compiler) detectJSForFastVarIntLoop(node *jsast.ForStatement) (counterN
 // The encoded jump operand is a relative back-jump distance from the instruction end.
 func (c *Compiler) emitJSForFastInt(counterSlot, limitSlot, bodyTarget int) int {
 	pos := len(c.bytecode)
-	jumpOffset := (pos + 9) - bodyTarget
-	if jumpOffset < 0 {
-		jumpOffset = 0
-	}
+	jumpOffset := max((pos+9)-bodyTarget, 0)
 	c.bytecode = append(c.bytecode,
 		byte(OpJSForFastInt),
 		byte(counterSlot>>8), byte(counterSlot),
