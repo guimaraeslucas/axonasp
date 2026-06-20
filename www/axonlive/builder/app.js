@@ -225,10 +225,53 @@ const renderableAsyncTypes = {
     hiddenfield: true,
     fileuploader: true,
     mdviewer: true,
-    placeholder: true
+    placeholder: true,
+    table: true
 };
 
 const isRenderableAsyncType = (type) => !!renderableAsyncTypes[type];
+
+const syncTableCells = (compList) => {
+    if (!compList) return;
+    for (const comp of compList) {
+        if (comp.type === 'table') {
+            if (!comp.cells) comp.cells = {};
+            // Sync header cells
+            for (let c = 1; c <= comp.cols; c++) {
+                const hKey = `h1_${c}`;
+                if (!comp.cells[hKey]) {
+                    comp.cells[hKey] = { id: `${comp.id}_${hKey}`, type: 'tablecell', text: '', children: [] };
+                }
+            }
+            // Sync body cells
+            for (let r = 1; r <= comp.rows; r++) {
+                for (let c = 1; c <= comp.cols; c++) {
+                    const key = `${r}_${c}`;
+                    if (!comp.cells[key]) {
+                        comp.cells[key] = { id: `${comp.id}_${key}`, type: 'tablecell', text: '', children: [] };
+                    }
+                }
+            }
+            // Sync footer cells
+            for (let c = 1; c <= comp.cols; c++) {
+                const fKey = `f1_${c}`;
+                if (!comp.cells[fKey]) {
+                    comp.cells[fKey] = { id: `${comp.id}_${fKey}`, type: 'tablecell', text: '', children: [] };
+                }
+            }
+        }
+        if (comp.children) {
+            syncTableCells(comp.children);
+        }
+        if (comp.type === 'table' && comp.cells) {
+            for (const key in comp.cells) {
+                if (comp.cells[key].children) {
+                    syncTableCells(comp.cells[key].children);
+                }
+            }
+        }
+    }
+};
 
 const getRenderFunctionName = (compId) => `render_${String(compId || '').replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
@@ -426,17 +469,17 @@ const ComponentRenderer = {
                         <td v-for="c in comp.cols" :key="c" style="padding:5px; min-width:40px; min-height:30px; border:1px solid #ccc; vertical-align:top; position:relative;"
                             :class="{ 'selected-cell': selectedId === comp.id + '_' + r + '_' + c }"
                             @dragover.prevent.stop @drop.stop="onDropChildTable($event, comp, r, c)"
-                            @click.stop="$emit('select', getCellData(comp, r, c))"
+                            @click.stop="$emit('select', getCellData(comp, '', r, c))"
                             @dblclick.stop="startEditCell(comp, '', r, c)"
-                            @contextmenu.prevent.stop="$emit('context-menu', $event, getCellData(comp, r, c))">
+                            @contextmenu.prevent.stop="$emit('context-menu', $event, getCellData(comp, '', r, c))">
                             
-                            <div style="font-size:10px; color:#666; margin-bottom:2px;" v-if="!isEditingCell(comp, '', r, c) && !getCellData(comp,r,c).text && getCellData(comp,r,c).children.length===0">Cell {{r}}-{{c}}</div>
+                            <div style="font-size:10px; color:#666; margin-bottom:2px;" v-if="!isEditingCell(comp, '', r, c) && !getCellData(comp, '', r, c).text && getCellData(comp, '', r, c).children.length===0">Cell {{r}}-{{c}}</div>
                             
-                            <input v-if="isEditingCell(comp, '', r, c)" type="text" v-model="getCellData(comp, r, c).text" @blur="stopEdit" @keyup.enter="stopEdit" class="prop-input" style="width:100%">
-                            <div v-else-if="getCellData(comp, r, c).text">{{ getCellData(comp, r, c).text }}</div>
+                            <input v-if="isEditingCell(comp, '', r, c)" type="text" v-model="getCellData(comp, '', r, c).text" @blur="stopEdit" @keyup.enter="stopEdit" class="prop-input" style="width:100%">
+                            <div v-else-if="getCellData(comp, '', r, c).text">{{ getCellData(comp, '', r, c).text }}</div>
                             
                             <component-renderer 
-                                v-for="(child, index) in getCellData(comp, r, c).children" 
+                                v-for="(child, index) in getCellData(comp, '', r, c).children" 
                                 :key="child.id" 
                                 :comp="child" 
                                 :selected-id="selectedId"
@@ -517,6 +560,11 @@ const ComponentRenderer = {
             cell.children.splice(index, 1);
         },
         getCellData(tableComp, prefix, r, c) {
+            if (c === undefined) {
+                c = r;
+                r = prefix;
+                prefix = '';
+            }
             const key = (prefix || '') + r + '_' + c;
             if (!tableComp.cells) tableComp.cells = {};
             if (!tableComp.cells[key]) {
@@ -809,6 +857,7 @@ const app = createApp({
         });
 
         watch(() => allComponents.value, (val) => {
+            syncTableCells(val);
             if (!dragData.isDragging && !dragData.isResizing) {
                 editableJsonTree.value = JSON.stringify(val, null, 4);
             }
@@ -952,6 +1001,7 @@ const app = createApp({
         };
 
         const generateHTML = (compList, indent = "") => {
+            syncTableCells(compList);
             let html = "";
             for (const comp of compList) {
                 if (['timer', 'script', 'style'].includes(comp.type)) continue;
@@ -1151,8 +1201,169 @@ const app = createApp({
         };
 
         const generateRenderHelpers = (compList) => {
+            syncTableCells(compList);
             const renderables = collectRenderableComponents(compList, []);
             if (renderables.length === 0) return '';
+
+            const generateAppendCodeForComponents = (compList, varName = '__html') => {
+                let js = "";
+                for (const comp of compList) {
+                    if (comp.reRender && isRenderableAsyncType(comp.type)) {
+                        const fn = getRenderFunctionName(comp.id);
+                        js += `    ${varName} += ${fn}();\n`;
+                        continue;
+                    }
+                    const { attrs, styleStr } = buildComponentAttrs(comp, { includeRuntimeBindings: true, skipClass: comp.type === 'modal', skipStyle: comp.type === 'modal' });
+                    
+                    if (comp.type === 'panel') {
+                        js += `    ${varName} += '<div ${escapeJsSingleQuotedString(attrs)}>';\n`;
+                        if (comp.children && comp.children.length > 0) {
+                            js += generateAppendCodeForComponents(comp.children, varName);
+                        }
+                        js += `    ${varName} += '</div>';\n`;
+                    } else if (comp.type === 'button') {
+                        js += `    ${varName} += '<button ${escapeJsSingleQuotedString(attrs)}>${escapeJsSingleQuotedString(comp.text || '')}</button>';\n`;
+                    } else if (comp.type === 'input') {
+                        const inputType = escapeJsSingleQuotedString(comp.inputType || 'text');
+                        const valExpr = comp.reRender ? `(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${escapeJsSingleQuotedString(getStateDefaultValue(comp))}")` : `"${escapeJsSingleQuotedString(comp.text || '')}"`;
+                        js += `    ${varName} += '<input type="${inputType}" ${escapeJsSingleQuotedString(attrs)} value="' + ${valExpr} + '">';\n`;
+                    } else if (comp.type === 'textarea') {
+                        const valExpr = comp.reRender ? `(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${escapeJsSingleQuotedString(getStateDefaultValue(comp))}")` : `"${escapeJsSingleQuotedString(comp.text || '')}"`;
+                        js += `    ${varName} += '<textarea ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</textarea>';\n`;
+                    } else if (comp.type === 'checkbox') {
+                        const valExpr = comp.reRender ? `${comp.id}_val` : `${comp.checked}`;
+                        js += `    var __checked = (${valExpr} === 'true' || ${valExpr} === true) ? ' checked' : '';\n`;
+                        js += `    ${varName} += '<label ${escapeJsSingleQuotedString(attrs)}><input type="checkbox" value="${escapeJsSingleQuotedString(comp.value || '1')}"' + __checked + '> ${escapeJsSingleQuotedString(comp.text || '')}</label>';\n`;
+                    } else if (comp.type === 'checkboxlist') {
+                        const items = (comp.items || '').split(',').map(x => x.trim()).filter(Boolean);
+                        const valExpr = comp.reRender ? `${comp.id}_val` : `""`;
+                        js += `    var __selected = String(${valExpr} || '').split(',');\n`;
+                        js += `    var __map = {};\n`;
+                        js += `    for (var __i = 0; __i < __selected.length; __i++) { __map[__selected[__i].trim()] = true; }\n`;
+                        js += `    ${varName} += '<div ${escapeJsSingleQuotedString(attrs)} data-g3al-type="checkboxlist">';\n`;
+                        for (const itm of items) {
+                            const lit = escapeJsSingleQuotedString(itm);
+                            js += `    ${varName} += '<label><input type="checkbox" value="${lit}"' + (__map['${lit}'] ? ' checked' : '') + '> ${lit}</label><br>';\n`;
+                        }
+                        js += `    ${varName} += '</div>';\n`;
+                    } else if (comp.type === 'radio') {
+                        const valExpr = comp.reRender ? `${comp.id}_val` : `${comp.checked}`;
+                        js += `    var __checked = (${valExpr} === 'true' || ${valExpr} === true) ? ' checked' : '';\n`;
+                        js += `    ${varName} += '<label ${escapeJsSingleQuotedString(attrs)}><input type="radio" name="${escapeJsSingleQuotedString(comp.name || '')}" value="${escapeJsSingleQuotedString(comp.value || '1')}"' + __checked + '> ${escapeJsSingleQuotedString(comp.text || '')}</label>';\n`;
+                    } else if (comp.type === 'radiobuttonlist') {
+                        const items = (comp.items || '').split(',').map(x => x.trim()).filter(Boolean);
+                        const name = escapeJsSingleQuotedString(comp.name || '');
+                        const valExpr = comp.reRender ? `${comp.id}_val` : `""`;
+                        js += `    ${varName} += '<div ${escapeJsSingleQuotedString(attrs)} data-g3al-type="radiobuttonlist">';\n`;
+                        for (const itm of items) {
+                            const lit = escapeJsSingleQuotedString(itm);
+                            js += `    ${varName} += '<label><input type="radio" name="${name}" value="${lit}"' + (String(${valExpr} || '') === '${lit}' ? ' checked' : '') + '> ${lit}</label><br>';\n`;
+                        }
+                        js += `    ${varName} += '</div>';\n`;
+                    } else if (comp.type === 'select') {
+                        const opts = (comp.options || '').split(',').map(x => x.trim()).filter(Boolean);
+                        const valExpr = comp.reRender ? `String(${comp.id}_val || "")` : `""`;
+                        js += `    ${varName} += '<select ${escapeJsSingleQuotedString(attrs)}>';\n`;
+                        for (const opt of opts) {
+                            const lit = escapeJsSingleQuotedString(opt);
+                            js += `    ${varName} += '<option value="${lit}"' + (${valExpr} === '${lit}' ? ' selected' : '') + '>${lit}</option>';\n`;
+                        }
+                        js += `    ${varName} += '</select>';\n`;
+                    } else if (comp.type === 'listbox') {
+                        const opts = (comp.options || '').split(',').map(x => x.trim()).filter(Boolean);
+                        const multi = comp.multiSelect ? ' multiple' : '';
+                        const size = comp.size ? ` size="${escapeJsSingleQuotedString(String(comp.size))}"` : '';
+                        const valExpr = comp.reRender ? `${comp.id}_val` : `""`;
+                        js += `    var __selected = String(${valExpr} || '').split(',');\n`;
+                        js += `    var __map = {};\n`;
+                        js += `    for (var __i = 0; __i < __selected.length; __i++) { __map[__selected[__i].trim()] = true; }\n`;
+                        js += `    ${varName} += '<select ${escapeJsSingleQuotedString(attrs)}${multi}${size}>';\n`;
+                        for (const opt of opts) {
+                            const lit = escapeJsSingleQuotedString(opt);
+                            if (comp.multiSelect) {
+                                js += `    ${varName} += '<option value="${lit}"' + (__map['${lit}'] ? ' selected' : '') + '>${lit}</option>';\n`;
+                            } else {
+                                const valCheck = comp.reRender ? `String(${comp.id}_val || '')` : `""`;
+                                js += `    ${varName} += '<option value="${lit}"' + (${valCheck} === '${lit}' ? ' selected' : '') + '>${lit}</option>';\n`;
+                            }
+                        }
+                        js += `    ${varName} += '</select>';\n`;
+                    } else if (comp.type === 'label') {
+                        const valExpr = comp.reRender ? `(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${escapeJsSingleQuotedString(getStateDefaultValue(comp))}")` : `"${escapeJsSingleQuotedString(comp.text || '')}"`;
+                        js += `    ${varName} += '<span ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</span>';\n`;
+                    } else if (comp.type === 'hr') {
+                        js += `    ${varName} += '<hr ${escapeJsSingleQuotedString(attrs)}>';\n`;
+                    } else if (comp.type === 'fileuploader') {
+                        const fileInputId = `${comp.id}_file`;
+                        const resultId = `${comp.id}_result`;
+                        const uploadAction = buildUploaderAction(comp.id, fileInputId);
+                        const inputOnChange = comp.showUploadButton ? '' : ` onchange="${uploadAction}"`;
+                        const uploadButton = comp.showUploadButton
+                            ? `<button type="button" class="btn btn-primary" style="margin-top:5px;" onclick="${uploadAction}">${escapeHtmlText(comp.uploadButtonText || 'Send File')}</button>`
+                            : '';
+                        const valExpr = comp.reRender ? `(${comp.id}_val || "Ready")` : `"Ready"`;
+                        js += `    ${varName} += '<div ${escapeJsSingleQuotedString(attrs)}><div class="sidebar-header" style="font-size:10px; margin-bottom:5px;">File Upload</div><input type="file" id="${escapeJsSingleQuotedString(fileInputId)}"${escapeJsSingleQuotedString(inputOnChange)}>${escapeJsSingleQuotedString(uploadButton)}<div id="${escapeJsSingleQuotedString(resultId)}" style="font-size:10px; color:#666; margin-top:5px;">Result: ' + ${valExpr} + '</div></div>';\n`;
+                    } else if (comp.type === 'mdviewer') {
+                        const valExpr = comp.reRender ? `(${comp.id}_val || '')` : `""`;
+                        js += `    ${varName} += '<div ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</div>';\n`;
+                    } else if (comp.type === 'hiddenfield') {
+                        const valExpr = comp.reRender ? `(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${escapeJsSingleQuotedString(getStateDefaultValue(comp))}")` : `"${escapeJsSingleQuotedString(comp.value || '')}"`;
+                        js += `    ${varName} += '<input type="hidden" ${escapeJsSingleQuotedString(attrs)} value="' + ${valExpr} + '">';\n`;
+                    } else if (comp.type === 'image') {
+                        js += `    ${varName} += '<img src="${escapeJsSingleQuotedString(comp.src || '')}" ${escapeJsSingleQuotedString(attrs)} alt="${escapeJsSingleQuotedString(comp.alt || '')}" title="${escapeJsSingleQuotedString(comp.title || '')}">';\n`;
+                    } else if (comp.type === 'iframe') {
+                        js += `    ${varName} += '<iframe src="${escapeJsSingleQuotedString(comp.src || '')}" ${escapeJsSingleQuotedString(attrs)} frameborder="0"></iframe>';\n`;
+                    } else if (comp.type === 'link') {
+                        js += `    ${varName} += '<a href="${escapeJsSingleQuotedString(comp.src || '#')}" ${escapeJsSingleQuotedString(attrs)}>${escapeJsSingleQuotedString(comp.text || '')}</a>';\n`;
+                    } else if (comp.type === 'table') {
+                        js += `    ${varName} += '<table ${escapeJsSingleQuotedString(attrs)}>';\n`;
+                        if (comp.showHeader) {
+                            js += `    ${varName} += '<thead><tr>';\n`;
+                            for (let c = 1; c <= comp.cols; c++) {
+                                let cell = comp.cells['h1_' + c];
+                                const txt = (cell && cell.text) || 'Header ' + c;
+                                js += `    ${varName} += '<th>${escapeJsSingleQuotedString(txt)}</th>';\n`;
+                            }
+                            js += `    ${varName} += '</tr></thead>';\n`;
+                        }
+                        js += `    ${varName} += '<tbody>';\n`;
+                        for (let r = 1; r <= comp.rows; r++) {
+                            js += `    ${varName} += '<tr>';\n`;
+                            for (let c = 1; c <= comp.cols; c++) {
+                                let cell = comp.cells[r + '_' + c];
+                                js += `    ${varName} += '<td style="padding:5px;">';\n`;
+                                if (cell) {
+                                    if (cell.text) {
+                                        js += `    ${varName} += '${escapeJsSingleQuotedString(cell.text)}';\n`;
+                                    }
+                                    if (cell.children && cell.children.length > 0) {
+                                        js += generateAppendCodeForComponents(cell.children, varName);
+                                    }
+                                }
+                                js += `    ${varName} += '</td>';\n`;
+                            }
+                            js += `    ${varName} += '</tr>';\n`;
+                        }
+                        js += `    ${varName} += '</tbody>';\n`;
+                        if (comp.showFooter) {
+                            js += `    ${varName} += '<tfoot><tr>';\n`;
+                            for (let c = 1; c <= comp.cols; c++) {
+                                let cell = comp.cells['f1_' + c];
+                                const txt = (cell && cell.text) || 'Footer ' + c;
+                                js += `    ${varName} += '<td>${escapeJsSingleQuotedString(txt)}</td>';\n`;
+                            }
+                            js += `    ${varName} += '</tr></tfoot>';\n`;
+                        }
+                        js += `    ${varName} += '</table>';\n`;
+                    } else if (comp.type === 'placeholder') {
+                        const valExpr = comp.reRender ? `(${comp.id}_val !== null && ${comp.id}_val !== "" ? ${comp.id}_val : "${escapeJsSingleQuotedString(getStateDefaultValue(comp))}")` : `"${escapeJsSingleQuotedString(comp.text || '')}"`;
+                        js += `    ${varName} += '<div ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</div>';\n`;
+                    } else if (comp.type === 'rawhtml') {
+                        js += `    ${varName} += '${escapeJsSingleQuotedString(comp.text || '')}';\n`;
+                    }
+                }
+                return js;
+            };
 
             let code = '// Shared render helpers used by both initial HTML and async re-render\n';
 
@@ -1260,6 +1471,47 @@ const app = createApp({
                     code += `    return __html;\n`;
                 } else if (comp.type === 'placeholder') {
                     code += `    return '<div ${escapeJsSingleQuotedString(attrs)}>' + ${valExpr} + '</div>';\n`;
+                } else if (comp.type === 'table') {
+                    code += `    var __html = '<table ${escapeJsSingleQuotedString(attrs)}>';\n`;
+                    if (comp.showHeader) {
+                        code += `    __html += '<thead><tr>';\n`;
+                        for (let c = 1; c <= comp.cols; c++) {
+                            let cell = comp.cells['h1_' + c];
+                            const txt = (cell && cell.text) || 'Header ' + c;
+                            code += `    __html += '<th>${escapeJsSingleQuotedString(txt)}</th>';\n`;
+                        }
+                        code += `    __html += '</tr></thead>';\n`;
+                    }
+                    code += `    __html += '<tbody>';\n`;
+                    for (let r = 1; r <= comp.rows; r++) {
+                        code += `    __html += '<tr>';\n`;
+                        for (let c = 1; c <= comp.cols; c++) {
+                            let cell = comp.cells[r + '_' + c];
+                            code += `    __html += '<td style="padding:5px;">';\n`;
+                            if (cell) {
+                                if (cell.text) {
+                                    code += `    __html += '${escapeJsSingleQuotedString(cell.text)}';\n`;
+                                }
+                                if (cell.children && cell.children.length > 0) {
+                                    code += generateAppendCodeForComponents(cell.children, '__html');
+                                }
+                            }
+                            code += `    __html += '</td>';\n`;
+                        }
+                        code += `    __html += '</tr>';\n`;
+                    }
+                    code += `    __html += '</tbody>';\n`;
+                    if (comp.showFooter) {
+                        code += `    __html += '<tfoot><tr>';\n`;
+                        for (let c = 1; c <= comp.cols; c++) {
+                            let cell = comp.cells['f1_' + c];
+                            const txt = (cell && cell.text) || 'Footer ' + c;
+                            code += `    __html += '<td>${escapeJsSingleQuotedString(txt)}</td>';\n`;
+                        }
+                        code += `    __html += '</tr></tfoot>';\n`;
+                    }
+                    code += `    __html += '</table>';\n`;
+                    code += `    return __html;\n`;
                 } else {
                     code += `    return '';\n`;
                 }
