@@ -2668,21 +2668,54 @@ func (c *Compiler) parseSelectCaseStatement() {
 			for {
 				opSelectGet, idxSelectGet := c.resolveVar(selectValueName)
 				c.emit(opSelectGet, idxSelectGet)
-				c.parseExpression(PrecNone)
 
-				if c.checkKeyword(vbscript.KeywordTo) {
-					// Case low To high
-					c.move()
-					c.emit(OpGte)
+				if c.checkKeyword(vbscript.KeywordIs) {
+					// Case Is <comparison-operator> <value>
+					c.move() // consume 'Is'
 
-					opSelectGet, idxSelectGet = c.resolveVar(selectValueName)
-					c.emit(opSelectGet, idxSelectGet)
+					// Map comparison punctuation to opcode.
+					var cmpOp OpCode
+					switch pt := c.next.(type) {
+					case *vbscript.PunctuationToken:
+						switch pt.Type {
+						case vbscript.PunctEqual:
+							cmpOp = OpEq
+						case vbscript.PunctNotEqual:
+							cmpOp = OpNeq
+						case vbscript.PunctLess:
+							cmpOp = OpLt
+						case vbscript.PunctGreater:
+							cmpOp = OpGt
+						case vbscript.PunctLessOrEqual:
+							cmpOp = OpLte
+						case vbscript.PunctGreaterOrEqual:
+							cmpOp = OpGte
+						default:
+							panic(c.vbCompileError(vbscript.ExpectedEqual, "Expected '='"))
+						}
+						c.move()
+					default:
+						panic(c.vbCompileError(vbscript.ExpectedEqual, "Expected '='"))
+					}
 					c.parseExpression(PrecNone)
-					c.emit(OpLte)
-					c.emit(OpAnd)
+					c.emit(cmpOp)
 				} else {
-					// Case value
-					c.emit(OpEq)
+					c.parseExpression(PrecNone)
+
+					if c.checkKeyword(vbscript.KeywordTo) {
+						// Case low To high
+						c.move()
+						c.emit(OpGte)
+
+						opSelectGet, idxSelectGet = c.resolveVar(selectValueName)
+						c.emit(opSelectGet, idxSelectGet)
+						c.parseExpression(PrecNone)
+						c.emit(OpLte)
+						c.emit(OpAnd)
+					} else {
+						// Case value
+						c.emit(OpEq)
+					}
 				}
 
 				if clauseCount > 0 {

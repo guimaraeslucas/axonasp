@@ -4062,6 +4062,336 @@ End Select
 	}
 }
 
+// TestASPSelectCaseIsGt verifies Case Is > comparison operator.
+func TestASPSelectCaseIsGt(t *testing.T) {
+	source := `<%
+Dim x : x = 7
+Select Case x
+Case Is > 5
+	Response.Write "gt5"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "gt5" {
+		t.Fatalf("expected Case Is > 5 output gt5, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsLt verifies Case Is < comparison operator.
+func TestASPSelectCaseIsLt(t *testing.T) {
+	source := `<%
+Dim x : x = 3
+Select Case x
+Case Is < 5
+	Response.Write "lt5"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "lt5" {
+		t.Fatalf("expected Case Is < 5 output lt5, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsGte verifies Case Is >= comparison operator.
+func TestASPSelectCaseIsGte(t *testing.T) {
+	source := `<%
+Dim x : x = 5
+Select Case x
+Case Is >= 5
+	Response.Write "gte5"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "gte5" {
+		t.Fatalf("expected Case Is >= 5 output gte5, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsLte verifies Case Is <= comparison operator.
+func TestASPSelectCaseIsLte(t *testing.T) {
+	source := `<%
+Dim x : x = 0
+Select Case x
+Case Is <= 0
+	Response.Write "lte0"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "lte0" {
+		t.Fatalf("expected Case Is <= 0 output lte0, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsNeq verifies Case Is <> comparison operator.
+func TestASPSelectCaseIsNeq(t *testing.T) {
+	source := `<%
+Dim x : x = 42
+Select Case x
+Case Is <> 99
+	Response.Write "neq99"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "neq99" {
+		t.Fatalf("expected Case Is <> 99 output neq99, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsEq verifies Case Is = comparison operator.
+func TestASPSelectCaseIsEq(t *testing.T) {
+	source := `<%
+Dim x : x = 10
+Select Case x
+Case Is = 10
+	Response.Write "eq10"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "eq10" {
+		t.Fatalf("expected Case Is = 10 output eq10, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsMixedComma verifies mixed Case Is with comma-separated value clauses.
+func TestASPSelectCaseIsMixedComma(t *testing.T) {
+	source := `<%
+Dim x : x = 8
+Select Case x
+Case 1, Is > 5, 15
+	Response.Write "mixed"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "mixed" {
+		t.Fatalf("expected Case 1, Is > 5, 15 output mixed, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsMultipleIs verifies multiple Is clauses separated by comma.
+func TestASPSelectCaseIsMultipleIs(t *testing.T) {
+	source := `<%
+Dim x : x = 2
+Select Case x
+Case Is > 10, Is < 3
+	Response.Write "multiis"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "multiis" {
+		t.Fatalf("expected Case Is > 10, Is < 3 output multiis, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsMixedRange verifies Case Is mixed with To range in comma-separated clauses.
+func TestASPSelectCaseIsMixedRange(t *testing.T) {
+	source := `<%
+Dim x : x = 25
+Select Case x
+Case 1 To 10, Is > 20
+	Response.Write "rangeis"
+Case Else
+	Response.Write "else"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "rangeis" {
+		t.Fatalf("expected Case 1 To 10, Is > 20 output rangeis, got %q", output.String())
+	}
+}
+
+// TestASPSelectCaseIsElse verifies Case Else fallback when no Is clause matches.
+func TestASPSelectCaseIsElse(t *testing.T) {
+	source := `<%
+Dim x : x = 50
+Select Case x
+Case Is > 100
+	Response.Write "nope"
+Case Else
+	Response.Write "fallback"
+End Select
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "fallback" {
+		t.Fatalf("expected Case Is > 100 (no match) output fallback, got %q", output.String())
+	}
+}
+
 // TestASPOnErrorResumeNextKeywordNext verifies On Error Resume Next recognizes keyword token Next.
 func TestASPOnErrorResumeNextKeywordNext(t *testing.T) {
 	source := `<%
@@ -8868,4 +9198,159 @@ Response.Write TypeName(v5) & ":" & v5
 	}
 }
 
+// TestASPIsOperatorSemantics verifies MS VBScript behavior for 'Is' operator:
+// - Nothing Is Nothing -> True
+// - Null Is Null -> raises Type Mismatch
+// - Null Is Nothing -> raises Type Mismatch
+// - Nothing Is Null -> raises Type Mismatch
+// - Custom class instance Is Nothing -> False
+// - Set to Nothing Is Nothing -> True
+func TestASPIsOperatorSemantics(t *testing.T) {
+	source := `<%
+Class DummyClass
+End Class
 
+Dim test1 : test1 = (Nothing Is Nothing)
+Response.Write "1:" & test1 & "|"
+
+On Error Resume Next
+
+Err.Clear
+Dim test2 : test2 = (Null Is Null)
+Response.Write "2:Err:" & Err.Number & "|"
+
+Err.Clear
+Dim test3 : test3 = (Null Is Nothing)
+Response.Write "3:Err:" & Err.Number & "|"
+
+Err.Clear
+Dim test4 : test4 = (Nothing Is Null)
+Response.Write "4:Err:" & Err.Number & "|"
+
+Dim obj
+Set obj = New DummyClass
+Dim test5 : test5 = (obj Is Nothing)
+Response.Write "5:" & test5 & "|"
+
+Set obj = Nothing
+Dim test6 : test6 = (obj Is Nothing)
+Response.Write "6:" & test6
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "1:True|2:Err:-2146828275|3:Err:-2146828275|4:Err:-2146828275|5:False|6:True"
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+// TestASPOptionCompareLexicographic verifies lexicographic comparisons under
+// Option Compare Binary (default) and Option Compare Text.
+func TestASPOptionCompareLexicographic(t *testing.T) {
+	// Case 1: Option Compare Binary (Default)
+	sourceBinary := `<%
+Dim b1 : b1 = ("abc" < "ABC")
+Dim b2 : b2 = ("abc" > "ABC")
+Dim b3 : b3 = ("abc" = "ABC")
+Response.Write b1 & "|" & b2 & "|" & b3
+%>`
+
+	compiler1 := NewASPCompiler(sourceBinary)
+	if err := compiler1.Compile(); err != nil {
+		t.Fatalf("compile binary failed: %v", err)
+	}
+
+	vm1 := NewVMFromCompiler(compiler1)
+	host1 := NewMockHost()
+	var output1 bytes.Buffer
+	host1.SetOutput(&output1)
+	vm1.SetHost(host1)
+
+	if err := vm1.Run(); err != nil {
+		t.Fatalf("vm binary run failed: %v", err)
+	}
+	host1.Response().Flush()
+
+	expectedBinary := "False|True|False"
+	if got := output1.String(); got != expectedBinary {
+		t.Fatalf("expected binary %q, got %q", expectedBinary, got)
+	}
+
+	// Case 2: Option Compare Text
+	sourceText := `<%
+Option Compare Text
+Dim t1 : t1 = ("abc" < "ABC")
+Dim t2 : t2 = ("abc" > "ABC")
+Dim t3 : t3 = ("abc" = "ABC")
+Response.Write t1 & "|" & t2 & "|" & t3
+%>`
+
+	compiler2 := NewASPCompiler(sourceText)
+	if err := compiler2.Compile(); err != nil {
+		t.Fatalf("compile text failed: %v", err)
+	}
+
+	vm2 := NewVMFromCompiler(compiler2)
+	host2 := NewMockHost()
+	var output2 bytes.Buffer
+	host2.SetOutput(&output2)
+	vm2.SetHost(host2)
+
+	if err := vm2.Run(); err != nil {
+		t.Fatalf("vm text run failed: %v", err)
+	}
+	host2.Response().Flush()
+
+	expectedText := "False|False|True"
+	if got := output2.String(); got != expectedText {
+		t.Fatalf("expected text %q, got %q", expectedText, got)
+	}
+}
+
+// TestASPStringCharacterVSByteSemantics verifies character vs byte semantics
+// for Left/LeftB, Right/RightB, Mid/MidB, and Len/LenB.
+func TestASPStringCharacterVSByteSemantics(t *testing.T) {
+	source := `<%
+Dim str : str = "A" & Chr(255) & "C"
+Response.Write "Len:" & Len(str) & "|LenB:" & LenB(str) & "|"
+Response.Write "Left3:" & Left(str, 3) & "|LeftB2:" & AscB(MidB(LeftB(str, 2), 2, 1)) & "|"
+Response.Write "Right2:" & Right(str, 2) & "|RightB1:" & AscB(RightB(str, 1)) & "|"
+Response.Write "Mid2:" & Mid(str, 2, 1) & "|MidB2:" & AscB(MidB(str, 2, 1)) & "|"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "Len:3|LenB:3|Left3:AÿC|LeftB2:255|Right2:ÿC|RightB1:67|Mid2:ÿ|MidB2:255|"
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
