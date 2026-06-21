@@ -35,7 +35,6 @@ import (
 	"strings"
 	"syscall/js"
 	"time"
-	"unicode"
 
 	"g3pix.com.br/axonasp/vbscript"
 )
@@ -431,7 +430,7 @@ func vbsInStrVM(vm *VM, args []Value) (Value, error) {
 	start := 1
 	s1 := ""
 	s2 := ""
-	compare := 0
+	compare := -1
 
 	isNumericType := func(v Value) bool {
 		switch v.Type {
@@ -483,7 +482,11 @@ func vbsInStrVM(vm *VM, args []Value) (Value, error) {
 	textCompare := compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1)
 	for idx := start - 1; idx+len(runes2) <= len(runes1); idx++ {
 		segment := string(runes1[idx : idx+len(runes2)])
-		if (textCompare && strings.EqualFold(segment, s2)) || (!textCompare && segment == s2) {
+		if textCompare {
+			if vm.textEqual(segment, s2) {
+				return NewInteger(int64(idx + 1)), nil
+			}
+		} else if segment == s2 {
 			return NewInteger(int64(idx + 1)), nil
 		}
 	}
@@ -517,7 +520,7 @@ func vbsReplaceVM(vm *VM, args []Value) (Value, error) {
 		count = int(args[4].Num)
 	}
 
-	compare := 0
+	compare := -1
 	if len(args) >= 6 {
 		compare = int(args[5].Num)
 	}
@@ -546,20 +549,34 @@ func vbsReplaceVM(vm *VM, args []Value) (Value, error) {
 	}
 
 	textCompare := compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1)
-	sourceRunes := targetRunes
-	patternRunes := findRunes
+
 	if textCompare {
-		sourceRunes = make([]rune, len(targetRunes))
-		for i, r := range targetRunes {
-			sourceRunes[i] = unicode.ToLower(r)
+		// Locale-aware replacement: scan windows and compare with collator.
+		var builder strings.Builder
+		builder.Grow(len(expression) + len(replacement))
+		lastEmit := 0
+		replaced := 0
+		patLen := len(findRunes)
+		for i := 0; i+patLen <= len(targetRunes); i++ {
+			if vm.textEqual(string(targetRunes[i:i+patLen]), find) {
+				writeRuneSlice(&builder, targetRunes[lastEmit:i])
+				builder.WriteString(replacement)
+				replaced++
+				lastEmit = i + patLen
+				i += patLen - 1 // advance past the match (loop will increment)
+				if count >= 0 && replaced >= count {
+					break
+				}
+			}
 		}
-		patternRunes = make([]rune, len(findRunes))
-		for i, r := range findRunes {
-			patternRunes[i] = unicode.ToLower(r)
-		}
+		writeRuneSlice(&builder, targetRunes[lastEmit:])
+		return NewString(builder.String()), nil
 	}
 
-	// Use one KMP scan over runes to avoid repeated []rune/string churn inside the hot loop.
+	// Binary compare: use KMP over runes for performance.
+	sourceRunes := targetRunes
+	patternRunes := findRunes
+
 	prefix := buildKMPPrefix(patternRunes)
 	var builder strings.Builder
 	builder.Grow(len(expression) + len(replacement))

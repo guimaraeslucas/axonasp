@@ -231,19 +231,18 @@ func vbsCompatStrReverse(_ *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatStrComp compares strings using binary or text compare.
-func vbsCompatStrComp(_ *VM, args []Value) (Value, error) {
+func vbsCompatStrComp(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return NewInteger(0), nil
 	}
 	a := args[0].String()
 	b := args[1].String()
-	compare := 0
+	compare := -1
 	if len(args) > 2 {
 		compare = int(args[2].Num)
 	}
-	if compare == 1 {
-		a = strings.ToLower(a)
-		b = strings.ToLower(b)
+	if compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1) {
+		return NewInteger(int64(vm.textCompare(a, b))), nil
 	}
 	if a < b {
 		return NewInteger(-1), nil
@@ -399,15 +398,16 @@ func vbsCompatHex(_ *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatInStrRev searches from right to left using 1-based semantics.
-func vbsCompatInStrRev(_ *VM, args []Value) (Value, error) {
+func vbsCompatInStrRev(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return NewInteger(0), nil
 	}
 	s1 := args[0].String()
 	s2 := args[1].String()
 	runes1 := []rune(s1)
+	runes2 := []rune(s2)
 	start := len(runes1)
-	compare := 0
+	compare := -1
 	if len(args) >= 3 {
 		v := int(args[2].Num)
 		if v > 0 {
@@ -423,12 +423,17 @@ func vbsCompatInStrRev(_ *VM, args []Value) (Value, error) {
 	if start < 1 || s2 == "" {
 		return NewInteger(0), nil
 	}
+	if compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1) {
+		// Locale-aware reverse search: scan windows from right to left.
+		for idx := start - len(runes2); idx >= 0; idx-- {
+			if vm.textEqual(string(runes1[idx:idx+len(runes2)]), s2) {
+				return NewInteger(int64(idx + 1)), nil
+			}
+		}
+		return NewInteger(0), nil
+	}
 	search := string(runes1[:start])
 	target := s2
-	if compare == 1 {
-		search = strings.ToLower(search)
-		target = strings.ToLower(target)
-	}
 	idx := strings.LastIndex(search, target)
 	if idx < 0 {
 		return NewInteger(0), nil
@@ -485,7 +490,7 @@ func vbsCompatJoin(_ *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatFilter filters string array elements by substring match.
-func vbsCompatFilter(_ *VM, args []Value) (Value, error) {
+func vbsCompatFilter(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 || args[0].Type != VTArray || args[0].Arr == nil {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
 	}
@@ -494,21 +499,19 @@ func vbsCompatFilter(_ *VM, args []Value) (Value, error) {
 	if len(args) > 2 {
 		include = args[2].Num != 0
 	}
-	compare := 0
+	compare := -1
 	if len(args) > 3 {
 		compare = int(args[3].Num)
-	}
-	if compare == 1 {
-		needle = strings.ToLower(needle)
 	}
 	matches := make([]Value, 0, len(args[0].Arr.Values))
 	for i := 0; i < len(args[0].Arr.Values); i++ {
 		candidate := args[0].Arr.Values[i].String()
-		sample := candidate
-		if compare == 1 {
-			sample = strings.ToLower(sample)
+		var has bool
+		if compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1) {
+			has = vm.textContains(candidate, needle)
+		} else {
+			has = strings.Contains(candidate, needle)
 		}
-		has := strings.Contains(sample, needle)
 		if (include && has) || (!include && !has) {
 			matches = append(matches, NewString(candidate))
 		}

@@ -297,8 +297,7 @@ func (vm *VM) compareValues(a Value, b Value) int {
 		left := vm.valueToString(a)
 		right := vm.valueToString(b)
 		if vm.optionCompare == 1 {
-			left = strings.ToLower(left)
-			right = strings.ToLower(right)
+			return vm.textCompare(left, right)
 		}
 		if left < right {
 			return -1

@@ -36,6 +36,9 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
+
 	"g3pix.com.br/axonasp/axonvm/asp"
 	"g3pix.com.br/axonasp/vbscript"
 )
@@ -528,18 +531,20 @@ type VM struct {
 	engineMode EngineMode
 
 	// Runtime Options
-	optionCompare        int             // 0: Binary, 1: Text
-	optionExplicit       bool            // Mirrors compiler Option Explicit for dynamic execution APIs.
-	globalNames          []string        // Global symbol names aligned with Globals slot order.
-	globalNamesHash      uint64          // Fingerprint of globalNames for fast dynamic-cache scope validation.
-	globalZeroArgFuncs   map[string]bool // Known zero-arg global Functions for dynamic autocall compatibility.
-	runtimeClassVersion  uint64          // Monotonic version for runtime class metadata invalidation.
-	declaredGlobals      map[string]bool // Global Dim/Const declaration state for dynamic compilation.
-	constGlobals         map[string]bool // Global Const protection state for dynamic compilation.
-	sourceName           string          // Source file path used for dynamic execution error reporting.
-	sourceMap            SourceMap       // Sparse merged-to-original source line mapping for include-aware errors.
-	dynamicProgramStarts map[uint64]int  // Per-VM start offsets for already-appended cached dynamic fragments.
-	jsStringWorkBytes    int64           // Per-run cumulative bytes produced by JScript string operations.
+	optionCompare        int               // 0: Binary, 1: Text
+	optionExplicit       bool              // Mirrors compiler Option Explicit for dynamic execution APIs.
+	collator             *collate.Collator // cached locale-aware collator for Option Compare Text
+	collatorLCID         int               // LCID for which the collator was built
+	globalNames          []string          // Global symbol names aligned with Globals slot order.
+	globalNamesHash      uint64            // Fingerprint of globalNames for fast dynamic-cache scope validation.
+	globalZeroArgFuncs   map[string]bool   // Known zero-arg global Functions for dynamic autocall compatibility.
+	runtimeClassVersion  uint64            // Monotonic version for runtime class metadata invalidation.
+	declaredGlobals      map[string]bool   // Global Dim/Const declaration state for dynamic compilation.
+	constGlobals         map[string]bool   // Global Const protection state for dynamic compilation.
+	sourceName           string            // Source file path used for dynamic execution error reporting.
+	sourceMap            SourceMap         // Sparse merged-to-original source line mapping for include-aware errors.
+	dynamicProgramStarts map[uint64]int    // Per-VM start offsets for already-appended cached dynamic fragments.
+	jsStringWorkBytes    int64             // Per-run cumulative bytes produced by JScript string operations.
 
 	RecordDecls      []CompiledRecordDecl
 	RecordDeclLookup map[string]int
@@ -2682,7 +2687,7 @@ aspExecLoop:
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else if vm.optionCompare == 1 {
-				vm.stack[vm.sp-1] = NewBool(!strings.EqualFold(a.String(), b.String()))
+				vm.stack[vm.sp-1] = NewBool(!vm.textEqual(a.String(), b.String()))
 			} else {
 				vm.stack[vm.sp-1] = NewBool(vm.compareValues(a, b) != 0)
 			}
@@ -2795,7 +2800,7 @@ aspExecLoop:
 			if isNull(a) || isNull(b) {
 				eq = false
 			} else if vm.optionCompare == 1 {
-				eq = strings.EqualFold(a.String(), b.String())
+				eq = vm.textEqual(a.String(), b.String())
 			} else {
 				eq = vm.compareValues(a, b) == 0
 			}
@@ -2811,7 +2816,7 @@ aspExecLoop:
 			if isNull(a) || isNull(b) {
 				neq = false
 			} else if vm.optionCompare == 1 {
-				neq = !strings.EqualFold(a.String(), b.String())
+				neq = !vm.textEqual(a.String(), b.String())
 			} else {
 				neq = vm.compareValues(a, b) != 0
 			}
@@ -3786,7 +3791,7 @@ aspExecLoop:
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else if vm.optionCompare == 1 { // Text
-				vm.stack[vm.sp-1] = NewBool(strings.EqualFold(a.String(), b.String()))
+				vm.stack[vm.sp-1] = NewBool(vm.textEqual(a.String(), b.String()))
 			} else {
 				vm.stack[vm.sp-1] = NewBool(vm.compareValues(a, b) == 0)
 			}
@@ -7829,6 +7834,51 @@ func (vm *VM) errPropertySet(property string, val Value) {
 		errObj.Category = vm.valueToString(val)
 	}
 	errObj.Normalize()
+}
+
+// getCollator returns the locale-aware collator for Option Compare Text,
+// lazily building it from the current VM LCID. The collator is cached and
+// rebuilt only when the effective LCID changes.
+func (vm *VM) getCollator() *collate.Collator {
+	lcid := builtinCurrentLCID(vm)
+	if vm.collator != nil && vm.collatorLCID == lcid {
+		return vm.collator
+	}
+	tag := language.Make(GetGoLanguageFromMSLCID(MSLCID(lcid)))
+	vm.collator = collate.New(tag, collate.IgnoreCase)
+	vm.collatorLCID = lcid
+	return vm.collator
+}
+
+// textEqual returns true when two strings compare equal under Option Compare Text
+// using the VM's locale-aware collator.
+func (vm *VM) textEqual(a, b string) bool {
+	return vm.getCollator().CompareString(a, b) == 0
+}
+
+// textCompare returns -1, 0, 1 for locale-aware case-insensitive string comparison
+// using the VM's configured LCID.
+func (vm *VM) textCompare(a, b string) int {
+	return vm.getCollator().CompareString(a, b)
+}
+
+// textContains returns true when needle is a locale-aware case-insensitive substring
+// of haystack, using the VM's configured LCID.
+func (vm *VM) textContains(haystack, needle string) bool {
+	if needle == "" {
+		return true
+	}
+	hayRunes := []rune(haystack)
+	ndlRunes := []rune(needle)
+	if len(ndlRunes) > len(hayRunes) {
+		return false
+	}
+	for i := 0; i+len(ndlRunes) <= len(hayRunes); i++ {
+		if vm.textEqual(string(hayRunes[i:i+len(ndlRunes)]), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // errClear resets the intrinsic Err object to its default state.
