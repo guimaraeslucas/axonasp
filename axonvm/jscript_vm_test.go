@@ -118,7 +118,7 @@ func TestJScriptCompileErrorsUseJScriptMetadata(t *testing.T) {
 	if syntaxErr.Code != jscript.SyntaxError {
 		t.Fatalf("unexpected code: got %d want %d", syntaxErr.Code, jscript.SyntaxError)
 	}
-	if syntaxErr.File != "/tests/jscript_compile_error.asp" {
+	if strings.ReplaceAll(syntaxErr.File, "\\", "/") != "/tests/jscript_compile_error.asp" {
 		t.Fatalf("unexpected file: %q", syntaxErr.File)
 	}
 	if syntaxErr.Category != "JScript compilation" {

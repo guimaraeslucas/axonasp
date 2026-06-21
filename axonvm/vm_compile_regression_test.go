@@ -9354,3 +9354,129 @@ Response.Write "Mid2:" & Mid(str, 2, 1) & "|MidB2:" & AscB(MidB(str, 2, 1)) & "|
 		t.Fatalf("expected %q, got %q", expected, got)
 	}
 }
+
+// TestASPvbNullStringSemantics verifies MS VBScript behavior for 'vbNullString' constant:
+// - VarType(vbNullString) = 8 (vbString)
+// - Len(vbNullString) = 0
+// - vbNullString = "" -> True
+// - TypeName(vbNullString) = "String"
+func TestASPvbNullStringSemantics(t *testing.T) {
+	source := `<%
+Response.Write "VarType:" & VarType(vbNullString) & "|"
+Response.Write "Len:" & Len(vbNullString) & "|"
+Response.Write "Eq:" & (vbNullString = "") & "|"
+Response.Write "TypeName:" & TypeName(vbNullString)
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "VarType:8|Len:0|Eq:True|TypeName:String"
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+// TestASPStringLiteralAndLineContinuation verifies MS VBScript behavior for string literals:
+// - Escaped double quotes inside string literal (e.g. "hello ""world""")
+// - Explicit line continuation using `& _` to concatenate strings across lines.
+func TestASPStringLiteralAndLineContinuation(t *testing.T) {
+	source := `<%
+Dim s1 : s1 = "hello ""world"""
+Dim s2 : s2 = "first line " & _
+              "second line"
+Response.Write s1 & "|" & s2
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := `hello "world"|first line second line`
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+// TestASPSpecificationViolationsFixes verifies the fixes for:
+// - Erase on non-array (scalar) variables reinitializes them (0 for numeric, "" for string, Nothing for object, Empty for variant)
+// - IsEmpty(Null) returns False
+// - IsNumeric("1,234") and other formatted strings return True
+// - IsObject(Nothing) returns True
+// - IsDate on Null/Empty/Nothing returns False
+func TestASPSpecificationViolationsFixes(t *testing.T) {
+	source := `<%
+	Dim vNum : vNum = 42
+	Erase vNum
+	Response.Write "num:" & vNum & "|" & TypeName(vNum) & ";"
+
+	Dim vStr : vStr = "hello"
+	Erase vStr
+	Response.Write "str:" & vStr & "|" & TypeName(vStr) & ";"
+
+	Dim vObj : Set vObj = Server.CreateObject("Scripting.Dictionary")
+	Erase vObj
+	Response.Write "obj:" & IsObject(vObj) & "|" & (vObj Is Nothing) & ";"
+
+	Dim vEmpty : vEmpty = Empty
+	Erase vEmpty
+	Response.Write "empty:" & IsEmpty(vEmpty) & ";"
+
+	Response.Write "isEmptyNull:" & IsEmpty(Null) & ";"
+	Response.Write "isNumeric1:" & IsNumeric("1,234") & ";"
+	Response.Write "isNumeric2:" & IsNumeric("1,234.56") & ";"
+	Response.Write "isNumeric3:" & IsNumeric("$1,234.56") & ";"
+	Response.Write "isNumeric4:" & IsNumeric("1.2d+3") & ";"
+	Response.Write "isNumeric5:" & IsNumeric("1.2D-3") & ";"
+	Response.Write "isObjectNothing:" & IsObject(Nothing) & ";"
+	Response.Write "isDateNull:" & IsDate(Null) & ";"
+	Response.Write "isDateEmpty:" & IsDate(Empty) & ";"
+	Response.Write "isDateNothing:" & IsDate(Nothing) & ";"
+	%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "num:0|Integer;str:|String;obj:True|True;empty:True;isEmptyNull:False;isNumeric1:True;isNumeric2:True;isNumeric3:True;isNumeric4:True;isNumeric5:True;isObjectNothing:True;isDateNull:False;isDateEmpty:False;isDateNothing:False;"
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}

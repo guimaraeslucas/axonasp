@@ -2702,7 +2702,15 @@ aspExecLoop:
 				vm.sp--
 				continue
 			}
-			vm.stack[vm.sp-1] = NewBool(a.Type == b.Type && a.Num == b.Num)
+			isNothingA := a.Type == VTNothing || ((a.Type == VTObject || a.Type == VTNativeObject) && a.Num == 0)
+			isNothingB := b.Type == VTNothing || ((b.Type == VTObject || b.Type == VTNativeObject) && b.Num == 0)
+			if isNothingA && isNothingB {
+				vm.stack[vm.sp-1] = NewBool(true)
+			} else if isNothingA || isNothingB {
+				vm.stack[vm.sp-1] = NewBool(false)
+			} else {
+				vm.stack[vm.sp-1] = NewBool(a.Type == b.Type && a.Num == b.Num)
+			}
 			vm.sp--
 
 		case OpIsNotRef:
@@ -2714,7 +2722,15 @@ aspExecLoop:
 				vm.sp--
 				continue
 			}
-			vm.stack[vm.sp-1] = NewBool(a.Type != b.Type || a.Num != b.Num)
+			isNothingA := a.Type == VTNothing || ((a.Type == VTObject || a.Type == VTNativeObject) && a.Num == 0)
+			isNothingB := b.Type == VTNothing || ((b.Type == VTObject || b.Type == VTNativeObject) && b.Num == 0)
+			if isNothingA && isNothingB {
+				vm.stack[vm.sp-1] = NewBool(false)
+			} else if isNothingA || isNothingB {
+				vm.stack[vm.sp-1] = NewBool(true)
+			} else {
+				vm.stack[vm.sp-1] = NewBool(a.Type != b.Type || a.Num != b.Num)
+			}
 			vm.sp--
 
 		case OpGt:
@@ -5696,7 +5712,16 @@ func (vm *VM) eraseValue(current Value) Value {
 		return ValueFromVBArray(vm.cloneErasedArray(current.Arr))
 	}
 	vm.decrementObjectRefCount(current)
-	return NewEmpty()
+	switch current.Type {
+	case VTInteger, VTDouble, VTBool, VTDate:
+		return NewInteger(0)
+	case VTString:
+		return NewString("")
+	case VTObject, VTNativeObject:
+		return Value{Type: VTNothing}
+	default:
+		return NewEmpty()
+	}
 }
 
 // releaseArrayValue decrements object references stored within one VBArray shape.

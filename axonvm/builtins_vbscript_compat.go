@@ -812,18 +812,71 @@ func vbsCompatIsNumeric(_ *VM, args []Value) (Value, error) {
 	case VTInteger, VTDouble, VTBool:
 		return NewBool(true), nil
 	case VTString:
-		text := strings.TrimSpace(args[0].Str)
-		if text == "" {
-			return NewBool(false), nil
-		}
-		if _, err := strconv.ParseInt(text, 10, 64); err == nil {
-			return NewBool(true), nil
-		}
-		if _, err := strconv.ParseFloat(text, 64); err == nil {
-			return NewBool(true), nil
-		}
+		return NewBool(isVBSNumericString(args[0].Str)), nil
 	}
 	return NewBool(false), nil
+}
+
+func isVBSNumericString(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	// Handle hex (&H...) and octal (&O...)
+	if len(s) > 2 && s[0] == '&' {
+		prefix := strings.ToUpper(s[1:2])
+		switch prefix {
+		case "H":
+			hexStr := s[2:]
+			if hexStr == "" {
+				return false
+			}
+			for _, r := range hexStr {
+				if !((r >= '0' && r <= '9') || (r >= 'A' && r <= 'F') || (r >= 'a' && r <= 'f')) {
+					return false
+				}
+			}
+			return true
+		case "O":
+			octStr := s[2:]
+			if octStr == "" {
+				return false
+			}
+			for _, r := range octStr {
+				if !(r >= '0' && r <= '7') {
+					return false
+				}
+			}
+			return true
+		}
+	}
+
+	// Handle leading currency symbols: $, €, £, ¥
+	runes := []rune(s)
+	if len(runes) > 0 {
+		first := runes[0]
+		if first == '$' || first == '€' || first == '£' || first == '¥' || first == 0xA2 || first == 0xA3 || first == 0xA4 || first == 0xA5 {
+			s = string(runes[1:])
+			s = strings.TrimSpace(s)
+		}
+	}
+
+	// Normalize scientific notation exponent (d/D -> e)
+	sNormalized := strings.ReplaceAll(s, "d", "e")
+	sNormalized = strings.ReplaceAll(sNormalized, "D", "e")
+
+	// Normalize grouping separator (comma)
+	sNormalized = strings.ReplaceAll(sNormalized, ",", "")
+
+	if sNormalized == "" {
+		return false
+	}
+
+	if _, err := strconv.ParseFloat(sNormalized, 64); err == nil {
+		return true
+	}
+
+	return false
 }
 
 // vbsCompatIsDate tests whether a value can be interpreted as date/time.
@@ -832,10 +885,14 @@ func vbsCompatIsDate(vm *VM, args []Value) (Value, error) {
 		return NewBool(false), nil
 	}
 	v := resolveCallable(vm, args[0])
+	if v.Type == VTNull || v.Type == VTEmpty || v.Type == VTNothing {
+		return NewBool(false), nil
+	}
 	if v.Type == VTDate {
 		return NewBool(!valueToTimeInLocale(vm, v).IsZero()), nil
 	}
-	return NewBool(!valueToTimeInLocale(vm, v).IsZero()), nil
+	t := valueToTimeInLocale(vm, v)
+	return NewBool(!t.IsZero()), nil
 }
 
 // vbsCompatCreateObject exposes VBScript CreateObject built-in for compatibility.

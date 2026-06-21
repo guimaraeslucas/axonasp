@@ -46,7 +46,7 @@ func TestCompilerUnexpectedTokenUsesVBScriptMetadata(t *testing.T) {
 	if syntaxErr.Code != vbscript.SyntaxError {
 		t.Fatalf("unexpected code: got %d want %d", syntaxErr.Code, vbscript.SyntaxError)
 	}
-	if syntaxErr.File != "/tests/compiler_error.asp" {
+	if strings.ReplaceAll(syntaxErr.File, "\\", "/") != "/tests/compiler_error.asp" {
 		t.Fatalf("unexpected file: %q", syntaxErr.File)
 	}
 	if syntaxErr.Category != "VBScript compilation" {
@@ -72,7 +72,7 @@ func TestCompilerUnexpectedTokenUsesVBScriptMetadata(t *testing.T) {
 	if aspErr.ASPCode != int(vbscript.SyntaxError) {
 		t.Fatalf("unexpected asp code: got %d want %d", aspErr.ASPCode, vbscript.SyntaxError)
 	}
-	if aspErr.File != "/tests/compiler_error.asp" {
+	if strings.ReplaceAll(aspErr.File, "\\", "/") != "/tests/compiler_error.asp" {
 		t.Fatalf("unexpected asp file: %q", aspErr.File)
 	}
 }

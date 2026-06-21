@@ -1233,7 +1233,11 @@ func countLogicalLines(s string) int {
 	if s == "" {
 		return 0
 	}
-	return countLineBreaks(s) + 1
+	breaks := countLineBreaks(s)
+	if strings.HasSuffix(s, "\n") || strings.HasSuffix(s, "\r") {
+		return breaks
+	}
+	return breaks + 1
 }
 
 // appendMappedSegment appends one source segment and updates merged/source line cursors.

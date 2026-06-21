@@ -123,7 +123,7 @@ func vbsIsObject(args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewBool(false), nil
 	}
-	return NewBool(args[0].Type == VTObject || args[0].Type == VTNativeObject), nil
+	return NewBool(args[0].Type == VTObject || args[0].Type == VTNativeObject || args[0].Type == VTNothing), nil
 }
 
 func vbsErlVM(vm *VM, args []Value) (Value, error) {
