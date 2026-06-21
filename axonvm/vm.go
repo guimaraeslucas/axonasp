@@ -7900,6 +7900,32 @@ func (vm *VM) errRaise(args []Value) Value {
 		return Value{Type: VTEmpty}
 	}
 
+	for i := len(vm.callStack) - 1; i >= 0; i-- {
+		frame := vm.callStack[i]
+		if !frame.savedOnResumeNext {
+			continue
+		}
+		curFP := vm.fp
+		curSP := vm.sp
+		for j := len(vm.callStack) - 1; j >= i; j-- {
+			for k := curFP; k <= curSP; k++ {
+				if k >= 0 && k < StackSize {
+					vm.decrementObjectRefCount(vm.stack[k])
+				}
+			}
+			curSP = vm.callStack[j].oldSP
+			curFP = vm.callStack[j].oldFP
+		}
+		vm.callStack = vm.callStack[:i]
+		vm.sp = curSP
+		vm.fp = curFP
+		vm.ip = frame.returnIP
+		vm.activeClassObjectID = frame.boundObj
+		vm.onResumeNext = frame.savedOnResumeNext
+		vm.lastError = vme
+		return Value{Type: VTEmpty}
+	}
+
 	panic(vme)
 }
 
@@ -8456,7 +8482,34 @@ func (vm *VM) resolveRuntimeClassPropertyGet(target Value, propertyName string, 
 	if !exists || classDef.Properties == nil {
 		return Value{Type: VTEmpty}, false
 	}
-	propertyDef, exists := classDef.Properties[strings.ToLower(strings.TrimSpace(propertyName))]
+	resolvedPropertyName := strings.ToLower(strings.TrimSpace(propertyName))
+	if resolvedPropertyName == "__default__" {
+		defaultProp, hasDefault := classDef.Properties["__default__"]
+		if hasDefault {
+			var targetNum int64 = -1
+			if defaultProp.HasGet {
+				targetNum = defaultProp.GetTarget.Num
+			} else if defaultProp.HasLet {
+				targetNum = defaultProp.LetTarget.Num
+			} else if defaultProp.HasSet {
+				targetNum = defaultProp.SetTarget.Num
+			}
+			if targetNum != -1 {
+				for name, propDef := range classDef.Properties {
+					if name == "__default__" {
+						continue
+					}
+					if (propDef.HasGet && propDef.GetTarget.Num == targetNum) ||
+						(propDef.HasLet && propDef.LetTarget.Num == targetNum) ||
+						(propDef.HasSet && propDef.SetTarget.Num == targetNum) {
+						resolvedPropertyName = name
+						break
+					}
+				}
+			}
+		}
+	}
+	propertyDef, exists := classDef.Properties[resolvedPropertyName]
 	if !exists || !propertyDef.HasGet {
 		return Value{Type: VTEmpty}, false
 	}
@@ -8487,7 +8540,34 @@ func (vm *VM) resolveRuntimeClassPropertySet(target Value, propertyName string, 
 	if !exists || classDef.Properties == nil {
 		return Value{Type: VTEmpty}, false
 	}
-	propertyDef, exists := classDef.Properties[strings.ToLower(strings.TrimSpace(propertyName))]
+	resolvedPropertyName := strings.ToLower(strings.TrimSpace(propertyName))
+	if resolvedPropertyName == "__default__" {
+		defaultProp, hasDefault := classDef.Properties["__default__"]
+		if hasDefault {
+			var targetNum int64 = -1
+			if defaultProp.HasGet {
+				targetNum = defaultProp.GetTarget.Num
+			} else if defaultProp.HasLet {
+				targetNum = defaultProp.LetTarget.Num
+			} else if defaultProp.HasSet {
+				targetNum = defaultProp.SetTarget.Num
+			}
+			if targetNum != -1 {
+				for name, propDef := range classDef.Properties {
+					if name == "__default__" {
+						continue
+					}
+					if (propDef.HasGet && propDef.GetTarget.Num == targetNum) ||
+						(propDef.HasLet && propDef.LetTarget.Num == targetNum) ||
+						(propDef.HasSet && propDef.SetTarget.Num == targetNum) {
+						resolvedPropertyName = name
+						break
+					}
+				}
+			}
+		}
+	}
+	propertyDef, exists := classDef.Properties[resolvedPropertyName]
 	if !exists {
 		return Value{Type: VTEmpty}, false
 	}

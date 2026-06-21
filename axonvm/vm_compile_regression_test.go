@@ -8664,3 +8664,113 @@ End Function
 		t.Fatalf("expected %q, got %q", "data", got)
 	}
 }
+
+// TestASPClassDefaultIndexedPropertyLetSet verifies that default indexed properties (Get/Let/Set)
+// work correctly even if only the Get accessor has the Default keyword on its declaration.
+func TestASPClassDefaultIndexedPropertyLetSet(t *testing.T) {
+	source := `<%
+Class KeyValueStore
+	Private m_keys()
+	Private m_vals()
+	Private m_count
+
+	Private Sub Class_Initialize()
+		m_count = 0
+		ReDim m_keys(-1)
+		ReDim m_vals(-1)
+	End Sub
+
+	Public Default Property Get Item(key)
+		Dim i
+		For i = 0 To m_count - 1
+			If m_keys(i) = CStr(key) Then
+				Item = m_vals(i)
+				Exit Property
+			End If
+		Next
+		Item = Empty
+	End Property
+
+	Public Property Let Item(key, value)
+		Dim i
+		For i = 0 To m_count - 1
+			If m_keys(i) = CStr(key) Then
+				m_vals(i) = value
+				Exit Property
+			End If
+		Next
+		ReDim Preserve m_keys(m_count)
+		ReDim Preserve m_vals(m_count)
+		m_keys(m_count) = CStr(key)
+		m_vals(m_count) = value
+		m_count = m_count + 1
+	End Property
+
+	Public Property Get Count() : Count = m_count : End Property
+End Class
+
+Dim store
+Set store = New KeyValueStore
+store("colour") = "teal"
+store("size") = "large"
+store("colour") = "navy"
+
+Response.Write store.Count & "|" & store("colour") & "|" & store("size")
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "2|navy|large"
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+// TestASPErrRaisePropagationUnderResumeNext verifies that Err.Raise inside a function/sub scope
+// correctly propagates up to the caller frame under On Error Resume Next.
+func TestASPErrRaisePropagationUnderResumeNext(t *testing.T) {
+	source := `<%
+On Error Resume Next
+Call InnerRaise()
+Response.Write Err.Number & "|" & Err.Description
+
+Sub InnerRaise()
+	Err.Raise 1234, "Inner", "Custom error raised in sub"
+End Sub
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "1234|Custom error raised in sub"
+	if got := output.String(); got != expected {
+		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
