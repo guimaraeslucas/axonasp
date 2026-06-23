@@ -4019,6 +4019,12 @@ aspExecLoop:
 					vm.applyByRefWritebacksFromArgs(opCallByRefs, args)
 				}
 				vm.push(result)
+			} else if target.Type == VTJSFunction || target.Type == VTJSObject || target.Type == VTJSProxy {
+				// Bridge VBScript -> JScript function calls for cross-language invocation.
+				// Functions defined in <script language="JScript" runat="server"> blocks
+				// are stored as VTJSFunction/VTJSObject values in the global scope.
+				result := vm.jsCall(target, Value{Type: VTJSUndefined}, args)
+				vm.push(result)
 			} else if vm.beginUserSubCall(target, args, false, 0, opCallByRefs) {
 				continue
 			} else if target.Type == VTArray {

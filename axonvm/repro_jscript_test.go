@@ -48,3 +48,51 @@ func TestJScriptReproIssues(t *testing.T) {
 	out := output.String()
 	t.Logf("Output: %s", out)
 }
+
+func TestJScriptVersionFunctions(t *testing.T) {
+	source := `
+<script runat="server" language="JScript">
+    var version = ScriptEngineMajorVersion() + "." + ScriptEngineMinorVersion() + "." + ScriptEngineBuildVersion();
+    Response.Write("ENGINE:" + ScriptEngine() + "|VERSION:" + version);
+</script>
+`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Response().SetBuffer(false)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	out := output.String()
+	t.Logf("Output: %s", out)
+}
+
+func TestJScriptPureVersionFunctions(t *testing.T) {
+	source := `
+    var version = ScriptEngineMajorVersion() + "." + ScriptEngineMinorVersion() + "." + ScriptEngineBuildVersion();
+    Response.Write("ENGINE:" + ScriptEngine() + "|VERSION:" + version);
+`
+	compiler := NewJavaScriptCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	vm.SetEngineMode(EngineModeJavaScript) // Set to pure JScript mode
+	host := NewMockHost()
+	host.SetEngineMode(EngineModeJavaScript)
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Response().SetBuffer(false)
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	out := output.String()
+	t.Logf("Output: %s", out)
+}

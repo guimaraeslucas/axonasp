@@ -1130,6 +1130,19 @@ func (c *Compiler) Compile() (err error) {
 		jscriptProgramLine = 1
 	}
 
+	// Pre-scan and compile <script runat="server"> JScript blocks before the main
+	// compilation loop. Classic ASP hoists these blocks — function declarations
+	// defined in them are available to inline VBScript code regardless of source
+	// order. We record the token indices so the main loop can skip them.
+	jscriptBlockCompiled := make(map[int]bool)
+	c.resetTokenStream()
+	for !c.matchEof() {
+		if tok, ok := c.next.(*vbscript.ASPJScriptBlockToken); ok {
+			jscriptBlockCompiled[c.tokenIndex] = true
+			c.compileJScriptBlockWithLineAnchors(tok.Content, []jscriptCompileLineAnchor{{GeneratedLineStart: 1, MergedLineStart: tok.GetLineNumber()}})
+		}
+		c.move()
+	}
 	c.resetTokenStream()
 	skipDefinitionStarts := make(map[int]int, len(compiledDefinitionBounds))
 	for i := range compiledDefinitionBounds {
@@ -1175,6 +1188,10 @@ func (c *Compiler) Compile() (err error) {
 			c.move()
 			c.compileASPObjectDeclaration(t)
 		case *vbscript.ASPJScriptBlockToken:
+			if jscriptBlockCompiled[c.tokenIndex] {
+				c.move()
+				continue
+			}
 			if jscriptPageMode {
 				appendJScriptProgram(t.Content, t.GetLineNumber())
 				c.move()

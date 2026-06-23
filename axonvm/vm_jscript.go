@@ -1891,6 +1891,10 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["decodeURIComponent"] = vm.jsCreateIntrinsicObject("", "decodeURIComponent")
 	bindings["encodeURI"] = vm.jsCreateIntrinsicObject("", "encodeURI")
 	bindings["encodeURIComponent"] = vm.jsCreateIntrinsicObject("", "encodeURIComponent")
+	bindings["ScriptEngine"] = vm.jsCreateIntrinsicObject("", "ScriptEngine")
+	bindings["ScriptEngineMajorVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineMajorVersion")
+	bindings["ScriptEngineMinorVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineMinorVersion")
+	bindings["ScriptEngineBuildVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineBuildVersion")
 	if evalIdx, ok := GetBuiltinIndex("Eval"); ok {
 		bindings["eval"] = Value{Type: VTBuiltin, Num: int64(evalIdx)}
 	}
@@ -2426,11 +2430,13 @@ func (vm *VM) jsSetBlockScopeValue(name string, val Value) bool {
 func (vm *VM) jsSetName(name string, val Value) {
 	vm.ensureJSRootEnv()
 	if vm.jsAssignWithBinding(name, val) {
+		vm.jsBridgeToVBGlobal(name, val)
 		return
 	}
 	// Block scopes take precedence for let/const bindings
 	if vm.jsBlockScopeDepth > 0 {
 		if vm.jsSetBlockScopeValue(name, val) {
+			vm.jsBridgeToVBGlobal(name, val)
 			return
 		}
 	}
@@ -2442,6 +2448,7 @@ func (vm *VM) jsSetName(name string, val Value) {
 		if _, ok := env.bindings[name]; ok {
 			env.bindings[name] = val
 			vm.jsSyncArgumentAliasByParam(envID, name, val)
+			vm.jsBridgeToVBGlobal(name, val)
 			return
 		}
 		envID = env.parentID
@@ -2450,6 +2457,11 @@ func (vm *VM) jsSetName(name string, val Value) {
 		vm.Globals[idx] = val
 		return
 	}
+
+	// Bridge JScript global definitions into the VBScript global name space.
+	// This allows functions defined in <script language="JScript" runat="server">
+	// blocks to be called from VBScript code (e.g., getJVer()).
+	vm.jsBridgeToVBGlobal(name, val)
 
 	// In strict mode, assigning to an undeclared variable is a ReferenceError
 	if vm.jsStrictMode {
@@ -2462,6 +2474,17 @@ func (vm *VM) jsSetName(name string, val Value) {
 	if root != nil {
 		root.bindings[name] = val
 		vm.jsSyncArgumentAliasByParam(vm.jsActiveEnvID, name, val)
+	}
+}
+
+// jsBridgeToVBGlobal writes val into the VBScript global slot for name if one
+// exists, enabling cross-language access to JScript-defined functions.
+func (vm *VM) jsBridgeToVBGlobal(name string, val Value) {
+	if vm.globalNameIndex == nil {
+		return
+	}
+	if idx, ok := vm.globalNameIndex[strings.ToLower(name)]; ok && idx >= 0 && idx < len(vm.Globals) {
+		vm.Globals[idx] = val
 	}
 }
 
@@ -9484,6 +9507,14 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			}
 			num := vm.jsToNumber(args[0]).Flt
 			return NewBool(!math.IsNaN(num) && !math.IsInf(num, 0))
+		case "ScriptEngine":
+			return NewString("JScript")
+		case "ScriptEngineMajorVersion":
+			return NewInteger(5)
+		case "ScriptEngineMinorVersion":
+			return NewInteger(8)
+		case "ScriptEngineBuildVersion":
+			return NewInteger(16384)
 		case "parseInt":
 			return vm.jsParseIntES5(args)
 		case "parseFloat":
