@@ -22,6 +22,10 @@
  */
 package axonvm
 
+import (
+	"strings"
+)
+
 // G3Mail is the disabled stub for the G3Mail library.
 type G3Mail struct{}
 
@@ -31,13 +35,27 @@ func (vm *VM) newG3MailObject() Value {
 }
 
 func (m *G3Mail) DispatchPropertyGet(propertyName string) Value {
+	switch strings.ToLower(propertyName) {
+	case "htmlbody":
+		return Value{Type: VTEmpty}
+	}
 	return Value{Type: VTEmpty}
 }
 
 func (m *G3Mail) DispatchPropertySet(propertyName string, args []Value) bool {
+	switch strings.ToLower(propertyName) {
+	case "htmlbody":
+		return false
+	}
 	return false
 }
 
 func (m *G3Mail) DispatchMethod(methodName string, args []Value) Value {
+	switch strings.ToLower(methodName) {
+	case "addrelatedbodypart":
+		return Value{Type: VTEmpty}
+	case "addattachment":
+		return Value{Type: VTEmpty}
+	}
 	return Value{Type: VTEmpty}
 }

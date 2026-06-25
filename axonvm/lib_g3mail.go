@@ -28,32 +28,51 @@ import (
 	"strconv"
 	"strings"
 
+	"g3pix.com.br/axonasp/vbscript"
 	"gopkg.in/gomail.v2"
 )
 
+type G3MailRelatedPart struct {
+	filepath string
+	cid      string
+	bp       *G3Mail
+}
+
 type G3Mail struct {
-	vm       *VM
-	host     string
-	port     int
-	username string
-	password string
-	from     string
-	fromName string
-	to       []string
-	cc       []string
-	bcc      []string
-	subject  string
-	body     string
-	isHTML   bool
+	vm           *VM
+	kind         int // 0 = message, 1 = body part, 2 = fields collection
+	host         string
+	port         int
+	username     string
+	password     string
+	from         string
+	fromName     string
+	to           []string
+	cc           []string
+	bcc          []string
+	subject      string
+	body         string
+	htmlBody     string
+	isHTML       bool
+	attachments  []string
+	relatedParts []*G3MailRelatedPart
+	filepath     string
+	cid          string
+	fields       map[string]string
+	bpRef        *G3Mail
 }
 
 // newG3MailObject instantiates the G3Mail custom functions library.
 func (vm *VM) newG3MailObject() Value {
 	obj := &G3Mail{
-		vm:  vm,
-		to:  make([]string, 0),
-		cc:  make([]string, 0),
-		bcc: make([]string, 0),
+		vm:           vm,
+		kind:         0,
+		to:           make([]string, 0),
+		cc:           make([]string, 0),
+		bcc:          make([]string, 0),
+		attachments:  make([]string, 0),
+		relatedParts: make([]*G3MailRelatedPart, 0),
+		fields:       make(map[string]string),
 	}
 	id := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
@@ -63,7 +82,44 @@ func (vm *VM) newG3MailObject() Value {
 
 // DispatchPropertyGet acts as a getter.
 func (m *G3Mail) DispatchPropertyGet(propertyName string) Value {
-	switch strings.ToLower(propertyName) {
+	lowerProp := strings.ToLower(propertyName)
+
+	if m.kind == 1 { // Body part
+		switch lowerProp {
+		case "fields":
+			fldObj := &G3Mail{
+				vm:    m.vm,
+				kind:  2,
+				bpRef: m,
+			}
+			id := m.vm.nextDynamicNativeID
+			m.vm.nextDynamicNativeID++
+			m.vm.g3mailItems[id] = fldObj
+			return Value{Type: VTNativeObject, Num: id}
+		}
+		return NewEmpty()
+	}
+
+	if m.kind == 2 { // Fields collection
+		switch lowerProp {
+		case "item":
+			id := m.vm.nextDynamicNativeID
+			m.vm.nextDynamicNativeID++
+			m.vm.g3mailItems[id] = m
+			return m.vm.newNativeObjectProxy(id, "Item", nil)
+		}
+		return NewEmpty()
+	}
+
+	switch lowerProp {
+	case "htmlbody":
+		if m.htmlBody != "" {
+			return NewString(m.htmlBody)
+		}
+		if m.isHTML {
+			return NewString(m.body)
+		}
+		return NewString("")
 	case "host", "mailhost", "smtpserver":
 		return NewString(m.host)
 	case "port", "smtpserverport":
@@ -84,7 +140,7 @@ func (m *G3Mail) DispatchPropertyGet(propertyName string) Value {
 		return NewString(strings.Join(m.bcc, ","))
 	case "subject":
 		return NewString(m.subject)
-	case "body", "textbody", "htmlbody", "message":
+	case "body", "textbody", "message":
 		return NewString(m.body)
 	case "ishtml":
 		return NewBool(m.isHTML)
@@ -104,8 +160,17 @@ func (m *G3Mail) DispatchPropertySet(propertyName string, args []Value) bool {
 	}
 	value := args[0]
 	valueStr := m.vm.valueToString(value)
+	lowerProp := strings.ToLower(propertyName)
 
-	switch strings.ToLower(propertyName) {
+	if m.kind == 1 || m.kind == 2 {
+		return false
+	}
+
+	switch lowerProp {
+	case "htmlbody":
+		m.htmlBody = valueStr
+		m.isHTML = true
+		return true
 	case "host", "mailhost", "smtpserver":
 		m.host = strings.TrimSpace(valueStr)
 		return true
@@ -140,10 +205,6 @@ func (m *G3Mail) DispatchPropertySet(propertyName string, args []Value) bool {
 		m.body = valueStr
 		m.isHTML = false
 		return true
-	case "htmlbody":
-		m.body = valueStr
-		m.isHTML = true
-		return true
 	case "ishtml":
 		m.isHTML = value.Type == VTBool && value.Num != 0
 		return true
@@ -156,7 +217,45 @@ func (m *G3Mail) DispatchPropertySet(propertyName string, args []Value) bool {
 
 // DispatchMethod provides O(1) string matching resolution.
 func (m *G3Mail) DispatchMethod(methodName string, args []Value) Value {
-	switch strings.ToLower(methodName) {
+	lowerMethod := strings.ToLower(methodName)
+
+	if m.kind == 2 { // Fields collection
+		switch lowerMethod {
+		case "item":
+			if len(args) == 2 {
+				key := strings.ToLower(args[0].String())
+				val := args[1].String()
+				if m.bpRef != nil {
+					m.bpRef.fields[key] = val
+					if key == "urn:schemas:mailheader:content-id" {
+						cleaned := val
+						if strings.HasPrefix(cleaned, "<") && strings.HasSuffix(cleaned, ">") {
+							cleaned = cleaned[1 : len(cleaned)-1]
+						}
+						m.bpRef.cid = cleaned
+					}
+				}
+				return NewBool(true)
+			} else if len(args) == 1 {
+				key := strings.ToLower(args[0].String())
+				if m.bpRef != nil {
+					if val, ok := m.bpRef.fields[key]; ok {
+						return NewString(val)
+					}
+				}
+				return NewEmpty()
+			}
+		case "update":
+			return NewBool(true)
+		}
+		return NewEmpty()
+	}
+
+	if m.kind == 1 { // Body part
+		return NewEmpty()
+	}
+
+	switch lowerMethod {
 	case "addaddress", "addrecipient", "addto":
 		if len(args) > 0 {
 			addr := strings.TrimSpace(args[0].String())
@@ -184,6 +283,49 @@ func (m *G3Mail) DispatchMethod(methodName string, args []Value) Value {
 		}
 		return NewBool(true)
 
+	case "addattachment":
+		if len(args) > 0 {
+			filepath := args[0].String()
+			if _, err := os.Stat(filepath); err != nil {
+				m.vm.raise(vbscript.FileNotFound, fmt.Sprintf("File not found: %s", filepath))
+				return NewEmpty()
+			}
+			m.attachments = append(m.attachments, filepath)
+			return NewBool(true)
+		}
+		return NewBool(false)
+
+	case "addrelatedbodypart":
+		if len(args) >= 2 {
+			filepath := args[0].String()
+			cid := args[1].String()
+
+			if _, err := os.Stat(filepath); err != nil {
+				m.vm.raise(vbscript.FileNotFound, fmt.Sprintf("File not found: %s", filepath))
+				return NewEmpty()
+			}
+
+			bp := &G3Mail{
+				vm:       m.vm,
+				kind:     1,
+				filepath: filepath,
+				cid:      cid,
+				fields:   make(map[string]string),
+			}
+
+			m.relatedParts = append(m.relatedParts, &G3MailRelatedPart{
+				filepath: filepath,
+				cid:      cid,
+				bp:       bp,
+			})
+
+			id := m.vm.nextDynamicNativeID
+			m.vm.nextDynamicNativeID++
+			m.vm.g3mailItems[id] = bp
+			return Value{Type: VTNativeObject, Num: id}
+		}
+		return NewEmpty()
+
 	case "send":
 		if len(args) >= 3 {
 			// CDONTS.NewMail style args: To, Subject, Body
@@ -200,7 +342,10 @@ func (m *G3Mail) DispatchMethod(methodName string, args []Value) Value {
 		m.bcc = []string{}
 		m.subject = ""
 		m.body = ""
+		m.htmlBody = ""
 		m.isHTML = false
+		m.attachments = []string{}
+		m.relatedParts = []*G3MailRelatedPart{}
 		return NewBool(true)
 	}
 
@@ -250,10 +395,31 @@ func (m *G3Mail) sendInternal() Value {
 	msg.SetHeader("To", to)
 	msg.SetHeader("Subject", m.subject)
 
-	if m.isHTML {
+	if m.htmlBody != "" {
+		if m.body != "" {
+			msg.SetBody("text/plain", m.body)
+			msg.AddAlternative("text/html", m.htmlBody)
+		} else {
+			msg.SetBody("text/html", m.htmlBody)
+		}
+	} else if m.isHTML {
 		msg.SetBody("text/html", m.body)
 	} else {
 		msg.SetBody("text/plain", m.body)
+	}
+
+	for _, filepath := range m.attachments {
+		msg.Attach(filepath)
+	}
+
+	for _, part := range m.relatedParts {
+		cid := part.bp.cid
+		if cid == "" {
+			cid = part.cid
+		}
+		msg.Embed(part.filepath, gomail.SetHeader(map[string][]string{
+			"Content-ID": {"<" + cid + ">"},
+		}))
 	}
 
 	d := gomail.NewDialer(host, port, username, password)

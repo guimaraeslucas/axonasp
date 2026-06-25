@@ -264,8 +264,10 @@
         * [Properties](md/libraries/g3mail/properties.md)
         * Methods Detail
             * [Addaddress](md/libraries/g3mail/methods/addaddress.md)
+            * [Addattachment](md/libraries/g3mail/methods/addattachment.md)
             * [Addbcc](md/libraries/g3mail/methods/addbcc.md)
             * [Addcc](md/libraries/g3mail/methods/addcc.md)
+            * [Addrelatedbodypart](md/libraries/g3mail/methods/addrelatedbodypart.md)
             * [Clear](md/libraries/g3mail/methods/clear.md)
             * [Send](md/libraries/g3mail/methods/send.md)
         * Properties Detail
@@ -276,6 +278,7 @@
             * [From](md/libraries/g3mail/properties/from.md)
             * [Fromname](md/libraries/g3mail/properties/fromname.md)
             * [Host](md/libraries/g3mail/properties/host.md)
+            * [Htmlbody](md/libraries/g3mail/properties/htmlbody.md)
             * [Ishtml](md/libraries/g3mail/properties/ishtml.md)
             * [Password](md/libraries/g3mail/properties/password.md)
             * [Port](md/libraries/g3mail/properties/port.md)

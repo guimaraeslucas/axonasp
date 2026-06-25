@@ -43,8 +43,10 @@ If SMTP properties are not explicitly set in the script, the library automatical
 
 ### Methods
 - **AddAddress**: Appends a recipient to the primary destination list.
+- **AddAttachment**: Attaches a file to the email.
 - **AddBcc**: Appends a recipient to the blind carbon copy list.
 - **AddCc**: Appends a recipient to the carbon copy list.
+- **AddRelatedBodyPart**: Embeds an inline resource with a Content-ID.
 - **Clear**: Resets all message fields and recipient lists to their default state.
 - **Send**: Connects to the SMTP server and delivers the message.
 
@@ -54,6 +56,7 @@ If SMTP properties are not explicitly set in the script, the library automatical
 - **From**: Sets the sender's email address.
 - **FromName**: Sets the display name for the sender.
 - **Host**: Sets the SMTP server address.
+- **HTMLBody**: Sets the message HTML content.
 - **IsHTML**: Specifies whether the body should be treated as HTML.
 - **Password**: Sets the authentication password.
 - **Port**: Sets the SMTP server port.

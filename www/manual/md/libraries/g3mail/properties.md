@@ -1,4 +1,4 @@
-﻿# G3MAIL Properties
+# G3MAIL Properties
 
 ## Overview
 
@@ -19,6 +19,7 @@ This page lists the properties exposed by `G3MAIL`.
 | `BCC` | Read/Write | String | Recipient list for BCC, represented as comma-separated text. |
 | `Subject` | Read/Write | String | Message subject line. |
 | `Body` | Read/Write | String | Message body text. |
+| `HTMLBody` | Read/Write | String | Message HTML body. |
 | `IsHTML` | Read/Write | Boolean | Toggles HTML (`True`) or plain-text (`False`) body mode. |
 | `BodyFormat` | Read/Write | Integer | Body format selector (`0` for HTML, `1` for plain text). |
 
