@@ -107,7 +107,7 @@ AxonASP is an independent software project developed by G3pix and is **not affil
 
 ## Contributors ✨
 
-Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key](https://allcontributors.org/en/reference/emoji-key/)):
+Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/docs/en/emoji-key](https://allcontributors.org/en/reference/emoji-key/))):
 
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
 <!-- prettier-ignore-start -->
