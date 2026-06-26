@@ -4,7 +4,7 @@
 **G3pix AxonASP**
 Copyright (C) 2026 G3pix Ltda. All rights reserved.
 
-- **Developer:** Lucas Guimarães - G3pix Ltda
+- **Developer:** Lucas Guimarães - G3pix
 - **Contact:** https://g3pix.com.br/
 - **Project URL:** https://g3pix.com.br/axonasp
 

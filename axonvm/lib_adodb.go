@@ -242,44 +242,70 @@ func (vm *VM) newADODBCommand() Value {
 
 // dispatchADODBMethod routes ADODB method calls.
 func (vm *VM) dispatchADODBMethod(objID int64, member string, args []Value) (Value, bool) {
-	if conn, exists := vm.adodbConnectionItems[objID]; exists {
-		return vm.dispatchADODBConnectionMethod(conn, member, args), true
-	}
-	if rs, exists := vm.adodbRecordsetItems[objID]; exists {
-		return vm.dispatchADODBRecordsetMethod(rs, member, args), true
-	}
-	if cmd, exists := vm.adodbCommandItems[objID]; exists {
-		return vm.dispatchADODBCommandMethod(cmd, member, args), true
-	}
-	return Value{Type: VTEmpty}, false
+	var ret Value
+	var ok bool
+	vm.runOnSTA(func() {
+		if conn, exists := vm.adodbConnectionItems[objID]; exists {
+			ret = vm.dispatchADODBConnectionMethod(conn, member, args)
+			ok = true
+			return
+		}
+		if rs, exists := vm.adodbRecordsetItems[objID]; exists {
+			ret = vm.dispatchADODBRecordsetMethod(rs, member, args)
+			ok = true
+			return
+		}
+		if cmd, exists := vm.adodbCommandItems[objID]; exists {
+			ret = vm.dispatchADODBCommandMethod(cmd, member, args)
+			ok = true
+			return
+		}
+	})
+	return ret, ok
 }
 
 // dispatchADODBPropertyGet resolves ADODB property reads.
 func (vm *VM) dispatchADODBPropertyGet(objID int64, member string) (Value, bool) {
-	if conn, exists := vm.adodbConnectionItems[objID]; exists {
-		return vm.dispatchADODBConnectionPropertyGet(conn, member), true
-	}
-	if rs, exists := vm.adodbRecordsetItems[objID]; exists {
-		return vm.dispatchADODBRecordsetPropertyGet(rs, member), true
-	}
-	if cmd, exists := vm.adodbCommandItems[objID]; exists {
-		return vm.dispatchADODBCommandPropertyGet(cmd, member), true
-	}
-	return Value{Type: VTEmpty}, false
+	var ret Value
+	var ok bool
+	vm.runOnSTA(func() {
+		if conn, exists := vm.adodbConnectionItems[objID]; exists {
+			ret = vm.dispatchADODBConnectionPropertyGet(conn, member)
+			ok = true
+			return
+		}
+		if rs, exists := vm.adodbRecordsetItems[objID]; exists {
+			ret = vm.dispatchADODBRecordsetPropertyGet(rs, member)
+			ok = true
+			return
+		}
+		if cmd, exists := vm.adodbCommandItems[objID]; exists {
+			ret = vm.dispatchADODBCommandPropertyGet(cmd, member)
+			ok = true
+			return
+		}
+	})
+	return ret, ok
 }
 
 // dispatchADODBPropertySet handles ADODB writable properties.
 func (vm *VM) dispatchADODBPropertySet(objID int64, member string, val Value) bool {
-	if conn, exists := vm.adodbConnectionItems[objID]; exists {
-		return vm.dispatchADODBConnectionPropertySet(conn, member, val)
-	}
-	if rs, exists := vm.adodbRecordsetItems[objID]; exists {
-		return vm.dispatchADODBRecordsetPropertySet(rs, member, val)
-	}
-	if cmd, exists := vm.adodbCommandItems[objID]; exists {
-		return vm.dispatchADODBCommandPropertySet(cmd, member, val)
-	}
-	return false
+	var ok bool
+	vm.runOnSTA(func() {
+		if conn, exists := vm.adodbConnectionItems[objID]; exists {
+			ok = vm.dispatchADODBConnectionPropertySet(conn, member, val)
+			return
+		}
+		if rs, exists := vm.adodbRecordsetItems[objID]; exists {
+			ok = vm.dispatchADODBRecordsetPropertySet(rs, member, val)
+			return
+		}
+		if cmd, exists := vm.adodbCommandItems[objID]; exists {
+			ok = vm.dispatchADODBCommandPropertySet(cmd, member, val)
+			return
+		}
+	})
+	return ok
 }
 
 // --- Connection Implementation ---
@@ -463,16 +489,18 @@ func (vm *VM) adodbConnectionOpenSchema(conn *adodbConnection, args []Value) Val
 	}
 
 	if conn.oleConnection != nil && len(rs.data) == 0 {
-		res, err := vm.adodbConnectionOpenSchemaOLE(conn, schemaID, restrictions)
-		if err == nil && res != nil {
-			disp := res.ToIDispatch()
-			if disp != nil {
-				disp.AddRef()
-				rs.oleRecordset = disp
-				vm.adodbPopulateRecordsetFromOLE(rs)
+		vm.runOnSTA(func() {
+			res, err := vm.adodbConnectionOpenSchemaOLE(conn, schemaID, restrictions)
+			if err == nil && res != nil {
+				disp := res.ToIDispatch()
+				if disp != nil {
+					disp.AddRef()
+					rs.oleRecordset = disp
+					vm.adodbPopulateRecordsetFromOLE(rs)
+				}
+				res.Clear()
 			}
-			res.Clear()
-		}
+		})
 	}
 
 	vm.adodbFinalizeDisconnectedRecordset(rs)
@@ -502,12 +530,16 @@ func (vm *VM) adodbConnectionClose(conn *adodbConnection) {
 		conn.db = nil
 	}
 	if conn.oleConnection != nil {
-		res, _ := oleutil.CallMethod(conn.oleConnection, "Close")
-		if res != nil {
-			res.Clear()
-		}
-		conn.oleConnection.Release()
-		conn.oleConnection = nil
+		vm.runOnSTA(func() {
+			if conn.oleConnection != nil {
+				res, _ := oleutil.CallMethod(conn.oleConnection, "Close")
+				if res != nil {
+					res.Clear()
+				}
+				conn.oleConnection.Release()
+				conn.oleConnection = nil
+			}
+		})
 	}
 	conn.state = adStateClosed
 }
@@ -646,26 +678,37 @@ func (vm *VM) adodbConnectionExecute(conn *adodbConnection, args []Value) Value 
 	}
 
 	if conn.oleConnection != nil {
-		// OLE Execute
-		res, err := oleutil.CallMethod(conn.oleConnection, "Execute", sqlText)
-		if err != nil {
-			vm.adodbConnectionRaiseProviderError(conn, "ADODB.Connection.Execute", "OLE: "+err.Error(), "")
-			return Value{Type: VTEmpty}
-		}
-		if res != nil {
-			defer res.Clear()
-			if isQuery {
-				disp := res.ToIDispatch()
-				if disp != nil {
-					disp.AddRef()
-					rsVal := vm.newADODBRecordset()
-					rs := vm.adodbRecordsetItems[rsVal.Num]
-					rs.oleRecordset = disp
-					rs.state = adStateOpen
-					vm.adodbPopulateRecordsetFromOLE(rs)
-					return rsVal
+		var rsVal Value
+		var executed bool
+		vm.runOnSTA(func() {
+			res, err := oleutil.CallMethod(conn.oleConnection, "Execute", sqlText)
+			if err != nil {
+				vm.adodbConnectionRaiseProviderError(conn, "ADODB.Connection.Execute", "OLE: "+err.Error(), "")
+				rsVal = Value{Type: VTEmpty}
+				executed = true
+				return
+			}
+			if res != nil {
+				defer res.Clear()
+				if isQuery {
+					disp := res.ToIDispatch()
+					if disp != nil {
+						disp.AddRef()
+						rsVal = vm.newADODBRecordset()
+						rs := vm.adodbRecordsetItems[rsVal.Num]
+						rs.oleRecordset = disp
+						rs.state = adStateOpen
+						vm.adodbPopulateRecordsetFromOLE(rs)
+						executed = true
+						return
+					}
 				}
 			}
+			rsVal = Value{Type: VTEmpty}
+			executed = true
+		})
+		if executed {
+			return rsVal
 		}
 	}
 
@@ -1163,54 +1206,56 @@ func (vm *VM) adodbRecordsetOpen(rs *adodbRecordset, sqlText string, conn *adodb
 	}
 
 	if conn.oleConnection != nil {
-		unknown, createErr := oleutil.CreateObject("ADODB.Recordset")
-		if createErr != nil {
-			vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+createErr.Error(), "")
-			return
-		}
-		disp, dispatchErr := unknown.QueryInterface(ole.IID_IDispatch)
-		unknown.Release()
-		if dispatchErr != nil {
-			vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+dispatchErr.Error(), "")
-			return
-		}
+		vm.runOnSTA(func() {
+			unknown, createErr := oleutil.CreateObject("ADODB.Recordset")
+			if createErr != nil {
+				vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+createErr.Error(), "")
+				return
+			}
+			disp, dispatchErr := unknown.QueryInterface(ole.IID_IDispatch)
+			unknown.Release()
+			if dispatchErr != nil {
+				vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+dispatchErr.Error(), "")
+				return
+			}
 
-		cursorLocation, cursorType, lockType := vm.adodbResolveOLERecordsetOpenOptions(rs, conn, args)
-		if _, putErr := oleutil.PutProperty(disp, "CursorLocation", cursorLocation); putErr != nil {
+			cursorLocation, cursorType, lockType := vm.adodbResolveOLERecordsetOpenOptions(rs, conn, args)
+			if _, putErr := oleutil.PutProperty(disp, "CursorLocation", cursorLocation); putErr != nil {
+				disp.Release()
+				vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+putErr.Error(), "")
+				return
+			}
+
+			openArgs := make([]any, 0, 5)
+			openArgs = append(openArgs, sqlText, conn.oleConnection, cursorType, lockType)
+			if len(args) >= 5 && args[4].Type != VTEmpty {
+				openArgs = append(openArgs, vm.adodbOLEVariantArg(args[4]))
+			}
+
+			openRes, openErr := oleutil.CallMethod(disp, "Open", openArgs...)
+			if openErr != nil {
+				disp.Release()
+				vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+openErr.Error(), "")
+				return
+			}
+			if openRes != nil {
+				openRes.Clear()
+			}
+
+			rs.oleRecordset = disp
+			rs.cursorLocation = int(cursorLocation)
+			rs.cursorType = int(cursorType)
+			rs.lockType = int(lockType)
+			rs.state = adStateOpen
+			// Materialise rows immediately, then release the COM cursor so later VM work
+			// stays in the in-memory cache and never depends on apartment-bound MoveNext calls.
+			vm.adodbPopulateRecordsetFromOLE(rs)
+			_, _ = oleutil.CallMethod(disp, "Close")
 			disp.Release()
-			vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+putErr.Error(), "")
-			return
-		}
-
-		openArgs := make([]any, 0, 5)
-		openArgs = append(openArgs, sqlText, conn.oleConnection, cursorType, lockType)
-		if len(args) >= 5 && args[4].Type != VTEmpty {
-			openArgs = append(openArgs, vm.adodbOLEVariantArg(args[4]))
-		}
-
-		openRes, openErr := oleutil.CallMethod(disp, "Open", openArgs...)
-		if openErr != nil {
-			disp.Release()
-			vm.adodbConnectionRaiseProviderError(conn, "ADODB.Recordset.Open", "OLE: "+openErr.Error(), "")
-			return
-		}
-		if openRes != nil {
-			openRes.Clear()
-		}
-
-		rs.oleRecordset = disp
-		rs.cursorLocation = int(cursorLocation)
-		rs.cursorType = int(cursorType)
-		rs.lockType = int(lockType)
-		rs.state = adStateOpen
-		// Materialise rows immediately, then release the COM cursor so later VM work
-		// stays in the in-memory cache and never depends on apartment-bound MoveNext calls.
-		vm.adodbPopulateRecordsetFromOLE(rs)
-		_, _ = oleutil.CallMethod(disp, "Close")
-		disp.Release()
-		rs.oleRecordset = nil
-		rs.status = adRecOK
-		rs.editMode = adEditNone
+			rs.oleRecordset = nil
+			rs.status = adRecOK
+			rs.editMode = adEditNone
+		})
 	}
 }
 
@@ -1458,10 +1503,14 @@ func (vm *VM) adodbRecordsetClose(rs *adodbRecordset) {
 	rs.fieldChunkOffset = make(map[string]int)
 	vm.adodbRecordsetClearPendingUpdateFields(rs)
 	if rs.oleRecordset != nil {
-		// Close the OLE Recordset before releasing to free server-side resources.
-		_, _ = oleutil.CallMethod(rs.oleRecordset, "Close")
-		rs.oleRecordset.Release()
-		rs.oleRecordset = nil
+		vm.runOnSTA(func() {
+			if rs.oleRecordset != nil {
+				// Close the OLE Recordset before releasing to free server-side resources.
+				_, _ = oleutil.CallMethod(rs.oleRecordset, "Close")
+				rs.oleRecordset.Release()
+				rs.oleRecordset = nil
+			}
+		})
 	}
 }
 
@@ -2330,94 +2379,146 @@ func (vm *VM) adodbFieldChunkOffsetSet(field *adodbFieldProxy, offset int) {
 }
 
 func (vm *VM) dispatchADODBFieldMethod(objID int64, member string, args []Value) (Value, bool) {
-	field, exists := vm.adodbFieldItems[objID]
-	if !exists {
-		return Value{Type: VTEmpty}, false
-	}
-	switch {
-	case strings.EqualFold(member, "AppendChunk"):
-		if len(args) >= 1 {
-			current, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-			combined := current.String() + args[0].String()
-			vm.dispatchADODBFieldPropertySet(objID, "Value", NewString(combined))
-			field.rs.editMode = adEditInProgress
+	var ret Value
+	var ok bool
+	vm.runOnSTA(func() {
+		field, exists := vm.adodbFieldItems[objID]
+		if !exists {
+			return
 		}
-		return Value{Type: VTEmpty}, true
-	case strings.EqualFold(member, "GetChunk"):
-		value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-		all := value.String()
-		offset := min(vm.adodbFieldChunkOffsetGet(field), len(all))
-		want := len(all) - offset
-		if len(args) >= 1 {
-			requested := max(vm.asInt(args[0]), 0)
-			if requested < want {
-				want = requested
+		switch {
+		case strings.EqualFold(member, "AppendChunk"):
+			if len(args) >= 1 {
+				current, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
+				combined := current.String() + args[0].String()
+				vm.dispatchADODBFieldPropertySet(objID, "Value", NewString(combined))
+				field.rs.editMode = adEditInProgress
+			}
+			ret = Value{Type: VTEmpty}
+			ok = true
+			return
+		case strings.EqualFold(member, "GetChunk"):
+			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
+			all := value.String()
+			offset := min(vm.adodbFieldChunkOffsetGet(field), len(all))
+			want := len(all) - offset
+			if len(args) >= 1 {
+				requested := max(vm.asInt(args[0]), 0)
+				if requested < want {
+					want = requested
+				}
+			}
+			if want <= 0 {
+				ret = NewString("")
+				ok = true
+				return
+			}
+			end := min(offset+want, len(all))
+			vm.adodbFieldChunkOffsetSet(field, end)
+			ret = NewString(all[offset:end])
+			ok = true
+			return
+		}
+		if member == "" {
+			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
+				row := field.rs.data[field.rs.currentRow]
+				ret = row[field.cachedLowerName]
+				ok = true
+				return
 			}
 		}
-		if want <= 0 {
-			return NewString(""), true
-		}
-		end := min(offset+want, len(all))
-		vm.adodbFieldChunkOffsetSet(field, end)
-		return NewString(all[offset:end]), true
-	}
-	if member == "" {
-		if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-			row := field.rs.data[field.rs.currentRow]
-			return row[field.cachedLowerName], true
-		}
+	})
+	if ok {
+		return ret, true
 	}
 	return Value{Type: VTEmpty}, false
 }
 
 func (vm *VM) dispatchADODBFieldPropertyGet(objID int64, member string) (Value, bool) {
-	field, exists := vm.adodbFieldItems[objID]
-	if !exists {
-		return Value{Type: VTEmpty}, false
-	}
-	switch {
-	case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
-		if vm.adodbRecordsetIsLiveOLE(field.rs) {
-			if val, ok := vm.adodbOLEGetFieldValue(field.rs, field.name); ok {
-				return val, true
+	var ret Value
+	var ok bool
+	vm.runOnSTA(func() {
+		field, exists := vm.adodbFieldItems[objID]
+		if !exists {
+			return
+		}
+		switch {
+		case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
+			if vm.adodbRecordsetIsLiveOLE(field.rs) {
+				if val, valOk := vm.adodbOLEGetFieldValue(field.rs, field.name); valOk {
+					ret = val
+					ok = true
+					return
+				}
+				ret = Value{Type: VTEmpty}
+				ok = true
+				return
 			}
-			return Value{Type: VTEmpty}, true
-		}
-		if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-			row := field.rs.data[field.rs.currentRow]
-			return row[field.cachedLowerName], true
-		}
-		return Value{Type: VTEmpty}, true
-	case strings.EqualFold(member, "Name"):
-		return NewString(field.name), true
-	case strings.EqualFold(member, "Type"):
-		return NewInteger(int64(field.rs.columnTypeByName[field.cachedLowerName])), true
-	case strings.EqualFold(member, "DefinedSize"):
-		return NewInteger(int64(field.rs.columnSizeByName[field.cachedLowerName])), true
-	case strings.EqualFold(member, "Attributes"):
-		return NewInteger(int64(field.rs.columnAttrByName[field.cachedLowerName])), true
-	case strings.EqualFold(member, "NumericScale"):
-		return NewInteger(int64(field.rs.columnScaleByName[field.cachedLowerName])), true
-	case strings.EqualFold(member, "ActualSize"):
-		value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-		return NewInteger(int64(len(value.String()))), true
-	case strings.EqualFold(member, "DataFormat"):
-		return Value{Type: VTEmpty}, true
-	case strings.EqualFold(member, "OriginalValue"):
-		value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-		return value, true
-	case strings.EqualFold(member, "Precision"):
-		precision := field.rs.columnSizeByName[field.cachedLowerName]
-		if precision <= 0 {
+			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
+				row := field.rs.data[field.rs.currentRow]
+				ret = row[field.cachedLowerName]
+				ok = true
+				return
+			}
+			ret = Value{Type: VTEmpty}
+			ok = true
+			return
+		case strings.EqualFold(member, "Name"):
+			ret = NewString(field.name)
+			ok = true
+			return
+		case strings.EqualFold(member, "Type"):
+			ret = NewInteger(int64(field.rs.columnTypeByName[field.cachedLowerName]))
+			ok = true
+			return
+		case strings.EqualFold(member, "DefinedSize"):
+			ret = NewInteger(int64(field.rs.columnSizeByName[field.cachedLowerName]))
+			ok = true
+			return
+		case strings.EqualFold(member, "Attributes"):
+			ret = NewInteger(int64(field.rs.columnAttrByName[field.cachedLowerName]))
+			ok = true
+			return
+		case strings.EqualFold(member, "NumericScale"):
+			ret = NewInteger(int64(field.rs.columnScaleByName[field.cachedLowerName]))
+			ok = true
+			return
+		case strings.EqualFold(member, "ActualSize"):
 			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-			precision = len(value.String())
+			ret = NewInteger(int64(len(value.String())))
+			ok = true
+			return
+		case strings.EqualFold(member, "DataFormat"):
+			ret = Value{Type: VTEmpty}
+			ok = true
+			return
+		case strings.EqualFold(member, "OriginalValue"):
+			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
+			ret = value
+			ok = true
+			return
+		case strings.EqualFold(member, "Precision"):
+			precision := field.rs.columnSizeByName[field.cachedLowerName]
+			if precision <= 0 {
+				value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
+				precision = len(value.String())
+			}
+			ret = NewInteger(int64(precision))
+			ok = true
+			return
+		case strings.EqualFold(member, "Status"):
+			ret = NewInteger(int64(field.rs.status))
+			ok = true
+			return
+		case strings.EqualFold(member, "UnderlyingValue"):
+			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
+			ret = value
+			ok = true
+			return
 		}
-		return NewInteger(int64(precision)), true
-	case strings.EqualFold(member, "Status"):
-		return NewInteger(int64(field.rs.status)), true
-	case strings.EqualFold(member, "UnderlyingValue"):
-		value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-		return value, true
+	})
+	if ok {
+		return ret, true
 	}
 	return Value{Type: VTEmpty}, false
 }
@@ -2611,43 +2712,48 @@ func (vm *VM) adodbOLESetFieldValue(rs *adodbRecordset, fieldName string, val Va
 	return true
 }
 
-// dispatchADODBFieldPropertySet handles writable ADODB.Field properties.
 func (vm *VM) dispatchADODBFieldPropertySet(objID int64, member string, val Value) bool {
-	field, exists := vm.adodbFieldItems[objID]
-	if !exists {
-		return false
-	}
-	lowerName := field.cachedLowerName
-	switch {
-	case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
-		if vm.adodbRecordsetIsLiveOLE(field.rs) {
-			if vm.adodbOLESetFieldValue(field.rs, field.name, val) {
-				if field.rs.editMode != adEditAdd {
-					field.rs.editMode = adEditInProgress
-				}
-				vm.adodbRecordsetMarkPendingUpdateField(field.rs, field.name)
-				vm.adodbFieldChunkOffsetSet(field, 0)
-				return true
-			}
-			return false
+	var ok bool
+	vm.runOnSTA(func() {
+		field, exists := vm.adodbFieldItems[objID]
+		if !exists {
+			return
 		}
-		if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-			row := field.rs.data[field.rs.currentRow]
-			if row != nil {
-				row[lowerName] = val
-				if field.rs.editMode != adEditAdd {
-					field.rs.editMode = adEditInProgress
+		lowerName := field.cachedLowerName
+		switch {
+		case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
+			if vm.adodbRecordsetIsLiveOLE(field.rs) {
+				if vm.adodbOLESetFieldValue(field.rs, field.name, val) {
+					if field.rs.editMode != adEditAdd {
+						field.rs.editMode = adEditInProgress
+					}
+					vm.adodbRecordsetMarkPendingUpdateField(field.rs, field.name)
+					vm.adodbFieldChunkOffsetSet(field, 0)
+					ok = true
+					return
 				}
-				vm.adodbRecordsetMarkPendingUpdateField(field.rs, lowerName)
-				vm.adodbFieldChunkOffsetSet(field, 0)
+				return
 			}
+			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
+				row := field.rs.data[field.rs.currentRow]
+				if row != nil {
+					row[lowerName] = val
+					if field.rs.editMode != adEditAdd {
+						field.rs.editMode = adEditInProgress
+					}
+					vm.adodbRecordsetMarkPendingUpdateField(field.rs, lowerName)
+					vm.adodbFieldChunkOffsetSet(field, 0)
+				}
+			}
+			ok = true
+			return
+		case strings.EqualFold(member, "NumericScale"):
+			field.rs.columnScaleByName[lowerName] = vm.asInt(val)
+			ok = true
+			return
 		}
-		return true
-	case strings.EqualFold(member, "NumericScale"):
-		field.rs.columnScaleByName[lowerName] = vm.asInt(val)
-		return true
-	}
-	return false
+	})
+	return ok
 }
 
 var adodbSimpleSelectSourceRE = regexp.MustCompile(`(?is)^\s*select\s+\*\s+from\s+(.+?)(?:\s+where\s+(.+?))?(?:\s+order\s+by\s+.+)?\s*$`)
@@ -4599,71 +4705,67 @@ func (vm *VM) adodbOpenAccessDatabase(conn *adodbConnection, connStr string) {
 	if vm.adodbAccessPreflightOpen(conn, connStr) {
 		return
 	}
-	err := vm.ensureCOMRequestThread()
-	if err != nil {
-		vm.raise(vbscript.InternalError,
-			"COM initialization failed: "+err.Error())
-		return
-	}
 
-	unknown, err := oleutil.CreateObject("ADODB.Connection")
-	if err != nil {
-		vm.adodbConnectionClose(conn)
-		vm.raise(vbscript.InternalError,
-			"ADODB.Connection OLE creation failed: "+err.Error())
-		return
-	}
-	dispatch, err := unknown.QueryInterface(ole.IID_IDispatch)
-	unknown.Release()
-	if err != nil {
-		vm.adodbConnectionClose(conn)
-		vm.raise(vbscript.InternalError,
-			"ADODB.Connection OLE interface failed: "+err.Error())
-		return
-	}
-
-	modeRes, modeErr := oleutil.PutProperty(dispatch, "Mode", int32(adModeShareDenyNone))
-	if modeRes != nil {
-		modeRes.Clear()
-	}
-	if modeErr != nil {
-		dispatch.Release()
-		vm.adodbConnectionClose(conn)
-		vm.raise(vbscript.InternalError,
-			"ADODB.Connection OLE Mode failed: "+modeErr.Error())
-		return
-	}
-
-	// Do NOT set CursorLocation = adUseClient on the Connection.
-	// Activating the Microsoft Cursor Service (MSDAER.dll) at the Connection level
-	// causes Connection.Execute to go through the Cursor Service, which is an
-	// STA COM object. Calling it from an MTA-initialised thread causes an
-	// intra-process apartment marshaling deadlock for complex queries (e.g. LEFT
-	// JOINs with ORDER BY): the Cursor Service's STA thread waits for a message
-	// the locked OS thread can never deliver.  We use adUseServer (the default)
-	// so that ACE OLEDB handles the rowset in-process with no STA involvement.
-	// Rows are then eagerly materialised into rs.data by adodbPopulateRecordsetFromOLE.
-	_, err = oleutil.CallMethod(dispatch, "Open", connStr)
-	if err != nil {
-		if fallbackConnStr, ok := adodbAlternateAccessProviderConnectionString(connStr); ok {
-			_, fallbackErr := oleutil.CallMethod(dispatch, "Open", fallbackConnStr)
-			if fallbackErr == nil {
-				conn.connectionString = fallbackConnStr
-				conn.oleConnection = dispatch
-				conn.state = adStateOpen
-				return
-			}
+	var openErr error
+	vm.runOnSTA(func() {
+		unknown, err := oleutil.CreateObject("ADODB.Connection")
+		if err != nil {
+			openErr = fmt.Errorf("ADODB.Connection OLE creation failed: %w", err)
+			return
 		}
-		dispatch.Release()
+		dispatch, err := unknown.QueryInterface(ole.IID_IDispatch)
+		unknown.Release()
+		if err != nil {
+			openErr = fmt.Errorf("ADODB.Connection OLE interface failed: %w", err)
+			return
+		}
+
+		modeRes, modeErr := oleutil.PutProperty(dispatch, "Mode", int32(adModeShareDenyNone))
+		if modeRes != nil {
+			modeRes.Clear()
+		}
+		if modeErr != nil {
+			dispatch.Release()
+			openErr = fmt.Errorf("ADODB.Connection OLE Mode failed: %w", modeErr)
+			return
+		}
+
+		// Do NOT set CursorLocation = adUseClient on the Connection.
+		// Activating the Microsoft Cursor Service (MSDAER.dll) at the Connection level
+		// causes Connection.Execute to go through the Cursor Service, which is an
+		// STA COM object. Calling it from an MTA-initialised thread causes an
+		// intra-process apartment marshaling deadlock for complex queries (e.g. LEFT
+		// JOINs with ORDER BY): the Cursor Service's STA thread waits for a message
+		// the locked OS thread can never deliver.  We use adUseServer (the default)
+		// so that ACE OLEDB handles the rowset in-process with no STA involvement.
+		// Rows are then eagerly materialised into rs.data by adodbPopulateRecordsetFromOLE.
+		_, err = oleutil.CallMethod(dispatch, "Open", connStr)
+		if err != nil {
+			if fallbackConnStr, ok := adodbAlternateAccessProviderConnectionString(connStr); ok {
+				_, fallbackErr := oleutil.CallMethod(dispatch, "Open", fallbackConnStr)
+				if fallbackErr == nil {
+					conn.connectionString = fallbackConnStr
+					conn.oleConnection = dispatch
+					conn.state = adStateOpen
+					return
+				}
+			}
+			dispatch.Release()
+			openErr = fmt.Errorf("ADODB.Connection OLE Open failed: %w", err)
+			return
+		}
+
+		conn.oleConnection = dispatch
+		conn.state = adStateOpen
+	})
+
+	if openErr != nil {
 		vm.adodbConnectionClose(conn)
 		summary := adodbConnectionDebugSummary(connStr)
 		vm.raise(vbscript.InternalError,
-			"ADODB.Connection OLE Open failed: "+err.Error()+" ("+summary+")")
+			openErr.Error()+" ("+summary+")")
 		return
 	}
-
-	conn.oleConnection = dispatch
-	conn.state = adStateOpen
 }
 
 // adodbPopulateRecordsetFromOLE reads column names and all rows from an OLE ADO Recordset
@@ -4970,4 +5072,70 @@ func comInitialize() (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func (vm *VM) startSTAWorker() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	vm.staTaskChan = make(chan func())
+	vm.quitSTA = make(chan struct{})
+
+	staTaskChan := vm.staTaskChan
+	quitSTA := vm.quitSTA
+
+	go func() {
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+
+		_, _ = comInitialize()
+
+		for {
+			select {
+			case task, ok := <-staTaskChan:
+				if !ok {
+					return
+				}
+				if task != nil {
+					task()
+				}
+			case <-quitSTA:
+				return
+			}
+		}
+	}()
+}
+
+func (vm *VM) stopSTAWorker() {
+	if vm.quitSTA != nil {
+		select {
+		case <-vm.quitSTA:
+			// Already closed
+		default:
+			close(vm.quitSTA)
+		}
+		vm.quitSTA = nil
+	}
+	vm.staTaskChan = nil
+}
+
+func (vm *VM) runOnSTA(f func()) {
+	if vm == nil || vm.staTaskChan == nil || runtime.GOOS != "windows" {
+		f()
+		return
+	}
+	if vm.inSTATask {
+		f()
+		return
+	}
+	done := make(chan struct{})
+	vm.staTaskChan <- func() {
+		defer func() {
+			vm.inSTATask = false
+			close(done)
+		}()
+		vm.inSTATask = true
+		f()
+	}
+	<-done
 }

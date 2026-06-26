@@ -80,23 +80,18 @@ Deploy AxonASP via its built-in HTTP server (Reverse Proxy Mode) or via FastCGI 
 
 See our full documentation in `www/manual/md/` for examples and complete API details.
 
-## 🤝 Contributing & Security
+## License 📝
 
-* Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute.
-* Please see [SECURITY.md](SECURITY.md) for information on reporting security vulnerabilities.
+This project is licensed under the MPL 2.0 License - see the [LICENSE.txt](LICENSE.txt) file for details.
 
----
-
-### License
-This project is licensed under the MPL License - see the [LICENSE.txt](LICENSE.txt) file for details.
-
----
-
-## Contributing to AxonASP ✨
+## Contributing to AxonASP 🤝
 
 While not mandatory, we warmly encourage you to contribute to the AxonASP project. If you develop new components or libraries, please consider sharing your implementation with the community; your contributions help maintain, improve, and expand our ecosystem.
 
 As an open-source project, AxonASP relies on community support to remain active. Maintenance and infrastructure costs are currently funded personally by the lead developer. Your support—whether through code contributions, bug reports, security patches, or financial donations—is vital to our continued growth. 
+
+* Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute.
+* Please see [SECURITY.md](SECURITY.md) for information on reporting security vulnerabilities.
 
 Thanks goes to these wonderful people:
 
@@ -126,7 +121,8 @@ Thanks goes to these wonderful people:
   Making Classic ASP modern, fast, and cross-platform
 </p>
 
-#### Legal Disclaimer
+---
+#### Legal Disclaimer ⚖️
 
 AxonASP is an independent software project developed by G3pix and is **not affiliated with, endorsed by, or sponsored by Microsoft Corporation**. Trademarks such as "Microsoft," "Active Server Pages," "ASP," "VBScript," "JScript" are registered trademarks of Microsoft Corporation. The names and aliases of other third-party libraries, software, products, and services mentioned in this project are the property of their respective owners. The use of these names is solely for descriptive purposes/compatibility and does not imply any endorsement or affiliation with the trademark holders or use of their original source code.
 

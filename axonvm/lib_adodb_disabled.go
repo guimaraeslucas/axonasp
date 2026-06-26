@@ -191,3 +191,9 @@ func (vm *VM) ensureCOMRequestThread() error {
 // releaseCOMRequestThread is a no-op because ADODB (and COM) support is compiled out.
 func (vm *VM) releaseCOMRequestThread() {
 }
+
+func (vm *VM) startSTAWorker() {}
+func (vm *VM) stopSTAWorker()  {}
+func (vm *VM) runOnSTA(f func()) {
+	f()
+}

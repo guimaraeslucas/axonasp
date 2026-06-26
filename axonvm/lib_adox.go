@@ -94,12 +94,18 @@ func (c *ADOXCatalog) getTables() Value {
 
 func (c *ADOXCatalog) loadTables() []*ADOXTable {
 	if runtime.GOOS == "windows" {
-		oleConn, cleanup := c.resolveOLEConnection()
-		if cleanup != nil {
-			defer cleanup()
-		}
-		if oleConn != nil {
-			return listADOXTables(oleConn)
+		var tables []*ADOXTable
+		c.vm.runOnSTA(func() {
+			oleConn, cleanup := c.resolveOLEConnection()
+			if cleanup != nil {
+				defer cleanup()
+			}
+			if oleConn != nil {
+				tables = listADOXTables(oleConn)
+			}
+		})
+		if tables != nil {
+			return tables
 		}
 	}
 	return c.listTablesNative()

@@ -83,7 +83,7 @@
                             " />AxonASP Database Conversion Tool
                     </div>
                     <div class="title-bar-controls">
-                        <button aria-label="Close" disabled></button>
+                        <!--<button aria-label="Close" disabled></button>-->
                     </div>
                 </div>
                 <div class="window-body">

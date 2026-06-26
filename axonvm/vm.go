@@ -29,6 +29,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -587,6 +588,10 @@ type VM struct {
 	pooledSlot      chan struct{}
 	comInitialized  bool
 	comThreadLocked bool
+	staTaskChan     chan func()
+	quitSTA         chan struct{}
+	parentVM        *VM
+	inSTATask       bool
 	runDepth        int
 
 	// jsDirectCallHaltIP is a lazily allocated OpHalt trampoline used by
@@ -846,6 +851,11 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 
 	vm.captureBaseProgramState()
 	vm.rebuildGlobalNameIndex()
+
+	vm.startSTAWorker()
+	runtime.SetFinalizer(vm, func(v *VM) {
+		v.stopSTAWorker()
+	})
 
 	return vm
 }
@@ -1523,6 +1533,7 @@ func (vm *VM) cloneForExecuteGlobal(startIP int) *VM {
 func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	vm.cloneForExecuteLocalCount++
 	child := *vm
+	child.parentVM = vm
 	// Copy the active stack so the child can suspend or resume without being
 	// clobbered by the caller continuing execution on the parent VM.
 	child.stack = make([]Value, len(vm.stack))

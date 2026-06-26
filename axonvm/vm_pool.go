@@ -109,6 +109,8 @@ func (vm *VM) Release() {
 	vm.resetForReuse()
 	if pool != nil {
 		pool.put(vm)
+	} else {
+		vm.stopSTAWorker()
 	}
 	releaseVMPoolSlot(slot)
 }
