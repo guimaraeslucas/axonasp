@@ -1,8 +1,4 @@
 # ❖ AxonASP 2.2: The Ultimate Classic ASP Engine for the Modern Web
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
-
 <p align="center">
   <img src="www/axonasp.svg" alt="G3Pix AxonASP Logo" width="400"/>
 </p>
@@ -16,6 +12,9 @@
   <img src="https://img.shields.io/badge/Go-1.26+-00ADD8.svg" alt="Go Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MPL-green.svg" alt="License"/>
+  <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-3-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 </p>
 
 Welcome to **AxonASP 2.2**, the definitive high-performance runtime for executing Microsoft Classic ASP, VBScript, and JavaScript in GoLang. If you are looking for how to run Classic ASP on Linux or modernize legacy applications within a Docker container, AxonASP provides a robust, zero-allocation VM architecture tailored for modern infrastructure.
