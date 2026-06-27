@@ -543,17 +543,17 @@ func (c *Compiler) parseStatement() {
 			flatMemberName := strings.Join(memberChain, ".")
 			callMemberName := flatMemberName
 			if len(memberChain) > 1 {
-				if _, ok := c.next.(*vbscript.PunctuationToken); ok {
-					// In statement call contexts, chain intermediate zero-arg member gets so
-					// patterns like aspl.json.dump(x) call Dump on json() result.
-					if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
-						for i := 0; i < len(memberChain)-1; i++ {
-							intermediateIdx := c.addConstant(NewString(memberChain[i]))
-							c.emit(OpConstant, intermediateIdx)
-							c.emit(OpMemberGet)
-						}
-						callMemberName = memberChain[len(memberChain)-1]
+				isAssignment := false
+				if peq, ok := c.next.(*vbscript.PunctuationToken); ok && peq.Type == vbscript.PunctEqual {
+					isAssignment = true
+				}
+				if !isAssignment {
+					for i := 0; i < len(memberChain)-1; i++ {
+						intermediateIdx := c.addConstant(NewString(memberChain[i]))
+						c.emit(OpConstant, intermediateIdx)
+						c.emit(OpMemberGet)
 					}
+					callMemberName = memberChain[len(memberChain)-1]
 				}
 			}
 

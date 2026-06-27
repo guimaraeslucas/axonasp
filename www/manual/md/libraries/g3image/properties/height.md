@@ -1,26 +1,33 @@
 # Height Property
 
 ## Overview
-Returns the height of the current drawing context in the G3Pix AxonASP G3IMAGE library.
+Gets or sets the height of the active image context.
 
 ## Syntax
 ```asp
+' Get height
 h = obj.Height
+
+' Set height (resizes the image)
+obj.Height = newHeight
 ```
 
 ## Return Values
 Returns an Integer representing the height in pixels. Returns 0 if no context is active.
 
 ## Remarks
-- This property is read-only. To set the height, create a new context using NewContext.
+- When using the `Persits.Jpeg` compatibility layer, this property is read/write. Setting it will resample/resize the image to the new height using the algorithm specified by the `Interpolation` property.
+- For native G3IMAGE instances, this property remains read-only.
 
 ## Code Example
 ```asp
 <%
-Dim img
-Set img = Server.CreateObject("G3IMAGE")
-img.NewContext 400, 300
-Response.Write "Context height: " & img.Height
-Set img = Nothing
+Dim jpeg
+Set jpeg = Server.CreateObject("Persits.Jpeg")
+jpeg.Open Server.MapPath("photo.jpg")
+jpeg.Height = 150 ' Resizes the image to 150px height
+jpeg.Save Server.MapPath("resized.jpg")
+jpeg.Close
+Set jpeg = Nothing
 %>
 ```

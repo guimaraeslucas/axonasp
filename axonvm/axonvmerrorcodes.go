@@ -201,6 +201,13 @@ const (
 	ErrG3ALWebSocketNotSupported  AxonASPErrorCode = 10011
 	ErrG3ALResponseAlreadyEnded   AxonASPErrorCode = 10012
 	ErrG3ALDisabled               AxonASPErrorCode = 10013
+
+	// G3IMAGE library / Persits.Jpeg errors (11000-11099).
+	ErrG3ImageInvalidArgCount  AxonASPErrorCode = 11000
+	ErrG3ImageInvalidDimension AxonASPErrorCode = 11001
+	ErrG3ImageLoadFailed       AxonASPErrorCode = 11002
+	ErrG3ImageSaveFailed       AxonASPErrorCode = 11003
+	ErrG3ImageNotInitialized   AxonASPErrorCode = 11004
 )
 
 var AxonASPErrorMessages = map[AxonASPErrorCode]string{
@@ -384,6 +391,13 @@ var AxonASPErrorMessages = map[AxonASPErrorCode]string{
 	ErrG3ALWebSocketNotSupported:  "G3AXONLIVE: WebSocket connections are not supported in FastCGI mode; use the HTTP server",
 	ErrG3ALResponseAlreadyEnded:   "G3AXONLIVE: EndAsyncResponse has already been called for this request",
 	ErrG3ALDisabled:               "G3AXONLIVE: the G3AxonLive library is disabled; enable it in axonasp.toml under [g3axonlive]",
+
+	// G3IMAGE library / Persits.Jpeg
+	ErrG3ImageInvalidArgCount:  "G3IMAGE: invalid number of arguments",
+	ErrG3ImageInvalidDimension: "G3IMAGE: invalid image dimension",
+	ErrG3ImageLoadFailed:       "G3IMAGE: failed to load image from path",
+	ErrG3ImageSaveFailed:       "G3IMAGE: failed to save image to path",
+	ErrG3ImageNotInitialized:   "G3IMAGE: image context not initialized",
 }
 
 func (e AxonASPErrorCode) String() string {

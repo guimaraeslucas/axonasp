@@ -2,7 +2,7 @@
 
 ## Overview
 
-This page summarizes every method exposed by `G3IMAGE` in G3Pix AxonASP.
+This page summarizes every method exposed by `G3IMAGE` and the `Persits.Jpeg` compatibility layer in G3Pix AxonASP.
 
 ## Methods
 
@@ -32,11 +32,20 @@ This page summarizes every method exposed by `G3IMAGE` in G3Pix AxonASP.
 | `DrawString(text, x, y)` | Empty | Draws text at coordinates. |
 | `DrawStringAnchored(text, x, y, ax, ay)` | Empty | Draws anchored text with alignment factors. |
 | `MeasureString(text)` | Array or Empty | Returns two-element array `[width, height]` as Double values, or Empty when no context is active. |
-| `DrawImage(x, y)` | Empty | Draws last loaded image at destination coordinates in the active context. |
+| `DrawImage(x, y)` / `DrawImage(x, y, JpegObject)` | Empty | Draws last loaded image or another Jpeg object instance over the current one. |
 | `RenderViaTemp([format] [, quality])` | Array or Empty | Renders current image and returns byte array; returns Empty on render failure. |
+| `Open(path)` | Boolean or Empty | **(Persits.Jpeg Compatibility)** Opens an image from local disk. |
+| `Save(path)` | Boolean or Empty | **(Persits.Jpeg Compatibility)** Saves the modified image to disk. |
+| `SendBinary()` | Array | **(Persits.Jpeg Compatibility)** Returns the image as a binary byte array. |
+| `New(width, height, color)` | Boolean | **(Persits.Jpeg Compatibility)** Initializes a blank canvas filled with specified color. |
+| `Crop(x0, y0, x1, y1)` | Boolean | **(Persits.Jpeg Compatibility)** Crops the image to specified coordinates. |
+| `Sharpen(radius, amount)` | Empty | **(Persits.Jpeg Compatibility)** Applies a sharpening filter. |
+| `Canvas.PrintText(x, y, text)` | Empty | **(Persits.Jpeg Canvas Compatibility)** Draws text using active Font properties. |
+| `Canvas.DrawLine(x1, y1, x2, y2)` | Empty | **(Persits.Jpeg Canvas Compatibility)** Draws a line segment using Pen properties. |
+| `Canvas.DrawBar(x1, y1, x2, y2)` | Empty | **(Persits.Jpeg Canvas Compatibility)** Draws a filled rectangle using Pen color. |
 
 ## Remarks
 
-- Instantiate the library with `Server.CreateObject("G3IMAGE")`.
+- Instantiate the library with `Server.CreateObject("G3IMAGE")` or `Server.CreateObject("Persits.Jpeg")`.
 - Method names are case-insensitive.
 - Inspect `LastError` when methods return `False` or Empty.

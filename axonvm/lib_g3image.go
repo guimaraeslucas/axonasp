@@ -28,13 +28,16 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/jpeg"
 	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"g3pix.com.br/axonasp/vbscript"
 	"github.com/fogleman/gg"
+	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"
 )
 
@@ -50,6 +53,17 @@ type G3Image struct {
 	lastFontFace  font.Face
 	defaultFormat string
 	jpgQuality    int
+
+	// Persits compatibility fields
+	isPersits        bool
+	originalWidth    int
+	originalHeight   int
+	interpolationVal int // 1=Nearest, 2=Bilinear, 3=Bicubic
+
+	// Sub-object values (lazy initialized)
+	canvasVal Value
+	fontVal   Value
+	penVal    Value
 }
 
 // newG3ImageObject instantiates the G3Image custom functions library.
@@ -64,6 +78,17 @@ func (vm *VM) newG3ImageObject() Value {
 	obj.objectID = id
 	vm.g3imageItems[id] = obj
 	return Value{Type: VTNativeObject, Num: id}
+}
+
+// newPersitsJpegObject instantiates the Persits.Jpeg compatible G3Image library.
+func (vm *VM) newPersitsJpegObject() Value {
+	val := vm.newG3ImageObject()
+	obj := vm.g3imageItems[val.Num]
+	obj.isPersits = true
+	obj.defaultFormat = "jpg"
+	obj.jpgQuality = 90
+	obj.interpolationVal = 2 // Bilinear default
+	return val
 }
 
 // DispatchPropertyGet acts as a getter.
@@ -99,8 +124,16 @@ func (g *G3Image) DispatchPropertyGet(propertyName string) Value {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, arr)}
 	case "defaultformat":
 		return NewString(g.defaultFormat)
-	case "jpgquality", "jpegquality":
+	case "jpgquality", "jpegquality", "quality":
 		return NewInteger(int64(g.jpgQuality))
+	case "originalwidth":
+		return NewInteger(int64(g.originalWidth))
+	case "originalheight":
+		return NewInteger(int64(g.originalHeight))
+	case "interpolation":
+		return NewInteger(int64(g.interpolationVal))
+	case "canvas":
+		return g.getCanvas()
 	// GG Constants
 	case "alignleft":
 		return NewInteger(int64(gg.AlignLeft))
@@ -139,9 +172,36 @@ func (g *G3Image) DispatchPropertySet(propertyName string, args []Value) bool {
 			g.defaultFormat = format
 		}
 		return true
-	case "jpgquality", "jpegquality":
-		q := min(max(int(g.vm.asInt(val)), 1), 100)
+	case "jpgquality", "jpegquality", "quality":
+		q := min(max(int(g.vm.asInt(val)), 0), 100)
 		g.jpgQuality = q
+		return true
+	case "interpolation":
+		g.interpolationVal = int(g.vm.asInt(val))
+		return true
+	case "width":
+		w := int(g.vm.asInt(val))
+		if w > 0 {
+			h := 0
+			if g.dc != nil {
+				h = g.dc.Height()
+			}
+			if h > 0 {
+				g.resizeImage(w, h)
+			}
+		}
+		return true
+	case "height":
+		h := int(g.vm.asInt(val))
+		if h > 0 {
+			w := 0
+			if g.dc != nil {
+				w = g.dc.Width()
+			}
+			if w > 0 {
+				g.resizeImage(w, h)
+			}
+		}
 		return true
 	}
 	return false
@@ -157,20 +217,142 @@ func (g *G3Image) DispatchMethod(methodName string, args []Value) Value {
 		return NewBool(true)
 
 	case "new", "newcontext", "create", "createcontext", "init":
-		if len(args) < 2 {
-			g.setError("newcontext requires width and height")
+		if g.isPersits {
+			if len(args) < 2 {
+				g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+				return NewEmpty()
+			}
+			w := int(g.vm.asInt(args[0]))
+			h := int(g.vm.asInt(args[1]))
+			if w <= 0 || h <= 0 {
+				g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidDimension, nil, AxonASPErrorMessages[ErrG3ImageInvalidDimension], "axonvm/lib_g3image.go", 0).Error())
+				return NewEmpty()
+			}
+			g.releaseResources(false)
+			g.dc = gg.NewContext(w, h)
+
+			c := color.Color(color.White)
+			if len(args) >= 3 {
+				if parsed, err := g.parseColorVal(args[2]); err == nil {
+					c = parsed
+				}
+			}
+			g.dc.SetColor(c)
+			g.dc.Clear()
+			g.originalWidth = w
+			g.originalHeight = h
+			g.clearError()
+			return NewBool(true)
+		} else {
+			if len(args) < 2 {
+				g.setError("newcontext requires width and height")
+				return NewEmpty()
+			}
+			g.releaseResources(false)
+			w := int(g.vm.asInt(args[0]))
+			h := int(g.vm.asInt(args[1]))
+			if w <= 0 || h <= 0 {
+				g.setError("newcontext requires positive dimensions")
+				return NewEmpty()
+			}
+			g.dc = gg.NewContext(w, h)
+			g.clearError()
+			return NewBool(true)
+		}
+
+	case "open":
+		if len(args) < 1 {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
 			return NewEmpty()
 		}
-		g.releaseResources(false)
-		w := int(g.vm.asInt(args[0]))
-		h := int(g.vm.asInt(args[1]))
-		if w <= 0 || h <= 0 {
-			g.setError("newcontext requires positive dimensions")
+		im, err := g.loadImageFromPath(args[0].String(), "")
+		if err != nil {
+			g.setError(err.Error())
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageLoadFailed, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
 			return NewEmpty()
 		}
-		g.dc = gg.NewContext(w, h)
+		g.lastLoaded = im
+		g.originalWidth = im.Bounds().Dx()
+		g.originalHeight = im.Bounds().Dy()
+		g.dc = gg.NewContextForImage(im)
 		g.clearError()
 		return NewBool(true)
+
+	case "save":
+		if len(args) < 1 {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		if g.dc == nil {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageNotInitialized, nil, AxonASPErrorMessages[ErrG3ImageNotInitialized], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		path := args[0].String()
+		ext := strings.ToLower(filepath.Ext(path))
+		var err error
+		if ext == ".png" {
+			err = g.savePNGToPath(path)
+		} else {
+			err = g.saveJPGToPath(path, g.jpgQuality)
+		}
+		if err != nil {
+			g.setError(err.Error())
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageSaveFailed, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		return NewBool(true)
+
+	case "sendbinary":
+		if g.dc == nil {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageNotInitialized, nil, AxonASPErrorMessages[ErrG3ImageNotInitialized], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		var buf bytes.Buffer
+		err := jpeg.Encode(&buf, g.dc.Image(), &jpeg.Options{Quality: g.jpgQuality})
+		if err != nil {
+			g.setError(err.Error())
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageSaveFailed, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		g.lastBytes = buf.Bytes()
+		g.lastMimeType = "image/jpeg"
+
+		arr := make([]Value, len(g.lastBytes))
+		for i, b := range g.lastBytes {
+			arr[i] = NewInteger(int64(b))
+		}
+		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, arr)}
+
+	case "crop":
+		if len(args) < 4 {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		if g.dc == nil {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageNotInitialized, nil, AxonASPErrorMessages[ErrG3ImageNotInitialized], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		x0 := int(g.vm.asInt(args[0]))
+		y0 := int(g.vm.asInt(args[1]))
+		x1 := int(g.vm.asInt(args[2]))
+		y1 := int(g.vm.asInt(args[3]))
+		err := g.Crop(x0, y0, x1, y1)
+		if err != nil {
+			g.setError(err.Error())
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		return NewBool(true)
+
+	case "sharpen":
+		if len(args) < 2 || g.dc == nil {
+			g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		radius := g.vm.asFloat(args[0])
+		amount := g.vm.asFloat(args[1])
+		g.Sharpen(radius, amount)
+		return NewEmpty()
 
 	case "loadimage", "load":
 		if len(args) < 1 {
@@ -391,11 +573,32 @@ func (g *G3Image) DispatchMethod(methodName string, args []Value) Value {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, arr)}
 
 	case "drawimage":
-		if len(args) < 2 || g.dc == nil || g.lastLoaded == nil {
+		if g.isPersits {
+			if len(args) < 3 || g.dc == nil {
+				g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+				return NewEmpty()
+			}
+			x := int(g.vm.asInt(args[0]))
+			y := int(g.vm.asInt(args[1]))
+			otherVal := args[2]
+			if otherVal.Type != VTNativeObject {
+				g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, nil, "DrawImage third argument must be a Jpeg object", "axonvm/lib_g3image.go", 0).Error())
+				return NewEmpty()
+			}
+			otherImg, exists := g.vm.g3imageItems[otherVal.Num]
+			if !exists || otherImg == nil || otherImg.dc == nil {
+				g.vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, nil, "DrawImage third argument is an invalid or uninitialized Jpeg object", "axonvm/lib_g3image.go", 0).Error())
+				return NewEmpty()
+			}
+			g.dc.DrawImage(otherImg.dc.Image(), x, y)
+			return NewEmpty()
+		} else {
+			if len(args) < 2 || g.dc == nil || g.lastLoaded == nil {
+				return NewEmpty()
+			}
+			g.dc.DrawImage(g.lastLoaded, int(g.vm.asInt(args[0])), int(g.vm.asInt(args[1])))
 			return NewEmpty()
 		}
-		g.dc.DrawImage(g.lastLoaded, int(g.vm.asInt(args[0])), int(g.vm.asInt(args[1])))
-		return NewEmpty()
 
 	case "renderviatemp", "renderbytemp", "getcontentviatemp", "rendertemp":
 		format := g.defaultFormat
@@ -463,7 +666,7 @@ func (g *G3Image) releaseResources(clearError bool) {
 
 // cleanupG3ImageResources releases all image contexts owned by one VM request.
 func (vm *VM) cleanupG3ImageResources() {
-	if vm == nil || len(vm.g3imageItems) == 0 {
+	if vm == nil {
 		return
 	}
 	for id, item := range vm.g3imageItems {
@@ -473,6 +676,15 @@ func (vm *VM) cleanupG3ImageResources() {
 		}
 		delete(vm.g3imageItems, id)
 		delete(vm.nativeObjectProxies, id)
+	}
+	for id := range vm.g3imageCanvasItems {
+		delete(vm.g3imageCanvasItems, id)
+	}
+	for id := range vm.g3imageFontItems {
+		delete(vm.g3imageFontItems, id)
+	}
+	for id := range vm.g3imagePenItems {
+		delete(vm.g3imagePenItems, id)
 	}
 }
 
@@ -625,6 +837,10 @@ func (g *G3Image) resolveRootPath(rel string) (string, error) {
 		return "", errors.New("path is required")
 	}
 
+	if filepath.IsAbs(rel) {
+		return filepath.Abs(rel)
+	}
+
 	if g.vm.host == nil || g.vm.host.Server() == nil {
 		return filepath.Abs(rel)
 	}
@@ -741,4 +957,444 @@ func parseHexRGBA(hex string) (color.Color, error) {
 		rgba[i] = b
 	}
 	return color.NRGBA{R: rgba[0], G: rgba[1], B: rgba[2], A: rgba[3]}, nil
+}
+
+func (g *G3Image) parseColorVal(val Value) (color.Color, error) {
+	if val.Type == VTString {
+		return parseColorString(val.String())
+	}
+	n := g.vm.asInt(val)
+	// BGR color format standard for classic ASP RGB() values
+	r := uint8(n & 0xFF)
+	gComp := uint8((n >> 8) & 0xFF)
+	b := uint8((n >> 16) & 0xFF)
+	return color.NRGBA{R: r, G: gComp, B: b, A: 255}, nil
+}
+
+func (g *G3Image) resizeImage(w, h int) {
+	if g.dc == nil {
+		return
+	}
+	src := g.dc.Image()
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	var scaler xdraw.Scaler
+	switch g.interpolationVal {
+	case 1:
+		scaler = xdraw.NearestNeighbor
+	case 2:
+		scaler = xdraw.BiLinear
+	case 3:
+		scaler = xdraw.CatmullRom
+	default:
+		scaler = xdraw.BiLinear
+	}
+	scaler.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Over, nil)
+	g.dc = gg.NewContextForImage(dst)
+}
+
+func (g *G3Image) Crop(x0, y0, x1, y1 int) error {
+	if g.dc == nil {
+		return errors.New("no active context")
+	}
+	img := g.dc.Image()
+	if x0 > x1 {
+		x0, x1 = x1, x0
+	}
+	if y0 > y1 {
+		y0, y1 = y1, y0
+	}
+	rect := image.Rect(x0, y0, x1, y1)
+	rect = rect.Intersect(img.Bounds())
+	if rect.Empty() {
+		return errors.New("crop coordinates result in an empty image")
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, rect.Dx(), rect.Dy()))
+	draw.Draw(dst, dst.Bounds(), img, rect.Min, draw.Src)
+	g.dc = gg.NewContextForImage(dst)
+	return nil
+}
+
+func (g *G3Image) Sharpen(radius float64, amount float64) {
+	if g.dc == nil {
+		return
+	}
+	factor := amount
+	if factor > 2.0 {
+		factor = factor / 100.0
+	}
+	if factor <= 0 {
+		return
+	}
+	src := g.dc.Image()
+	bounds := src.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	dst := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			rSum, gSum, bSum := 0.0, 0.0, 0.0
+			for _, dy := range []int{-1, 0, 1} {
+				for _, dx := range []int{-1, 0, 1} {
+					nx, ny := x+dx, y+dy
+					if nx >= 0 && nx < w && ny >= 0 && ny < h {
+						r, gVal, b, _ := src.At(nx, ny).RGBA()
+						rf := float64(r >> 8)
+						gf := float64(gVal >> 8)
+						bf := float64(b >> 8)
+						if dx == 0 && dy == 0 {
+							rSum += rf * 5.0
+							gSum += gf * 5.0
+							bSum += bf * 5.0
+						} else if dx == 0 || dy == 0 {
+							rSum += rf * -1.0
+							gSum += gf * -1.0
+							bSum += bf * -1.0
+						}
+					}
+				}
+			}
+			cr, cg, cb, ca := src.At(x, y).RGBA()
+			crf := float64(cr >> 8)
+			cgf := float64(cg >> 8)
+			cbf := float64(cb >> 8)
+			caf := uint8(ca >> 8)
+			rf := crf + factor*(rSum-crf)
+			gf := cgf + factor*(gSum-cgf)
+			bf := cbf + factor*(bSum-cbf)
+			ru := uint8(min(max(rf, 0), 255))
+			gu := uint8(min(max(gf, 0), 255))
+			bu := uint8(min(max(bf, 0), 255))
+			dst.SetRGBA(x, y, color.RGBA{R: ru, G: gu, B: bu, A: caf})
+		}
+	}
+	g.dc = gg.NewContextForImage(dst)
+}
+
+func (g *G3Image) getCanvas() Value {
+	if g.canvasVal.Type == VTNativeObject {
+		return g.canvasVal
+	}
+	canvas := &G3ImageCanvas{
+		vm:    g.vm,
+		image: g,
+	}
+	id := g.vm.nextDynamicNativeID
+	g.vm.nextDynamicNativeID++
+	canvas.objectID = id
+	g.vm.g3imageCanvasItems[id] = canvas
+	g.canvasVal = Value{Type: VTNativeObject, Num: id}
+	return g.canvasVal
+}
+
+type G3ImageCanvas struct {
+	vm       *VM
+	objectID int64
+	image    *G3Image
+}
+
+func (c *G3ImageCanvas) getFont() Value {
+	if c.image.fontVal.Type == VTNativeObject {
+		return c.image.fontVal
+	}
+	fontObj := &G3ImageFont{
+		vm:     c.vm,
+		image:  c.image,
+		family: "Arial",
+		size:   10,
+		color:  color.Black,
+	}
+	id := c.vm.nextDynamicNativeID
+	c.vm.nextDynamicNativeID++
+	fontObj.objectID = id
+	c.vm.g3imageFontItems[id] = fontObj
+	c.image.fontVal = Value{Type: VTNativeObject, Num: id}
+	return c.image.fontVal
+}
+
+func (c *G3ImageCanvas) getPen() Value {
+	if c.image.penVal.Type == VTNativeObject {
+		return c.image.penVal
+	}
+	penObj := &G3ImagePen{
+		vm:    c.vm,
+		image: c.image,
+		color: color.Black,
+		width: 1,
+	}
+	id := c.vm.nextDynamicNativeID
+	c.vm.nextDynamicNativeID++
+	penObj.objectID = id
+	c.vm.g3imagePenItems[id] = penObj
+	c.image.penVal = Value{Type: VTNativeObject, Num: id}
+	return c.image.penVal
+}
+
+func (c *G3ImageCanvas) PrintText(x, y int, text string) error {
+	if c.image.dc == nil {
+		return errors.New("image context not initialized")
+	}
+	fontVal := c.getFont()
+	fontObj := c.vm.g3imageFontItems[fontVal.Num]
+	if err := fontObj.loadFont(); err != nil {
+		return err
+	}
+	c.image.dc.SetColor(fontObj.color)
+	c.image.dc.DrawString(text, float64(x), float64(y))
+	return nil
+}
+
+func (c *G3ImageCanvas) DrawLine(x1, y1, x2, y2 int) error {
+	if c.image.dc == nil {
+		return errors.New("image context not initialized")
+	}
+	penVal := c.getPen()
+	penObj := c.vm.g3imagePenItems[penVal.Num]
+	c.image.dc.SetColor(penObj.color)
+	c.image.dc.SetLineWidth(penObj.width)
+	c.image.dc.DrawLine(float64(x1), float64(y1), float64(x2), float64(y2))
+	c.image.dc.Stroke()
+	return nil
+}
+
+func (c *G3ImageCanvas) DrawBar(x1, y1, x2, y2 int) error {
+	if c.image.dc == nil {
+		return errors.New("image context not initialized")
+	}
+	penVal := c.getPen()
+	penObj := c.vm.g3imagePenItems[penVal.Num]
+	c.image.dc.SetColor(penObj.color)
+	w := float64(x2 - x1)
+	h := float64(y2 - y1)
+	c.image.dc.DrawRectangle(float64(x1), float64(y1), w, h)
+	c.image.dc.Fill()
+	return nil
+}
+
+type G3ImageFont struct {
+	vm       *VM
+	objectID int64
+	image    *G3Image
+	family   string
+	size     float64
+	color    color.Color
+	bold     bool
+	italic   bool
+}
+
+func (f *G3ImageFont) loadFont() error {
+	fontPath := f.family
+	lowerFamily := strings.ToLower(f.family)
+	isBold := f.bold
+	isItalic := f.italic
+	var filename string
+	switch lowerFamily {
+	case "arial":
+		if isBold && isItalic {
+			filename = "arialbi.ttf"
+		} else if isBold {
+			filename = "arialbd.ttf"
+		} else if isItalic {
+			filename = "ariali.ttf"
+		} else {
+			filename = "arial.ttf"
+		}
+	case "times new roman", "times":
+		if isBold && isItalic {
+			filename = "timesbi.ttf"
+		} else if isBold {
+			filename = "timesbd.ttf"
+		} else if isItalic {
+			filename = "timesi.ttf"
+		} else {
+			filename = "times.ttf"
+		}
+	case "courier new", "courier":
+		if isBold && isItalic {
+			filename = "courbi.ttf"
+		} else if isBold {
+			filename = "courbd.ttf"
+		} else if isItalic {
+			filename = "couri.ttf"
+		} else {
+			filename = "cour.ttf"
+		}
+	case "verdana":
+		if isBold && isItalic {
+			filename = "verdanaz.ttf"
+		} else if isBold {
+			filename = "verdanab.ttf"
+		} else if isItalic {
+			filename = "verdanai.ttf"
+		} else {
+			filename = "verdana.ttf"
+		}
+	case "tahoma":
+		if isBold {
+			filename = "tahomabd.ttf"
+		} else {
+			filename = "tahoma.ttf"
+		}
+	}
+	if filename != "" {
+		winFonts := filepath.Join(os.Getenv("SystemRoot"), "Fonts", filename)
+		if _, err := os.Stat(winFonts); err == nil {
+			fontPath = winFonts
+		} else {
+			arialFallback := filepath.Join(os.Getenv("SystemRoot"), "Fonts", "arial.ttf")
+			if _, err := os.Stat(arialFallback); err == nil {
+				fontPath = arialFallback
+			}
+		}
+	}
+	if !filepath.IsAbs(fontPath) && !strings.Contains(fontPath, ":") {
+		if resolved, err := f.image.resolveRootPath(fontPath); err == nil {
+			fontPath = resolved
+		}
+	}
+	face, err := gg.LoadFontFace(fontPath, f.size)
+	if err != nil {
+		return err
+	}
+	f.image.lastFontFace = face
+	if f.image.dc != nil {
+		f.image.dc.SetFontFace(face)
+	}
+	return nil
+}
+
+type G3ImagePen struct {
+	vm       *VM
+	objectID int64
+	image    *G3Image
+	color    color.Color
+	width    float64
+}
+
+func (vm *VM) dispatchG3ImageCanvasMethod(c *G3ImageCanvas, member string, args []Value) Value {
+	switch strings.ToLower(member) {
+	case "printtext":
+		if len(args) < 3 {
+			vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		x := int(vm.asInt(args[0]))
+		y := int(vm.asInt(args[1]))
+		text := args[2].String()
+		err := c.PrintText(x, y, text)
+		if err != nil {
+			vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
+		}
+		return NewEmpty()
+	case "drawline":
+		if len(args) < 4 {
+			vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		x1 := int(vm.asInt(args[0]))
+		y1 := int(vm.asInt(args[1]))
+		x2 := int(vm.asInt(args[2]))
+		y2 := int(vm.asInt(args[3]))
+		err := c.DrawLine(x1, y1, x2, y2)
+		if err != nil {
+			vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
+		}
+		return NewEmpty()
+	case "drawbar":
+		if len(args) < 4 {
+			vm.raise(vbscript.InternalError, NewAxonASPError(ErrG3ImageInvalidArgCount, nil, AxonASPErrorMessages[ErrG3ImageInvalidArgCount], "axonvm/lib_g3image.go", 0).Error())
+			return NewEmpty()
+		}
+		x1 := int(vm.asInt(args[0]))
+		y1 := int(vm.asInt(args[1]))
+		x2 := int(vm.asInt(args[2]))
+		y2 := int(vm.asInt(args[3]))
+		err := c.DrawBar(x1, y1, x2, y2)
+		if err != nil {
+			vm.raise(vbscript.InternalError, NewAxonASPError(ErrInvalidProcedureCallOrArg, err, err.Error(), "axonvm/lib_g3image.go", 0).Error())
+		}
+		return NewEmpty()
+	}
+	return NewEmpty()
+}
+
+func (vm *VM) dispatchG3ImageCanvasPropertyGet(c *G3ImageCanvas, member string) Value {
+	switch strings.ToLower(member) {
+	case "font":
+		return c.getFont()
+	case "pen":
+		return c.getPen()
+	}
+	return NewEmpty()
+}
+
+func (vm *VM) dispatchG3ImageFontPropertyGet(f *G3ImageFont, member string) Value {
+	switch strings.ToLower(member) {
+	case "family":
+		return NewString(f.family)
+	case "size":
+		return NewDouble(f.size)
+	case "bold":
+		return NewBool(f.bold)
+	case "italic":
+		return NewBool(f.italic)
+	case "color":
+		r, gComp, b, _ := f.color.RGBA()
+		ru := uint32(r >> 8)
+		gu := uint32(gComp >> 8)
+		bu := uint32(b >> 8)
+		val := (bu << 16) | (gu << 8) | ru
+		return NewInteger(int64(val))
+	}
+	return NewEmpty()
+}
+
+func (vm *VM) dispatchG3ImageFontPropertySet(f *G3ImageFont, member string, val Value) bool {
+	switch strings.ToLower(member) {
+	case "family":
+		f.family = val.String()
+		return true
+	case "size":
+		f.size = vm.asFloat(val)
+		return true
+	case "bold":
+		f.bold = vm.asBool(val)
+		return true
+	case "italic":
+		f.italic = vm.asBool(val)
+		return true
+	case "color":
+		if c, err := f.image.parseColorVal(val); err == nil {
+			f.color = c
+		}
+		return true
+	}
+	return false
+}
+
+func (vm *VM) dispatchG3ImagePenPropertyGet(p *G3ImagePen, member string) Value {
+	switch strings.ToLower(member) {
+	case "color":
+		r, gComp, b, _ := p.color.RGBA()
+		ru := uint32(r >> 8)
+		gu := uint32(gComp >> 8)
+		bu := uint32(b >> 8)
+		val := (bu << 16) | (gu << 8) | ru
+		return NewInteger(int64(val))
+	case "width":
+		return NewDouble(p.width)
+	}
+	return NewEmpty()
+}
+
+func (vm *VM) dispatchG3ImagePenPropertySet(p *G3ImagePen, member string, val Value) bool {
+	switch strings.ToLower(member) {
+	case "color":
+		if c, err := p.image.parseColorVal(val); err == nil {
+			p.color = c
+		}
+		return true
+	case "width":
+		p.width = vm.asFloat(val)
+		return true
+	}
+	return false
 }

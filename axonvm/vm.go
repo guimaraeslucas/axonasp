@@ -345,6 +345,9 @@ type VM struct {
 	g3httpItems                    map[int64]*G3HTTP
 	g3mailItems                    map[int64]*G3Mail
 	g3imageItems                   map[int64]*G3Image
+	g3imageCanvasItems             map[int64]*G3ImageCanvas
+	g3imageFontItems               map[int64]*G3ImageFont
+	g3imagePenItems                map[int64]*G3ImagePen
 	g3filesItems                   map[int64]*G3Files
 	g3templateItems                map[int64]*G3Template
 	g3zipItems                     map[int64]*G3Zip
@@ -682,6 +685,9 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		g3httpItems:                    make(map[int64]*G3HTTP),
 		g3mailItems:                    make(map[int64]*G3Mail),
 		g3imageItems:                   make(map[int64]*G3Image),
+		g3imageCanvasItems:             make(map[int64]*G3ImageCanvas),
+		g3imageFontItems:               make(map[int64]*G3ImageFont),
+		g3imagePenItems:                make(map[int64]*G3ImagePen),
 		g3filesItems:                   make(map[int64]*G3Files),
 		g3templateItems:                make(map[int64]*G3Template),
 		g3zipItems:                     make(map[int64]*G3Zip),
@@ -1665,6 +1671,9 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.g3httpItems = child.g3httpItems
 	vm.g3mailItems = child.g3mailItems
 	vm.g3imageItems = child.g3imageItems
+	vm.g3imageCanvasItems = child.g3imageCanvasItems
+	vm.g3imageFontItems = child.g3imageFontItems
+	vm.g3imagePenItems = child.g3imagePenItems
 	vm.g3filesItems = child.g3filesItems
 	vm.g3templateItems = child.g3templateItems
 	vm.g3zipItems = child.g3zipItems
@@ -6104,6 +6113,10 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return regExpResult
 	}
 
+	if canvasObj, exists := vm.g3imageCanvasItems[objID]; exists {
+		return vm.dispatchG3ImageCanvasMethod(canvasObj, member, args)
+	}
+
 	if objID == nativeObjectErr {
 		switch {
 		case strings.EqualFold(member, "Clear"):
@@ -6622,6 +6635,9 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				}
 				if progIDKey == "g3image" {
 					return vm.newG3ImageObject()
+				}
+				if progIDKey == "persits.jpeg" {
+					return vm.newPersitsJpegObject()
 				}
 				if progIDKey == "g3files" {
 					return vm.newG3FilesObject()
@@ -7196,6 +7212,15 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 	if g3imageObject, exists := vm.g3imageItems[target.Num]; exists {
 		return g3imageObject.DispatchPropertyGet(member)
 	}
+	if canvasObj, exists := vm.g3imageCanvasItems[target.Num]; exists {
+		return vm.dispatchG3ImageCanvasPropertyGet(canvasObj, member)
+	}
+	if fontObj, exists := vm.g3imageFontItems[target.Num]; exists {
+		return vm.dispatchG3ImageFontPropertyGet(fontObj, member)
+	}
+	if penObj, exists := vm.g3imagePenItems[target.Num]; exists {
+		return vm.dispatchG3ImagePenPropertyGet(penObj, member)
+	}
 	if g3axonliveObject, exists := vm.g3axonliveItems[target.Num]; exists {
 		return g3axonliveObject.DispatchPropertyGet(member)
 	}
@@ -7660,6 +7685,14 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 
 	if g3imageObject, exists := vm.g3imageItems[objID]; exists {
 		g3imageObject.DispatchPropertySet(member, []Value{val})
+		return
+	}
+	if fontObj, exists := vm.g3imageFontItems[objID]; exists {
+		vm.dispatchG3ImageFontPropertySet(fontObj, member, val)
+		return
+	}
+	if penObj, exists := vm.g3imagePenItems[objID]; exists {
+		vm.dispatchG3ImagePenPropertySet(penObj, member, val)
 		return
 	}
 

@@ -25,7 +25,16 @@ package axonvm
 // G3Image is the disabled stub for the G3Image library.
 type G3Image struct{}
 
+type G3ImageCanvas struct{}
+type G3ImageFont struct{}
+type G3ImagePen struct{}
+
 func (vm *VM) newG3ImageObject() Value {
+	panicLibraryDisabled("g3image", "G3Image library")
+	return Value{Type: VTEmpty}
+}
+
+func (vm *VM) newPersitsJpegObject() Value {
 	panicLibraryDisabled("g3image", "G3Image library")
 	return Value{Type: VTEmpty}
 }
@@ -43,3 +52,27 @@ func (g *G3Image) DispatchMethod(methodName string, args []Value) Value {
 }
 
 func (vm *VM) cleanupG3ImageResources() {}
+
+func (vm *VM) dispatchG3ImageCanvasMethod(c *G3ImageCanvas, member string, args []Value) Value {
+	return Value{Type: VTEmpty}
+}
+
+func (vm *VM) dispatchG3ImageCanvasPropertyGet(c *G3ImageCanvas, member string) Value {
+	return Value{Type: VTEmpty}
+}
+
+func (vm *VM) dispatchG3ImageFontPropertyGet(f *G3ImageFont, member string) Value {
+	return Value{Type: VTEmpty}
+}
+
+func (vm *VM) dispatchG3ImageFontPropertySet(f *G3ImageFont, member string, val Value) bool {
+	return false
+}
+
+func (vm *VM) dispatchG3ImagePenPropertyGet(p *G3ImagePen, member string) Value {
+	return Value{Type: VTEmpty}
+}
+
+func (vm *VM) dispatchG3ImagePenPropertySet(p *G3ImagePen, member string, val Value) bool {
+	return false
+}
