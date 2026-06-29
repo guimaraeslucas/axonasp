@@ -24,31 +24,59 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 )
 
-// NewViper loads axonasp.toml using cwd-relative and executable-relative fallbacks.
+var (
+	customConfigPath string
+	activeViper      *viper.Viper
+	activeViperMu    sync.Mutex
+)
+
+// SetCustomConfigPath sets a custom configuration file path to use instead of the defaults.
+func SetCustomConfigPath(path string) {
+	activeViperMu.Lock()
+	defer activeViperMu.Unlock()
+	customConfigPath = path
+	activeViper = nil // Invalidate singleton to reload from new path on next NewViper call
+}
+
+// NewViper returns the active globally shared Viper instance. If not initialized, it loads it.
 func NewViper() *viper.Viper {
+	activeViperMu.Lock()
+	defer activeViperMu.Unlock()
 
+	if activeViper == nil {
+		activeViper = initViper()
+	}
+	return activeViper
+}
+
+func initViper() *viper.Viper {
 	v := viper.New()
-
 	v.SetConfigType("toml")
 
-	configCandidates := []string{
-		filepath.Join("config", "axonasp.toml"),
-		filepath.Join("..", "config", "axonasp.toml"),
-		filepath.Join("..", "..", "config", "axonasp.toml"),
-	}
-	if executablePath, err := os.Executable(); err == nil {
-		configCandidates = append(configCandidates, filepath.Join(filepath.Dir(executablePath), "config", "axonasp.toml"))
-	}
+	if customConfigPath != "" {
+		v.SetConfigFile(customConfigPath)
+		_ = v.ReadInConfig()
+	} else {
+		configCandidates := []string{
+			filepath.Join("config", "axonasp.toml"),
+			filepath.Join("..", "config", "axonasp.toml"),
+			filepath.Join("..", "..", "config", "axonasp.toml"),
+		}
+		if executablePath, err := os.Executable(); err == nil {
+			configCandidates = append(configCandidates, filepath.Join(filepath.Dir(executablePath), "config", "axonasp.toml"))
+		}
 
-	for _, candidate := range configCandidates {
-		v.SetConfigFile(candidate)
-		if err := v.ReadInConfig(); err == nil {
-			break
+		for _, candidate := range configCandidates {
+			v.SetConfigFile(candidate)
+			if err := v.ReadInConfig(); err == nil {
+				break
+			}
 		}
 	}
 

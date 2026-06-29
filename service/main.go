@@ -172,6 +172,14 @@ func buildChildConfig(cfg serviceSettings) (childProcessConfig, axonvm.AxonASPEr
 
 // loadServiceSettings loads [service] values with defaults from axonasp.toml.
 func loadServiceSettings() (serviceSettings, bool) {
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+			axonconfig.SetCustomConfigPath(os.Args[i+1])
+			break
+		}
+	}
+
 	v := axonconfig.NewViper()
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		return serviceSettings{}, false
@@ -329,8 +337,20 @@ func main() {
 	}
 	prg.logger = logger
 
-	if len(os.Args) > 1 {
-		err = service.Control(s, os.Args[1])
+	var controlAction string
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+			i++ // skip value
+			continue
+		}
+		if controlAction == "" {
+			controlAction = arg
+		}
+	}
+
+	if controlAction != "" {
+		err = service.Control(s, controlAction)
 		if err != nil {
 			prg.logError(axonvm.ErrServiceControlCommandFailed, err.Error())
 			exitWithCode(axonvm.ErrServiceControlCommandFailed)

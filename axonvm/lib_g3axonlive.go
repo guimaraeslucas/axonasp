@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
+	"g3pix.com.br/axonasp/axonconfig"
 	"g3pix.com.br/axonasp/vbscript"
-	"github.com/spf13/viper"
 )
 
 // ---------------------------------------------------------------------------
@@ -83,7 +83,7 @@ const g3alMaxBodyBytes int64 = 256 * 1024
 // g3alMaxPatchesPerResponse returns the maximum number of component patches
 // that a single EndAsyncResponse call may include, read from viper config.
 func g3alMaxPatchesPerResponse() int {
-	limit := viper.GetInt("g3axonlive.max_components_per_response")
+	limit := axonconfig.NewViper().GetInt("g3axonlive.max_components_per_response")
 	if limit <= 0 {
 		limit = 200
 	}
@@ -171,7 +171,7 @@ func G3ALGetPageForSession(sessionID string) string {
 // 20× "global.default_script_timeout" seconds, with a floor of 30 minutes.
 func G3ALStartCleanup(idleMinutes int) {
 	// Prefer TTL from viper config; fall back to caller-supplied minutes.
-	scriptTimeout := viper.GetInt("global.default_script_timeout")
+	scriptTimeout := axonconfig.NewViper().GetInt("global.default_script_timeout")
 	var idle time.Duration
 	if scriptTimeout > 0 {
 		idle = max(time.Duration(scriptTimeout*20)*time.Second, 30*time.Minute)
@@ -192,7 +192,7 @@ func G3ALStartCleanup(idleMinutes int) {
 	g3alCleanupStop = make(chan struct{})
 
 	// Read cleanup interval from config; fall back to 5 minutes.
-	intervalMin := viper.GetInt("g3axonlive.g3axonlive_cleanup_interval_minutes")
+	intervalMin := axonconfig.NewViper().GetInt("g3axonlive.g3axonlive_cleanup_interval_minutes")
 	if intervalMin <= 0 {
 		intervalMin = 5
 	}

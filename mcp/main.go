@@ -118,6 +118,14 @@ func init() {
 
 // loadMCPConfig loads and applies MCP settings from config/axonasp.toml using Viper.
 func loadMCPConfig() {
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+			axonconfig.SetCustomConfigPath(os.Args[i+1])
+			break
+		}
+	}
+
 	v := axonconfig.NewViper()
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		fmt.Fprintf(os.Stderr, "[G3pix AxonASP MCP] Warning: failed to read configuration file, using defaults\n")

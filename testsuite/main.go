@@ -111,12 +111,24 @@ func main() {
 	}
 	defer shutdownGlobalASA()
 
-	if len(os.Args) < 2 {
+	var targetPathArg string
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+			i++ // skip value
+			continue
+		}
+		if targetPathArg == "" {
+			targetPathArg = arg
+		}
+	}
+
+	if targetPathArg == "" {
 		printUsage()
 		os.Exit(1)
 	}
 
-	targetDir, err := resolveDirectoryPath(os.Args[1])
+	targetDir, err := resolveDirectoryPath(targetPathArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sError%s: %v\n", colorRed, colorReset, err)
 		os.Exit(1)
@@ -160,6 +172,14 @@ func main() {
 
 // loadConfig loads runtime configuration shared with the existing CLI execution path.
 func loadConfig() {
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+			axonconfig.SetCustomConfigPath(os.Args[i+1])
+			break
+		}
+	}
+
 	v := axonconfig.NewViper()
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		fmt.Printf("%sWarning%s: %s\n", colorYellow, colorReset, axonvm.ErrViperReadConfigFailed.String())

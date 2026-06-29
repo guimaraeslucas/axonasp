@@ -127,6 +127,14 @@ func init() {
 
 // loadCLIConfig loads and applies cli/global settings from config/axonasp.toml using Viper.
 func loadCLIConfig() {
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+			axonconfig.SetCustomConfigPath(os.Args[i+1])
+			break
+		}
+	}
+
 	v := axonconfig.NewViper()
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		fmt.Printf("Warning: %s\n", axonvm.ErrViperReadConfigFailed.String())
@@ -286,6 +294,10 @@ func main() {
 	if len(os.Args) > 1 {
 		for i := 1; i < len(os.Args); i++ {
 			arg := os.Args[i]
+			if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
+				i++ // skip config path value
+				continue
+			}
 			if arg == "-h" || arg == "--help" {
 				printHelp()
 				return

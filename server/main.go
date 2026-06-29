@@ -108,13 +108,20 @@ func registerFixedMIMETypes() {
 
 // loadServerConfig loads and applies server/global settings from config/axonasp.toml using Viper.
 func loadServerConfig() {
-	v := axonconfig.NewViper()
+	if pflag.Lookup("config.config_file") == nil {
+		pflag.StringP("config.config_file", "c", "", "Path to the configuration file to use.")
+	}
 	if pflag.Lookup("server.server_port") == nil {
 		pflag.Int("server.server_port", 8801, "Server port to listen on. This is usefull for using AxonASP in IIS with HttpPlatformHandler, as it will pass the port as an argument.")
 	}
 
 	pflag.Parse()
 
+	if configPath, err := pflag.CommandLine.GetString("config.config_file"); err == nil && configPath != "" {
+		axonconfig.SetCustomConfigPath(configPath)
+	}
+
+	v := axonconfig.NewViper()
 	v.BindPFlags(pflag.CommandLine)
 
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {

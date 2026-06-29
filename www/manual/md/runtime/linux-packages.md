@@ -33,19 +33,19 @@ Replace `<version>` with the release tag (for example, `v2.0.1`), `<file>` with 
 **Debian/Ubuntu example:**
 
 ```bash
-wget https://github.com/guimaraeslucas/axonasp/releases/download/v2.0.1/axonasp_2.0.1_linux_amd64.deb
+wget https://github.com/guimaraeslucas/axonasp/releases/download/v2.2.9/axonasp_2.2.9_linux_amd64.deb
 ```
 
 **Red Hat/Fedora/Rocky example:**
 
 ```bash
-wget https://github.com/guimaraeslucas/axonasp/releases/download/v2.0.1/axonasp-2.0.1-1.x86_64.rpm
+wget https://github.com/guimaraeslucas/axonasp/releases/download/v2.2.9/axonasp-2.2.9-1.x86_64.rpm
 ```
 
 **Alpine example:**
 
 ```bash
-wget https://github.com/guimaraeslucas/axonasp/releases/download/v2.0.1/axonasp_2.0.1_x86_64.apk
+wget https://github.com/guimaraeslucas/axonasp/releases/download/v2.2.9/axonasp_2.2.9_x86_64.apk
 ```
 
 You can check the actual filenames for a given release on the releases page at `https://github.com/guimaraeslucas/axonasp/releases`.
@@ -57,31 +57,31 @@ You can check the actual filenames for a given release on the releases page at `
 ### Debian and Ubuntu
 
 ```bash
-sudo dpkg -i axonasp_2.0.1_linux_amd64.deb
+sudo dpkg -i axonasp_2.2.9_linux_amd64.deb
 ```
 
 Or, to automatically resolve any missing recommendations:
 
 ```bash
-sudo apt-get install -f ./axonasp_2.0.1_linux_amd64.deb
+sudo apt-get install -f ./axonasp_2.2.9_linux_amd64.deb
 ```
 
 ### Red Hat, Fedora, CentOS, Rocky Linux
 
 ```bash
-sudo rpm -i axonasp-2.0.1-1.x86_64.rpm
+sudo rpm -i axonasp-2.2.9-1.x86_64.rpm
 ```
 
 Or using `dnf`:
 
 ```bash
-sudo dnf localinstall axonasp-2.0.1-1.x86_64.rpm
+sudo dnf localinstall axonasp-2.2.9-1.x86_64.rpm
 ```
 
 ### Alpine Linux
 
 ```bash
-sudo apk add --allow-untrusted axonasp_2.0.1_x86_64.apk
+sudo apk add --allow-untrusted axonasp_2.2.9_x86_64.apk
 ```
 
 ---
@@ -99,6 +99,7 @@ After a successful installation, the following layout is created:
 | `/opt/axonasp/axonasp-mcp` | MCP server binary |
 | `/opt/axonasp/axonasp-testsuite` | Automated test suite runner binary |
 | `/opt/axonasp/axonasp-service` | Service wrapper helper binary |
+| `/opt/axonasp/axonasp-admin` | Administration helper binary |
 | `/opt/axonasp/config/axonasp.toml` | Default configuration file |
 | `/opt/axonasp/www/` | Default web root and documentation |
 | `/opt/axonasp/mcp/` | MCP server resource files |
@@ -158,4 +159,4 @@ sudo systemctl enable axonasp
 - The `temp/` subdirectories are created as empty directories by the package. The server writes bytecode caches and session data there at runtime.
 - The configuration file at `/opt/axonasp/config/axonasp.toml` contains default values for all settings. Edit it before starting the server to configure the web root path, port, session behavior, and other options.
 - The `www/tests/` directory is excluded from the distributed package. It is only present in the source repository.
-- Package builds are triggered automatically on every push to the `main` branch and on every version tag. Non-tagged builds use a commit-count-based version number (`2.0.<commit-count>.<short-hash>`). Tagged releases use the clean tag version (for example, `2.0.1`).
+- Package builds are triggered automatically on every push to the `main` branch and on every version tag. Non-tagged builds use a commit-count-based version number (`2.2.<commit-count>.<short-hash>`). Tagged releases use the clean tag version (for example, `2.2.9`).

@@ -95,13 +95,20 @@ func init() {
 
 // loadFastCGIConfig loads and applies fastcgi/global settings from config/axonasp.toml using Viper.
 func loadFastCGIConfig() {
-	v := axonconfig.NewViper()
+	if pflag.Lookup("config.config_file") == nil {
+		pflag.StringP("config.config_file", "c", "", "Path to the configuration file to use.")
+	}
 	if pflag.Lookup("fastcgi.server_port") == nil {
 		pflag.Int("fastcgi.server_port", 9000, "FastCGI server port to listen on")
 	}
 
 	pflag.Parse()
 
+	if configPath, err := pflag.CommandLine.GetString("config.config_file"); err == nil && configPath != "" {
+		axonconfig.SetCustomConfigPath(configPath)
+	}
+
+	v := axonconfig.NewViper()
 	v.BindPFlags(pflag.CommandLine)
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		log.Printf("Warning: Failed to read configuration file, using defaults.\n")

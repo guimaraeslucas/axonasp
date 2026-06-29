@@ -30,6 +30,14 @@ server_port = "unix:/tmp/axonasp.sock"
 .\axonasp-fastcgi.exe
 ```
 
+**Start AxonASP FastCGI with a Custom Configuration File:**
+
+You can launch a FastCGI server process with a custom configuration using the `-c` or `--config.config_file` flag. This allows you to start multiple distinct FastCGI server instances running on different ports or unix sockets with separate configurations (such as different session limits, web roots, or database connection strings):
+
+```powershell
+.\axonasp-fastcgi.exe -c .\config\app_fastcgi.toml
+```
+
 ## DOCUMENT_ROOT and SCRIPT_NAME Parameters
 
 AxonASP FastCGI reads the following FastCGI CGI variables to support multi-host deployments:

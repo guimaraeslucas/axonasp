@@ -15,6 +15,14 @@ The recommended way to deploy AxonASP in production is behind a reverse proxy. T
 .\axonasp-http.exe
 ```
 
+**Start AxonASP with a Custom Configuration File:**
+
+You can start the HTTP server process with a custom configuration using the `-c` or `--config.config_file` flag. This allows you to launch multiple distinct backend HTTP instances on different ports and web roots using separate configuration files:
+
+```powershell
+.\axonasp-http.exe -c .\config\app_a.toml
+```
+
 ## Why Not Expose AxonASP Directly
 
 Do not expose `axonasp-http.exe` directly to public internet traffic:
@@ -165,8 +173,9 @@ server {
 }
 ```
 
-Start each instance on a different port using environment variables:
+Start each instance on a different port using environment variables or separate configuration files:
 
+Using environment variables:
 ```powershell
 # Terminal 1
 $env:SERVER_PORT = "8801"; .\axonasp-http.exe
@@ -176,6 +185,18 @@ $env:SERVER_PORT = "8802"; .\axonasp-http.exe
 
 # Terminal 3
 $env:SERVER_PORT = "8803"; .\axonasp-http.exe
+```
+
+Using custom configuration files with the `-c` flag (which allows distinct settings per instance):
+```powershell
+# Terminal 1
+.\axonasp-http.exe -c .\config\instance_8801.toml
+
+# Terminal 2
+.\axonasp-http.exe -c .\config\instance_8802.toml
+
+# Terminal 3
+.\axonasp-http.exe -c .\config\instance_8803.toml
 ```
 
 ## Remarks
