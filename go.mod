@@ -24,6 +24,7 @@ require (
 	github.com/klauspost/reedsolomon v1.14.1
 	github.com/lib/pq v1.12.3
 	github.com/mark3labs/mcp-go v0.55.1
+	github.com/pelletier/go-toml/v2 v2.4.2
 	github.com/ricochet2200/go-disk-usage/du v0.0.0-20210707232629-ac9918953285
 	github.com/rivo/tview v0.42.0
 	github.com/sijms/go-ora/v2 v2.9.0
@@ -69,7 +70,6 @@ require (
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/pelletier/go-toml/v2 v2.4.2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect

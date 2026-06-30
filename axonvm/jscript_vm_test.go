@@ -1403,6 +1403,70 @@ func TestJScriptUserConstructorPrototypeAndNew(t *testing.T) {
 	}
 }
 
+func TestJScriptNumberPrimitivePrototypeExtension(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`Number.prototype.prefixPad = function(intLength, strPadChar) {` +
+		`	if (typeof intLength !== "number") var intLength = 2;` +
+		`	if (typeof strPadChar !== "string") var strPadChar = "0";` +
+		`	var strInput = String(this);` +
+		`	for (var i = strInput.length; i < intLength; ++i) strInput = strPadChar + strInput;` +
+		`	return strInput;` +
+		`};` +
+		`Response.Write("Number.prefixPad: " + ((7).prefixPad()) + "\n");` +
+		`Response.Write("Number.prefixPad: " + ((9).prefixPad(3, "9")) + "\n");` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	expected := "Number.prefixPad: 07\nNumber.prefixPad: 999\n"
+	if out != expected {
+		t.Fatalf("unexpected number prototype extension output: %q (expected: %q)", out, expected)
+	}
+}
+
+func TestJScriptStringPrimitivePrototypeExtension(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`String.prototype.prefixPad = function(intLength, strPadChar) {` +
+		`	if (typeof intLength !== "number") var intLength = 2;` +
+		`	if (typeof strPadChar !== "string") var strPadChar = "0";` +
+		`	var strInput = String(this);` +
+		`	for (var i = strInput.length; i < intLength; ++i) strInput = strPadChar + strInput;` +
+		`	return strInput;` +
+		`};` +
+		`Response.Write("String.prefixPad: " + ("07".prefixPad(3)) + "\n");` +
+		`Response.Write("String.prefixPad: " + ("H".prefixPad(5, "O")) + "\n");` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	expected := "String.prefixPad: 007\nString.prefixPad: OOOOH\n"
+	if out != expected {
+		t.Fatalf("unexpected string prototype extension output: %q (expected: %q)", out, expected)
+	}
+}
+
+func TestJScriptBooleanPrimitivePrototypeExtension(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`Boolean.prototype.toCustomString = function() {` +
+		`	return this ? "YES" : "NO";` +
+		`};` +
+		`Response.Write(true.toCustomString() + "|" + false.toCustomString());` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	expected := "YES|NO"
+	if out != expected {
+		t.Fatalf("unexpected boolean prototype extension output: %q (expected: %q)", out, expected)
+	}
+}
+
+func TestJScriptNumberPrimitivePropertyAccess(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`Number.prototype.customProp = "fromNumberProto";` +
+		`Response.Write((42).customProp);` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	expected := "fromNumberProto"
+	if out != expected {
+		t.Fatalf("unexpected number primitive property access output: %q (expected: %q)", out, expected)
+	}
+}
+
 func TestJScriptMemberAndIndexUpdateOperators(t *testing.T) {
 	source := `<script runat="server" language="JScript">` +
 		`var obj = { count: 1 };` +

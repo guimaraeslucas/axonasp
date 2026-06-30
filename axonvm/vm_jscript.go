@@ -5254,6 +5254,42 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 			}
 		}
 		return Value{Type: VTJSUndefined}, false
+	case VTInteger, VTDouble:
+		proto := vm.jsGetIntrinsicPrototype("Number")
+		if proto.Type == VTJSObject {
+			desc, hasDesc := vm.jsResolveObjectMember(proto.Num, member, make(map[int64]struct{}, 4))
+			if hasDesc {
+				if desc.HasGetter {
+					result := vm.jsCall(desc.Getter, target, nil)
+					if desc.Getter.Type == VTJSFunction && len(vm.jsCallStack) > 0 && result.Type == VTJSUndefined {
+						return Value{Type: VTJSUndefined}, true
+					}
+					return result, false
+				}
+				if desc.HasValue {
+					return desc.Value, false
+				}
+			}
+		}
+		return Value{Type: VTJSUndefined}, false
+	case VTBool:
+		proto := vm.jsGetIntrinsicPrototype("Boolean")
+		if proto.Type == VTJSObject {
+			desc, hasDesc := vm.jsResolveObjectMember(proto.Num, member, make(map[int64]struct{}, 4))
+			if hasDesc {
+				if desc.HasGetter {
+					result := vm.jsCall(desc.Getter, target, nil)
+					if desc.Getter.Type == VTJSFunction && len(vm.jsCallStack) > 0 && result.Type == VTJSUndefined {
+						return Value{Type: VTJSUndefined}, true
+					}
+					return result, false
+				}
+				if desc.HasValue {
+					return desc.Value, false
+				}
+			}
+		}
+		return Value{Type: VTJSUndefined}, false
 	default:
 		return Value{Type: VTJSUndefined}, false
 	}
@@ -7775,7 +7811,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 	switch target.Type {
 	case VTNativeObject:
 		return vm.dispatchNativeCall(target.Num, member, args), true
-	case VTJSObject, VTJSFunction, VTArray, VTString, VTDate:
+	case VTJSObject, VTJSFunction, VTArray, VTString, VTDate, VTInteger, VTDouble, VTBool:
 		callee, deferred := vm.jsMemberGet(target, member)
 		if deferred {
 			return Value{Type: VTJSUndefined}, true
