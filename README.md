@@ -88,6 +88,8 @@ This project is licensed under the MPL 2.0 License - see the [LICENSE.txt](LICEN
 
 While not mandatory, we warmly encourage you to contribute to the AxonASP project. If you develop new components or libraries, please consider sharing your implementation with the community; your contributions help maintain, improve, and expand our ecosystem.
 
+If you find bugs, security vulnerabilities, or have suggestions for new features, **please report them** via GitHub Issues. We welcome your feedback and will do our best to address your concerns promptly.
+
 As an open-source project, AxonASP relies on community support to remain active. Maintenance and infrastructure costs are currently funded personally by the lead developer. Your support—whether through code contributions, bug reports, security patches, or financial donations—is vital to our continued growth. 
 
 * Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute.

@@ -30,6 +30,8 @@ contents:
     dst: /opt/axonasp/axonasp-testsuite
   - src: ./axonasp-service
     dst: /opt/axonasp/axonasp-service
+  - src: ./axonasp-admin
+    dst: /opt/axonasp/axonasp-admin
   - src: ./install-service.sh
     dst: /opt/axonasp/install-service.sh
   - src: ./uninstall-service.sh
@@ -74,6 +76,9 @@ contents:
     type: symlink
   - src: /opt/axonasp/axonasp-mcp
     dst: /usr/bin/axonasp-mcp
+    type: symlink
+  - src: /opt/axonasp/axonasp-admin
+    dst: /usr/bin/axonasp-admin
     type: symlink
   - src: /opt/axonasp/axonasp-testsuite
     dst: /usr/bin/axonasp-testsuite
