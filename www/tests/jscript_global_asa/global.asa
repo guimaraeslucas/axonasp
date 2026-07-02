@@ -1,0 +1,9 @@
+<script language="JScript" runat="server">
+function Application_OnStart() {
+    Application("test") = 1;
+}
+
+function Session_OnStart() {
+    Session("greeting") = "Hello from JScript global.asa";
+}
+</script>

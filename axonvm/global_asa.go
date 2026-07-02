@@ -148,7 +148,7 @@ func (g *GlobalASA) PopulateSessionStaticObjects(session *asp.Session) {
 	}
 }
 
-func (g *GlobalASA) executeHandler(host ASPHostEnvironment, handlerIdx int) error {
+func (g *GlobalASA) executeHandler(host ASPHostEnvironment, handlerIdx int, handlerName string) error {
 	vm := AcquireVMFromCompiler(g.compiler)
 	vm.SetHost(host)
 	defer vm.Release()
@@ -156,12 +156,14 @@ func (g *GlobalASA) executeHandler(host ASPHostEnvironment, handlerIdx int) erro
 	// Suppress standard response output for Global.asa handlers to match IIS behavior.
 	host.Response().Output = nil
 
-	// Run the top-level code to populate Sub declarations into global variables.
+	// Run the top-level code to populate Sub/Function declarations into global variables
+	// and the JScript environment.
 	if err := vm.Run(); err != nil {
 		return err
 	}
 
-	if handlerIdx < len(vm.Globals) {
+	// 1) Check VBScript Globals for a VTUserSub handler (VBScript-defined handlers).
+	if handlerIdx >= 0 && handlerIdx < len(vm.Globals) {
 		handler := vm.Globals[handlerIdx]
 		if handler.Type == VTUserSub {
 			if vm.beginUserSubCall(handler, nil, true, 0) {
@@ -169,59 +171,60 @@ func (g *GlobalASA) executeHandler(host ASPHostEnvironment, handlerIdx int) erro
 			}
 		}
 	}
+
+	// 2) Fallback: look up the handler as a JScript function in the JS environment.
+	//    JScript function declarations inside <script language="JScript" runat="server">
+	//    blocks are stored in the JS env frames (via OpJSDeclareName/OpJSSetName),
+	//    NOT as VTUserSub entries in VBScript Globals.  Without this fallback,
+	//    Application_OnStart / Session_OnStart / etc. defined in JScript are silently
+	//    skipped, breaking IIS compatibility.
+	if handlerName != "" {
+		jsHandler := vm.jsGetName(handlerName)
+		if jsHandler.Type == VTJSFunction {
+			if vm.jsBeginDirectCall(jsHandler, Value{Type: VTJSUndefined}, nil) {
+				return vm.Run()
+			}
+			// If jsBeginDirectCall returned false (e.g. generator/async/bound),
+			// fall through to jsCall.
+			vm.jsCall(jsHandler, Value{Type: VTJSUndefined}, nil)
+		}
+	}
+
 	return nil
 }
 
 // ExecuteApplicationOnStart executes the Application_OnStart event.
+// Supports both VBScript Sub (via VTUserSub in Globals) and JScript function
+// (via the JS environment fallback in executeHandler).
 func (g *GlobalASA) ExecuteApplicationOnStart(host ASPHostEnvironment) error {
 	g.mu.RLock()
-	has := g.hasAppOnStart
 	idx := g.appOnStartIdx
 	g.mu.RUnlock()
-
-	if !has {
-		return nil
-	}
-	return g.executeHandler(host, idx)
+	return g.executeHandler(host, idx, "Application_OnStart")
 }
 
 // ExecuteApplicationOnEnd executes the Application_OnEnd event.
 func (g *GlobalASA) ExecuteApplicationOnEnd(host ASPHostEnvironment) error {
 	g.mu.RLock()
-	has := g.hasAppOnEnd
 	idx := g.appOnEndIdx
 	g.mu.RUnlock()
-
-	if !has {
-		return nil
-	}
-	return g.executeHandler(host, idx)
+	return g.executeHandler(host, idx, "Application_OnEnd")
 }
 
 // ExecuteSessionOnStart executes the Session_OnStart event.
 func (g *GlobalASA) ExecuteSessionOnStart(host ASPHostEnvironment) error {
 	g.mu.RLock()
-	has := g.hasSessOnStart
 	idx := g.sessOnStartIdx
 	g.mu.RUnlock()
-
-	if !has {
-		return nil
-	}
-	return g.executeHandler(host, idx)
+	return g.executeHandler(host, idx, "Session_OnStart")
 }
 
 // ExecuteSessionOnEnd executes the Session_OnEnd event.
 func (g *GlobalASA) ExecuteSessionOnEnd(host ASPHostEnvironment) error {
 	g.mu.RLock()
-	has := g.hasSessOnEnd
 	idx := g.sessOnEndIdx
 	g.mu.RUnlock()
-
-	if !has {
-		return nil
-	}
-	return g.executeHandler(host, idx)
+	return g.executeHandler(host, idx, "Session_OnEnd")
 }
 
 // IsLoaded returns whether Global.asa has been loaded.
