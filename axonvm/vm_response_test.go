@@ -954,3 +954,285 @@ Call Outer()
 		t.Fatalf("expected 302 Found status after Response.Redirect, got %q", status)
 	}
 }
+
+// TestVMResponseEndBareSubCallMultiBlock verifies that a bare Sub call
+// terminates script execution even when the Sub declaration and the call site are in
+// separate <% %> script blocks.
+func TestVMResponseEndBareSubCallMultiBlock(t *testing.T) {
+	source := `<%
+Dim afterFlag
+afterFlag = False
+
+Sub Inner()
+    Response.End
+End Sub
+%><%
+Inner
+afterFlag = True
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: bare Sub call across block boundary did NOT terminate execution — afterFlag was set to True")
+	}
+}
+
+// TestVMResponseEndBareSubCallMultiBlockWithArgs verifies that a bare Sub call WITH arguments
+// terminates script execution across <% %> block boundaries.
+func TestVMResponseEndBareSubCallMultiBlockWithArgs(t *testing.T) {
+	source := `<%
+Dim afterFlag
+afterFlag = False
+
+Sub Inner(x)
+    Response.End
+End Sub
+%><%
+Inner "test"
+afterFlag = True
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: bare Sub call with args across block boundary did NOT terminate execution — afterFlag was set to True")
+	}
+}
+
+// TestVMResponseRedirectBareSubCallTwoArgsMultiBlock verifies that Response.Redirect inside a bare Sub call
+// with 2 arguments terminates script execution across <% %> block boundaries.
+func TestVMResponseRedirectBareSubCallTwoArgsMultiBlock(t *testing.T) {
+	source := `<%
+Dim afterFlag
+afterFlag = False
+
+Sub Inner(target, msg)
+    Response.Redirect target & ".asp?status=" & msg
+End Sub
+%><%
+Inner "index", "success"
+afterFlag = True
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: bare Sub call with 2 args across block boundary did NOT terminate execution — afterFlag was set to True")
+	}
+
+	if status := host.Response().GetStatus(); status != "302 Found" {
+		t.Fatalf("expected 302 Found status after Response.Redirect, got %q", status)
+	}
+}
+
+// TestVMResponseEndBareSubCallForwardRefMultiBlock verifies a forward-reference bare Sub call
+// (Sub declared after the call site) across <% %> block boundaries still terminates.
+func TestVMResponseEndBareSubCallForwardRefMultiBlock(t *testing.T) {
+	source := `<%
+Dim afterFlag
+afterFlag = False
+%><%
+Inner "test"
+afterFlag = True
+%><%
+Sub Inner(target)
+    Response.End
+End Sub
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: forward-ref bare Sub call with args across block boundary did NOT terminate execution — afterFlag was set to True")
+	}
+}
+
+// TestVMResponseRedirectBareSubCallTwoArgsMultiBlockWithGap verifies that Response.Redirect
+// inside a bare Sub call with 2 arguments terminates execution across <% %> blocks that
+// have HTML content/gap between them (simulating #include boundary).
+func TestVMResponseRedirectBareSubCallTwoArgsMultiBlockWithGap(t *testing.T) {
+	source := `<%
+Sub Inner(target, msg)
+    Response.Redirect "target.asp?act=" & target & "&msg=" & msg
+End Sub
+%>
+<%
+Response.Write "before<br>"
+Inner "index", "success"
+Response.Write "after (should NOT appear)<br>"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	// With Response.Redirect, the buffer is reset so no output should appear.
+	if output.String() != "" {
+		t.Fatalf("unexpected output: %q (expected empty because Response.Redirect clears the buffer and terminates)", output.String())
+	}
+
+	if status := host.Response().GetStatus(); status != "302 Found" {
+		t.Fatalf("expected 302 Found status after Response.Redirect, got %q", status)
+	}
+}
+
+// TestVMResponseRedirectBareSubCallTwoArgsMultiBlockWithGapForwardRef is like
+// TestVMResponseRedirectBareSubCallTwoArgsMultiBlockWithGap but the Sub is
+// declared AFTER the call site (forward reference).
+func TestVMResponseRedirectBareSubCallTwoArgsMultiBlockWithGapForwardRef(t *testing.T) {
+	source := `<%
+Response.Write "before<br>"
+%>
+<%
+Inner "index", "success"
+Response.Write "after (should NOT appear)<br>"
+%>
+<%
+Sub Inner(target, msg)
+    Response.Redirect "target.asp?act=" & target & "&msg=" & msg
+End Sub
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	// With Response.Redirect, the buffer is reset so no output should appear.
+	if output.String() != "" {
+		t.Fatalf("unexpected output: %q (expected empty because Response.Redirect clears the buffer and terminates)", output.String())
+	}
+
+	if status := host.Response().GetStatus(); status != "302 Found" {
+		t.Fatalf("expected 302 Found status after Response.Redirect, got %q", status)
+	}
+}
+
+// TestVMResponseRedirectBareSubCallTwoArgsMultiBlockHTMLWrite verifies Response.Redirect
+// across blocks where the second block uses <%= expression output between the sub definition
+// and the bare call.
+func TestVMResponseRedirectBareSubCallTwoArgsMultiBlockHTMLWrite(t *testing.T) {
+	source := `<%
+Sub Inner(target, msg)
+    Response.Redirect "target.asp?act=" & target & "&msg=" & msg
+End Sub
+%>
+<%= "middle<br>" %>
+<%
+Inner "index", "success"
+Response.Write "after (should NOT appear)<br>"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	// Response.Redirect clears the buffer, so all output before it is discarded.
+	if output.String() != "" {
+		t.Fatalf("unexpected output: %q (expected empty because Response.Redirect clears the buffer)", output.String())
+	}
+
+	if status := host.Response().GetStatus(); status != "302 Found" {
+		t.Fatalf("expected 302 Found status after Response.Redirect, got %q", status)
+	}
+}

@@ -1516,3 +1516,193 @@ ObjectContext.SetAbort
 		t.Fatalf("unexpected ObjectContext.SetAbort output: got %q want %q", output.String(), "ABORTED")
 	}
 }
+
+// TestServerExecuteResponseRedirectPropagation verifies that Response.Redirect inside
+// a Server.Execute'd child file terminates the ENTIRE page, not just the child scope.
+// This matches IIS Classic ASP behavior.
+func TestServerExecuteResponseRedirectPropagation(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Child ASP file that redirects.
+	childContent := `<% Response.Redirect "target.asp" %>`
+	childPath := filepath.Join(tempDir, "child.asp")
+	if err := os.WriteFile(childPath, []byte(childContent), 0644); err != nil {
+		t.Fatalf("write child file: %v", err)
+	}
+
+	// Parent ASP uses Server.Execute — any output AFTER Server.Execute must NOT appear
+	// because Response.Redirect inside the child terminates the entire page.
+	source := `<%
+Dim afterFlag
+afterFlag = False
+Response.Write "before|"
+Server.Execute "child.asp"
+afterFlag = True
+Response.Write "|after"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Server().SetRootDir(tempDir)
+	host.Server().SetRequestPath("/index.asp")
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	// afterFlag must remain False because Response.Redirect should stop the entire page.
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: Server.Execute did NOT propagate Response.Redirect — afterFlag was set to True")
+	}
+
+	// Redirect status must be set.
+	if status := host.Response().GetStatus(); status != "302 Found" {
+		t.Fatalf("expected 302 Found status after Response.Redirect in Server.Execute, got %q", status)
+	}
+
+	// Output must be empty because Response.Redirect clears the entire buffer
+	// (including what the parent wrote before Server.Execute).
+	if output.String() != "" {
+		t.Fatalf("unexpected output: %q (expected empty because Response.Redirect clears the buffer)", output.String())
+	}
+}
+
+// TestServerExecuteResponseEndPropagation verifies that Response.End inside
+// a Server.Execute'd child file terminates the ENTIRE page.
+func TestServerExecuteResponseEndPropagation(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Child ASP file that ends the response.
+	childContent := `<% Response.End %>`
+	childPath := filepath.Join(tempDir, "child.asp")
+	if err := os.WriteFile(childPath, []byte(childContent), 0644); err != nil {
+		t.Fatalf("write child file: %v", err)
+	}
+
+	// Parent ASP uses Server.Execute — anything after must NOT appear.
+	source := `<%
+Dim afterFlag
+afterFlag = False
+Response.Write "before|"
+Server.Execute "child.asp"
+afterFlag = True
+Response.Write "|after"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Server().SetRootDir(tempDir)
+	host.Server().SetRequestPath("/index.asp")
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	// afterFlag must remain False.
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: Server.Execute did NOT propagate Response.End — afterFlag was set to True")
+	}
+
+	// Response.End flushes the buffer before terminating, so "before|" should appear.
+	// But "|after" must NOT appear because execution was terminated.
+	if !strings.Contains(output.String(), "before|") {
+		t.Fatalf("expected output to contain 'before|', got %q", output.String())
+	}
+	if strings.Contains(output.String(), "|after") {
+		t.Fatalf("output must NOT contain '|after' because Response.End should terminate the page, got %q", output.String())
+	}
+}
+
+// TestServerExecuteResponseRedirectBareCallInChild verifies that a bare Sub call
+// WITH arguments inside a Server.Execute'd child file, where the Sub calls
+// Response.Redirect, terminates the ENTIRE page (both child and parent).
+func TestServerExecuteResponseRedirectBareCallInChild(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Child ASP defines a Sub that does Response.Redirect and calls it with a bare call.
+	childContent := `<%
+Sub Inner(target, msg)
+    Response.Redirect "target.asp?act=" & target & "&msg=" & msg
+End Sub
+Inner "index", "success"
+%>`
+	childPath := filepath.Join(tempDir, "child.asp")
+	if err := os.WriteFile(childPath, []byte(childContent), 0644); err != nil {
+		t.Fatalf("write child file: %v", err)
+	}
+
+	// Parent uses Server.Execute to run the child.
+	source := `<%
+Dim afterFlag
+afterFlag = False
+Response.Write "before|"
+Server.Execute "child.asp"
+afterFlag = True
+Response.Write "|after"
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	afterFlagIdx, afterFlagExists := compiler.Globals.Get("afterFlag")
+	if !afterFlagExists {
+		t.Fatal("afterFlag global not found")
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Server().SetRootDir(tempDir)
+	host.Server().SetRequestPath("/index.asp")
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	// afterFlag must remain False.
+	if vm.Globals[afterFlagIdx].Type == VTBool && vm.Globals[afterFlagIdx].Num != 0 {
+		t.Fatal("BUG: Server.Execute with bare call child did NOT propagate Response.Redirect — afterFlag was set to True")
+	}
+
+	if status := host.Response().GetStatus(); status != "302 Found" {
+		t.Fatalf("expected 302 Found status after Response.Redirect in bare call child, got %q", status)
+	}
+
+	// Output must be empty because Response.Redirect clears the buffer.
+	if output.String() != "" {
+		t.Fatalf("unexpected output: %q (expected empty because Response.Redirect clears the buffer)", output.String())
+	}
+}

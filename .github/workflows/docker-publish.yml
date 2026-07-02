@@ -20,21 +20,14 @@
 #  This code was contributed by @antoniolago (https://github.com/antoniolago)
 #
 # Triggers:
-#   - Push to main          → publishes :latest + :sha-<hash>
 #   - Push of v* tag        → publishes :v1.2.3 + :1.2 + :1
-#   - Pull request          → builds only (no push), runs tests
 
 name: Docker Build & Publish
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
-  pull_request:
-    branches:
-      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

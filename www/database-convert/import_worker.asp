@@ -106,12 +106,17 @@ Set connAccess = Server.CreateObject("ADODB.Connection")
 Set connTarget = Server.CreateObject("ADODB.Connection")
 
 ' Open Access
+Dim dbPwd
+    dbPwd = Session("AccessDBPassword")
+
 On Error Resume Next
 connAccess.ConnectionString = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & accessPath
+If dbPwd <> "" Then connAccess.ConnectionString = connAccess.ConnectionString & ";Jet OLEDB:Database Password=" & dbPwd
 connAccess.Open
 If Err.Number <> 0 Then
     Err.Clear
     connAccess.ConnectionString = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=" & accessPath
+    If dbPwd <> "" Then connAccess.ConnectionString = connAccess.ConnectionString & ";Jet OLEDB:Database Password=" & dbPwd
     connAccess.Open
 End If
 

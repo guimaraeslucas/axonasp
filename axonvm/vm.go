@@ -6902,6 +6902,12 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 					}
 					vm.raiseVMError(vme)
 				}
+				// If the child script ended the response (Response.End/Redirect),
+				// propagate the termination signal to the parent VM so execution
+				// of the calling page stops immediately (IIS Classic ASP behavior).
+				if vm.host.Response().IsEnded() {
+					panic(asp.ResponseEndSignal)
+				}
 			}
 			return Value{Type: VTEmpty}
 		case strings.EqualFold(member, "Transfer"):

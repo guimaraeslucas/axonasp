@@ -57,135 +57,159 @@ Sub RenderHeader(title)
         made available under this same license terms.
         
         -->
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><%= title %></title>
-    <link rel="stylesheet" href="98.css">
-    <style>
-        body {
-            margin: 0;
-            font-size: 12px;
-            font-family: Tahoma, sans-serif;
-            user-select: none;
-        }
-        *{ font-family: Tahoma, sans-serif!important; }
-        .container {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            justify-content: space-between;
-        }
-        .main {
-            display: flex;
-            flex-grow: 1;
-        }
-        .sidebar {
-            background-color: #060c88;
-            min-width: 164px;
-            height: 100%;
-        }
-        .sidebar img {
-            width: 100%;
-        }
-        .content {
-            padding: 10px;
-            flex-grow: 1;
-        }
-        .content-inner {
-            padding: 2px;
-        }
-        .content-inner .title {
-            margin-bottom: 10px;
-            font-size: 1.5rem;
-        }
-        footer {
-            padding: 10px;
-            border-top: #9D9D9C ridge 1px;
-            text-align: right;
-        }
-        .buttons button {
-            margin-left: 5px;
-            min-width: 80px;
-        }
-        .sunken-panel {
-            overflow: auto;
-            background: white;
-        }
-        table.interactive tr.highlighted {
-            background-color: #000080;
-            color: white;
-        }
-        ::file-selector-button {
-        background: silver;
-        border: none;
-        border-radius: 0;
-        box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
-        box-sizing: border-box;
-        color: transparent;
-        min-height: 23px;
-        min-width: 75px;
-        padding: 0 12px;
-        text-shadow: 0 0 #222;
-        }
-        ::file-selector-button:active {
-        box-shadow: inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
-        text-shadow: 1px 1px #222;
-        }
-    </style>
-</head>
-<body>
 
-<div class="container">
-    <div class="main">
-        <div class="sidebar">
-            <img src="server.png" alt="G3Pix AxonASP Database Conversion Tool" style="user-select: none;user-drag: none;-webkit-user-drag: none;"><audio id="errorAudio" preload="auto" hidden>
-<source src="chord.wav">
-</audio>
-<script>
-    const errorAudio = document.getElementById('errorAudio');
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title><%= title %></title>
+        <link rel="stylesheet" href="98.css">
+        <style>
+            body {
+                margin: 0;
+                font-size: 12px;
+                font-family: Tahoma, sans-serif;
+                user-select: none;
+            }
 
-    function playErrorAudio() {
-    errorAudio.play().catch(error => {
-        console.error('Error audio play() failed (likely autoplay policy):', error);
-    });
-}
-</script>
-        </div>
-        <div class="content">
-            <div class="content-inner">
-<%
+            * {
+                font-family: Tahoma, sans-serif !important;
+            }
+
+            .container {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                justify-content: space-between;
+            }
+
+            .main {
+                display: flex;
+                flex-grow: 1;
+            }
+
+            .sidebar {
+                background-color: #060c88;
+                min-width: 164px;
+                height: 100%;
+            }
+
+            .sidebar img {
+                width: 100%;
+            }
+
+            .content {
+                padding: 10px;
+                flex-grow: 1;
+            }
+
+            .content-inner {
+                padding: 2px;
+            }
+
+            .content-inner .title {
+                margin-bottom: 10px;
+                font-size: 1.5rem;
+            }
+
+            footer {
+                padding: 10px;
+                border-top: #9D9D9C ridge 1px;
+                text-align: right;
+            }
+
+            .buttons button {
+                margin-left: 5px;
+                min-width: 80px;
+            }
+
+            .sunken-panel {
+                overflow: auto;
+                background: white;
+            }
+
+            table.interactive tr.highlighted {
+                background-color: #000080;
+                color: white;
+            }
+
+            ::file-selector-button {
+                background: silver;
+                border: none;
+                border-radius: 0;
+                box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf;
+                box-sizing: border-box;
+                color: transparent;
+                min-height: 23px;
+                min-width: 75px;
+                padding: 0 12px;
+                text-shadow: 0 0 #222;
+            }
+
+            ::file-selector-button:active {
+                box-shadow: inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey;
+                text-shadow: 1px 1px #222;
+            }
+        </style>
+    </head>
+
+    <body>
+
+        <div class="container">
+            <div class="main">
+                <div class="sidebar">
+                    <img src="server.png" alt="G3Pix AxonASP Database Conversion Tool"
+                        style="user-select: none;user-drag: none;-webkit-user-drag: none;"><audio id="errorAudio"
+                        preload="auto" hidden>
+                        <source src="chord.wav">
+                    </audio>
+                    <script>
+                        const errorAudio = document.getElementById('errorAudio');
+
+                        function playErrorAudio() {
+                            errorAudio.play().catch(error => {
+                                console.error('Error audio play() failed (likely autoplay policy):', error);
+                            });
+                        }
+                    </script>
+                </div>
+                <div class="content">
+                    <div class="content-inner">
+                        <%
 End Sub
 
 ' Helper to render the footer
 Sub RenderFooter(prevStep, nextStep, nextLabel, nextDisabled)
 %>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-    <footer>
-        <div class="buttons">
-            <%
+            <footer>
+                <div class="buttons">
+                    <%
             If prevStep <> "" Then
             %>
-                <button onclick="window.location='?step=<%= prevStep %>';">< Back</button>
-            <%
+                    <button onclick="window.location='?step=<%= prevStep %>';">
+                        < Back</button>
+                            <%
             Else
             %>
-                <button disabled="disabled">< Back</button>
-            <%
+                            <button disabled="disabled">
+                                < Back</button>
+                                    <%
             End If
             %>
-            
-            <%
+
+                                    <%
             If nextStep <> "" Then
             %>
-                <button id="btnNext" onclick="<%= nextStep %>" <%= IfThen(nextDisabled, "disabled=""disabled""", "") %> style="margin-left:-3px;"><%= nextLabel %></button>
-            <%
+                                    <button id="btnNext" onclick="<%= nextStep %>"
+                                        <%= IfThen(nextDisabled, "disabled=""disabled""", "") %>
+                                        style="margin-left:-3px;"><%= nextLabel %></button>
+                                    <%
             End If
             %>
-            
-            <!-- <button onclick="if(confirm('Cancel wizard?')) window.close();" style="margin-left:10px;">Cancel</button>
+
+                                    <!-- <button onclick="if(confirm('Cancel wizard?')) window.close();" style="margin-left:10px;">Cancel</button>
         </div>
     </footer>
 </div>
@@ -224,6 +248,10 @@ Case 1 ' Select / Upload Database
                     <div class="field-row-stacked" style="width: 100%;">
                         <label for="database">Access File (.mdb, .accdb):</label>
                         <input type="file" id="database" name="database" accept=".mdb,.accdb">
+                    </div>
+                    <div class="field-row-stacked" style="width: 100%; margin-top: 6px;">
+                        <label for="access_pwd">Access Password (optional):</label>
+                        <input type="password" id="access_pwd" name="access_pwd" value="" style="width: 200px;">
                     </div>
                 </fieldset>
                 <br>
@@ -328,6 +356,7 @@ Case 2 ' Process Upload And List Tables
     Session("DbName") = uploader.Form("dbName")
     Session("DbUser") = uploader.Form("dbUser")
     Session("DbPass") = uploader.Form("dbPass")
+    Session("AccessDBPassword") = uploader.Form("access_pwd")
 
     If result("IsSuccess") Then
         accessPath = result("FinalPath")
@@ -431,14 +460,19 @@ On Error Resume Next
 sourceConnOk = False
 sourceErr = ""
 
+Dim dbPwd
+    dbPwd = Session("AccessDBPassword")
+
 Set srcConn = Server.CreateObject("ADODB.Connection")
 srcConnStr = "Provider=Microsoft.ACE.OLEDB.12.0;Data Source=" & accessPath
+If dbPwd <> "" Then srcConnStr = srcConnStr & ";Jet OLEDB:Database Password=" & dbPwd
 srcConn.Open srcConnStr
 
 If Err.Number <> 0 Then
     sourceErr = Err.Description
     Err.Clear
     srcConnStr = "Provider=Microsoft.Jet.OLEDB.4.0;Data Source=" & accessPath
+    If dbPwd <> "" Then srcConnStr = srcConnStr & ";Jet OLEDB:Database Password=" & dbPwd
     srcConn.Open srcConnStr
 End If
 
