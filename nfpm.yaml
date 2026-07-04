@@ -13,6 +13,9 @@ license: "MPL-2.0"
 recommends: 
   - "net-tools" 
 
+archlinux:
+  packager: G3pix <axonasp@g3pix.com.br>
+
 scripts:
   postinstall: ./post-install.sh
 
@@ -38,23 +41,35 @@ contents:
     dst: /opt/axonasp/uninstall-service.sh
   - src: ./post-install.sh
     dst: /opt/axonasp/post-install.sh
+  - src: ./axonasp-fpm
+    dst: /opt/axonasp/axonasp-fpm
 
   # Standalone files
   - src: ./LICENSE.txt
     dst: /opt/axonasp/LICENSE.txt
   - src: ./global.asa
     dst: /opt/axonasp/global.asa
+      type: config|noreplace
+
+  # License for Archlinux package
+  - src: ./LICENSE.txt
+    dst: /usr/share/licenses/axonasp/LICENSE
+    file_info:
+      mode: 0644
 
   # Directories
   - src: ./www/
     dst: /opt/axonasp/www/
-    type: tree
+    type: noreplace|tree
   - src: ./config/
     dst: /opt/axonasp/config/
-    type: tree
+    type: config|tree
   - src: ./mcp/
     dst: /opt/axonasp/mcp/
     type: tree
+  - src: ./fpm/fpm.d/
+    dst: /opt/axonasp/fpm/fpm.d/
+    type: config|noreplace|tree
 
 # Empty Folders
   - dst: /opt/axonasp/temp/
@@ -85,6 +100,9 @@ contents:
     type: symlink
   - src: /opt/axonasp/config/axonasp.toml
     dst: /etc/axonasp/config/axonasp.toml
+    type: symlink
+  - src: /opt/axonasp/fpm/fpm.d/
+    dst: /etc/axonasp/fpm/fpm.d/
     type: symlink
   - src: /opt/axonasp/temp/cache/
     dst: /var/cache/axonasp/

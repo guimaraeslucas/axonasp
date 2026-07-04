@@ -195,6 +195,12 @@ function Run-Platform {
         $ok = Build-Binary -TargetOS $OS -TargetArch $Arch -OutputName $out -SourcePath $t.Source -Label $t.Label
         $script:BuildSuccess = $script:BuildSuccess -and $ok
     }
+
+    if ($OS -ne "windows") {
+        $fpmOut = "${OutDir}axonasp-fpm"
+        $fpmOk = Build-Binary -TargetOS $OS -TargetArch $Arch -OutputName $fpmOut -SourcePath "./fpm" -Label "FPM Manager"
+        $script:BuildSuccess = $script:BuildSuccess -and $fpmOk
+    }
     Write-Host ""
 }
 

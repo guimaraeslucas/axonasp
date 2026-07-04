@@ -25,6 +25,6 @@ package axonvm
 import "github.com/go-ole/go-ole"
 
 // adodbDecodeGetRowsVariant is a no-op outside Windows because ADODB OLE is not active.
-func adodbDecodeGetRowsVariant(rowsRes *ole.VARIANT, fieldCount int) ([]interface{}, int, bool) {
+func adodbDecodeGetRowsVariant(rowsRes *ole.VARIANT, fieldCount int) ([]any, int, bool) {
 	return nil, 0, false
 }

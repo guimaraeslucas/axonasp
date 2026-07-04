@@ -203,6 +203,14 @@ run_platform() {
             BUILD_SUCCESS=false
         fi
     done
+
+    if [ "$os" != "windows" ]; then
+        local fpm_out="${out_dir}axonasp-fpm"
+        build_binary "$os" "$arch" "$fpm_out" "./fpm" "FPM Manager"
+        if [ $? -ne 0 ]; then
+            BUILD_SUCCESS=false
+        fi
+    fi
     echo ""
 }
 

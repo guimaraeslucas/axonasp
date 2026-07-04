@@ -52,6 +52,7 @@ RUN if [ -z "$VERSION" ]; then \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-cli ./cli && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-mcp ./mcp && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-admin ./admin && \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-fpm ./fpm && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-testsuite ./testsuite
 
 
@@ -76,11 +77,13 @@ COPY --from=builder /build/axonasp-http ./axonasp-http
 COPY --from=builder /build/axonasp-fastcgi ./axonasp-fastcgi
 COPY --from=builder /build/axonasp-cli ./axonasp-cli
 COPY --from=builder /build/axonasp-mcp ./axonasp-mcp
+COPY --from=builder /build/axonasp-fpm ./axonasp-fpm
 COPY --from=builder /build/axonasp-testsuite ./axonasp-testsuite
 COPY --from=builder /build/axonasp-admin ./axonasp-admin
 
 
 COPY --from=builder /build/config/ ./config/
+COPY --from=builder /build/fpm/fpm.d/ ./fpm/default_fpm.d/
 COPY --from=builder /build/mcp/ ./mcp/
 COPY --from=builder /build/LICENSE.txt ./LICENSE.txt
 COPY --from=builder /build/global.asa ./global.asa
@@ -95,9 +98,14 @@ RUN printf '#!/bin/sh\n\
     echo "--> Initializing /opt/axonasp/www with the default AxonASP content..."\n\
     cp -a /opt/axonasp/default_www/. /opt/axonasp/www/\n\
     fi\n\
+    if [ -z "$(ls -A /opt/axonasp/fpm/fpm.d/ 2>/dev/null)" ]; then\n\
+    echo "--> Initializing /opt/axonasp/fpm/fpm.d/ with the default AxonASP fpm configuration..."\n\
+    cp -a /opt/axonasp/default_fpm.d/. /opt/axonasp/fpm/fpm.d/\n\
+    fi\n\
     # 2. Ensure the directories belong to the axonasp user\n\
     chown -R axonasp:axonasp /opt/axonasp/www\n\
     chown -R axonasp:axonasp /opt/axonasp/temp\n\
+    chown -R axonasp:axonasp /opt/axonasp/fpm/fpm.d\n\
     # 3. Switch from root to axonasp user and execute the main binary\n\
     exec su-exec axonasp "$@"\n' > /entrypoint.sh && chmod +x /entrypoint.sh
 

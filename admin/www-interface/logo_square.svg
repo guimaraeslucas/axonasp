@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   version="1.1"
+   id="svg1"
+   width="682.666687"
+   height="682.666687"
+   viewBox="0 0 682.666687 682.666687"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <g
+     id="g1">
+    <g
+       id="g13"
+       transform="matrix(2.276756044,0,0,2.276756044,-634.4945244,-718.4232228)">
+      <path
+         d="M 512.8007813,400.9921875 448.375,465.4179687 h 64.4882813 64.3632812 z m -64.4316407,64.4316406 -0.00391,0.00391 64.4355469,62.7832031 0.033203,-0.03125 -32.2207032,-31.3652344 z"
+         style="font-weight:bold;font-size:619.284px;font-family:Tahoma;-inkscape-font-specification:'Tahoma Bold';letter-spacing:0px;baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#049c4d;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path9" />
+      <path
+         d="m 344.2792969,400.9921875 -64.3847657,64.3847656 h 64.4550782 64.3125 z m -64.40625,64.40625 -0.029297,0.029297 60.484375,58.9335937 -28.2285156,-27.53125 z"
+         style="font-weight:bold;font-size:619.284px;font-family:Tahoma;-inkscape-font-specification:'Tahoma Bold';letter-spacing:0px;baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#60941a;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path11" />
+      <path
+         d="m 428.5390625,485.2539062 -62.65625,64.3027344 h 62.6484375 62.6640625 z m 62.765625,64.4160157 -19.5742188,20.125 19.5917969,-20.1074219 z m -125.5390625,0.00781 -0.00977,0.00977 10.8613281,11.1464844 z"
+         style="font-weight:bold;font-size:619.284px;font-family:Tahoma;-inkscape-font-specification:'Tahoma Bold';letter-spacing:0px;baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#edc00f;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path13" />
+      <path
+         d="m 428.5390625,316.7304687 -62.7832031,64.4355469 0.052734,0.052734 h 62.7597657 62.7011718 l 0.052734,-0.052734 z m -26.796875,100.421875 26.796875,26.796875 3.8613281,-3.8613281 -3.8320312,3.8222656 z"
+         style="font-weight:bold;font-size:619.284px;font-family:Tahoma;-inkscape-font-specification:'Tahoma Bold';letter-spacing:0px;baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#004aad;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path7" />
+      <path
+         d="m 448.3613281,465.4179687 32.2519531,31.3964844 32.2500001,31.3945313 32.2519531,-31.3945313 32.25,-31.3964844 h -64.5019531 z"
+         style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#004aad;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path8" />
+      <path
+         d="m 279.8496094,465.3769531 32.25,31.453125 32.25,31.453125 32.2480468,-31.453125 32.25,-31.453125 h -64.4980468 z"
+         style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#edc00f;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path10" />
+      <path
+         d="m 365.7167969,381.21875 31.4257812,31.3457031 31.4257813,31.3457031 31.4257812,-31.3457031 31.4238281,-31.3457031 h -62.8496093 z"
+         style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#60941a;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path5" />
+      <path
+         d="m 365.6464844,549.5566406 31.4433593,32.3242188 31.4414063,32.3242187 31.4433594,-32.3242187 31.4414062,-32.3242188 H 428.53125 Z"
+         style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#049c4d;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         id="path12" />
+    </g>
+  </g>
+</svg>

@@ -224,7 +224,7 @@ func parseFastCGIListenEndpoint(raw string) (string, string, error) {
 
 	lower := strings.ToLower(value)
 	if strings.HasPrefix(lower, "unix:") {
-		socketPath := strings.TrimSpace(value[len("unix:"):])
+		socketPath := normalizeUnixSocketPath(value)
 		if socketPath == "" {
 			return "", "", fmt.Errorf("unix socket path cannot be empty")
 		}
@@ -249,6 +249,21 @@ func parseFastCGIListenEndpoint(raw string) (string, string, error) {
 	return "", "", fmt.Errorf("invalid FastCGI listen endpoint")
 }
 
+// normalizeUnixSocketPath strips the unix: prefix and canonicalizes slash-prefixed unix socket paths.
+func normalizeUnixSocketPath(value string) string {
+	trimmed := strings.TrimSpace(value)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "unix:") {
+		trimmed = strings.TrimSpace(trimmed[len("unix:"):])
+	}
+
+	if strings.HasPrefix(trimmed, "//") {
+		trimmed = "/" + strings.TrimLeft(trimmed, "/")
+	}
+
+	return trimmed
+}
+
 // prepareFastCGIListener creates the configured FastCGI listener and prepares unix socket paths when needed.
 func prepareFastCGIListener(network, address string) (net.Listener, error) {
 	if network != "unix" {
@@ -259,17 +274,22 @@ func prepareFastCGIListener(network, address string) (net.Listener, error) {
 		return nil, fmt.Errorf("unix socket mode is not supported on Windows")
 	}
 
-	if err := ensureUnixSocketPathReady(address); err != nil {
+	socketPath := normalizeUnixSocketPath(address)
+	if socketPath == "" {
+		return nil, fmt.Errorf("unix socket path cannot be empty")
+	}
+
+	if err := ensureUnixSocketPathReady(socketPath); err != nil {
 		return nil, err
 	}
 
-	listener, err := net.Listen("unix", address)
+	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
 		return nil, err
 	}
 
-	if chmodErr := os.Chmod(address, 0o660); chmodErr != nil {
-		log.Printf("Warning: Failed to apply permissions to unix socket %s: %v\n", address, chmodErr)
+	if chmodErr := os.Chmod(socketPath, 0o660); chmodErr != nil {
+		log.Printf("Warning: Failed to apply permissions to unix socket %s: %v\n", socketPath, chmodErr)
 	}
 
 	return listener, nil
@@ -277,14 +297,19 @@ func prepareFastCGIListener(network, address string) (net.Listener, error) {
 
 // ensureUnixSocketPathReady creates parent directories and removes stale unix socket files before binding.
 func ensureUnixSocketPathReady(path string) error {
-	dir := filepath.Dir(path)
+	socketPath := normalizeUnixSocketPath(path)
+	if socketPath == "" {
+		return fmt.Errorf("unix socket path cannot be empty")
+	}
+
+	dir := filepath.Dir(socketPath)
 	if dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
 	}
 
-	info, err := os.Lstat(path)
+	info, err := os.Lstat(socketPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -293,10 +318,10 @@ func ensureUnixSocketPathReady(path string) error {
 	}
 
 	if info.Mode()&os.ModeSocket == 0 {
-		return fmt.Errorf("path exists and is not a unix socket: %s", path)
+		return fmt.Errorf("path exists and is not a unix socket: %s", socketPath)
 	}
 
-	return os.Remove(path)
+	return os.Remove(socketPath)
 }
 
 // cleanupFastCGIListenerArtifact removes unix socket files on graceful shutdown.

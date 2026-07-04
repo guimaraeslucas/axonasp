@@ -25,12 +25,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -43,7 +45,7 @@ type PoolConfig struct {
 	UID           uint32 `toml:"uid"`
 	GID           uint32 `toml:"gid"`
 	Socket        string `toml:"socket"`
-	ConfigFile	  string `toml:"config_file"`
+	ConfigFile    string `toml:"config_file"`
 	AppPath       string `toml:"app_path"`
 	MemoryLimitMB int    `toml:"memory_limit_mb"`
 	MaxRestarts   int    `toml:"max_restarts"`
@@ -61,27 +63,59 @@ var (
 	poolsMutex  sync.Mutex
 )
 
-func main() {
-	if os.Geteuid() != 0 {
-		log.Fatal("Error: The AxonASP Manager must be run as root.")
+// normalizePoolSocketEndpoint normalizes pool socket configuration and returns
+// the FastCGI listen endpoint plus a filesystem path when using unix sockets.
+func normalizePoolSocketEndpoint(raw string) (listenEndpoint string, socketPath string, isUnix bool, err error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", "", false, fmt.Errorf("socket is required in pool config")
 	}
 
-	log.Println("Starting AxonASP FPM Manager...")
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "unix:") {
+		path := strings.TrimSpace(value[len("unix:"):])
+		if path == "" {
+			return "", "", false, fmt.Errorf("unix socket path cannot be empty")
+		}
+		return "unix:" + path, path, true, nil
+	}
+
+	if strings.HasPrefix(value, "/") || strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") {
+		return "unix:" + value, value, true, nil
+	}
+
+	return value, "", false, nil
+}
+
+func main() {
+	if os.Geteuid() != 0 {
+		log.Fatal("Error: AxonASP FPM must be run as root.")
+	}
 
 	// 1. Initial Load of Configurations
 	scanAndLoadConfigs()
 
-	// 2. Setup Signal Handling for Graceful Reload (SIGHUP)
+	// 2. Setup Signal Handling for Graceful Reload (SIGHUP) and shutdown (SIGINT/SIGTERM)
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGHUP)
+	signal.Notify(sigChan, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Println("AxonASP FPM Manager is running...")
+	// 3. Periodic scan allows new pool files to be detected without requiring SIGHUP.
+	//rescanTicker := time.NewTicker(5 * time.Second)
+	//defer rescanTicker.Stop()
 
-	// 3. Main Event Loop
+	log.Println("G3pix ❖ AxonASP FPM Ready")
+
+	// 4. Main Event Loop
 	for sig := range sigChan {
-		_ = sig
-		log.Println("Received Sighup. Rescanning configuration directory for new applications...")
-		scanAndLoadConfigs()
+		switch sig {
+		case syscall.SIGHUP:
+			log.Println("SIGHUP received. Rescanning configuration directory for new applications...")
+			scanAndLoadConfigs()
+		case syscall.SIGINT, syscall.SIGTERM:
+			log.Printf("%s received. Shutting down FPM manager...", sig.String())
+			shutdownAllPools()
+			return
+		}
 	}
 }
 
@@ -92,8 +126,8 @@ func scanAndLoadConfigs() {
 
 	files, err := os.ReadDir(ConfigDir)
 	if err != nil {
-		log.Printf("Failed to read configuration directory: %v", err)
-		return
+		//We use Fatalf here because if we can't read the config directory, we can't proceed.
+		log.Fatalf("Failed to read configuration directory: %v\nExiting...", err)
 	}
 
 	for _, file := range files {
@@ -111,6 +145,16 @@ func scanAndLoadConfigs() {
 				go superviseWorker(ctx, configPath)
 			}
 		}
+	}
+}
+
+func shutdownAllPools() {
+	poolsMutex.Lock()
+	defer poolsMutex.Unlock()
+
+	for configPath, cancel := range activePools {
+		cancel()
+		delete(activePools, configPath)
 	}
 }
 
@@ -132,6 +176,26 @@ func superviseWorker(ctx context.Context, configPath string) {
 		conf.TmpDir = "/opt/axonasp/temp/"
 	}
 
+	if conf.AppPath == "" {
+		log.Printf("[%s] Error: app_path is required in pool config", conf.SiteName)
+		return
+	}
+	appPathInfo, err := os.Stat(conf.AppPath)
+	if err != nil {
+		log.Printf("[%s] Error validating app_path %q: %v", conf.SiteName, conf.AppPath, err)
+		return
+	}
+	if !appPathInfo.IsDir() {
+		log.Printf("[%s] Error: app_path %q is not a directory", conf.SiteName, conf.AppPath)
+		return
+	}
+
+	listenEndpoint, socketPath, isUnixSocket, err := normalizePoolSocketEndpoint(conf.Socket)
+	if err != nil {
+		log.Printf("[%s] Error: invalid socket value %q: %v", conf.SiteName, conf.Socket, err)
+		return
+	}
+
 	// Create Directories
 	if err := os.MkdirAll(conf.TmpDir, 0755); err != nil {
 		log.Printf("[%s] Error creating temp directory: %v", conf.SiteName, err)
@@ -142,24 +206,28 @@ func superviseWorker(ctx context.Context, configPath string) {
 		return
 	}
 
-	socketDir := filepath.Dir(conf.Socket)
-	if err := os.MkdirAll(socketDir, 0755); err != nil {
-		log.Printf("[%s] Error creating socket directory: %v", conf.SiteName, err)
-		return
-	}
-	if err := os.Chown(socketDir, int(conf.UID), int(conf.GID)); err != nil {
-		log.Printf("[%s] Error setting permissions on socket directory: %v", conf.SiteName, err)
-		return
+	if isUnixSocket {
+		socketDir := filepath.Dir(socketPath)
+		if err := os.MkdirAll(socketDir, 0755); err != nil {
+			log.Printf("[%s] Error creating socket directory: %v", conf.SiteName, err)
+			return
+		}
+		if err := os.Chown(socketDir, int(conf.UID), int(conf.GID)); err != nil {
+			log.Printf("[%s] Error setting permissions on socket directory: %v", conf.SiteName, err)
+			return
+		}
+
+		_ = os.Remove(socketPath)
 	}
 
-	os.Remove(conf.Socket)
 	restarts := 0
 
 	for {
 		log.Printf("[%s] Starting Worker (Attempt: %d) with %dMB of RAM", conf.SiteName, restarts, conf.MemoryLimitMB)
 
 		// Use CommandContext so the process can be killed cleanly if the context is cancelled, we still need to support it in the fastcgi implementation
-		cmd := exec.CommandContext(ctx, WorkerExec, "--fastcgi.server_port", conf.Socket, "--config.config_file", conf.ConfigFile)
+		cmd := exec.CommandContext(ctx, WorkerExec, "--fastcgi.server_port", listenEndpoint, "--config.config_file", conf.ConfigFile)
+		cmd.Dir = conf.AppPath
 
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{
@@ -210,6 +278,10 @@ func superviseWorker(ctx context.Context, configPath string) {
 // enforceCgroupMemoryLimit remains exactly the same as previously defined
 func enforceCgroupMemoryLimit(siteName string, pid int, memoryLimitMB int) error {
 	cgroupBase := "/sys/fs/cgroup/axonasp"
+	if err := ensureMemoryControllerDelegated(cgroupBase); err != nil {
+		return err
+	}
+
 	poolCgroup := filepath.Join(cgroupBase, siteName)
 
 	if err := os.MkdirAll(poolCgroup, 0755); err != nil {
@@ -218,15 +290,86 @@ func enforceCgroupMemoryLimit(siteName string, pid int, memoryLimitMB int) error
 
 	limitBytes := fmt.Sprintf("%d", memoryLimitMB*1024*1024)
 	limitFile := filepath.Join(poolCgroup, "memory.max")
-	if err := os.WriteFile(limitFile, []byte(limitBytes), 0644); err != nil {
+	if err := writeCgroupControl(limitFile, limitBytes); err != nil {
+		if isPermissionErr(err) {
+			return fmt.Errorf("failed to write memory.max: %w (cgroup permission/delegation issue; verify systemd Delegate=yes and writable cgroup subtree)", err)
+		}
 		return fmt.Errorf("failed to write memory.max: %w", err)
 	}
 
 	procsFile := filepath.Join(poolCgroup, "cgroup.procs")
 	pidStr := fmt.Sprintf("%d", pid)
-	if err := os.WriteFile(procsFile, []byte(pidStr), 0644); err != nil {
+	if err := writeCgroupControl(procsFile, pidStr); err != nil {
 		return fmt.Errorf("failed to attach PID to cgroup: %w", err)
 	}
 
 	return nil
+}
+
+// ensureMemoryControllerDelegated verifies memory controller availability and
+// tries to enable it for child cgroups if not already active.
+func ensureMemoryControllerDelegated(cgroupBase string) error {
+	controllersData, err := os.ReadFile(filepath.Join(cgroupBase, "cgroup.controllers"))
+	if err != nil {
+		if isPermissionErr(err) {
+			return fmt.Errorf("failed to read cgroup controllers: %w (missing permission to inspect cgroup delegation)", err)
+		}
+		return fmt.Errorf("failed to read cgroup controllers: %w", err)
+	}
+
+	controllers := string(controllersData)
+	if !hasController(controllers, "memory") {
+		return fmt.Errorf("memory controller is not available in %s/cgroup.controllers", cgroupBase)
+	}
+
+	subtreePath := filepath.Join(cgroupBase, "cgroup.subtree_control")
+	subtreeData, err := os.ReadFile(subtreePath)
+	if err != nil {
+		if isPermissionErr(err) {
+			return fmt.Errorf("failed to read cgroup.subtree_control: %w (missing permission to inspect cgroup delegation)", err)
+		}
+		return fmt.Errorf("failed to read cgroup.subtree_control: %w", err)
+	}
+
+	if hasController(string(subtreeData), "memory") {
+		return nil
+	}
+
+	if err := writeCgroupControl(subtreePath, "+memory"); err != nil {
+		if isPermissionErr(err) {
+			return fmt.Errorf("memory controller not delegated for child cgroups in %s: %w (set Delegate=yes in the service unit and enable +memory in cgroup.subtree_control)", cgroupBase, err)
+		}
+		return fmt.Errorf("failed to enable memory controller in cgroup.subtree_control: %w", err)
+	}
+
+	return nil
+}
+
+func hasController(list string, controller string) bool {
+	for _, item := range strings.Fields(list) {
+		if item == controller {
+			return true
+		}
+	}
+	return false
+}
+
+func writeCgroupControl(path string, value string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString(value); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func isPermissionErr(err error) bool {
+	return errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, syscall.EPERM) ||
+		errors.Is(err, syscall.EACCES)
 }
