@@ -4,7 +4,11 @@
 
 AxonASP provides a FastCGI application server (`axonasp-fastcgi.exe`) that integrates directly with Nginx, Apache or other servers using the FastCGI protocol. In this mode AxonASP acts as a backend process and the front-end web server handles all HTTP connections, static content, and TLS termination. There is no support for IIS FastCGI, you must use the http platform handler to proxy requests to the AxonASP default server.
 
-AxonASP FastCGI fully supports **multi-host deployments** with different document roots, similar to PHP-FPM. This allows a single FastCGI server process to serve content from multiple virtual hosts, each with its own document root directory.
+AxonASP FastCGI supports **multi-host deployments** with different document roots. This allows a single FastCGI server process to serve content from multiple virtual hosts, each with its own document root directory. 
+
+Attention: the FastCGI implementation does not support serving global.asa from multiple virtual hosts, it will only use the global.asa from the root directory definied by the key server.web_root or by the --config.global_asa flag. If you need to serve different global.asa files for different virtual hosts, you must run multiple FastCGI server processes with different configuration files.
+
+There is a future plan to support multiple global.asa files for different virtual hosts by using a PHP-FPM like approach, but it is not fully implemented yet/tested, although the FPM implementation is already available in the source code and can be used to run multiple FastCGI processes with different global.asa files.
 
 ## Prerequisites
 
@@ -18,10 +22,48 @@ The FastCGI port is configured in `config/axonasp.toml`:
 server_port = 9000
 ```
 
-The port can also be a socket path on Linux and macOS:
+The same setting also accepts endpoint-style values:
+
+- `9000` (port only)
+- `127.0.0.1:9000` (host and port)
+- `:9000` (bind localhost on a specific port)
+- `unix:/tmp/axonasp.sock` (Unix socket, Linux/macOS)
+
+The endpoint can be configured as a number or as a string in TOML:
+
+```toml
+[fastcgi]
+server_port = "9000"
+```
+
+Unix socket example:
 
 ```toml
 server_port = "unix:/tmp/axonasp.sock"
+```
+
+If the endpoint value is empty, AxonASP falls back to port `9000`.
+
+## Startup Flags
+
+FastCGI startup supports these relevant flags:
+
+- `-c`, `--config.config_file`: Custom configuraton TOML file path.
+- `--fastcgi.server_port`: Overrides `fastcgi.server_port` using the same endpoint format accepted in TOML.
+- `--config.global_asa`: Optional directory that must contain the `global.asa` to be used. If the file is not found in this directory, AxonASP will terminate with an internal 500 error. If not set, AxonASP will fallback to `server.web_root` and then the current working directory of the executable.
+
+Examples:
+
+```powershell
+.\axonasp-fastcgi.exe --fastcgi.server_port 9001
+```
+
+```powershell
+.\axonasp-fastcgi.exe --fastcgi.server_port unix:/tmp/axonasp.sock
+```
+
+```powershell
+.\axonasp-fastcgi.exe --config.global_asa /var/www/app
 ```
 
 **Start AxonASP FastCGI:**
@@ -37,6 +79,24 @@ You can launch a FastCGI server process with a custom configuration using the `-
 ```powershell
 .\axonasp-fastcgi.exe -c .\config\app_fastcgi.toml
 ```
+
+## global.asa Startup Resolution
+
+At startup, G3Pix AxonASP resolves `global.asa` using this order:
+
+1. If `--config.global_asa` is explicitly set, AxonASP checks `<directory>/global.asa` in that path only.
+2. If `--config.global_asa` is not set, AxonASP checks `server.web_root`.
+3. If not found in `server.web_root`, AxonASP checks the process current working directory.
+4. If not found in either fallback location, AxonASP skips `global.asa` execution and continues startup.
+
+Validation behavior for explicit flag use:
+
+- If `--config.global_asa` is set and `global.asa` is missing (or invalid in that directory), AxonASP writes a startup log entry and terminates startup with an internal 500 state.
+
+Startup logging behavior:
+
+- When found, AxonASP logs the selected source directory for `global.asa`.
+- When skipped by fallback, AxonASP logs that no file was found in `server.web_root` and current working directory.
 
 ## DOCUMENT_ROOT and SCRIPT_NAME Parameters
 
@@ -242,7 +302,7 @@ upstream axonasp_fcgi {
 ## Remarks
 
 - The FastCGI server supports the same ASP libraries and functions as the HTTP server. Feature parity is maintained between all runtime modes.
-- `global.asa` is loaded from the configured web root on startup, identical to the HTTP server, you should set the `server.web_root` key to the parent directory of `global.asa` for it to be loaded properly.
+- `global.asa` startup lookup can be forced with `--config.global_asa`, or resolved by fallback (`server.web_root`, then current working directory).
 - The FastCGI server does not serve static files directly. The front-end web server handles static content. 
 - Increase `instanceMaxRequests` or `maxInstances` in IIS for high-traffic deployments.
 - For Nginx, use `fastcgi_read_timeout` to match the AxonASP script timeout configured in `axonasp.toml`.

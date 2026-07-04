@@ -63,6 +63,9 @@ var (
 	ListenNetwork                 = "tcp"
 	ListenAddr                    = "127.0.0.1:9000"
 	RootDir                       = "./www"
+	ConfiguredWebRoot             = ""
+	ConfiguredGlobalASADir        = ""
+	GlobalASADirFlagSet           = false
 	DefaultPages                  = []string{"default.asp", "default.htm", "index.asp", "index.html", "default.html"}
 	ExecuteAsASPExtension         = []string{".asp"}
 	ExecuteAsVBScriptExtensions   = []string{".vbs"}
@@ -99,7 +102,10 @@ func loadFastCGIConfig() {
 		pflag.StringP("config.config_file", "c", "", "Path to the configuration file to use.")
 	}
 	if pflag.Lookup("fastcgi.server_port") == nil {
-		pflag.Int("fastcgi.server_port", 9000, "FastCGI server port to listen on")
+		pflag.String("fastcgi.server_port", "9000", "FastCGI listen endpoint (port, host:port, :port, or unix:/path/socket)")
+	}
+	if pflag.Lookup("config.global_asa") == nil {
+		pflag.String("config.global_asa", "", "Optional directory containing global.asa (overrides server.web_root and CWD fallback)")
 	}
 
 	pflag.Parse()
@@ -127,6 +133,14 @@ func loadFastCGIConfig() {
 
 	if pages := v.GetStringSlice("fastcgi.default_pages"); len(pages) > 0 {
 		DefaultPages = pages
+	}
+	ConfiguredWebRoot = strings.TrimSpace(v.GetString("server.web_root"))
+	if ConfiguredWebRoot != "" {
+		RootDir = ConfiguredWebRoot
+	}
+	ConfiguredGlobalASADir = strings.TrimSpace(v.GetString("config.global_asa"))
+	if flag := pflag.CommandLine.Lookup("config.global_asa"); flag != nil {
+		GlobalASADirFlagSet = flag.Changed
 	}
 	if executeAsASP := v.GetStringSlice("global.execute_as_asp"); len(executeAsASP) > 0 {
 		ExecuteAsASPExtension = normalizeExtensions(executeAsASP)
@@ -160,14 +174,15 @@ func loadFastCGIConfig() {
 	}
 
 	rawListenEndpoint := strings.TrimSpace(v.GetString("fastcgi.server_port"))
-	if rawListenEndpoint != "" {
-		network, address, err := parseFastCGIListenEndpoint(rawListenEndpoint)
-		if err != nil {
-			log.Printf("Warning: Invalid fastcgi.server_port value %q, keeping default %s://%s: %v\n", rawListenEndpoint, ListenNetwork, ListenAddr, err)
-		} else {
-			ListenNetwork = network
-			ListenAddr = address
-		}
+	if rawListenEndpoint == "" {
+		rawListenEndpoint = "9000"
+	}
+	network, address, err := parseFastCGIListenEndpoint(rawListenEndpoint)
+	if err != nil {
+		log.Printf("Warning: Invalid fastcgi.server_port value %q, keeping default %s://%s: %v\n", rawListenEndpoint, ListenNetwork, ListenAddr, err)
+	} else {
+		ListenNetwork = network
+		ListenAddr = address
 	}
 
 	CleanupSessions = v.GetBool("global.clean_sessions_on_startup")
@@ -342,6 +357,62 @@ func normalizeExtensions(values []string) []string {
 	return cleaned
 }
 
+// resolveGlobalASARoot determines where global.asa should be loaded from at startup.
+// Precedence: explicit --config.global_asa, then server.web_root, then process CWD.
+func resolveGlobalASARoot() (string, bool, error) {
+	if GlobalASADirFlagSet {
+		dir := strings.TrimSpace(ConfiguredGlobalASADir)
+		if dir == "" {
+			return "", false, fmt.Errorf("config.global_asa was set but no directory was provided")
+		}
+		globalASAPath := filepath.Join(dir, "global.asa")
+		info, err := os.Stat(globalASAPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "", false, fmt.Errorf("global.asa not found in config.global_asa directory: %s", dir)
+			}
+			return "", false, fmt.Errorf("failed to inspect global.asa in config.global_asa directory %s: %w", dir, err)
+		}
+		if info.IsDir() {
+			return "", false, fmt.Errorf("global.asa path resolves to a directory in config.global_asa directory: %s", dir)
+		}
+		return dir, true, nil
+	}
+
+	seen := make(map[string]struct{}, 2)
+	candidates := make([]string, 0, 2)
+	if dir := strings.TrimSpace(ConfiguredWebRoot); dir != "" {
+		if _, ok := seen[dir]; !ok {
+			seen[dir] = struct{}{}
+			candidates = append(candidates, dir)
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if _, ok := seen[cwd]; !ok {
+			seen[cwd] = struct{}{}
+			candidates = append(candidates, cwd)
+		}
+	}
+
+	for _, dir := range candidates {
+		globalASAPath := filepath.Join(dir, "global.asa")
+		info, err := os.Stat(globalASAPath)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			log.Printf("Warning: Failed to inspect potential global.asa at %s: %v\n", globalASAPath, err)
+			continue
+		}
+		if info.IsDir() {
+			continue
+		}
+		return dir, true, nil
+	}
+
+	return "", false, nil
+}
+
 // cleanupSessionFiles removes all files and folders from temp/session.
 func cleanupSessionFiles() {
 	sessionDir := filepath.Join("temp", "session")
@@ -421,14 +492,26 @@ func main() {
 	asp.StartSessionAutoFlush(time.Duration(SessionAutoFlushSeconds) * time.Second)
 	defer asp.StopSessionAutoFlush()
 
-	// Load and compile global.asa
-	if err := axonvm.GetGlobalASA().LoadAndCompile(RootDir, GetSharedApplication()); err != nil {
-		fmt.Printf("Warning: Failed to load global.asa: %v\n", err)
-	} else if axonvm.GetGlobalASA().IsLoaded() {
-		// Execute Application_OnStart using a dummy host
-		req, _ := http.NewRequest("GET", "http://localhost/", nil)
-		dummyHost := NewFastCGIHost(&dummyResponseWriter{}, req)
-		_ = axonvm.GetGlobalASA().ExecuteApplicationOnStart(dummyHost)
+	globalASARoot, shouldLoadGlobalASA, globalASAResolveErr := resolveGlobalASARoot()
+	if globalASAResolveErr != nil {
+		log.Printf("Error: %v\n", globalASAResolveErr)
+		axonvm.ReportInternalError(axonvm.HTTPInternalServerError, globalASAResolveErr, "Failed to resolve global.asa startup configuration.", "global.asa", 0)
+		os.Exit(1)
+	}
+
+	// Load and compile global.asa only when a concrete file location was found.
+	if shouldLoadGlobalASA {
+		log.Printf("[FastCGI] Startup global.asa source directory: %s\n", globalASARoot)
+		if err := axonvm.GetGlobalASA().LoadAndCompile(globalASARoot, GetSharedApplication()); err != nil {
+			fmt.Printf("Warning: Failed to load global.asa: %v\n", err)
+		} else if axonvm.GetGlobalASA().IsLoaded() {
+			// Execute Application_OnStart using a dummy host
+			req, _ := http.NewRequest("GET", "http://localhost/", nil)
+			dummyHost := NewFastCGIHost(&dummyResponseWriter{}, req)
+			_ = axonvm.GetGlobalASA().ExecuteApplicationOnStart(dummyHost)
+		}
+	} else {
+		log.Printf("[FastCGI] Startup global.asa not found in fallback locations (server.web_root/CWD); skipping global.asa execution.\n")
 	}
 
 	mux := http.NewServeMux()

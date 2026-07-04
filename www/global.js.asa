@@ -1,0 +1,5 @@
+<script language="JScript" runat="server">
+function Application_OnStart() {
+	Application("test") = 1;
+}
+</script>
