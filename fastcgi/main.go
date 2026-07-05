@@ -426,7 +426,7 @@ func resolveGlobalASARoot() (string, bool, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			log.Printf("Warning: Failed to inspect potential global.asa at %s: %v\n", globalASAPath, err)
+			fmt.Printf("Warning: Failed to inspect potential global.asa at %s: %v\n", globalASAPath, err)
 			continue
 		}
 		if info.IsDir() {
@@ -483,6 +483,9 @@ func (d *dummyResponseWriter) WriteHeader(statusCode int)  {}
 
 // main starts the FastCGI listener and serves ASP requests.
 func main() {
+	fmt.Printf("G3pix ❖ AxonASP FastCGI %s\n", Version)
+	fmt.Print("\033]0;G3pix ❖ AxonASP FastCGI\007\033]11;#3b6ea5\007\033[1;37m")
+
 	if CleanupSessions {
 		cleanupSessionFiles()
 	}
@@ -491,11 +494,12 @@ func main() {
 	}
 
 	if _, err := os.Stat(RootDir); os.IsNotExist(err) {
-		axonvm.ReportInternalError(axonvm.ErrRootDirectoryDoesNotExist, err, "Creating missing root directory.", RootDir, 0)
-		if mkdirErr := os.MkdirAll(RootDir, 0o755); mkdirErr != nil {
-			axonvm.ReportInternalError(axonvm.ErrRootDirInvalid, mkdirErr, "Failed to create the configured root directory.", RootDir, 0)
-			os.Exit(1)
-		}
+		axonvm.ReportInternalError(axonvm.ErrRootDirectoryDoesNotExist, err, "Missing root directory. The FastCGI server will run, but some features will not work correctly. Please set a valid root directory in the config file.", RootDir, 0)
+		//The fastcgi implementation doesn't need to create the root directory like the standalone server does, so we just log a warning and continue. But it is advisable to create the root directory to avoid runtime errors when serving requests that require resources that may reside in the root directory. We disable the automated creation of the root directory to avoid permission issues in some environments. You can re-enable it by uncommenting the following lines if you want the server to attempt to create the root directory automatically.
+		//if mkdirErr := os.MkdirAll(RootDir, 0o755); mkdirErr != nil {
+		//	axonvm.ReportInternalError(axonvm.ErrRootDirInvalid, mkdirErr, "Failed to create the configured root directory.", RootDir, 0)
+		//	os.Exit(1)
+		//}
 	}
 
 	cacheRoot, cacheRootErr := filepath.Abs(RootDir)
@@ -526,7 +530,7 @@ func main() {
 
 	// Load and compile global.asa only when a concrete file location was found.
 	if shouldLoadGlobalASA {
-		log.Printf("[FastCGI] Startup global.asa source directory: %s\n", globalASARoot)
+		fmt.Printf("Startup global.asa source directory: %s\n", globalASARoot)
 		if err := axonvm.GetGlobalASA().LoadAndCompile(globalASARoot, GetSharedApplication()); err != nil {
 			fmt.Printf("Warning: Failed to load global.asa: %v\n", err)
 		} else if axonvm.GetGlobalASA().IsLoaded() {
@@ -536,7 +540,7 @@ func main() {
 			_ = axonvm.GetGlobalASA().ExecuteApplicationOnStart(dummyHost)
 		}
 	} else {
-		log.Printf("[FastCGI] Startup global.asa not found in fallback locations (server.web_root/CWD); skipping global.asa execution.\n")
+		fmt.Printf("Startup global.asa not found in fallback locations (server.web_root/CWD); skipping global.asa execution.\n")
 	}
 
 	mux := http.NewServeMux()
@@ -551,10 +555,8 @@ func main() {
 	defer listener.Close()
 	defer cleanupFastCGIListenerArtifact(ListenNetwork, ListenAddr)
 
-	fmt.Printf("G3pix ❖ AxonASP Server %s\n", Version)
 	fmt.Printf("FastCGI server started on: %s://%s\n", ListenNetwork, ListenAddr)
 	fmt.Printf("Root directory: %s\n", RootDir)
-	fmt.Print("\033]0;G3pix ❖ AxonASP FastCGI\007\033]11;#3b6ea5\007\033[1;37m")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -623,8 +625,8 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// DEBUG: Log all headers to understand FastCGI parameter passing format
 	fcgiParams := extractFastCGIParams(r)
 	if DebugASP {
-		log.Printf("[FastCGI] Request: %s %s\n", r.Method, r.URL.Path)
-		log.Printf("[FastCGI] All headers/params:\n")
+		log.Printf("Request: %s %s\n", r.Method, r.URL.Path)
+		log.Printf("All headers/params:\n")
 		for k, v := range fcgiParams {
 			// Truncate long values for logging
 			val := v

@@ -24,6 +24,7 @@ package axonvm
 type VBArray struct {
 	Lower   int
 	Values  []Value
+	Dims    int
 	JSProps map[string]Value // Stores JScript-specific properties (including Symbols)
 }
 
@@ -38,7 +39,7 @@ func NewVBArray(lower int, size int) *VBArray {
 	if size < 0 {
 		size = 0
 	}
-	return &VBArray{Lower: lower, Values: make([]Value, size)}
+	return &VBArray{Lower: lower, Values: make([]Value, size), Dims: 1}
 }
 
 // NewVBArrayFromValues creates a new VBArray from a value slice and lower bound.
@@ -46,7 +47,7 @@ func NewVBArrayFromValues(lower int, values []Value) *VBArray {
 	if values == nil {
 		values = []Value{}
 	}
-	return &VBArray{Lower: lower, Values: values}
+	return &VBArray{Lower: lower, Values: values, Dims: 1}
 }
 
 // NewGoVBArray creates a GoVBArray with the given lower bound and size.

@@ -1025,6 +1025,7 @@ func buildDimArray(bounds []int) *VBArray {
 	}
 
 	array := NewVBArray(0, size)
+	array.Dims = len(bounds)
 	if len(bounds) == 1 {
 		return array
 	}
@@ -1042,10 +1043,18 @@ func vbArrayUpperBounds(array *VBArray) []int {
 		return nil
 	}
 
-	bounds := make([]int, 0, 4)
+	dims := array.Dims
+	if dims < 1 {
+		dims = 1
+	}
+
+	bounds := make([]int, 0, dims)
 	current := array
-	for {
-		bounds = append(bounds, len(current.Values)-1)
+	for dim := 0; dim < dims; dim++ {
+		bounds = append(bounds, current.Upper())
+		if dim == dims-1 {
+			break
+		}
 		if len(current.Values) == 0 {
 			break
 		}
@@ -1147,7 +1156,7 @@ func vbsAxonRedimPreserveArray(args []Value) (Value, error) {
 				newValues = make([]Value, newSize, newCap)
 				copy(newValues, existing.Values)
 			}
-			return ValueFromVBArray(&VBArray{Lower: existing.Lower, Values: newValues}), nil
+			return ValueFromVBArray(&VBArray{Lower: existing.Lower, Values: newValues, Dims: existing.Dims}), nil
 		}
 
 		resized := buildDimArray(bounds)

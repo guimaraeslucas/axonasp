@@ -88,8 +88,9 @@ func normalizePoolSocketEndpoint(raw string) (listenEndpoint string, socketPath 
 }
 
 func main() {
+	//Require root privileges to run the FPM manager, as it needs to manage worker processes and potentially bind to privileged ports or create sockets in system directories.
 	if os.Geteuid() != 0 {
-		log.Fatal("Error: AxonASP FPM must be run as root.")
+		log.Fatal("Fatal Error: G3pix ❖ AxonASP FPM must be run as root.")
 	}
 
 	// 1. Initial Load of Configurations
@@ -112,7 +113,7 @@ func main() {
 			log.Println("SIGHUP received. Rescanning configuration directory for new applications...")
 			scanAndLoadConfigs()
 		case syscall.SIGINT, syscall.SIGTERM:
-			log.Printf("%s received. Shutting down FPM manager...", sig.String())
+			log.Printf("%s received.\n Shutting down G3pix ❖ AxonASP FPM manager...", sig.String())
 			shutdownAllPools()
 			return
 		}
@@ -127,16 +128,18 @@ func scanAndLoadConfigs() {
 	files, err := os.ReadDir(ConfigDir)
 	if err != nil {
 		//We use Fatalf here because if we can't read the config directory, we can't proceed.
+		//we also don't want to try to create the directory automatically, as that could lead to unexpected behavior. The user should ensure the directory exists and is readable.
 		log.Fatalf("Failed to read configuration directory: %v\nExiting...", err)
 	}
 
 	for _, file := range files {
+		//Look for .conf files only, ignoring other files or directories.
 		if filepath.Ext(file.Name()) == ".conf" {
 			configPath := filepath.Join(ConfigDir, file.Name())
 
 			// Check if this config is already being supervised
 			if _, exists := activePools[configPath]; !exists {
-				log.Printf("New configuration detected: %s. Starting worker pool...", file.Name())
+				log.Printf("❖ New configuration detected: %s. Starting worker pool...", file.Name())
 
 				// Create a cancellable context for this specific worker pool
 				ctx, cancel := context.WithCancel(context.Background())
@@ -226,8 +229,12 @@ func superviseWorker(ctx context.Context, configPath string) {
 		log.Printf("[%s] Starting Worker (Attempt: %d) with %dMB of RAM", conf.SiteName, restarts, conf.MemoryLimitMB)
 
 		// Use CommandContext so the process can be killed cleanly if the context is cancelled, we still need to support it in the fastcgi implementation
+
 		cmd := exec.CommandContext(ctx, WorkerExec, "--fastcgi.server_port", listenEndpoint, "--config.config_file", conf.ConfigFile)
+
 		cmd.Dir = conf.AppPath
+		log.Printf("[%s] Executing: %s", conf.SiteName, strings.Join(cmd.Args, " "))
+		log.Printf("[%s] Current Directory: %s", conf.SiteName, cmd.Dir)
 
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Credential: &syscall.Credential{

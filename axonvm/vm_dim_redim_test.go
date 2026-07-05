@@ -173,3 +173,41 @@ Response.Write Err.Number
 		t.Fatalf("unexpected Err.Number output: got %q want %q", output.String(), expected)
 	}
 }
+
+// TestVMReDimPreserveJaggedArray verifies Preserve resizes a 1D array even when elements contain nested arrays.
+func TestVMReDimPreserveJaggedArray(t *testing.T) {
+	source := `<%
+Dim outer()
+Dim inner(2)
+inner(0) = "a"
+inner(1) = "b"
+inner(2) = "c"
+
+ReDim outer(0)
+outer(0) = inner
+ReDim Preserve outer(1)
+outer(1) = "1"
+
+Response.Write outer(0)(0) & "," & outer(0)(1) & "," & outer(0)(2) & "<br>"
+Response.Write outer(1)
+%>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "a,b,c<br>1" {
+		t.Fatalf("unexpected output: %q", output.String())
+	}
+}
