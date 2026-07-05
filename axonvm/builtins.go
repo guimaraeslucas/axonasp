@@ -1189,13 +1189,19 @@ func vbsAxonRedimPreserveArrayVB6(args []Value) (Value, error) {
 
 	// VB6 Rule: In ReDim Preserve, only the last dimension can be changed,
 	// and even for the last dimension, the lower bound cannot be changed.
-	existingBounds := vbArrayUpperBounds(source)
-	// We need lower bounds too for full check
+	//
+	// The array's dimensionality is taken from the number of subscripts the
+	// caller supplied (VBScript requires ReDim Preserve to match the array's
+	// declared rank), NOT by structurally probing element [0]. A 1-D "jagged"
+	// array whose first element is itself an array must be treated as 1-D, so
+	// probing Values[0] would wrongly classify it as multi-dimensional and
+	// reject a legitimate resize with 800A0005 (issue #32).
+	numDims := len(bounds) / 2
 	current := source
-	for i := range existingBounds {
+	for i := 0; i < numDims; i++ {
 		newLow := bounds[i*2]
 		newHigh := bounds[i*2+1]
-		if i < len(existingBounds)-1 {
+		if i < numDims-1 {
 			// Not the last dimension: must match exactly
 			if newLow != current.Lower || newHigh != current.Upper() {
 				return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())

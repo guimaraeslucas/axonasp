@@ -143,6 +143,46 @@ func TestVMArrayElementSetGet(t *testing.T) {
 	}
 }
 
+// TestVMReDimPreserveJaggedArray verifies ReDim Preserve can grow a 1-D array
+// whose first element is itself an array (a jagged array), matching IIS/VBScript
+// behavior. Regression test for issue #32: AxonASP wrongly raised 800A0005
+// (Invalid procedure call or argument) because the outer 1-D array was mistaken
+// for a multi-dimensional array.
+func TestVMReDimPreserveJaggedArray(t *testing.T) {
+	source := `<%
+Dim outer()
+Dim inner(2)
+inner(0) = "a"
+inner(1) = "b"
+inner(2) = "c"
+ReDim outer(0)
+outer(0) = inner
+ReDim Preserve outer(1)
+outer(1) = "1"
+Response.Write outer(0)(0) & "," & outer(0)(1) & "," & outer(0)(2) & "<br>"
+Response.Write outer(1)
+%>`
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	if output.String() != "a,b,c<br>1" {
+		t.Fatalf("unexpected jagged ReDim Preserve output: got %q want %q", output.String(), "a,b,c<br>1")
+	}
+}
+
 // TestVMReDimPreserveMultiDimFirstDimensionChangeRejected verifies VBScript error 5 when Preserve changes non-last dimensions.
 func TestVMReDimPreserveMultiDimFirstDimensionChangeRejected(t *testing.T) {
 	source := `<%
