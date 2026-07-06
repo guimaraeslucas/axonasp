@@ -100,7 +100,7 @@ RUN printf '#!/bin/sh\n\
     fi\n\
     if [ -z "$(ls -A /opt/axonasp/fpm/fpm.d/ 2>/dev/null)" ]; then\n\
     echo "--> Initializing /opt/axonasp/fpm/fpm.d/ with the default AxonASP fpm configuration..."\n\
-    cp -a /opt/axonasp/default_fpm.d/. /opt/axonasp/fpm/fpm.d/\n\
+    cp -a /opt/axonasp/fpm/default_fpm.d/. /opt/axonasp/fpm/fpm.d/\n\
     fi\n\
     # 2. Ensure the directories belong to the axonasp user\n\
     chown -R axonasp:axonasp /opt/axonasp/www\n\
