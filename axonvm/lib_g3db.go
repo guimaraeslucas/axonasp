@@ -1343,18 +1343,13 @@ func g3dbRewritePlaceholders(sqlText, driver string) string {
 		return g3dbReplaceQuestionMarks(sqlText, func(n int) string {
 			return fmt.Sprintf("$%d", n)
 		})
-	case "mssql":
-		// Replace ? with @p1, @p2, ... (SQL Server named positional notation).
-		return g3dbReplaceQuestionMarks(sqlText, func(n int) string {
-			return fmt.Sprintf("@p%d", n)
-		})
 	case "oracle":
 		// Replace ? with :p1, :p2, ... (go-ora/v2 positional notation).
 		return g3dbReplaceQuestionMarks(sqlText, func(n int) string {
 			return fmt.Sprintf(":p%d", n)
 		})
 	default:
-		// mysql, sqlite — ? is the native placeholder; return unchanged.
+		// mysql, sqlite, mssql - drivers accept ? placeholders without rewriting.
 		return sqlText
 	}
 }
