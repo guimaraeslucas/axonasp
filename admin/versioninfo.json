@@ -22,14 +22,14 @@
         "Comments": "G3Pix AxonASP Configuration Manager",
         "CompanyName": "G3Pix Ltda",
         "FileDescription": "G3Pix AxonASP Configuration Manager",
-        "FileVersion": "2.2.0.0",
+        "FileVersion": "2.3.0.0",
         "InternalName": "AxonASP",
         "LegalCopyright": "G3Pix",
         "LegalTrademarks": "",
         "OriginalFilename": "axonasp-config.exe",
         "PrivateBuild": "",
         "ProductName": "AxonASP Configuration Manager",
-        "ProductVersion": "v2.2.0.0",
+        "ProductVersion": "v2.3.0.0",
         "SpecialBuild": ""
     },
     "VarFileInfo": {

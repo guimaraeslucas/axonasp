@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   build-packages:
-    name: Build DEB, RPM & APK Packages + Windows Zip
+    name: Build DEB, RPM, Alpine & APK Packages + Windows Zip
     runs-on: ubuntu-latest
     permissions:
       contents: write # Required for GitHub Releases
@@ -32,7 +32,7 @@ jobs:
           else
             PATCH=$(git rev-list --count HEAD 2>/dev/null || echo "0")
             REVISION=$(git rev-parse --short HEAD 2>/dev/null || echo "0")
-            echo "value=2.2.${PATCH}.${REVISION}" >> "$GITHUB_OUTPUT"
+            echo "value=2.3.${PATCH}.${REVISION}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up Go

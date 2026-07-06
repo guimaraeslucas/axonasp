@@ -1,4 +1,4 @@
-# ❖ AxonASP 2.2: The Ultimate Classic ASP Engine for the Modern Web
+# ❖ AxonASP 2.3: The Ultimate Classic ASP Engine for the Modern Web
 <p align="center">
   <img src="www/axonasp.svg" alt="G3Pix AxonASP Logo" width="400"/>
 </p>
@@ -8,13 +8,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.2-blue.svg" alt="Version 2.2"/>
+  <img src="https://img.shields.io/badge/version-2.3-blue.svg" alt="Version 2.3"/>
   <img src="https://img.shields.io/badge/Go-1.26+-00ADD8.svg" alt="Go Version"/>
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg" alt="Platform"/>
   <img src="https://img.shields.io/badge/license-MPL-green.svg" alt="License"/>
 </p>
 
-Welcome to **AxonASP 2.2**, the definitive high-performance runtime for executing Microsoft Classic ASP, VBScript, and JavaScript in GoLang. If you are looking for how to run Classic ASP on Linux or modernize legacy applications within a Docker container, AxonASP provides a robust, zero-allocation VM architecture tailored for modern infrastructure.
+Welcome to **AxonASP 2.3**, the definitive high-performance runtime for executing Microsoft Classic ASP, VBScript, and JavaScript in GoLang. If you are looking for how to run Classic ASP on Linux or modernize legacy applications within a Docker container, AxonASP provides a robust, zero-allocation VM architecture tailored for modern infrastructure.
 
 ## 🚀 Why AxonASP?
 
@@ -36,7 +36,7 @@ AxonASP extends standard ASP with native Go libraries, giving you enterprise pow
 - **G3ZIP, G3TAR, G3ZLIB, G3ZSTD:** Full compression suite built right in.
 - **And much more...** Over 60 custom Axon functions are available to extend ASP's capabilities.
 
-For a full list of libraries and documentation on how to use them, please read our extensive manual at [`./www/manual/`](www/manual/) and explore our website at [https://g3pix.com.br/axonasp](https://g3pix.com.br/axonasp), where you will find pages running in AxonASP 2.2 and also our WASM Playground.
+For a full list of libraries and documentation on how to use them, please read our extensive manual at [`./www/manual/`](www/manual/) and explore our website at [https://g3pix.com.br/axonasp](https://g3pix.com.br/axonasp), where you will find pages running in AxonASP 2.3 and also our WASM Playground.
 
 ## 🎨 AxonLive with Visual Application Builder
 

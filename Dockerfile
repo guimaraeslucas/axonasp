@@ -44,7 +44,7 @@ COPY . .
 RUN if [ -z "$VERSION" ]; then \
     PATCH=$(git rev-list --count HEAD 2>/dev/null || echo "0"); \
     REVISION=$(git rev-parse --short HEAD 2>/dev/null || echo "0"); \
-    VERSION="2.2.${PATCH}.${REVISION}"; \
+    VERSION="2.3.${PATCH}.${REVISION}"; \
     fi && \
     echo "Building with version: ${VERSION}" && \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-http ./server && \

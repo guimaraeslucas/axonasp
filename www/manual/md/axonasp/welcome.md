@@ -1,8 +1,8 @@
-﻿# ❖ AxonASP 2.2: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
+﻿# ❖ AxonASP 2.3: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
 
 Supercharge your legacy code. Build blazing-fast modern APIs. Experience Classic ASP like never before.
 
-Welcome to **AxonASP 2.2**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JavaScript (JScript) support in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
+Welcome to **AxonASP 2.3**, the definitive, high-performance runtime for executing Classic ASP with VBScript and JavaScript (JScript) support in pure Go. This is the engine your applications deserve—a complete reinvention of what Classic ASP can be in the modern era.
 
 ---
 
@@ -43,9 +43,11 @@ We didn't just update Classic ASP. We completely reimagined it for the modern we
 
 ---
 
-## What's New in Version 2.2?
+## What's New in Version 2.x?
 
 - **Unified Configuration:** Centralized `axonasp.toml` configuration with `.env` support via Viper. Single source of truth for all settings.
+- **FastCGI FPM:** AxonASP now supports FastCGI Process Manager (FPM) for better process management, load balancing, and performance tuning in high-traffic environments. 
+- **AxonASP Configuration Manager (axonadmin):** A new command-line/Web-UI tool for managing `axonasp.toml` and FPM pool configurations. It provides a user-friendly interface for editing, creating, and backing up configuration files, as well as starting the AxonASP server in headless or UI mode.
 - **Modern Architecture Examples:** Complete, production-ready examples for REST, RESTful, MVC, and MVVM—all written in pure ASP.
 - **Comprehensive Local Documentation:** The complete manual is built right into the repository. No need to hunt through old forums or outdated blogs. Everything you need is in `./www/manual/md/`.
 - **Intelligent Port Defaults:** Updated default proxy port (8801) to avoid firewall conflicts and system port contention out of the box.

@@ -421,7 +421,7 @@ func main() {
 	// 1. Instantiate the MCP Server
 	s := server.NewMCPServer(
 		"G3pix AxonASP Docs",
-		"2.2.0",
+		"2.3.0",
 		server.WithPromptCapabilities(true),
 	)
 

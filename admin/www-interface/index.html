@@ -3,230 +3,143 @@
 
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>G3Pix AxonASP Configuration Manager</title>
         <link rel="stylesheet" href="/axonasp.css">
-        <style>
-            #status-bar a {
-                margin-left: 4px;
-            }
-
-            .form-group {
-                margin-bottom: 24px;
-                padding: 15px;
-            }
-
-            .form-desc {
-                font-size: 12px;
-                color: var(--text-muted);
-                margin-bottom: 10px;
-                line-height: 1.4;
-            }
-
-            .form-meta {
-                font-size: 11px;
-                color: var(--text-muted);
-                margin-bottom: 10px;
-                background: var(--bg-soft);
-                padding: 6px 10px;
-                border-left: 3px solid var(--accent);
-                display: inline-block;
-            }
-
-            .actions-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-bottom: 1px solid var(--border);
-                padding-bottom: 15px;
-                margin-bottom: 20px;
-            }
-
-            .toast {
-                position: fixed;
-                bottom: 30px;
-                right: 30px;
-                padding: 12px 24px;
-                background: var(--success);
-                color: #fff;
-                border-radius: 0px;
-                box-shadow: var(--shadow);
-                z-index: 1000;
-                font-weight: 600;
-                display: none;
-                animation: fadeIn 0.2s ease;
-            }
-
-            .toast.toast-error {
-                background: var(--danger);
-            }
-
-
-
-            .home-section .copyright {
-                font-size: 13px;
-                color: var(--text-muted);
-            }
-
-            .home-section .home-url {
-                font-size: 13px;
-                margin-bottom: 24px;
-            }
-
-            .home-section .home-url a {
-                color: var(--accent);
-                text-decoration: none;
-            }
-
-            .home-section .home-url a:hover {
-                text-decoration: underline;
-            }
-
-            .home-section .welcome-text {
-                font-size: 14px;
-                line-height: 1.7;
-                color: var(--text);
-                font-weight: 500;
-            }
-
-            .home-section .cmd-options {
-                margin-bottom: 24px;
-            }
-
-            .home-section .cmd-options h4 {
-                margin: 0 0 10px 0;
-                font-size: 15px;
-            }
-
-
-
-            .home-section .backups-info {
-                margin-bottom: 10px;
-            }
-
-            .home-section .backups-info h4 {
-                margin: 0 0 10px 0;
-                font-size: 15px;
-            }
-
-            .home-section .backups-info p {
-                font-size: 13px;
-                line-height: 1.6;
-                color: var(--text);
-            }
-
-            @keyframes fadeIn {
-                from {
-                    opacity: 0;
-                    transform: translateY(10px);
-                }
-
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            }
-        </style>
     </head>
 
-    <body>
+    <body data-active-view="{{.ActiveView}}">
         <div id="header">
             <div class="logo">
-                <img src="/logo_square.svg" alt="AxonASP" width="43" />
+                <img src="/logo_square.svg" alt="AxonASP" width="43">
             </div>
             <h1 style="flex-grow: 1;">AxonASP Configuration Manager</h1>
-            <div class="config-path-banner" style="font-size: 12px; color: var(--text-muted); padding-right: 15px;">
+            <div class="config-path-banner admin-target-banner">
                 Target: <strong>{{.ResolvedPath}}</strong>
             </div>
         </div>
 
         <div id="main-container">
-            <div id="sidebar">
-                <div class="section-title">Sections</div>
+            <div id="sidebar" class="admin-sidebar">
+                <div class="section-title">Home</div>
                 <ul>
-                    <li>
-                        <a href="/" id="homeLink" class="home-link">Home</a>
+                    <li><a href="/?view=home" data-view-link="home"
+                            class="{{if eq .ActiveView "home"}}active{{end}}">Dashboard</a>
                     </li>
+                </ul>
+
+                <div class="section-title">axonasp.toml</div>
+                <ul>
                     {{range .Sections}}
                     <li>
-                        <a href="?section={{.Name}}" class="{{if eq $.ActiveSection.Name .Name}}active{{end}}">
-                            {{.Name}}
-                        </a>
+                        <a href="/?view=config&section={{.Name}}" data-view-link="config"
+                            class="{{if and (eq $.ActiveView "config") (eq $.ActiveSection.Name .Name)}}active{{end}}">{{.Name}}</a>
                     </li>
                     {{end}}
                 </ul>
+
+                <div class="section-title">AxonASP FPM</div>
+                <ul>
+                    {{if .FPMPools}}
+                    {{range .FPMPools}}
+                    <li>
+                        <a href="/?view=fpm&pool={{.}}" data-view-link="fpm"
+                            class="{{if and (eq $.ActiveView "fpm") (eq $.ActivePool .)}}active{{end}}">{{.}}</a>
+                    </li>
+                    {{end}}
+                    {{else}}
+                    <li class="admin-empty-note">No pool files found</li>
+                    {{end}}
+                </ul>
+
+                <div class="admin-sidebar-actions">
+                    <a class="btn btn-primary" href="/?view=new-global" data-view-link="new-global">+ Global
+                        Configuration</a>
+                    <a class="btn btn-primary" href="/?view=new-fpm" data-view-link="new-fpm">+ FPM Configuration</a>
+                </div>
             </div>
 
-            <div id="content">
-                <!-- Home / Welcome Section -->
-                <div id="homeSection" class="home-section">
-                    <h2>AxonASP Server Configuration Manager</h2>
-                    <div class="copyright">Copyright &copy; 2026 G3pix Ltda. All rights reserved.</div>
-                    <div class="home-url"><a href="https://g3pix.com.br/axonasp"
-                            target="_blank">https://g3pix.com.br/axonasp</a></div>
+            <div id="content" class="admin-content">
+                <div id="view-home" class="admin-view {{if eq .ActiveView "home"}}active{{end}}">
+                    <h2>AxonASP Administrative Dashboard</h2>
+                    <p class="intro-text">Real-time host telemetry and process status for the current machine.</p>
 
-                    <p class="welcome-text">
-                        Welcome to the AxonASP Configuration Manager. This utility provides an interactive interface to
-                        easily manage and modify the configuration settings for your AxonASP server.
-                    </p>
-
-                    <p>
-                        While this tool manages the configuration file directly, remember
-                        that you can always override these settings dynamically by using environment variables. To do
-                        so, use the same name as the setting you wish to override, formatted in uppercase with dots
-                        replaced by underscores. For example, to override the <code>default_charset</code> setting, you
-                        would set an environment variable named <code>DEFAULT_CHARSET</code>. This flexibility allows
-                        you to easily manage different configurations across development and production environments.
-                        Make sure to restart the AxonASP server after saving changes here or modifying environment
-                        variables for the new settings to take effect.
-                    </p>
-
-                    <p class="info-banner">
-                        <b>Important Saving Instructions:</b> When navigating through this manager, you must
-                        save your changes before leaving each section page. If you navigate to another page without
-                        saving, any edits made within that specific section will be lost.
-                    </p>
-
-                    <div class="cmd-options">
-                        <h4>Command-Line Options:</h4>
-                        <p style="font-size:13px;line-height:1.6;color:var(--text);">
-                            By default, this program will load and work with the standard configuration file. However,
-                            you can modify the utility's behavior by launching <code>axonadmin</code> from your terminal
-                            with the following flags:
-                        </p>
-                        <div><code><strong>-edit</strong> &lt;path&gt;</code> &mdash; Specifies
-                            a custom TOML configuration file to edit. If omitted, the utility mimics the standard loader
-                            path resolution.</div>
-                        <div><code><strong>-create</strong> &lt;path&gt;</code> &mdash;
-                            Generates a new default configuration file at the specified path. If the path is left empty,
-                            it defaults to <code>./config/axonasp.toml</code>.</div>
-                        <div><code><strong>-noui</strong></code> or
-                            <code><strong>-w</strong></code> &mdash; Runs the program in headless mode (note: this must
-                            be used in conjunction with the <code>-create</code> flag).
+                    <div class="admin-grid admin-grid-three">
+                        <div class="card">
+                            <h4>Machine</h4>
+                            <p><strong id="telemetry-hostname">{{.HomeTelemetry.HostName}}</strong></p>
+                            <p id="telemetry-system">{{.HomeTelemetry.System}}</p>
+                            <p id="telemetry-processor">{{.HomeTelemetry.Processor}}</p>
                         </div>
-                        <div><code><strong>-h</strong></code> or
-                            <code><strong>-help</strong></code> &mdash; Displays the help menu in your terminal.
+                        <div class="card">
+                            <h4>Total Memory</h4>
+                            <p class="admin-metric" id="telemetry-mem-total">
+                                {{FormatBytes .HomeTelemetry.TotalMemoryBytes}}</p>
+                            <p>Available: <span
+                                    id="telemetry-mem-available">{{FormatBytes .HomeTelemetry.AvailableMemory}}</span>
+                            </p>
+                        </div>
+                        <div class="card">
+                            <h4>Memory Usage</h4>
+                            <p class="admin-metric" id="telemetry-mem-used">
+                                {{FormatBytes .HomeTelemetry.UsedMemoryBytes}}</p>
+                            <p>Usage: <span
+                                    id="telemetry-mem-percent">{{FormatPercent .HomeTelemetry.UsedMemoryPercent}}</span>
+                            </p>
                         </div>
                     </div>
 
-                    <div class="backups-info">
-                        <h4>Backups and Restoration:</h4>
-                        <p>
-                            To protect against accidental misconfigurations that could affect server stability and
-                            security, this program automatically safeguards your settings. Every time you save a change,
-                            a backup of the previous TOML configuration is generated using the same filename but with a
-                            <code>.bak</code> extension. This allows you to quickly roll back to the previous setup if
-                            necessary. Furthermore, you can always restore the original, factory-default AxonASP
-                            configuration file at any time should you need a clean slate.
-                        </p>
+                    <div class="card admin-process-card">
+                        <h3>AxonASP Process Monitor</h3>
+                        <p class="admin-muted">Counts and resident memory by executable family.</p>
+                        <div class="table-wrap">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Process</th>
+                                        <th>Instances</th>
+                                        <th>Memory (RSS)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="process-tbody">
+                                    {{range .HomeTelemetry.ProcessStats}}
+                                    <tr data-process-name="{{.Name}}">
+                                        <td>
+                                            <div>{{.Name}}</div>
+                                            <div class="admin-process-actions">
+                                                <a href="#"
+                                                    onclick="event.preventDefault();processAction('{{.Name}}', 'start');">start</a>
+                                                <span>|</span>
+                                                <a href="#"
+                                                    onclick="event.preventDefault();processAction('{{.Name}}', 'stop');">close</a>
+                                            </div>
+                                        </td>
+                                        <td class="process-count">{{.Count}}</td>
+                                        <td class="process-memory">{{FormatBytes .MemoryBytes}}</td>
+                                    </tr>
+                                    {{end}}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
+
+                    {{if .HomeTelemetry.CollectionWarnings}}
+                    <div class="alert-warning">
+                        <strong>Telemetry Warnings:</strong>
+                        <ul class="admin-warning-list">
+                            {{range .HomeTelemetry.CollectionWarnings}}
+                            <li>{{.}}</li>
+                            {{end}}
+                        </ul>
+                    </div>
+                    {{end}}
                 </div>
 
-                <!-- Configuration Section Form -->
-                <div id="configSection" style="display:none;">
+                <div id="view-config" class="admin-view {{if eq .ActiveView "config"}}active{{end}}">
                     <div class="actions-header">
-                        <h3>Section: {{.ActiveSection.Name}}</h3>
+                        <h3>axonasp.toml section: {{.ActiveSection.Name}}</h3>
                         <div class="actions-row" style="margin-top: 0;">
-                            <button class="btn btn-primary" onclick="saveSection()">Save Section</button>
+                            <button class="btn btn-primary" onclick="saveConfigSection()">Save Section</button>
                             <button class="btn btn-danger" onclick="recreateConfig()">Recreate axonasp.toml</button>
                         </div>
                     </div>
@@ -239,9 +152,7 @@
                                 {{if .Description}}
                                 <div class="form-desc">{{.Description}}</div>
                                 {{end}}
-                                <div class="form-meta">
-                                    Default: <code>{{FormatVal .DefaultValue}}</code>
-                                </div>
+                                <div class="form-meta">Default: <code>{{FormatVal .DefaultValue}}</code></div>
                                 <div>
                                     {{if eq .Type "bool"}}
                                     <select class="form-input" id="field_{{.Key}}"
@@ -267,6 +178,84 @@
                         </div>
                     </form>
                 </div>
+
+                <div id="view-fpm" class="admin-view {{if eq .ActiveView "fpm"}}active{{end}}">
+                    <div class="actions-header">
+                        <h3>FPM pool: {{if .ActivePool}}{{.ActivePool}}{{else}}No pool selected{{end}}</h3>
+                        <div class="actions-row" style="margin-top: 0;">
+                            <button class="btn btn-primary" onclick="saveFPMSection()"
+                                {{if not .ActivePool}}disabled{{end}}>Save Pool</button>
+                        </div>
+                    </div>
+
+                    <p class="admin-muted">Directory: <strong>{{.FPMDir}}</strong></p>
+
+                    <form id="fpmForm" onsubmit="event.preventDefault();">
+                        <input type="hidden" name="pool_name" value="{{.ActivePool}}">
+                        <div class="card">
+                            {{range .FPMFields}}
+                            <div class="form-group">
+                                <label class="form-label" for="field_fpm_{{.Key}}">{{.Key}}</label>
+                                {{if .Description}}
+                                <div class="form-desc">{{.Description}}</div>
+                                {{end}}
+                                <div class="form-meta">Default: <code>{{FormatVal .DefaultValue}}</code></div>
+                                <div>
+                                    {{if eq .Type "bool"}}
+                                    <select class="form-input" id="field_fpm_{{.Key}}" name="field_fpm_{{.Key}}">
+                                        <option value="true" {{if eq .CurrentValue true}}selected{{end}}>true</option>
+                                        <option value="false" {{if eq .CurrentValue false}}selected{{end}}>false
+                                        </option>
+                                    </select>
+                                    {{else if eq .Type "int"}}
+                                    <input class="form-input" type="number" id="field_fpm_{{.Key}}"
+                                        name="field_fpm_{{.Key}}" value="{{.CurrentValue}}">
+                                    {{else}}
+                                    <input class="form-input" type="text" id="field_fpm_{{.Key}}"
+                                        name="field_fpm_{{.Key}}" value="{{.CurrentValue}}">
+                                    {{end}}
+                                </div>
+                            </div>
+                            {{end}}
+                        </div>
+                    </form>
+                </div>
+
+                <div id="view-new-global" class="admin-view {{if eq .ActiveView "new-global"}}active{{end}}">
+                    <h3>Create New axonasp.toml</h3>
+                    <p class="admin-muted">Generate a brand-new global configuration file from defaults with
+                        comment-preserving schema metadata.</p>
+                    <div class="card">
+                        <form id="newGlobalForm" onsubmit="event.preventDefault();createGlobalConfig();">
+                            <div class="form-group">
+                                <label class="form-label" for="target_path">Target path</label>
+                                <input class="form-input" type="text" id="target_path" name="target_path"
+                                    value="{{.ResolvedPath}}">
+                            </div>
+                            <div class="actions-row">
+                                <button class="btn btn-primary" type="submit">Create Global Configuration</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="view-new-fpm" class="admin-view {{if eq .ActiveView "new-fpm"}}active{{end}}">
+                    <h3>Create New FPM Pool Configuration</h3>
+                    <p class="admin-muted">Create a new file in {{.FPMDir}} with defaults and complete end-user
+                        comments.</p>
+                    <div class="card">
+                        <form id="newFPMForm" onsubmit="event.preventDefault();createFPMConfig();">
+                            <div class="form-group">
+                                <label class="form-label" for="filename">Pool filename</label>
+                                <input class="form-input" type="text" id="filename" name="filename"
+                                    placeholder="myapp.conf">
+                            </div>
+                            <div class="actions-row">
+                                <button class="btn btn-primary" type="submit">Create FPM Configuration</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -280,49 +269,39 @@
         <script>
             let formModified = false;
             let saveInProgress = false;
+            const activeView = document.body.getAttribute('data-active-view') || 'home';
+
+            function formatBytes(bytes) {
+                const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+                let value = Number(bytes || 0);
+                let idx = 0;
+                while (value >= 1024 && idx < units.length - 1) {
+                    value /= 1024;
+                    idx += 1;
+                }
+                if (idx === 0) {
+                    return Math.floor(value) + ' ' + units[idx];
+                }
+                return value.toFixed(2) + ' ' + units[idx];
+            }
 
             function showToast(message, isError = false) {
                 const toast = document.getElementById('toast');
                 toast.textContent = message;
-                if (isError) {
-                    toast.classList.add('toast-error');
-                } else {
-                    toast.classList.remove('toast-error');
-                }
+                toast.classList.toggle('toast-error', isError);
                 toast.style.display = 'block';
                 setTimeout(() => {
                     toast.style.display = 'none';
-                }, 3000);
+                }, 3200);
             }
 
-            function showHome() {
-                document.getElementById('homeSection').style.display = 'block';
-                document.getElementById('configSection').style.display = 'none';
-                document.getElementById('homeLink').classList.add('active');
-                document.querySelectorAll('#sidebar a:not(.home-link)').forEach(function (a) {
-                    a.classList.remove('active');
-                });
-            }
-
-            function showConfig() {
-                document.getElementById('homeSection').style.display = 'none';
-                document.getElementById('configSection').style.display = 'block';
-                document.getElementById('homeLink').classList.remove('active');
-            }
-
-            document.addEventListener('DOMContentLoaded', function () {
-                // Determine initial view: if no section param or empty, show home
-                const urlParams = new URLSearchParams(window.location.search);
-                const section = urlParams.get('section');
-                if (!section) {
-                    showHome();
-                } else {
-                    showConfig();
+            function installChangeTracking(formId) {
+                const form = document.getElementById(formId);
+                if (!form) {
+                    return;
                 }
-
-                const form = document.getElementById('configForm');
                 const inputs = form.querySelectorAll('input, select, textarea');
-                inputs.forEach(function (input) {
+                inputs.forEach((input) => {
                     input.addEventListener('change', function () {
                         formModified = true;
                     });
@@ -330,53 +309,45 @@
                         formModified = true;
                     });
                 });
+            }
 
-                const sidebarLinks = document.querySelectorAll('#sidebar a');
-                sidebarLinks.forEach(function (link) {
-                    link.addEventListener('click', function (e) {
-                        if (formModified && !saveInProgress) {
-                            const proceed = confirm('You have unsaved changes. Do you want to save before proceeding?');
-                            if (proceed) {
-                                e.preventDefault();
-                                saveInProgress = true;
-                                const sectionName = '{{.ActiveSection.Name}}';
-                                const formData = new FormData(form);
-                                fetch('/api/save?section=' + sectionName, {
-                                    method: 'POST',
-                                    body: new URLSearchParams(formData)
-                                }).then(function (response) {
-                                    return response.json();
-                                }).then(function (result) {
-                                    saveInProgress = false;
-                                    if (result.status === 'ok') {
-                                        formModified = false;
-                                        window.location.href = link.href;
-                                    } else {
-                                        showToast('Error saving: ' + result.message, true);
-                                    }
-                                }).catch(function (err) {
-                                    saveInProgress = false;
-                                    showToast('Network error while saving: ' + err.message, true);
-                                });
-                            } else {
-                                formModified = false;
-                            }
-                        }
-                    });
-                });
+            async function guardedNavigation(nextHref) {
+                if (!formModified || saveInProgress || !nextHref) {
+                    window.location.href = nextHref;
+                    return;
+                }
 
-                window.addEventListener('beforeunload', function (e) {
-                    if (formModified) {
-                        e.preventDefault();
-                        e.returnValue = '';
-                    }
-                });
-            });
+                let saveFn = null;
+                if (activeView === 'config') {
+                    saveFn = saveConfigSection;
+                } else if (activeView === 'fpm') {
+                    saveFn = saveFPMSection;
+                }
 
-            async function saveSection() {
+                if (!saveFn) {
+                    window.location.href = nextHref;
+                    return;
+                }
+
+                const proceed = confirm('You have unsaved changes. Do you want to save before leaving this view?');
+                if (!proceed) {
+                    return;
+                }
+
+                saveInProgress = true;
+                const ok = await saveFn(true);
+                saveInProgress = false;
+                if (ok) {
+                    window.location.href = nextHref;
+                }
+            }
+
+            async function saveConfigSection(silent = false) {
                 const form = document.getElementById('configForm');
+                if (!form) {
+                    return false;
+                }
                 const formData = new FormData(form);
-
                 try {
                     const response = await fetch('/api/save?section={{.ActiveSection.Name}}', {
                         method: 'POST',
@@ -385,17 +356,54 @@
                     const result = await response.json();
                     if (result.status === 'ok') {
                         formModified = false;
-                        showToast('Configuration section saved successfully!');
-                    } else {
+                        if (!silent) {
+                            showToast('Configuration section saved successfully.');
+                        }
+                        return true;
+                    }
+                    if (!silent) {
                         showToast('Error saving configuration: ' + result.message, true);
                     }
                 } catch (err) {
-                    showToast('Network error while saving: ' + err.message, true);
+                    if (!silent) {
+                        showToast('Network error while saving: ' + err.message, true);
+                    }
                 }
+                return false;
+            }
+
+            async function saveFPMSection(silent = false) {
+                const form = document.getElementById('fpmForm');
+                if (!form) {
+                    return false;
+                }
+                const formData = new FormData(form);
+                try {
+                    const response = await fetch('/api/fpm/save', {
+                        method: 'POST',
+                        body: new URLSearchParams(formData)
+                    });
+                    const result = await response.json();
+                    if (result.status === 'ok') {
+                        formModified = false;
+                        if (!silent) {
+                            showToast('FPM pool configuration saved successfully.');
+                        }
+                        return true;
+                    }
+                    if (!silent) {
+                        showToast('Error saving pool configuration: ' + result.message, true);
+                    }
+                } catch (err) {
+                    if (!silent) {
+                        showToast('Network error while saving pool: ' + err.message, true);
+                    }
+                }
+                return false;
             }
 
             async function recreateConfig() {
-                if (!confirm('Are you sure you want to recreate the axonasp.toml file with default values? This will overwrite your current configuration.')) {
+                if (!confirm('Recreate axonasp.toml with default values? Current file will be backed up with .bak.')) {
                     return;
                 }
                 try {
@@ -405,17 +413,146 @@
                     const result = await response.json();
                     if (result.status === 'ok') {
                         formModified = false;
-                        showToast('axonasp.toml recreated with default values! Reloading...');
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
+                        showToast('axonasp.toml recreated successfully. Reloading view...');
+                        setTimeout(() => window.location.reload(), 1200);
                     } else {
-                        showToast('Error recreating config: ' + result.message, true);
+                        showToast('Error recreating file: ' + result.message, true);
                     }
                 } catch (err) {
-                    showToast('Network error while recreating config: ' + err.message, true);
+                    showToast('Network error while recreating file: ' + err.message, true);
                 }
             }
+
+            async function createGlobalConfig() {
+                const form = document.getElementById('newGlobalForm');
+                const formData = new FormData(form);
+                try {
+                    const response = await fetch('/api/create-global', {
+                        method: 'POST',
+                        body: new URLSearchParams(formData)
+                    });
+                    const result = await response.json();
+                    if (result.status === 'ok') {
+                        showToast('Global configuration created at: ' + result.path);
+                        setTimeout(() => {
+                            window.location.href = '/?view=config&section=global';
+                        }, 900);
+                    } else {
+                        showToast('Error creating global configuration: ' + result.message, true);
+                    }
+                } catch (err) {
+                    showToast('Network error while creating configuration: ' + err.message, true);
+                }
+            }
+
+            async function createFPMConfig() {
+                const form = document.getElementById('newFPMForm');
+                const formData = new FormData(form);
+                try {
+                    const response = await fetch('/api/fpm/create', {
+                        method: 'POST',
+                        body: new URLSearchParams(formData)
+                    });
+                    const result = await response.json();
+                    if (result.status === 'ok') {
+                        showToast('FPM configuration created: ' + result.pool);
+                        setTimeout(() => {
+                            window.location.href = '/?view=fpm&pool=' + encodeURIComponent(result.pool);
+                        }, 900);
+                    } else {
+                        showToast('Error creating FPM configuration: ' + result.message, true);
+                    }
+                } catch (err) {
+                    showToast('Network error while creating FPM configuration: ' + err.message, true);
+                }
+            }
+
+            async function refreshTelemetry() {
+                if (activeView !== 'home') {
+                    return;
+                }
+                try {
+                    const response = await fetch('/api/telemetry', { method: 'GET' });
+                    const payload = await response.json();
+                    document.getElementById('telemetry-hostname').textContent = payload.host_name || 'N/A';
+                    document.getElementById('telemetry-system').textContent = payload.system || 'N/A';
+                    document.getElementById('telemetry-processor').textContent = payload.processor || 'N/A';
+                    document.getElementById('telemetry-mem-total').textContent = formatBytes(payload.total_memory_bytes || 0);
+                    document.getElementById('telemetry-mem-available').textContent = formatBytes(payload.available_memory_bytes || 0);
+                    document.getElementById('telemetry-mem-used').textContent = formatBytes(payload.used_memory_bytes || 0);
+                    const usedPercent = Number(payload.used_memory_percent || 0);
+                    document.getElementById('telemetry-mem-percent').textContent = usedPercent.toFixed(2) + '%';
+
+                    const stats = Array.isArray(payload.process_stats) ? payload.process_stats : [];
+                    stats.forEach((stat) => {
+                        const row = document.querySelector('tr[data-process-name="' + stat.name + '"]');
+                        if (!row) {
+                            return;
+                        }
+                        const countCell = row.querySelector('.process-count');
+                        const memoryCell = row.querySelector('.process-memory');
+                        if (countCell) {
+                            countCell.textContent = String(stat.count || 0);
+                        }
+                        if (memoryCell) {
+                            memoryCell.textContent = formatBytes(stat.memory_bytes || 0);
+                        }
+                    });
+                } catch (_err) {
+                    // Keep the last visible telemetry values if refresh fails.
+                }
+            }
+
+            async function processAction(processName, action) {
+                if (!processName || !action) {
+                    return;
+                }
+                try {
+                    const body = new URLSearchParams({
+                        process_name: processName,
+                        action: action
+                    });
+                    const response = await fetch('/api/process/action', {
+                        method: 'POST',
+                        body
+                    });
+                    const result = await response.json();
+                    if (result.status === 'ok') {
+                        showToast(result.message || 'Process action completed successfully.');
+                        setTimeout(() => {
+                            refreshTelemetry();
+                        }, 350);
+                    } else {
+                        showToast('Process action failed: ' + (result.message || 'unknown error'), true);
+                    }
+                } catch (err) {
+                    showToast('Network error while controlling process: ' + err.message, true);
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                installChangeTracking('configForm');
+                installChangeTracking('fpmForm');
+
+                document.querySelectorAll('[data-view-link]').forEach((link) => {
+                    link.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        guardedNavigation(link.getAttribute('href'));
+                    });
+                });
+
+                window.addEventListener('beforeunload', function (event) {
+                    if (!formModified) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.returnValue = '';
+                });
+
+                if (activeView === 'home') {
+                    setInterval(refreshTelemetry, 6000);
+                }
+            });
         </script>
     </body>
 
