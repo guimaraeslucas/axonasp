@@ -90,7 +90,7 @@ COPY --from=builder /build/global.asa ./global.asa
 COPY --from=builder  /build/www/ ./default_www/
 
 # Create required runtime directories
-RUN mkdir -p temp/ www/
+RUN mkdir -p temp/ www/ fpm/fpm.d/
 
 RUN printf '#!/bin/sh\n\
     set -e\n\
@@ -98,9 +98,10 @@ RUN printf '#!/bin/sh\n\
     echo "--> Initializing /opt/axonasp/www with the default AxonASP content..."\n\
     cp -a /opt/axonasp/default_www/. /opt/axonasp/www/\n\
     fi\n\
+    mkdir -p /opt/axonasp/fpm/fpm.d/\n\
     if [ -z "$(ls -A /opt/axonasp/fpm/fpm.d/ 2>/dev/null)" ]; then\n\
     echo "--> Initializing /opt/axonasp/fpm/fpm.d/ with the default AxonASP fpm configuration..."\n\
-    cp -a /opt/axonasp/default_fpm.d/. /opt/axonasp/fpm/fpm.d/\n\
+    cp -a /opt/axonasp/fpm/default_fpm.d/. /opt/axonasp/fpm/fpm.d/\n\
     fi\n\
     # 2. Ensure the directories belong to the axonasp user\n\
     chown -R axonasp:axonasp /opt/axonasp/www\n\
