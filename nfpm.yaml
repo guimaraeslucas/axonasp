@@ -49,7 +49,7 @@ contents:
     dst: /opt/axonasp/LICENSE.txt
   - src: ./global.asa
     dst: /opt/axonasp/global.asa
-      type: config|noreplace
+    type: config|noreplace
 
   # License for Archlinux package
   - src: ./LICENSE.txt
