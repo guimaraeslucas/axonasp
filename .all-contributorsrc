@@ -8,12 +8,24 @@
   "commitConvention": "angular",
   "contributors": [
     {
+      "login": "TMTI-Andy",
+      "name": "Andrew Urquhart",
+      "avatar_url": "https://avatars.githubusercontent.com/u/151023986?v=4",
+      "profile": "https://github.com/TMTI-Andy",
+      "contributions": [
+        "bug",
+        "code",
+        "financial"
+      ]
+    },
+    {
       "login": "ikadmm",
       "name": "ikadmm",
       "avatar_url": "https://avatars.githubusercontent.com/u/29986197?v=4",
       "profile": "https://github.com/ikadmm",
       "contributions": [
-        "bug"
+        "bug",
+        "code"
       ]
     },
     {
@@ -22,16 +34,18 @@
       "avatar_url": "https://avatars.githubusercontent.com/u/285232216?v=4",
       "profile": "https://github.com/dmitriy-bty",
       "contributions": [
-        "code"
+        "code",
+        "bug"
       ]
     },
     {
-      "login": "TMTI-Andy",
-      "name": "Andrew Urquhart",
-      "avatar_url": "https://avatars.githubusercontent.com/u/151023986?v=4",
-      "profile": "https://github.com/TMTI-Andy",
+      "login": "jeffreyheping",
+      "name": "Jeffrey He",
+      "avatar_url": "https://avatars.githubusercontent.com/u/100673826?v=4",
+      "profile": "https://github.com/jeffreyheping",
       "contributions": [
-        "bug"
+        "bug",
+        "code"
       ]
     }
   ],
