@@ -725,22 +725,7 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 				if !ok {
 					return
 				}
-				if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove) == 0 {
-					continue
-				}
-				if !c.shouldWatchScriptPath(event.Name) {
-					continue
-				}
-				if event.Op&fsnotify.Create != 0 {
-					_ = c.addWatchPathTracked(watcher, event.Name)
-				}
-				if event.Op&fsnotify.Remove != 0 {
-					c.removeWatchPathTracked(watcher, event.Name, false)
-				}
-				if !c.shouldProcessWatchEvent(event.Name) {
-					continue
-				}
-				c.Invalidate(event.Name)
+				c.handleWatchEvent(watcher, event)
 			case <-pruneTicker.C:
 				c.pruneStaleWatches(watcher)
 			case err, ok := <-watcher.Errors:
@@ -757,6 +742,31 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 	}()
 
 	return nil
+}
+
+func (c *ScriptCache) handleWatchEvent(watcher *fsnotify.Watcher, event fsnotify.Event) {
+	if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Remove|fsnotify.Rename) == 0 {
+		return
+	}
+
+	if event.Op&fsnotify.Create != 0 {
+		if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+			_ = c.addWatchRecursiveTracked(watcher, event.Name)
+			return
+		}
+	}
+
+	if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+		c.removeWatchPathTracked(watcher, event.Name, true)
+	}
+
+	if !c.shouldWatchScriptPath(event.Name) {
+		return
+	}
+	if !c.shouldProcessWatchEvent(event.Name) {
+		return
+	}
+	c.Invalidate(event.Name)
 }
 
 // StopInvalidator stops the active file watcher and goroutine.
@@ -1321,23 +1331,17 @@ func (c *ScriptCache) addWatchRecursiveTracked(watcher *fsnotify.Watcher, rootDi
 		return err
 	}
 	if !info.IsDir() {
-		if c.shouldWatchScriptPath(rootDir) {
-			return c.addWatchPathTracked(watcher, rootDir)
-		}
-		return nil
+		return c.addWatchPathTracked(watcher, filepath.Dir(rootDir))
 	}
 	return filepath.WalkDir(rootDir, func(path string, dirEntry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return nil
 		}
-		if dirEntry.IsDir() {
-			if shouldSkipScriptWatchDir(path, dirEntry.Name()) {
-				return filepath.SkipDir
-			}
+		if !dirEntry.IsDir() {
 			return nil
 		}
-		if !c.shouldWatchScriptPath(path) {
-			return nil
+		if shouldSkipScriptWatchDir(path, dirEntry.Name()) {
+			return filepath.SkipDir
 		}
 		return c.addWatchPathTracked(watcher, path)
 	})

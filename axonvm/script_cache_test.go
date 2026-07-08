@@ -281,8 +281,8 @@ func TestScriptCacheAddWatchRecursiveTrackedDeduplicatesDirectories(t *testing.T
 		t.Fatalf("add recursive watch first pass: %v", err)
 	}
 	countFirst := len(cache.watchedPaths)
-	if countFirst != 1 {
-		t.Fatalf("expected 1 watched script file after first pass, got %d", countFirst)
+	if countFirst != 3 {
+		t.Fatalf("expected 3 watched directories (root, a, a/b) after first pass, got %d", countFirst)
 	}
 
 	if err := cache.addWatchRecursiveTracked(watcher, root); err != nil {
@@ -297,10 +297,11 @@ func TestScriptCacheAddWatchRecursiveTrackedDeduplicatesDirectories(t *testing.T
 func TestScriptCachePruneStaleWatchesRemovesDeletedDirectories(t *testing.T) {
 	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
 	root := t.TempDir()
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		t.Fatalf("mkdir root directory: %v", err)
+	sub := filepath.Join(root, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir sub directory: %v", err)
 	}
-	aspFile := filepath.Join(root, "watched.asp")
+	aspFile := filepath.Join(sub, "watched.asp")
 	if err := os.WriteFile(aspFile, []byte("<% Response.Write 1 %>"), 0o644); err != nil {
 		t.Fatalf("write asp file: %v", err)
 	}
@@ -315,24 +316,81 @@ func TestScriptCachePruneStaleWatchesRemovesDeletedDirectories(t *testing.T) {
 		t.Fatalf("add recursive watch: %v", err)
 	}
 
-	normalizedASP, err := cache.normalizeAbsolutePath(aspFile)
+	normalizedSub, err := cache.normalizeAbsolutePath(sub)
 	if err != nil {
-		t.Fatalf("normalize asp file: %v", err)
+		t.Fatalf("normalize sub directory: %v", err)
 	}
-	normalizedASP = normalizeScriptCacheKey(normalizedASP)
-	if _, exists := cache.watchedPaths[normalizedASP]; !exists {
-		t.Fatalf("expected asp file to be tracked before deletion")
+	normalizedSub = normalizeScriptCacheKey(normalizedSub)
+	if _, exists := cache.watchedPaths[normalizedSub]; !exists {
+		t.Fatalf("expected sub directory to be tracked before deletion")
 	}
 
-	if err := os.Remove(aspFile); err != nil {
-		t.Fatalf("remove asp file: %v", err)
+	if err := os.RemoveAll(sub); err != nil {
+		t.Fatalf("remove sub directory: %v", err)
 	}
 
 	cache.pruneStaleWatches(watcher)
 
-	if _, exists := cache.watchedPaths[normalizedASP]; exists {
-		t.Fatalf("expected deleted script watch to be pruned")
+	if _, exists := cache.watchedPaths[normalizedSub]; exists {
+		t.Fatalf("expected deleted directory watch to be pruned")
 	}
+}
+
+// TestScriptCacheInvalidatesAfterAtomicRenameSave guards against a regression
+// where watching individual files instead of their directory let an atomic
+// save (write temp, rename over target) permanently kill the watch.
+func TestScriptCacheInvalidatesAfterAtomicRenameSave(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("rename-over-file watch semantics are POSIX-specific")
+	}
+
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	root := t.TempDir()
+	aspFile := filepath.Join(root, "watched.asp")
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 1 %>"), 0o644); err != nil {
+		t.Fatalf("write asp file: %v", err)
+	}
+
+	if err := cache.StartInvalidator([]string{root}); err != nil {
+		t.Fatalf("start invalidator: %v", err)
+	}
+	defer cache.StopInvalidator()
+
+	normalized, err := cache.normalizeAbsolutePath(aspFile)
+	if err != nil {
+		t.Fatalf("normalize asp file: %v", err)
+	}
+
+	waitForInvalidation := func(label string) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if _, found := cache.Get(normalized); !found {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("expected cache invalidation %s", label)
+	}
+
+	cache.Put(normalized, CachedProgram{Bytecode: []byte{1}}, nil)
+	tempFile := aspFile + ".tmp"
+	if err := os.WriteFile(tempFile, []byte("<% Response.Write 2 %>"), 0o644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+	if err := os.Rename(tempFile, aspFile); err != nil {
+		t.Fatalf("rename temp file over target: %v", err)
+	}
+	waitForInvalidation("after atomic rename save")
+
+	// An in-place edit after the rename must still invalidate, proving the
+	// directory watch survived the rename.
+	cache.Put(normalized, CachedProgram{Bytecode: []byte{1}}, nil)
+	time.Sleep(cache.watchDebounceWindow + 50*time.Millisecond)
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 3 %>"), 0o644); err != nil {
+		t.Fatalf("write asp file again: %v", err)
+	}
+	waitForInvalidation("after in-place edit following an atomic rename save")
 }
 
 func TestScriptCacheLoadOrCompileFallsBackToMemoryWhenDiskPersistFails(t *testing.T) {
