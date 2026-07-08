@@ -89,3 +89,52 @@ func TestVB6InterfaceProperty(t *testing.T) {
 		t.Errorf("Expected output to contain %q, got %q", expected, output)
 	}
 }
+
+func TestVB6InterfaceDispatchInsideImplementsScope(t *testing.T) {
+	code := `
+		Class IFoo
+			Sub DoSomething()
+			End Sub
+		End Class
+
+		Class Foo
+			Implements IFoo
+			Sub IFoo_DoSomething()
+				Response.Write "Foo.DoSomething called"
+			End Sub
+		End Class
+
+		Class Bar
+			Implements IFoo
+			Private m_Foo As IFoo
+
+			Sub Init()
+				Set m_Foo = New Foo
+			End Sub
+
+			Sub IFoo_DoSomething()
+				Response.Write "Bar.DoSomething calling m_Foo..."
+				m_Foo.DoSomething
+				Response.Write " | Bar.DoSomething done"
+			End Sub
+		End Class
+
+		Dim barObj
+		Set barObj = New Bar
+		barObj.Init
+
+		Dim bar As IFoo
+		Set bar = barObj
+		bar.DoSomething
+	`
+
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+
+	expected := "Bar.DoSomething calling m_Foo...Foo.DoSomething called | Bar.DoSomething done"
+	if !strings.Contains(output, expected) {
+		t.Errorf("Expected output to contain %q, got %q", expected, output)
+	}
+}

@@ -1081,6 +1081,11 @@ func (c *Compiler) parseClassDeclaration() {
 			break
 		}
 
+		if c.checkKeyword(vbscript.KeywordImplements) {
+			c.parseImplementsStatement(className)
+			continue
+		}
+
 		isPublic := true
 		if c.checkKeyword(vbscript.KeywordPublic) {
 			c.move()
