@@ -427,49 +427,93 @@ func startTUI() {
 	pages := tview.NewPages()
 
 	footer := tview.NewFlex().SetDirection(tview.FlexRow)
+	footer.SetBackgroundColor(dialogBg)
 
-	// Buttons row
-	btnRow := tview.NewFlex().
-		AddItem(tview.NewButton("Run (F3)").SetSelectedFunc(func() {
+	// Layout
+	layout := tview.NewFlex().SetDirection(tview.FlexRow)
+	pages.AddPage("main", layout, true, true)
+
+	type btnItem struct {
+		btn   *tview.Button
+		width int
+	}
+
+	buttons := []btnItem{
+		{tview.NewButton("Run (F3)").SetSelectedFunc(func() {
 			runCode(inputArea.GetText(), outputArea)
-		}), 15, 1, false).
-		AddItem(tview.NewButton("Open (F2)").SetSelectedFunc(func() {
+		}), 15},
+		{tview.NewButton("Open (F2)").SetSelectedFunc(func() {
 			showRunFileDialog(app, pages, outputArea)
-		}), 15, 1, false).
-		AddItem(tview.NewButton("Auto (F7)").SetSelectedFunc(func() {
+		}), 15},
+		{tview.NewButton("Auto (F7)").SetSelectedFunc(func() {
 			autoRunEnabled = !autoRunEnabled
 			updateStatus()
-		}), 15, 1, false).
-		AddItem(tview.NewButton("Focus (F6)").SetSelectedFunc(func() {
+		}), 15},
+		{tview.NewButton("Focus (F6)").SetSelectedFunc(func() {
 			if inputArea.HasFocus() {
 				app.SetFocus(outputArea)
 			} else {
 				app.SetFocus(inputArea)
 			}
-		}), 16, 1, false).
-		AddItem(tview.NewButton("Clear (F8)").SetSelectedFunc(func() {
+		}), 16},
+		{tview.NewButton("Clear (F8)").SetSelectedFunc(func() {
 			clearOutput()
-		}), 16, 1, false).
-		AddItem(tview.NewButton("Mouse (F5)").SetSelectedFunc(func() {
+		}), 16},
+		{tview.NewButton("Mouse (F5)").SetSelectedFunc(func() {
 			mouseEnabled = !mouseEnabled
 			app.EnableMouse(mouseEnabled)
-		}), 16, 1, false).
-		AddItem(tview.NewButton("Help (F1)").SetSelectedFunc(func() {
+		}), 16},
+		{tview.NewButton("Help (F1)").SetSelectedFunc(func() {
 			showHelpModal(app, pages)
-		}), 15, 1, false).
-		AddItem(tview.NewButton("Quit (F4)").SetSelectedFunc(func() {
+		}), 15},
+		{tview.NewButton("Quit (F4)").SetSelectedFunc(func() {
 			app.Stop()
-		}), 15, 1, false)
+		}), 15},
+	}
 
-	footer.AddItem(btnRow, 1, 1, false)
-	footer.SetBackgroundColor(dialogBg)
+	lastWidth := 0
+	app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		if screen == nil {
+			return false
+		}
+		w, _ := screen.Size()
+		if w == lastWidth {
+			return false
+		}
+		lastWidth = w
 
-	// Layout
-	layout := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(header, 1, 1, false).
-		AddItem(mainArea, 0, 1, true).
-		AddItem(footer, 1, 1, false)
-	pages.AddPage("main", layout, true, true)
+		footer.Clear()
+		var rows [][]btnItem
+		var currentRow []btnItem
+		currentRowWidth := 0
+		for _, item := range buttons {
+			if currentRowWidth+item.width > w && len(currentRow) > 0 {
+				rows = append(rows, currentRow)
+				currentRow = nil
+				currentRowWidth = 0
+			}
+			currentRow = append(currentRow, item)
+			currentRowWidth += item.width
+		}
+		if len(currentRow) > 0 {
+			rows = append(rows, currentRow)
+		}
+
+		for _, row := range rows {
+			rowFlex := tview.NewFlex().SetDirection(tview.FlexColumn)
+			for _, item := range row {
+				rowFlex.AddItem(item.btn, item.width, 1, false)
+			}
+			footer.AddItem(rowFlex, 1, 1, false)
+		}
+
+		layout.Clear()
+		layout.AddItem(header, 1, 1, false)
+		layout.AddItem(mainArea, 0, 1, true)
+		layout.AddItem(footer, len(rows), 1, false)
+
+		return false
+	})
 
 	// Debounce Logic
 	var timer *time.Timer
