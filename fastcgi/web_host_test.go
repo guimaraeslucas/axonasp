@@ -324,3 +324,189 @@ func TestNewFastCGIHostFallsBackToRootDirWithoutDocumentRoot(t *testing.T) {
 		t.Fatalf("expected fallback MapPath relative resolution %q, got %q", wantAbs, resolved)
 	}
 }
+
+// TestNewFastCGIHostSessionOnStartEndedDoesNotBlankPage verifies that when
+// Session_OnStart calls Response.End(), the subsequent page execution still
+// produces output instead of silently discarding everything (blank page).
+// This reproduces the "first request always blank" regression where
+// Response.ended leaked from Session_OnStart into page execution.
+func TestNewFastCGIHostSessionOnStartEndedDoesNotBlankPage(t *testing.T) {
+	asp.SetSessionStorageDir(t.TempDir())
+	defer asp.SetSessionStorageDir(filepath.Join("temp", "session"))
+
+	tmpDir := t.TempDir()
+
+	// Write a global.asa with Session_OnStart that calls Response.End()
+	globalASAContent := `<script runat="server" language="VBScript">
+Sub Session_OnStart
+	Response.End
+End Sub
+</script>`
+	globalASAPath := filepath.Join(tmpDir, "global.asa")
+	if err := os.WriteFile(globalASAPath, []byte(globalASAContent), 0644); err != nil {
+		t.Fatalf("failed to write global.asa: %v", err)
+	}
+
+	// Reset global ASA singleton for this test
+	axonvm.ResetGlobalASA()
+
+	// Load and compile the test global.asa
+	app := asp.NewApplication()
+	if err := axonvm.GetGlobalASA().LoadAndCompile(tmpDir, app); err != nil {
+		t.Fatalf("failed to load/compile global.asa: %v", err)
+	}
+
+	// First request: creates a new session, Session_OnStart fires
+	req := httptest.NewRequest(http.MethodGet, "http://example.local/default.asp", nil)
+	recorder := httptest.NewRecorder()
+	host := NewFastCGIHost(recorder, req)
+
+	// Verify session was created
+	if host.Session() == nil || host.Session().ID == "" {
+		t.Fatalf("expected non-empty session ID")
+	}
+
+	// Execute a simple ASP page
+	source := `<% Response.Write "HELLO_WORLD" %>`
+	compiler := axonvm.NewASPCompiler(source)
+	compiler.SetSourceName("/default.asp")
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := axonvm.NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	body := recorder.Body.String()
+	if body != "HELLO_WORLD" {
+		t.Fatalf("expected body HELLO_WORLD, got %q (blank page regression: Response.ended leaked from Session_OnStart)", body)
+	}
+
+	// Verify the session cookie was set despite Response.End in Session_OnStart
+	cookie := fastCGISessionCookieFromResponse(t, recorder)
+	if cookie.Value != host.Session().ID {
+		t.Fatalf("expected cookie value %q, got %q", host.Session().ID, cookie.Value)
+	}
+}
+
+// TestNewFastCGIHostSessionOnStartRedirectDoesNotBlankPage verifies that
+// when Session_OnStart calls Response.Redirect, the subsequent page still
+// produces output instead of silently discarding everything.
+func TestNewFastCGIHostSessionOnStartRedirectDoesNotBlankPage(t *testing.T) {
+	asp.SetSessionStorageDir(t.TempDir())
+	defer asp.SetSessionStorageDir(filepath.Join("temp", "session"))
+
+	tmpDir := t.TempDir()
+
+	// Write a global.asa with Session_OnStart that calls Response.Redirect
+	globalASAContent := `<script runat="server" language="VBScript">
+Sub Session_OnStart
+	Response.Redirect "/login.asp"
+End Sub
+</script>`
+	globalASAPath := filepath.Join(tmpDir, "global.asa")
+	if err := os.WriteFile(globalASAPath, []byte(globalASAContent), 0644); err != nil {
+		t.Fatalf("failed to write global.asa: %v", err)
+	}
+
+	// Reset global ASA singleton for this test
+	axonvm.ResetGlobalASA()
+
+	// Load and compile the test global.asa
+	app := asp.NewApplication()
+	if err := axonvm.GetGlobalASA().LoadAndCompile(tmpDir, app); err != nil {
+		t.Fatalf("failed to load/compile global.asa: %v", err)
+	}
+
+	// First request: creates a new session, Session_OnStart fires
+	req := httptest.NewRequest(http.MethodGet, "http://example.local/default.asp", nil)
+	recorder := httptest.NewRecorder()
+	host := NewFastCGIHost(recorder, req)
+
+	// Execute a simple ASP page
+	source := `<% Response.Write "PAGE_OK" %>`
+	compiler := axonvm.NewASPCompiler(source)
+	compiler.SetSourceName("/default.asp")
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := axonvm.NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	body := recorder.Body.String()
+	if body != "PAGE_OK" {
+		t.Fatalf("expected body PAGE_OK, got %q (Response.Redirect in Session_OnStart leaked ended flag)", body)
+	}
+}
+
+// TestNewFastCGIHostSubsequentRequestDoesNotRunSessionOnStart verifies that
+// the second request (with existing ASPSESSIONID cookie) does not execute
+// Session_OnStart, preserving page output without the ended-reset path.
+func TestNewFastCGIHostSubsequentRequestDoesNotRunSessionOnStart(t *testing.T) {
+	asp.SetSessionStorageDir(t.TempDir())
+	defer asp.SetSessionStorageDir(filepath.Join("temp", "session"))
+
+	tmpDir := t.TempDir()
+
+	// Write a global.asa with a panic-inducing Session_OnStart to prove it's skipped
+	globalASAContent := `<script runat="server" language="VBScript">
+Sub Session_OnStart
+	' This MUST NOT execute on the second request
+	Response.Write "SESSION_START_SHOULD_NOT_APPEAR"
+End Sub
+</script>`
+	globalASAPath := filepath.Join(tmpDir, "global.asa")
+	if err := os.WriteFile(globalASAPath, []byte(globalASAContent), 0644); err != nil {
+		t.Fatalf("failed to write global.asa: %v", err)
+	}
+
+	// Reset global ASA singleton for this test
+	axonvm.ResetGlobalASA()
+
+	// Load and compile the test global.asa
+	app := asp.NewApplication()
+	if err := axonvm.GetGlobalASA().LoadAndCompile(tmpDir, app); err != nil {
+		t.Fatalf("failed to load/compile global.asa: %v", err)
+	}
+
+	// Create a pre-existing session to simulate second request
+	existing, err := asp.CreateSession()
+	if err != nil {
+		t.Fatalf("failed to create baseline session: %v", err)
+	}
+
+	// Second request: has ASPSESSIONID cookie, session is NOT new
+	req := httptest.NewRequest(http.MethodGet, "http://example.local/default.asp", nil)
+	req.AddCookie(&http.Cookie{Name: fastCGISessionCookieName, Value: existing.ID})
+	recorder := httptest.NewRecorder()
+	host := NewFastCGIHost(recorder, req)
+
+	// Execute a simple ASP page
+	source := `<% Response.Write "SECOND_REQUEST_OK" %>`
+	compiler := axonvm.NewASPCompiler(source)
+	compiler.SetSourceName("/default.asp")
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := axonvm.NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	body := recorder.Body.String()
+	if body != "SECOND_REQUEST_OK" {
+		t.Fatalf("expected body SECOND_REQUEST_OK, got %q", body)
+	}
+}

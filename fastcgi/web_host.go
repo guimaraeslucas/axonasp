@@ -158,6 +158,16 @@ func NewFastCGIHost(w http.ResponseWriter, r *http.Request) *FastCGIHost {
 	if isNew && axonvm.GetGlobalASA().IsLoaded() {
 		axonvm.GetGlobalASA().PopulateSessionStaticObjects(session)
 		_ = axonvm.GetGlobalASA().ExecuteSessionOnStart(host)
+		// Session_OnStart may call Response.End/Redirect which sets ended=true.
+		// The handler suppresses output (Output=nil) so flushInternal is a no-op,
+		// but ended stays true and would silently discard all page output.
+		// Reset it so the page executes with a clean response state.
+		if host.response.IsEnded() {
+			host.response.ResetEnded()
+		}
+		// Clear any residual output written during Session_OnStart so it
+		// does not leak into the page response body.
+		host.response.Clear()
 	}
 
 	return host

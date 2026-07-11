@@ -129,7 +129,6 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-admin ./admin
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-service ./service
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-testsuite ./testsuite
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-fpm ./fpm
           cp -r www config mcp LICENSE.txt LEGAL-DISCLAIMER.md global.asa axonasp-macos-arm64/
           zip -r "axonasp-macos-${VERSION}-arm64.zip" axonasp-macos-arm64/
 

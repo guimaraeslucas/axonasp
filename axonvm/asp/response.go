@@ -665,6 +665,16 @@ func (r *Response) IsEnded() bool {
 	return r.ended
 }
 
+// ResetEnded clears the ended flag so the response can continue accepting output.
+// This is used after Session_OnStart execution, where Response.End/Redirect may
+// have been called inside the suppressed-output scope and would otherwise
+// silently discard all subsequent page output.
+func (r *Response) ResetEnded() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.ended = false
+}
+
 // flushInternal writes headers, cookies, and buffered content to the HTTP output.
 func (r *Response) flushInternal() {
 	if r.Output == nil {

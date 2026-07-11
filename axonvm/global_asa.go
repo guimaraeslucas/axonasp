@@ -68,6 +68,13 @@ func GetGlobalASA() *GlobalASA {
 	return globalASAInstance
 }
 
+// ResetGlobalASA discards the singleton and allows a fresh LoadAndCompile
+// with a different global.asa. Intended for test use only.
+func ResetGlobalASA() {
+	globalASAInstance = nil
+	globalASAOnce = sync.Once{}
+}
+
 // LoadAndCompile reads, compiles, and registers the global.asa file from the specified path.
 func (g *GlobalASA) LoadAndCompile(webRoot string, app *asp.Application) error {
 	g.mu.Lock()

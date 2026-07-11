@@ -562,6 +562,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Bind the listener BEFORE executing Application_OnStart so the kernel
+	// queues incoming connections during initialization, preventing
+	// "Connection refused" (ECONNREFUSED) in the reverse proxy.
+	listener, err := prepareFastCGIListener(ListenNetwork, ListenAddr)
+	if err != nil {
+		axonvm.ReportInternalError(axonvm.ErrCouldNotListenOn, err, "FastCGI listener could not start.", ListenNetwork+"://"+ListenAddr, 0)
+		os.Exit(1)
+	}
+	defer listener.Close()
+	defer cleanupFastCGIListenerArtifact(ListenNetwork, ListenAddr)
+
+	fmt.Printf("%sFastCGI server started on: %s://%s\n", LogPrefix, ListenNetwork, ListenAddr)
+	fmt.Printf("%sRoot directory: %s\n", LogPrefix, RootDir)
+
 	// Load and compile global.asa only when a concrete file location was found.
 	if shouldLoadGlobalASA {
 		fmt.Printf("%sStartup global.asa source directory: %s\n", LogPrefix, globalASARoot)
@@ -580,17 +594,6 @@ func main() {
 	mux := http.NewServeMux()
 	RegisterG3AxonLiveEndpoint(mux)
 	mux.HandleFunc("/", fastCGIMiddleware(handleRequest))
-
-	listener, err := prepareFastCGIListener(ListenNetwork, ListenAddr)
-	if err != nil {
-		axonvm.ReportInternalError(axonvm.ErrCouldNotListenOn, err, "FastCGI listener could not start.", ListenNetwork+"://"+ListenAddr, 0)
-		os.Exit(1)
-	}
-	defer listener.Close()
-	defer cleanupFastCGIListenerArtifact(ListenNetwork, ListenAddr)
-
-	fmt.Printf("%sFastCGI server started on: %s://%s\n", LogPrefix, ListenNetwork, ListenAddr)
-	fmt.Printf("%sRoot directory: %s\n", LogPrefix, RootDir)
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
