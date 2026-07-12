@@ -138,3 +138,123 @@ func TestVB6InterfaceDispatchInsideImplementsScope(t *testing.T) {
 		t.Errorf("Expected output to contain %q, got %q", expected, output)
 	}
 }
+
+func TestVB6ConcreteClassDispatch(t *testing.T) {
+	code := `
+		Class Dog
+			Function Speak()
+				Speak = "Woof!"
+			End Function
+		End Class
+
+		Dim d As Dog
+		Set d = New Dog
+		Response.Write d.Speak()
+	`
+
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+
+	expected := "Woof!"
+	if !strings.Contains(output, expected) {
+		t.Errorf("Expected output to contain %q, got %q", expected, output)
+	}
+}
+
+func TestVB6UninitializedTypedIsNothing(t *testing.T) {
+	code := `
+		Class Dog
+		End Class
+
+		Class Cat
+			Public MyDog As Dog
+		End Class
+
+		Dim d As Dog
+		If d Is Nothing Then
+			Response.Write "GlobalIsNothing "
+		End If
+
+		Sub TestLocal()
+			Dim localD As Dog
+			If localD Is Nothing Then
+				Response.Write "LocalIsNothing "
+			End If
+		End Sub
+		Call TestLocal()
+
+		Dim c
+		Set c = New Cat
+		If c.MyDog Is Nothing Then
+			Response.Write "MemberIsNothing"
+		Else
+			Response.Write "MemberNotNothing"
+		End If
+	`
+
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+
+	expected := "GlobalIsNothing LocalIsNothing MemberIsNothing"
+	if !strings.Contains(output, expected) {
+		t.Errorf("Expected output to contain %q, got %q", expected, output)
+	}
+}
+
+func TestVB6InterfaceTypedReturn(t *testing.T) {
+	code := `
+		Class IAnimal
+			Function Clone()
+			End Function
+			Function Clone2()
+			End Function
+		End Class
+
+		Class Dog
+			Implements IAnimal
+			
+			Public Function IAnimal_Clone() As IAnimal
+				Set IAnimal_Clone = Me
+			End Function
+
+			Public Function IAnimal_Clone2 As IAnimal
+				Set IAnimal_Clone2 = Me
+			End Function
+
+			Public Function Speak()
+				Speak = "Woof!"
+			End Function
+		End Class
+
+		Dim a As IAnimal
+		Set a = New Dog
+		
+		Dim b As IAnimal
+		Set b = a.Clone()
+
+		Dim c As IAnimal
+		Set c = a.Clone2()
+		
+		Dim d
+		Set d = b
+		Response.Write d.Speak()
+
+		Dim e
+		Set e = c
+		Response.Write " " & e.Speak()
+	`
+
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+
+	expected := "Woof! Woof!"
+	if !strings.Contains(output, expected) {
+		t.Errorf("Expected output to contain %q, got %q", expected, output)
+	}
+}

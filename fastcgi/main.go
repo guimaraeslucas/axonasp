@@ -518,7 +518,7 @@ func (d *dummyResponseWriter) WriteHeader(statusCode int)  {}
 // main starts the FastCGI listener and serves ASP requests.
 func main() {
 	fmt.Printf("%sG3pix ❖ AxonASP FastCGI %s\n", LogPrefix, Version)
-	fmt.Printf("%s\033]0;G3pix ❖ AxonASP FastCGI\007\033]11;#3b6ea5\007\033[1;37m", LogPrefix)
+	//fmt.Printf("%s\033]0;G3pix ❖ AxonASP FastCGI\007\033]11;#3b6ea5\007\033[1;37m", LogPrefix)
 
 	if CleanupSessions {
 		cleanupSessionFiles()

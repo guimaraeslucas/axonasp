@@ -411,6 +411,8 @@ type CompiledClassFieldDecl struct {
 	Name       string
 	IsPublic   bool
 	WithEvents bool
+	Type       ValueType
+	ClassType  string
 }
 
 // CompiledClassEventDecl stores one compiled class event metadata entry.

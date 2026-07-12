@@ -250,6 +250,8 @@ type RuntimeClassFieldDef struct {
 	IsPublic   bool
 	WithEvents bool
 	Dims       []int // nil for plain variables; non-nil upper bounds for fixed-size arrays
+	Type       ValueType
+	ClassType  string
 }
 
 // RuntimeClassPropertyDef stores runtime metadata for one class property.
@@ -1177,9 +1179,9 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 	// 4-byte operands: nameConstIdx(2) + icNodeID(2)
 	case OpJSMemberGet, OpJSMemberSet:
 		return 4
-	// 6-byte operands: classNameIdx(2) + fieldNameIdx(2) + isPublic(2)
+	// 9-byte operands: classNameIdx(2) + fieldNameIdx(2) + isPublic(2) + type(1) + classTypeIdx(2)
 	case OpRegisterClassField:
-		return 6
+		return 9
 	// 6-byte operands: classNameIdx(2) + fieldNameIdx(2) + dimCount(2); dim values are on stack
 	case OpInitClassArrayField:
 		return 6
@@ -1362,7 +1364,11 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			ip += 2
 			fieldIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
 			binary.BigEndian.PutUint16(bytecode[ip:], uint16(fieldIdx))
-			ip += 4
+			ip += 4 // skip fieldIdx(2) + isPublic(2)
+			ip += 1 // skip type(1)
+			classTypeIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
+			binary.BigEndian.PutUint16(bytecode[ip:], uint16(classTypeIdx))
+			ip += 2
 		case OpInitClassArrayField:
 			// classNameIdx(2) + fieldNameIdx(2) + dimCount(2); dim values came from OpConstant (already remapped)
 			classArrIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
@@ -2049,6 +2055,8 @@ aspExecLoop:
 						newVal.Interface = className
 					}
 				}
+			} else {
+				newVal.Interface = ""
 			}
 
 			// Phase 4: WithEvents binding
@@ -2152,6 +2160,8 @@ aspExecLoop:
 					}
 				}
 				newVal = coerced
+			} else {
+				newVal.Interface = ""
 			}
 			// Decrement reference count only for object slots to avoid hot-path call overhead.
 			if vm.Globals[idx].Type == VTObject {
@@ -2191,6 +2201,8 @@ aspExecLoop:
 						}
 					}
 				}
+			} else {
+				newVal.Interface = ""
 			}
 			// Decrement reference count only for object slots to avoid hot-path call overhead.
 			if vm.stack[slot].Type == VTObject {
@@ -2311,6 +2323,8 @@ aspExecLoop:
 						}
 					}
 				}
+			} else {
+				newVal.Interface = ""
 			}
 			// Decrement reference count only for object slots to avoid hot-path call overhead.
 			if vm.stack[slot].Type == VTObject {
@@ -3063,7 +3077,16 @@ aspExecLoop:
 			vm.ip += 2
 			isPublic := binary.BigEndian.Uint16(vm.bytecode[vm.ip:]) != 0
 			vm.ip += 2
-			vm.registerRuntimeClassField(vm.constants[classNameIdx].Str, vm.constants[fieldNameIdx].Str, isPublic)
+			fieldType := ValueType(vm.bytecode[vm.ip])
+			vm.ip += 1
+			classTypeIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
+			vm.ip += 2
+
+			classType := ""
+			if classTypeIdx != 0xFFFF {
+				classType = vm.constants[classTypeIdx].Str
+			}
+			vm.registerRuntimeClassField(vm.constants[classNameIdx].Str, vm.constants[fieldNameIdx].Str, isPublic, fieldType, classType)
 
 		case OpInitClassArrayField:
 			classArrNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -3227,9 +3250,17 @@ aspExecLoop:
 					continue
 				}
 				requirePublic := target.Num != vm.activeClassObjectID
+				interfaceName := target.Interface
+				if interfaceName != "" {
+					if instance, exists := vm.runtimeClassItems[target.Num]; exists && instance != nil {
+						if strings.EqualFold(interfaceName, instance.ClassName) {
+							interfaceName = ""
+						}
+					}
+				}
 				methodName := vm.constants[memberIdx].Str
-				if target.Interface != "" {
-					methodName = target.Interface + "_" + methodName
+				if interfaceName != "" {
+					methodName = interfaceName + "_" + methodName
 				}
 				methodTarget, ok := vm.resolveRuntimeClassMethod(target, methodName, requirePublic)
 				if ok {
@@ -3254,8 +3285,8 @@ aspExecLoop:
 					}
 				}
 				propertyName := vm.constants[memberIdx].Str
-				if target.Interface != "" {
-					propertyName = target.Interface + "_" + propertyName
+				if interfaceName != "" {
+					propertyName = interfaceName + "_" + propertyName
 				}
 				propertyTarget, ok := vm.resolveRuntimeClassPropertyGet(target, propertyName, argCount, requirePublic)
 				if ok {
@@ -3362,9 +3393,17 @@ aspExecLoop:
 					continue
 				}
 				requirePublic := target.Num != vm.activeClassObjectID
+				interfaceName := target.Interface
+				if interfaceName != "" {
+					if instance, exists := vm.runtimeClassItems[target.Num]; exists && instance != nil {
+						if strings.EqualFold(interfaceName, instance.ClassName) {
+							interfaceName = ""
+						}
+					}
+				}
 				memberName := member.String()
-				if target.Interface != "" {
-					memberName = target.Interface + "_" + memberName
+				if interfaceName != "" {
+					memberName = interfaceName + "_" + memberName
 				}
 				propertyTarget, ok := vm.resolveRuntimeClassPropertyGet(target, memberName, 0, requirePublic)
 				if ok {
@@ -3858,9 +3897,17 @@ aspExecLoop:
 				requirePublic := target.Num != vm.activeClassObjectID
 				preferSet := op == OpMemberSetSet || value.Type == VTObject || value.Type == VTNativeObject
 				strictSet := op == OpMemberSetSet
+				interfaceName := target.Interface
+				if interfaceName != "" {
+					if instance, exists := vm.runtimeClassItems[target.Num]; exists && instance != nil {
+						if strings.EqualFold(interfaceName, instance.ClassName) {
+							interfaceName = ""
+						}
+					}
+				}
 				memberName := vm.constants[memberIdx].Str
-				if target.Interface != "" {
-					memberName = target.Interface + "_" + memberName
+				if interfaceName != "" {
+					memberName = interfaceName + "_" + memberName
 				}
 				propertyTarget, ok := vm.resolveRuntimeClassPropertySet(target, memberName, 1, preferSet, strictSet, requirePublic)
 				if ok {
@@ -8789,7 +8836,7 @@ func (vm *VM) registerRuntimeClassMethod(className string, methodName string, me
 }
 
 // registerRuntimeClassField stores one direct field entry for one class definition.
-func (vm *VM) registerRuntimeClassField(className string, fieldName string, isPublic bool) {
+func (vm *VM) registerRuntimeClassField(className string, fieldName string, isPublic bool, fieldType ValueType, classType string) {
 	trimmedClassName := strings.TrimSpace(className)
 	trimmedFieldName := strings.TrimSpace(fieldName)
 	if trimmedClassName == "" || trimmedFieldName == "" {
@@ -8809,7 +8856,12 @@ func (vm *VM) registerRuntimeClassField(className string, fieldName string, isPu
 		classDef.Fields = make(map[string]RuntimeClassFieldDef)
 	}
 
-	classDef.Fields[strings.ToLower(trimmedFieldName)] = RuntimeClassFieldDef{Name: trimmedFieldName, IsPublic: isPublic}
+	classDef.Fields[strings.ToLower(trimmedFieldName)] = RuntimeClassFieldDef{
+		Name:      trimmedFieldName,
+		IsPublic:  isPublic,
+		Type:      fieldType,
+		ClassType: classType,
+	}
 	vm.runtimeClasses[lowerClassName] = classDef
 	vm.bumpRuntimeClassVersion()
 }
@@ -9403,11 +9455,18 @@ func (vm *VM) beginUserSubCall(target Value, args []Value, discardReturn bool, b
 	// Apply VB6 As Type declarations for this function's local variables.
 	entryPoint := int(target.Num)
 	if slotTypes, exists := vm.funcLocalTypes[entryPoint]; exists {
+		slotClassTypes := vm.funcLocalClassTypes[entryPoint]
 		for offset, declaredType := range slotTypes {
 			if offset < localCount {
 				idx := vm.fp + offset
 				vm.localTypes[idx] = declaredType
-				vm.stack[idx] = vm.zeroValueForType(declaredType)
+				val := vm.zeroValueForType(declaredType)
+				if declaredType == VTObject && slotClassTypes != nil {
+					if className, ok := slotClassTypes[offset]; ok {
+						val.Interface = className
+					}
+				}
+				vm.stack[idx] = val
 			}
 		}
 	}
@@ -9684,7 +9743,17 @@ func (vm *VM) newRuntimeClassInstance(className string) Value {
 		if len(fieldDef.Dims) > 0 {
 			vm.runtimeClassItems[instanceID].Members[fieldKey] = ValueFromVBArray(buildDimArray(fieldDef.Dims))
 		} else {
-			vm.runtimeClassItems[instanceID].Members[fieldKey] = Value{Type: VTEmpty}
+			if fieldDef.Type == VTObject {
+				val := Value{Type: VTNothing}
+				if fieldDef.ClassType != "" {
+					val.Interface = fieldDef.ClassType
+				}
+				vm.runtimeClassItems[instanceID].Members[fieldKey] = val
+			} else if fieldDef.Type != VTEmpty {
+				vm.runtimeClassItems[instanceID].Members[fieldKey] = vm.zeroValueForType(fieldDef.Type)
+			} else {
+				vm.runtimeClassItems[instanceID].Members[fieldKey] = Value{Type: VTEmpty}
+			}
 		}
 	}
 

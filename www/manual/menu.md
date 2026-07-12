@@ -817,7 +817,7 @@
             * [Field.Attributes](md/libraries/adodb/properties/field.attributes.md)
             * [Field.NumericScale](md/libraries/adodb/properties/field.numericscale.md)
             * [Field.ActualSize](md/libraries/adodb/properties/field.actualsize.md)
-            * [Field.DataFormat](md/libraries/dataformat.md)
+            * [Field.DataFormat](md/libraries/adodb/properties/field.dataformat.md)
             * [Field.OriginalValue](md/libraries/adodb/properties/field.originalvalue.md)
             * [Field.Precision](md/libraries/adodb/properties/field.precision.md)
             * [Field.Status](md/libraries/adodb/properties/field.status.md)
@@ -827,7 +827,6 @@
             * [Fields.Count](md/libraries/adodb/methods/fields.count.md)
             * [Fields.Item](md/libraries/adodb/methods/fields.item.md)
             * [Parameters.Count](md/libraries/adodb/methods/parameters.count.md)
-            * [Parameters.Item](md/libraries/adodb/methods/parameters.item.md)
     * ADODB.STREAM
         * [Overview](md/libraries/adodb-stream/overview.md)
         * [Methods](md/libraries/adodb-stream/methods.md)

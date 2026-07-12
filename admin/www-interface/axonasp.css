@@ -2374,6 +2374,13 @@ input[type="submit"]:active {
     margin-bottom: 6px;
 }
 
+.admin-path {
+    color: var(--text-muted);
+    font-family: "IBM Plex Mono", Consolas, monospace;
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
 .admin-muted {
     color: var(--text-muted);
     margin-bottom: 14px;
@@ -2399,6 +2406,16 @@ input[type="submit"]:active {
 .admin-process-actions a:hover {
     color: var(--accent-strong);
     text-decoration: underline;
+}
+
+.admin-control-disabled {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.admin-process-summary-row td {
+    border-top: 2px solid var(--border);
+    background: color-mix(in srgb, var(--bg-soft) 75%, var(--bg-elevated));
 }
 
 .admin-warning-list {
@@ -2468,6 +2485,50 @@ input[type="submit"]:active {
 .toast.toast-error {
     background: var(--danger);
     border-color: color-mix(in srgb, var(--danger) 45%, #000000);
+}
+
+#process-params-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.45);
+    z-index: 1200;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+#process-params-overlay.show {
+    display: flex;
+}
+
+.process-params-modal {
+    width: min(820px, 95vw);
+    min-width: 280px;
+}
+
+.process-params-body {
+    padding: 18px;
+}
+
+.process-help-box {
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    padding: 10px;
+    min-height: 180px;
+    max-height: 320px;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+}
+
+.process-modal-actions {
+    margin-top: 12px;
+    justify-content: flex-end;
 }
 
 @media (max-width: 768px) {

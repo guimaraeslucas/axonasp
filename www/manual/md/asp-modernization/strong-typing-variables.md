@@ -28,7 +28,8 @@ Supported `Type` values:
 | String    | "" (empty)    | Variable-length string                                       |
 | Boolean   | False         | Boolean (True/False)                                         |
 | Byte      | 0             | 64-bit signed integer (range checking not enforced in Phase 1) |
-| Object    | Nothing       | Object reference                                             |
+| Object    | Nothing       | Generic Object reference                                     |
+| ClassName | Nothing       | Concrete/Custom Class or Interface reference (e.g. `As Dog`) |
 | Variant   | Empty         | No type constraint (standard VBScript behavior)              |
 
 **Important:** `Variant` is the default when no `As` clause is present. Existing ASP code is unaffected.
@@ -65,6 +66,7 @@ If coercion fails (e.g., assigning `"hello"` to an `Integer`), a Type mismatch e
 - **Performance:** Type enforcement is implemented via direct type tag checks with minimal overhead. No reflection or heap allocation is used.
 - **Coercion rules** follow VBScript semantics. Numeric strings are parsed with standard integer/float conversion. Non-numeric strings assigned to numeric types raise Type mismatch.
 - **Object type:** `As Object` constrains the variable to hold object references (VTObject, VTNativeObject, or Nothing). Assigning a non-object value raises Type mismatch.
+- **Custom Classes:** You can specify any user-defined class name (e.g., `As Dog`) or interface name as the type constraint. Variables declared with a class or interface type will be initialized to `Nothing`, and assignments will validate that the value is an instance of the class (or implements the interface) at runtime. When calling methods/properties via a concrete class variable, dispatch resolves directly to the class's own implementation.
 - **No array support:** `As Type` cannot be combined with array dimension parentheses on the same variable declaration.
 - **Scope modifiers:** `Public` and `Private` are only valid at page/module level, not inside procedures. Inside procedures, use `Dim` with `As Type`.
 

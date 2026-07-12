@@ -1344,7 +1344,15 @@ func (c *Compiler) parseClassFieldDeclaration(className string, isPublic bool) {
 
 	for {
 		fieldName := c.expectIdentifier()
-		c.addClassFieldDeclaration(className, CompiledClassFieldDecl{Name: fieldName, IsPublic: isPublic, WithEvents: withEvents})
+		// Parse optional As Type clause.
+		declaredType, classType := c.parseAsTypeClause()
+		c.addClassFieldDeclaration(className, CompiledClassFieldDecl{
+			Name:       fieldName,
+			IsPublic:   isPublic,
+			WithEvents: withEvents,
+			Type:       declaredType,
+			ClassType:  classType,
+		})
 
 		classNameIdx := c.addConstant(NewString(className))
 		fieldNameIdx := c.addConstant(NewString(fieldName))
@@ -1352,7 +1360,17 @@ func (c *Compiler) parseClassFieldDeclaration(className string, isPublic bool) {
 		if isPublic {
 			isPublicOperand = 1
 		}
+
+		classTypeIdx := 0xFFFF
+		if classType != "" {
+			classTypeIdx = c.addConstant(NewString(classType))
+		}
+
 		c.emit(OpRegisterClassField, classNameIdx, fieldNameIdx, isPublicOperand)
+		c.bytecode = append(c.bytecode, byte(declaredType))
+		buf := make([]byte, 2)
+		binary.BigEndian.PutUint16(buf, uint16(classTypeIdx))
+		c.bytecode = append(c.bytecode, buf...)
 
 		if withEvents {
 			c.emitExt(ExtOpWithEventsRegister, classNameIdx, fieldNameIdx)
@@ -1600,6 +1618,9 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 
 	methodName := c.expectIdentifier()
 	paramResult := c.parseProcedureParameterNames()
+	if c.matchAsKeyword() {
+		c.parseAsTypeClause()
+	}
 	if strings.EqualFold(methodName, "Class_Initialize") || strings.EqualFold(methodName, "Class_Terminate") {
 		if len(paramResult.names) != 0 {
 			panic(c.vbCompileError(vbscript.ClassInitializeOrTerminateDoNotHaveArguments, "Class_Initialize/Class_Terminate must not declare arguments"))
@@ -1760,6 +1781,9 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 
 	propertyName := c.expectIdentifier()
 	paramResult := c.parseProcedureParameterNames()
+	if c.matchAsKeyword() {
+		c.parseAsTypeClause()
+	}
 
 	if (accessorKind == classPropertyAccessorLet || accessorKind == classPropertyAccessorSet) && len(paramResult.names) == 0 {
 		panic(c.vbCompileError(vbscript.PropertySetOrLetMustHaveArguments, "Property Let/Set requires one value parameter"))
@@ -3398,6 +3422,9 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 
 	name := c.expectIdentifier()
 	paramResult := c.parseProcedureParameterNames()
+	if c.matchAsKeyword() {
+		c.parseAsTypeClause()
+	}
 	if isFunc && len(paramResult.names) == 0 {
 		c.globalZeroArgFuncs[strings.ToLower(name)] = true
 	} else if !isFunc && len(paramResult.names) == 0 {

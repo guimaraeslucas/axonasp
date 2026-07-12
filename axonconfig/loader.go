@@ -100,3 +100,22 @@ func EnableWatchIfConfigured(v *viper.Viper, onChange func(fsnotify.Event)) bool
 	v.WatchConfig()
 	return true
 }
+
+// AboutG3pixAxonASP returns a string with information about AxonASP, including its license and copyright. It is intended to be displayed in the "About" section of applications using AxonASP, that's the reason it is not in the main package, but in the axonconfig package, so it can be imported and used by other packages.
+func AboutG3pixAxonASP() string {
+	return `
+
+ G3pix ❖ AxonASP
+
+ The high-performance, cross-platform engine driving VBScript and JavaScript 
+ into the next era. Built on a zero-allocation VM for Web, FastCGI, and CLI, 
+ it bridges core logic with modern APIs across all systems. High-powered, 
+ open-source, and ready to the future.
+
+ License: MPL 2.0
+
+ Copyright (C) 2026 G3pix Ltda. All rights reserved.
+ https://g3pix.com.br/axonasp
+
+`
+}

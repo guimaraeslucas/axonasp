@@ -8,7 +8,7 @@
         <link rel="stylesheet" href="/axonasp.css">
     </head>
 
-    <body data-active-view="{{.ActiveView}}">
+    <body data-active-view="{{.ActiveView}}" data-is-gui-env="{{if .IsGUIEnv}}true{{else}}false{{end}}">
         <div id="header">
             <div class="logo">
                 <img src="/logo_square.svg" alt="AxonASP" width="43">
@@ -87,6 +87,29 @@
                                     id="telemetry-mem-percent">{{FormatPercent .HomeTelemetry.UsedMemoryPercent}}</span>
                             </p>
                         </div>
+                        <div class="card">
+                            <h4>Disk Space</h4>
+                            <p class="admin-metric" id="telemetry-disk-free">
+                                {{FormatBytes .HomeTelemetry.DiskFreeBytes}}
+                            </p>
+                            <p>Total: <span
+                                    id="telemetry-disk-total">{{FormatBytes .HomeTelemetry.DiskTotalBytes}}</span>
+                            </p>
+                        </div>
+                        <div class="card">
+                            <h4>Temp Directory Size</h4>
+                            <p class="admin-metric" id="telemetry-temp-size">
+                                {{if .HomeTelemetry.TempDirSizeKnown}}{{FormatBytes .HomeTelemetry.TempDirSizeBytes}}{{else}}N/A{{end}}
+                            </p>
+                            <p class="admin-path" id="telemetry-temp-path">{{.HomeTelemetry.TempDirPath}}</p>
+                        </div>
+                        <div class="card">
+                            <h4>Web Root Size</h4>
+                            <p class="admin-metric" id="telemetry-webroot-size">
+                                {{if .HomeTelemetry.WebRootSizeKnown}}{{FormatBytes .HomeTelemetry.WebRootSizeBytes}}{{else}}N/A{{end}}
+                            </p>
+                            <p class="admin-path" id="telemetry-webroot-path">{{.HomeTelemetry.WebRootPath}}</p>
+                        </div>
                     </div>
 
                     <div class="card admin-process-card">
@@ -107,17 +130,31 @@
                                         <td>
                                             <div>{{.Name}}</div>
                                             <div class="admin-process-actions">
+                                                {{if and $.IsWindows (eq .Name "axonasp-fpm")}}
+                                                <span class="admin-control-disabled">not supported on Windows</span>
+                                                {{else}}
                                                 <a href="#"
                                                     onclick="event.preventDefault();processAction('{{.Name}}', 'start');">start</a>
                                                 <span>|</span>
                                                 <a href="#"
+                                                    onclick="event.preventDefault();openParametersModal('{{.Name}}');">parameters</a>
+                                                <span>|</span>
+                                                <a href="#"
                                                     onclick="event.preventDefault();processAction('{{.Name}}', 'stop');">close</a>
+                                                {{end}}
                                             </div>
                                         </td>
                                         <td class="process-count">{{.Count}}</td>
                                         <td class="process-memory">{{FormatBytes .MemoryBytes}}</td>
                                     </tr>
                                     {{end}}
+                                    <tr class="admin-process-summary-row">
+                                        <td><strong>Total</strong></td>
+                                        <td class="process-count" id="process-total-count">
+                                            {{.HomeTelemetry.ProcessTotalCount}}</td>
+                                        <td class="process-memory" id="process-total-memory">
+                                            {{FormatBytes .HomeTelemetry.ProcessTotalMemory}}</td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -264,12 +301,38 @@
                 target="_blank">Open Manual</a>
         </div>
 
+        <div id="process-params-overlay">
+            <div class="index-loading-modal process-params-modal" role="dialog" aria-modal="true"
+                aria-labelledby="process-params-title">
+                <div class="index-loading-header" id="process-params-title">Process Parameters</div>
+                <div class="process-params-body">
+                    <p class="admin-muted">Executable: <strong id="process-params-name"></strong></p>
+                    <div class="form-group">
+                        <label class="form-label" for="process-params-input">Command-line arguments</label>
+                        <input class="form-input" id="process-params-input" type="text"
+                            placeholder="Example: -r ./www/tests/test_basics.asp">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Supported flags</label>
+                        <pre id="process-params-help" class="process-help-box">Loading...</pre>
+                    </div>
+                    <div class="actions-row process-modal-actions">
+                        <button class="btn btn-primary" type="button"
+                            onclick="startFromParametersModal()">Start</button>
+                        <button class="btn" type="button" onclick="closeParametersModal()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="toast" class="toast"></div>
 
         <script>
             let formModified = false;
             let saveInProgress = false;
             const activeView = document.body.getAttribute('data-active-view') || 'home';
+            const isGUIEnvironment = document.body.getAttribute('data-is-gui-env') === 'true';
+            let modalProcessName = '';
 
             function formatBytes(bytes) {
                 const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -482,8 +545,16 @@
                     document.getElementById('telemetry-mem-used').textContent = formatBytes(payload.used_memory_bytes || 0);
                     const usedPercent = Number(payload.used_memory_percent || 0);
                     document.getElementById('telemetry-mem-percent').textContent = usedPercent.toFixed(2) + '%';
+                    document.getElementById('telemetry-disk-free').textContent = formatBytes(payload.disk_free_bytes || 0);
+                    document.getElementById('telemetry-disk-total').textContent = formatBytes(payload.disk_total_bytes || 0);
+                    document.getElementById('telemetry-temp-size').textContent = payload.temp_dir_size_known ? formatBytes(payload.temp_dir_size_bytes || 0) : 'N/A';
+                    document.getElementById('telemetry-temp-path').textContent = payload.temp_dir_path || 'N/A';
+                    document.getElementById('telemetry-webroot-size').textContent = payload.web_root_size_known ? formatBytes(payload.web_root_size_bytes || 0) : 'N/A';
+                    document.getElementById('telemetry-webroot-path').textContent = payload.web_root_path || 'N/A';
 
                     const stats = Array.isArray(payload.process_stats) ? payload.process_stats : [];
+                    let totalInstances = 0;
+                    let totalMemoryBytes = 0;
                     stats.forEach((stat) => {
                         const row = document.querySelector('tr[data-process-name="' + stat.name + '"]');
                         if (!row) {
@@ -497,20 +568,40 @@
                         if (memoryCell) {
                             memoryCell.textContent = formatBytes(stat.memory_bytes || 0);
                         }
+                        totalInstances += Number(stat.count || 0);
+                        totalMemoryBytes += Number(stat.memory_bytes || 0);
                     });
+
+                    const totalCountCell = document.getElementById('process-total-count');
+                    const totalMemoryCell = document.getElementById('process-total-memory');
+                    if (totalCountCell) {
+                        totalCountCell.textContent = String(payload.process_total_count || totalInstances);
+                    }
+                    if (totalMemoryCell) {
+                        const serverTotal = Number(payload.process_total_memory || totalMemoryBytes);
+                        totalMemoryCell.textContent = formatBytes(serverTotal);
+                    }
                 } catch (_err) {
                     // Keep the last visible telemetry values if refresh fails.
                 }
             }
 
-            async function processAction(processName, action) {
+            async function processAction(processName, action, rawArgs = '') {
                 if (!processName || !action) {
                     return;
                 }
+
+                // On headless systems, axonasp-cli requires explicit arguments from the modal.
+                if (processName === 'axonasp-cli' && action === 'start' && !isGUIEnvironment && !String(rawArgs || '').trim()) {
+                    openParametersModal(processName);
+                    return;
+                }
+
                 try {
                     const body = new URLSearchParams({
                         process_name: processName,
-                        action: action
+                        action: action,
+                        args: String(rawArgs || '')
                     });
                     const response = await fetch('/api/process/action', {
                         method: 'POST',
@@ -528,6 +619,45 @@
                 } catch (err) {
                     showToast('Network error while controlling process: ' + err.message, true);
                 }
+            }
+
+            async function openParametersModal(processName) {
+                if (!processName) {
+                    return;
+                }
+                modalProcessName = processName;
+                document.getElementById('process-params-name').textContent = processName;
+                document.getElementById('process-params-input').value = '';
+                document.getElementById('process-params-help').textContent = 'Loading supported flags...';
+                document.getElementById('process-params-overlay').classList.add('show');
+
+                try {
+                    const response = await fetch('/api/process/flags?process_name=' + encodeURIComponent(processName), {
+                        method: 'GET'
+                    });
+                    const result = await response.json();
+                    if (result.status === 'ok') {
+                        document.getElementById('process-params-help').textContent = result.help_text || 'No help output was returned by this executable.';
+                    } else {
+                        document.getElementById('process-params-help').textContent = 'Unable to read supported flags: ' + (result.message || 'unknown error');
+                    }
+                } catch (err) {
+                    document.getElementById('process-params-help').textContent = 'Network error while loading supported flags: ' + err.message;
+                }
+            }
+
+            function closeParametersModal() {
+                document.getElementById('process-params-overlay').classList.remove('show');
+                modalProcessName = '';
+            }
+
+            function startFromParametersModal() {
+                if (!modalProcessName) {
+                    return;
+                }
+                const args = document.getElementById('process-params-input').value || '';
+                processAction(modalProcessName, 'start', args);
+                closeParametersModal();
             }
 
             document.addEventListener('DOMContentLoaded', function () {
@@ -551,6 +681,21 @@
 
                 if (activeView === 'home') {
                     setInterval(refreshTelemetry, 6000);
+                }
+
+                document.addEventListener('keydown', function (event) {
+                    if (event.key === 'Escape') {
+                        closeParametersModal();
+                    }
+                });
+
+                const overlay = document.getElementById('process-params-overlay');
+                if (overlay) {
+                    overlay.addEventListener('click', function (event) {
+                        if (event.target === overlay) {
+                            closeParametersModal();
+                        }
+                    });
                 }
             });
         </script>

@@ -14,3 +14,8 @@ func configureDetachedProcess(cmd *exec.Cmd) {
 		Setpgid: true,
 	}
 }
+
+// configureVisibleConsoleProcess keeps unix child configuration detached when no native console API exists.
+func configureVisibleConsoleProcess(cmd *exec.Cmd) {
+	configureDetachedProcess(cmd)
+}
