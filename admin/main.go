@@ -30,7 +30,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
@@ -50,6 +49,8 @@ import (
 	"strings"
 	"time"
 
+	"g3pix.com.br/axonasp/axonconfig"
+
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
 	"github.com/shirou/gopsutil/v3/host"
@@ -57,6 +58,7 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/spf13/pflag"
 )
 
 //go:embed www-interface/*
@@ -1325,23 +1327,31 @@ func main() {
 	var createPath string
 	var createFPMPath string
 	var noUI bool
-	var helpFlag bool
+	var aboutFlag bool
 
-	flag.StringVar(&editPath, "edit", "", "TOML target to edit")
-	flag.StringVar(&createPath, "create", "", "TOML target to create")
-	flag.StringVar(&createFPMPath, "create-fpm", "", "FPM pool target to create")
-	flag.BoolVar(&noUI, "noui", false, "headless creation mode")
-	flag.BoolVar(&helpFlag, "h", false, "show help menu")
+	pflag.StringVar(&editPath, "edit", "", "Path to an existing AxonASP TOML configuration file to open for editing in the web interface.")
+	pflag.StringVar(&createPath, "create", "", "Create a new default AxonASP TOML configuration file at the provided path and exit.")
+	pflag.StringVar(&createFPMPath, "create-fpm", "", "Create a new default AxonASP FPM pool .conf file at the provided path and exit.")
+	pflag.BoolVar(&noUI, "noui", false, "Run in headless mode for create operations without opening the browser interface.")
+	pflag.BoolVarP(&aboutFlag, "about", "a", false, "Print AxonASP product and licensing information, then exit.")
 
-	flag.Usage = func() {
-		printHelp()
+	pflag.Usage = func() {
+		fmt.Printf("G3pix ❖ AxonASP Configuration Manager %s\n", Version)
+		fmt.Println("Options available: ")
+		pflag.PrintDefaults()
+		fmt.Print("\nFor more information, visit: https://g3pix.com.br/axonasp/manual/\n")
 	}
 
-	flag.Parse()
+	pflag.Parse()
+
+	if aboutFlag {
+		fmt.Print(axonconfig.AboutG3pixAxonASP())
+		os.Exit(0)
+	}
 
 	// Handle extra non-flag arguments as unrecognized.
-	if helpFlag || flag.NArg() > 0 {
-		printHelp()
+	if pflag.NArg() > 0 {
+		pflag.Usage()
 		os.Exit(0)
 	}
 

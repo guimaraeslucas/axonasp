@@ -109,14 +109,31 @@ func registerFixedMIMETypes() {
 
 // loadServerConfig loads and applies server/global settings from config/axonasp.toml using Viper.
 func loadServerConfig() {
+	var aboutFlag bool
+
+	pflag.Usage = func() {
+		fmt.Printf("G3pix ❖ AxonASP Server %s\n", Version)
+		fmt.Println("Options available: ")
+		pflag.PrintDefaults()
+		fmt.Print("\nFor more information, visit: https://g3pix.com.br/axonasp/manual/\n")
+	}
+
 	if pflag.Lookup("config.config_file") == nil {
 		pflag.StringP("config.config_file", "c", "", "Path to the configuration file to use.")
 	}
 	if pflag.Lookup("server.server_port") == nil {
 		pflag.Int("server.server_port", 8801, "Server port to listen on. This is usefull for using AxonASP in IIS with HttpPlatformHandler, as it will pass the port as an argument.")
 	}
+	if pflag.Lookup("about") == nil {
+		pflag.BoolVarP(&aboutFlag, "about", "a", false, "Print AxonASP product and licensing information, then exit.")
+	}
 
 	pflag.Parse()
+
+	if aboutFlag {
+		fmt.Print(axonconfig.AboutG3pixAxonASP())
+		os.Exit(0)
+	}
 
 	if configPath, err := pflag.CommandLine.GetString("config.config_file"); err == nil && configPath != "" {
 		axonconfig.SetCustomConfigPath(configPath)

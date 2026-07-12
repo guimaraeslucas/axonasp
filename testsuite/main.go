@@ -40,6 +40,7 @@ import (
 	"g3pix.com.br/axonasp/axonvm"
 	"g3pix.com.br/axonasp/axonvm/asp"
 	"github.com/joho/godotenv"
+	"github.com/spf13/pflag"
 )
 
 // Version is injected by the build scripts.
@@ -64,6 +65,10 @@ var (
 
 	sharedApplication = asp.NewApplication()
 	sharedSession     = asp.NewSession()
+
+	testsuiteConfigFilePath string
+	testsuiteAboutFlag      bool
+	testsuiteTargetPath     string
 )
 
 const (
@@ -89,8 +94,37 @@ type suiteResult struct {
 func init() {
 	_ = godotenv.Load()
 	axonvm.SetRuntimeVersion(strings.TrimSpace(Version))
+	configureTestSuiteFlags()
 	loadConfig()
 	applyRuntimeSettings()
+}
+
+// configureTestSuiteFlags defines and parses testsuite command-line flags.
+func configureTestSuiteFlags() {
+	pflag.Usage = func() {
+		fmt.Printf("G3pix ❖ AxonASP TestSuite %s\n", Version)
+		fmt.Println("Options available: ")
+		pflag.PrintDefaults()
+		fmt.Print("\nFor more information, visit: https://g3pix.com.br/axonasp/manual/\n")
+	}
+
+	pflag.StringVarP(&testsuiteConfigFilePath, "config.config_file", "c", "", "Path to the AxonASP TOML configuration file to load before running suite discovery and execution.")
+	pflag.BoolVarP(&testsuiteAboutFlag, "about", "a", false, "Print AxonASP product and licensing information, then exit.")
+
+	pflag.Parse()
+
+	if testsuiteAboutFlag {
+		fmt.Print(axonconfig.AboutG3pixAxonASP())
+		os.Exit(0)
+	}
+
+	if strings.TrimSpace(testsuiteConfigFilePath) != "" {
+		axonconfig.SetCustomConfigPath(testsuiteConfigFilePath)
+	}
+
+	if args := pflag.Args(); len(args) > 0 {
+		testsuiteTargetPath = args[0]
+	}
 }
 
 // main scans the requested directory, executes ASP tests, and returns a process exit code based on failures.
@@ -112,24 +146,12 @@ func main() {
 	}
 	defer shutdownGlobalASA()
 
-	var targetPathArg string
-	for i := 1; i < len(os.Args); i++ {
-		arg := os.Args[i]
-		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
-			i++ // skip value
-			continue
-		}
-		if targetPathArg == "" {
-			targetPathArg = arg
-		}
-	}
-
-	if targetPathArg == "" {
-		printUsage()
+	if strings.TrimSpace(testsuiteTargetPath) == "" {
+		pflag.Usage()
 		os.Exit(1)
 	}
 
-	targetDir, err := resolveDirectoryPath(targetPathArg)
+	targetDir, err := resolveDirectoryPath(testsuiteTargetPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sError%s: %v\n", colorRed, colorReset, err)
 		os.Exit(1)
@@ -173,14 +195,6 @@ func main() {
 
 // loadConfig loads runtime configuration shared with the existing CLI execution path.
 func loadConfig() {
-	for i := 1; i < len(os.Args); i++ {
-		arg := os.Args[i]
-		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
-			axonconfig.SetCustomConfigPath(os.Args[i+1])
-			break
-		}
-	}
-
 	v := axonconfig.NewViper()
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		fmt.Printf("%sWarning%s: %s\n", colorYellow, colorReset, axonvm.ErrViperReadConfigFailed.String())
@@ -533,26 +547,4 @@ func indentBlock(text string, prefix string) string {
 		lines[i] = prefix + strings.TrimRight(lines[i], "\r")
 	}
 	return strings.Join(lines, "\n")
-}
-
-// printUsage prints command line help for the testsuite binary.
-func printUsage() {
-	fmt.Println("\033[1mG3pix ❖ AxonASP TestSuite Usage:\n\033[0m")
-	fmt.Println(`  axonasp-testsuite <directory>
-    The runner scans recursively for *test.asp and test_*.asp files,
-    executes them through the G3pix AxonASP VM, and returns exit code 1 if any test fails.
-	
- ABOUT:
-  G3pix ❖ AxonASP
-  is a high-performance, cross-platform Classic ASP engine,
-  with support to VBScript and JScript for Web, FastCGI, and CLI, 
-  bridging legacy compatibility with modern APIs.
-  
-  Copyright (C) 2026 G3pix Ltda. All rights reserved.
-  Website: https://g3pix.com.br/axonasp
-  
-  License: MPL 2.0
-  
-  `)
-	fmt.Println("\033[0m")
 }

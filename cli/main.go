@@ -41,6 +41,7 @@ import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/joho/godotenv"
 	"github.com/rivo/tview"
+	"github.com/spf13/pflag"
 )
 
 // CLI configuration values.
@@ -70,6 +71,11 @@ var (
 	// Process-wide shared Application and Session instances for the CLI
 	sharedCLIApplication = asp.NewApplication()
 	sharedCLISession     = asp.NewSession()
+
+	cliConfigFilePath string
+	cliRunPath        string
+	cliModeFlag       string
+	cliAboutFlag      bool
 )
 
 const tuiHelpText = `
@@ -122,20 +128,39 @@ const tuiHelpText = `
 func init() {
 	_ = godotenv.Load()
 	axonvm.SetRuntimeVersion(strings.TrimSpace(Version))
+	configureCLIFlags()
 	loadCLIConfig()
 	applyRuntimeSettings()
 }
 
-// loadCLIConfig loads and applies cli/global settings from config/axonasp.toml using Viper.
-func loadCLIConfig() {
-	for i := 1; i < len(os.Args); i++ {
-		arg := os.Args[i]
-		if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
-			axonconfig.SetCustomConfigPath(os.Args[i+1])
-			break
-		}
+// configureCLIFlags defines and parses CLI flags before config loading.
+func configureCLIFlags() {
+	pflag.Usage = func() {
+		fmt.Printf("G3pix ❖ AxonASP CLI %s\n", Version)
+		fmt.Println("Options available: ")
+		pflag.PrintDefaults()
+		fmt.Print("\nFor more information, visit: https://g3pix.com.br/axonasp/manual/\n")
 	}
 
+	pflag.StringVarP(&cliConfigFilePath, "config.config_file", "c", "", "Path to the AxonASP TOML configuration file to load before starting the CLI runtime.")
+	pflag.StringVarP(&cliRunPath, "run", "r", "", "Run a single ASP/VBScript/JavaScript file directly and exit without opening the interactive TUI.")
+	pflag.StringVarP(&cliModeFlag, "mode", "m", "", "Override the execution engine mode for this process: default, vbscript, or javascript.")
+	pflag.BoolVarP(&cliAboutFlag, "about", "a", false, "Print AxonASP product and licensing information, then exit.")
+
+	pflag.Parse()
+
+	if cliAboutFlag {
+		fmt.Print(axonconfig.AboutG3pixAxonASP())
+		os.Exit(0)
+	}
+
+	if strings.TrimSpace(cliConfigFilePath) != "" {
+		axonconfig.SetCustomConfigPath(cliConfigFilePath)
+	}
+}
+
+// loadCLIConfig loads and applies cli/global settings from config/axonasp.toml using Viper.
+func loadCLIConfig() {
 	v := axonconfig.NewViper()
 	if strings.TrimSpace(v.ConfigFileUsed()) == "" {
 		fmt.Printf("Warning: %s\n", axonvm.ErrViperReadConfigFailed.String())
@@ -256,6 +281,17 @@ func isASPExecutionExtension(filePath string) bool {
 
 // main starts the interactive CLI and handles commands.
 func main() {
+	if mode := strings.ToLower(strings.TrimSpace(cliModeFlag)); mode != "" {
+		switch mode {
+		case "vbscript":
+			CLIEngineMode = axonvm.EngineModeVBScript
+		case "javascript":
+			CLIEngineMode = axonvm.EngineModeJavaScript
+		case "default":
+			CLIEngineMode = axonvm.EngineModeDefault
+		}
+	}
+
 	workingDir, _ := os.Getwd()
 	cacheMode := axonvm.ParseBytecodeCacheMode(BytecodeCachingMode)
 	cacheMaxSizeMB := CacheMaxSizeMB
@@ -295,46 +331,13 @@ func main() {
 		}
 	}()
 
-	// Handle command-line arguments for help and direct file execution before starting REPL.
-	if len(os.Args) > 1 {
-		for i := 1; i < len(os.Args); i++ {
-			arg := os.Args[i]
-			if (arg == "-c" || arg == "--config.config_file") && i+1 < len(os.Args) {
-				i++ // skip config path value
-				continue
-			}
-			if arg == "-h" || arg == "--help" {
-				printHelp()
-				return
-			}
-			if (arg == "-m" || arg == "--mode") && i+1 < len(os.Args) {
-				mode := strings.ToLower(os.Args[i+1])
-				switch mode {
-				case "vbscript":
-					CLIEngineMode = axonvm.EngineModeVBScript
-				case "javascript":
-					CLIEngineMode = axonvm.EngineModeJavaScript
-				case "default":
-					CLIEngineMode = axonvm.EngineModeDefault
-				}
-				i++ // skip mode value
-				continue
-			}
-
-			if arg == "-r" || arg == "--run" {
-				if !EnableCLIRunFromCommandLine {
-					fmt.Printf("Error %d: %s\n", axonvm.ErrCLIRunCommandNotEnabled, axonvm.ErrCLIRunCommandNotEnabled.String())
-					os.Exit(int(axonvm.ErrCLIRunCommandNotEnabled))
-				}
-				if i+1 >= len(os.Args) {
-					fmt.Printf("Error %d: %s\n", axonvm.ErrCLIMissingFilePath, axonvm.ErrCLIMissingFilePath.String())
-					printHelp()
-					os.Exit(int(axonvm.ErrCLIMissingFilePath))
-				}
-				runDirectFile(os.Args[i+1])
-				return
-			}
+	if strings.TrimSpace(cliRunPath) != "" {
+		if !EnableCLIRunFromCommandLine {
+			fmt.Printf("Error %d: %s\n", axonvm.ErrCLIRunCommandNotEnabled, axonvm.ErrCLIRunCommandNotEnabled.String())
+			os.Exit(int(axonvm.ErrCLIRunCommandNotEnabled))
 		}
+		runDirectFile(cliRunPath)
+		return
 	}
 
 	// Check if CLI is enabled in configuration before starting.
@@ -965,34 +968,6 @@ func wireCLIObjectAliases(vm *axonvm.VM, compiler *axonvm.Compiler) {
 	if idx, exists := compiler.Globals.Get("Document"); exists && idx >= 0 && idx < len(vm.Globals) {
 		vm.Globals[idx] = axonvm.Value{Type: axonvm.VTNativeObject, Num: 0}
 	}
-}
-
-// printHelp shows the usage instructions for the CLI.
-func printHelp() {
-	fmt.Println("\033[1mG3pix ❖ AxonASP CLI Usage:\n\033[0m")
-	fmt.Println(`  axonasp-cli 
-    axonasp-cli
-      Starts the interactive REPL.
-    axonasp-cli -r,--run <file>
-      Runs the specified ASP file directly and returns only its output
-    axonasp-cli -m,--mode <mode>
-      Sets the engine mode (default, vbscript, javascript).
-    axonasp-cli -h, --help
-      Shows this help message.
-
- ABOUT:
-  G3pix ❖ AxonASP
-  is a high-performance, cross-platform Classic ASP engine,
-  with support to VBScript and JavaScript for Web, FastCGI, and CLI, 
-  bridging legacy compatibility with modern APIs.
-  
-  Copyright (C) 2026 G3pix Ltda. All rights reserved.
-  Website: https://g3pix.com.br/axonasp
-  
-  License: MPL 2.0
-
-  `)
-	fmt.Println("\033[0m")
 }
 
 // runDirectFile executes an ASP file directly from the command line without REPL prompts.

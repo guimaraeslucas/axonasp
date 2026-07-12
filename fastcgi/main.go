@@ -110,6 +110,15 @@ func init() {
 
 // loadFastCGIConfig loads and applies fastcgi/global settings from config/axonasp.toml using Viper.
 func loadFastCGIConfig() {
+	var aboutFlag bool
+
+	pflag.Usage = func() {
+		fmt.Printf("G3pix ❖ AxonASP FastCGI %s\n", Version)
+		fmt.Println("Options available: ")
+		pflag.PrintDefaults()
+		fmt.Print("\nFor more information, visit: https://g3pix.com.br/axonasp/manual/\n")
+	}
+
 	if pflag.Lookup("config.config_file") == nil {
 		pflag.StringP("config.config_file", "c", "", "Path to the configuration file to use.")
 	}
@@ -125,8 +134,15 @@ func loadFastCGIConfig() {
 	if pflag.Lookup("pool.name") == nil {
 		pflag.String("pool.name", "", "Optional pool name used for worker log identification")
 	}
+	if pflag.Lookup("about") == nil {
+		pflag.BoolVarP(&aboutFlag, "about", "a", false, "Print AxonASP product and licensing information, then exit.")
+	}
 
 	pflag.Parse()
+	if aboutFlag {
+		fmt.Print(axonconfig.AboutG3pixAxonASP())
+		os.Exit(0)
+	}
 	if poolName, err := pflag.CommandLine.GetString("pool.name"); err == nil {
 		PoolName = strings.TrimSpace(poolName)
 	}
