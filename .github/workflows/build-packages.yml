@@ -1,6 +1,30 @@
-# .github/workflows/build-packages.yml
-name: Build OS Packages
+# AxonASP Server - Build Packages Workflow
+#
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# Developed by Lucas Guimarães - G3pix Ltda
+# Contact: https://g3pix.com.br
+# Project URL: https://g3pix.com.br/axonasp
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Attribution Notice:
+# If this software is used in other projects, the name "AxonASP Server"
+#  must be cited in the documentation or "About" section.
+# 
+# Contribution Policy:
+#  Modifications to the core source code of AxonASP Server must be
+#  made available under this same license terms.
+#  This code was contributed largely by @jeffreyheping 
+#  (https://github.com/jeffreyheping)
+#
+# Triggers:
+#   - Push of v* tag        → publishes :v1.2.3 + :1.2 + :1
+#   - Workflow dispatch      → allows manual triggering of the workflow
 
+name: Build OS Packages
 on:
   push:
     tags:
@@ -12,18 +36,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-packages:
-    name: Build DEB, RPM, Alpine & APK Packages + Windows Zip
+  prepare:
+    name: Prepare Version
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Required for GitHub Releases
-
+    outputs:
+      version: ${{ steps.version.outputs.value }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Compute version string
         id: version
         run: |
@@ -36,120 +58,334 @@ jobs:
             echo "value=2.3.${PATCH}.${REVISION}" >> "$GITHUB_OUTPUT"
           fi
 
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
+          - { goos: freebsd, goarch: amd64 }
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Install dependencies
-        run: |
-          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+      - name: Install goversioninfo
+        if: matrix.goos == 'windows'
+        run: go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
 
-      - name: Build Linux binaries
-        env:
-          FULL_VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-http ./server
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-fastcgi ./fastcgi
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-cli ./cli
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-mcp ./mcp
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-admin ./admin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-service ./service
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-testsuite ./testsuite
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-fpm ./fpm
-
-      - name: Generate Windows Resources
+      - name: Generate Windows resources
+        if: matrix.goos == 'windows'
         run: |
           export PATH=$PATH:$(go env GOPATH)/bin
           go generate ./...
 
-      - name: Build Windows binaries
+      - name: Build binaries
         env:
-          FULL_VERSION: ${{ steps.version.outputs.value }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          FULL_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-http.exe ./server
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-fastcgi.exe ./fastcgi
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-cli.exe ./cli
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-mcp.exe ./mcp
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-admin.exe ./admin
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-service.exe ./service
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o axonasp-testsuite.exe ./testsuite
+          set -e
+          LDFLAGS="-s -w -X main.Version=${FULL_VERSION}"
+          EXT=""
+          [ "${GOOS}" = "windows" ] && EXT=".exe"
+
+          build_one() { go build -trimpath -ldflags "${LDFLAGS}" -o "$1" "./$2"; }
+
+          build_one "axonasp-http$EXT"      server
+          build_one "axonasp-fastcgi$EXT"   fastcgi
+          build_one "axonasp-cli$EXT"       cli
+          build_one "axonasp-mcp$EXT"       mcp
+          build_one "axonasp-admin$EXT"     admin
+          build_one "axonasp-service$EXT"   service
+          build_one "axonasp-testsuite$EXT" testsuite
+          if [ "${GOOS}" != "windows" ]; then build_one "axonasp-fpm" fpm; fi
 
       - name: Remove test directory from www
+        run: rm -rf ./www/test/ || true
+
+      - name: Remove resources/website directory from www
         run: |
-          echo "Removing ./www/test/ to exclude it from the package..."
-          rm -rf ./www/test/ || true
+          rm -rf ./resources/website/ || true
+          rm -rf ./resources/web/ || true
+          rm -rf ./resources/old/ || true
+
+      # ──────────────────────────────────────────────────────────────
+      # Linux: DEB / RPM / Alpine APK / Archlinux packages (x64 only)
+      # ──────────────────────────────────────────────────────────────
 
       - name: Install nFPM
+        if: matrix.goos == 'linux'
         run: |
           echo 'deb [trusted=yes] https://repo.goreleaser.com/apt/ /' | sudo tee /etc/apt/sources.list.d/goreleaser.list
           sudo apt-get update
           sudo apt-get install -y nfpm
 
-      - name: Build Debian package (.deb)
+      - name: Build Linux packages
+        if: matrix.goos == 'linux'
         env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: nfpm package --packager deb --target .
-
-      - name: Build Red Hat package (.rpm)
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: nfpm package --packager rpm --target .
-
-      - name: Build Alpine package (.apk)
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: nfpm package --packager apk --target .
-
-      - name: Build Archlinux package (.pkg.tar.zst)
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: nfpm package --packager archlinux --target .
-
-      - name: Create Windows Portable Zip
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          mkdir -p axonasp-windows
-          cp *.exe axonasp-windows/
-          cp -r www config mcp LICENSE.txt LEGAL-DISCLAIMER.md global.asa iis-http.cmd install-service.ps1 uninstall-service.ps1 axonasp-windows/
-          zip -r "axonasp-windows-${VERSION}-amd64.zip" axonasp-windows/
+          for packager in deb rpm apk archlinux; do
+            nfpm package --packager "${packager}" --target .
+          done
 
-      - name: Build and Create macOS ARM64 Zip
+      # ──────────────────────────────────────────────────────────────
+      # Windows: portable zip (x64 only)
+      # ──────────────────────────────────────────────────────────────
+      - name: Create Windows portable zip
+        if: matrix.goos == 'windows'
         env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.goarch }}
         run: |
-          echo "Building for macOS ARM64..."
-          mkdir -p axonasp-macos-arm64
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-http ./server
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-fastcgi ./fastcgi
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-cli ./cli
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-mcp ./mcp
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-admin ./admin
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-service ./service
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.Version=${VERSION}" -o axonasp-macos-arm64/axonasp-testsuite ./testsuite
-          cp -r www config mcp LICENSE.txt LEGAL-DISCLAIMER.md global.asa axonasp-macos-arm64/
-          zip -r "axonasp-macos-${VERSION}-arm64.zip" axonasp-macos-arm64/
+          STAGE="axonasp-windows-${ARCH}"
+          mkdir -p "${STAGE}"
+          cp *.exe "${STAGE}/"
+          cp -r www config fpm/fpm.d mcp resources LICENSE.txt \
+                LEGAL-DISCLAIMER.md global.asa \
+                iis-http.cmd install-service.ps1 uninstall-service.ps1 "${STAGE}/"
+          zip -r "axonasp-windows-${VERSION}-${ARCH}.zip" "${STAGE}/"
 
-      - name: Upload Packages as Artifacts
+      # ──────────────────────────────────────────────────────────────
+      # macOS: portable zip (arm64 only)
+      # ──────────────────────────────────────────────────────────────
+      - name: Create macOS portable zip
+        if: matrix.goos == 'darwin'
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.goarch }}
+        run: |
+          STAGE="axonasp-macos-${ARCH}"
+          mkdir -p "${STAGE}"
+          cp axonasp-http axonasp-fastcgi axonasp-cli axonasp-mcp \
+             axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm "${STAGE}/"
+          cp -r www fpm/fpm.d config mcp resources LICENSE.txt \
+                LEGAL-DISCLAIMER.md global.asa "${STAGE}/"
+          zip -r "axonasp-macos-${VERSION}-${ARCH}.zip" "${STAGE}/"
+
+      # ──────────────────────────────────────────────────────────────
+      # FreeBSD: portable tarball (.tar.xz) (x64 only)
+      # ──────────────────────────────────────────────────────────────
+      - name: Create FreeBSD portable tarball
+        if: matrix.goos == 'freebsd'
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.goarch }}
+        run: |
+          STAGE="axonasp-freebsd-${ARCH}"
+          mkdir -p "${STAGE}"
+          cp axonasp-http axonasp-fastcgi axonasp-cli axonasp-mcp \
+             axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm "${STAGE}/"
+          cp -r www config fpm/fpm.d resources mcp LICENSE.txt LEGAL-DISCLAIMER.md global.asa "${STAGE}/"
+          tar -cJf "axonasp-freebsd-${VERSION}-${ARCH}.tar.xz" "${STAGE}/"
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: axonasp-packages
+          name: axonasp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             *.deb
             *.rpm
             *.apk
             *.pkg.tar.zst
             *.zip
+            *.tar.xz
+          if-no-files-found: error
+
+  build-wasm:
+    name: Build js/wasm
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build WASM
+        env:
+          GOOS: js
+          GOARCH: wasm
+          CGO_ENABLED: "0"
+          FULL_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -e
+          go build -trimpath -ldflags "-s -w -X main.Version=${FULL_VERSION}" -o wasm/axonasp.wasm ./wasm/main.go
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm/
+
+      - name: Create WASM zip
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          STAGE="axonasp-wasm"
+          mkdir -p "${STAGE}"
+          cp wasm/axonasp.wasm wasm/wasm_exec.js wasm/index.htm wasm/axonasp.css "${STAGE}/"
+          zip -r "axonasp-wasm-${VERSION}.zip" "${STAGE}/"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: axonasp-wasm
+          path: "*.zip"
+          if-no-files-found: error
+
+  build-windows-installer:
+    name: Build Windows installer amd64
+    needs: [prepare, build]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Windows binaries from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: axonasp-windows-amd64
+          path: .
+
+      - name: Extract Windows zip
+        run: |
+          $zip = Get-ChildItem axonasp-windows-*.zip | Select-Object -First 1
+          Expand-Archive -Path $zip.Name -DestinationPath . -Force
+          $subdir = Get-ChildItem -Directory | Where-Object { $_.Name -like "axonasp-windows-*" } | Select-Object -First 1
+          if ($subdir) {
+            Rename-Item -Path $subdir.FullName -NewName "installer-src"
+          }
+          # Copy innosetup.iss and resources into the source directory
+          Copy-Item resources\innosetup.iss installer-src\ -Force
+          Copy-Item -Recurse resources installer-src\resources -Force
+        shell: pwsh
+
+      - name: Build installer with Inno Setup
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: amd64
+        run: |
+          cd installer-src
+          $verInfo = ($env:VERSION -split '\.')[0..2] -join '.'
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DMyAppVersion="$env:VERSION" /DMyArchSuffix="$env:ARCH" /DMyVersionInfoVersion="$verInfo" innosetup.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        shell: pwsh
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axonasp-installer-amd64
+          path: installer-src\Output\*.exe
+          if-no-files-found: error
+
+  build-macos-installer:
+    name: Build macOS pkg arm64
+    needs: [prepare, build]
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download macOS binaries from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: axonasp-darwin-arm64
+          path: .
+
+      - name: Extract macOS zip
+        run: |
+          zip=$(ls axonasp-macos-*.zip | head -n1)
+          unzip -q "$zip"
+
+      - name: Build .pkg installer
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: arm64
+        run: |
+          set -e
+          STAGE="axonasp-macos-${ARCH}"
+          PKGROOT="pkgroot"
+
+          mkdir -p "${PKGROOT}/opt/axonasp"
+          cp -R "${STAGE}/"* "${PKGROOT}/opt/axonasp/"
+
+          mkdir -p scripts
+          cat > scripts/postinstall <<'SCRIPT'
+          #!/bin/bash
+          set -e
+          for bin in axonasp-http axonasp-fastcgi axonasp-cli axonasp-mcp axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm; do
+              if [ -f "/opt/axonasp/$bin" ]; then
+                  ln -sf "/opt/axonasp/$bin" "/usr/local/bin/$bin"
+              fi
+          done
+          mkdir -p /etc/axonasp
+          if [ -f /opt/axonasp/config/axonasp.toml ]; then
+              ln -sf /opt/axonasp/config/axonasp.toml /etc/axonasp/axonasp.toml
+          fi
+          SCRIPT
+          chmod +x scripts/postinstall
+
+          pkgbuild \
+            --root "${PKGROOT}" \
+            --identifier com.g3pix.axonasp \
+            --version "${VERSION}" \
+            --scripts scripts \
+            --install-location / \
+            "axonasp-macos-${VERSION}-${ARCH}.pkg"
+          if [ -f "/resources/icon.icns" ]; then
+              echo ">>> Apply custom icon to the .pkg file"
+              swift -e "import Cocoa; NSWorkspace.shared.setIcon(NSImage(contentsOfFile: \"/resources/icon.icns\"), forFile: \"axonasp-macos-${VERSION}-${ARCH}.pkg\", options: [])"
+          else
+              echo ">>> File ./resources/icon.icns not found to apply to the package."
+          fi
+
+      - name: Upload pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axonasp-macos-pkg-arm64
+          path: "*.pkg"
+          if-no-files-found: error
+
+  release:
+    name: Publish to GitHub Releases
+    needs: [prepare, build, build-wasm, build-windows-installer, build-macos-installer]
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts for release
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.apk" -o -name "*.pkg.tar.zst" -o -name "*.zip" -o -name "*.tar.xz" -o -name "*.pkg" -o -name "*.exe" \) -exec cp {} release-assets/ \;
 
       - name: Publish to GitHub Releases
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            *.deb
-            *.rpm
-            *.apk
-            *.pkg.tar.zst
-            *.zip
+          files: release-assets/*

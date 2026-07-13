@@ -8,7 +8,6 @@
 
 # Build output
 build/
-
 *.wasm
 
 
@@ -51,7 +50,7 @@ go.work.sum
 .env
 
 #innosetup
-*.iss
+local_setup.iss
 
 # Editor/IDE
 .vscode/
