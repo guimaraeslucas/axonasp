@@ -100,7 +100,7 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 Filename: "powershell"; Parameters: "{app}\install-service.ps1"; Description: "Install and activate windows service"; WorkingDir: "{app}"; Flags: unchecked nowait postinstall runascurrentuser skipifsilent 
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\uninstall-service.ps1"""; WorkingDir: "{app}"; RunOnceId: "DelService"; Flags: runasadmin skipifdoesntexist
+Filename: "powershell"; Parameters: "{app}\uninstall-service.ps1"; WorkingDir: "{app}"; RunOnceId: "DelService"; Flags: runascurrentuser skipifdoesntexist
 
 [Registry]
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Check: NeedsAddPath('{app}'); Flags: uninsdeletevalue
