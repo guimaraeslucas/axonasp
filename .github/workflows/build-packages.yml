@@ -43,7 +43,7 @@ jobs:
       version: ${{ steps.version.outputs.value }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Compute version string

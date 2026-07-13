@@ -94,9 +94,10 @@ Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
+
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; WorkingDir: "{app}"; Flags: nowait runascurrentuser postinstall skipifsilent
-Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\install-service.ps1"""; Description: "Install and activate windows service"; WorkingDir: "{app}"; Flags: unchecked nowait postinstall runasadmin skipifsilent 
+Filename: "powershell"; Parameters: "{app}\install-service.ps1"; Description: "Install and activate windows service"; WorkingDir: "{app}"; Flags: unchecked nowait postinstall runascurrentuser skipifsilent 
 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\uninstall-service.ps1"""; WorkingDir: "{app}"; RunOnceId: "DelService"; Flags: runasadmin skipifdoesntexist
