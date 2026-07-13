@@ -19,6 +19,26 @@ You must strictly adhere to the following Markdown structure and rules for every
    * `### ⚙️ Build & Dependencies` (For compiler constraints, module updates, CI/CD)
    * `### 📚 Documentation & Assets` (For updated docs, logos, guidelines)
    * `### 🧪 Testing & Validation` (For new test suites and QA additions)
+   * `### 💾 Downloads & Installation` (For release binaries, installers, and cross-platform package links follow the example below)
+
+Example of the "Downloads & Installation" section that you must follow exactly:
+   ```md
+      ### 💾 Downloads & Installation
+
+      #### 🪟 Windows Installer
+      For a straightforward installation on Windows, we highly recommend using the automated installer. This package standardizes setup via Inno Setup:
+      * 🚀 **[Download AxonASP v2.3.3 Windows Installer (x64)](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/YOUR_ASSET_URL_HERE)**
+
+      #### 📦 Cross-Platform Packages
+      If you prefer portable binaries or are deploying on Unix environments, choose the appropriate package from the table below:
+
+      | OS / Platform | Architecture | Package Type | Download Link |
+      | :--- | :--- | :--- | :--- |
+      | **Windows** | x64 / x86 | Portable Zip | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/YOUR_ASSET_URL_HERE) |
+      | **macOS** | Apple Silicon | Package (`.pkg`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/YOUR_ASSET_URL_HERE) |
+      | **Linux Debian ** | x64 | Deb Package (`.deb`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/YOUR_ASSET_URL_HERE) |
+      | **BSD ** | x64| Tarball (`.tar.gz`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/YOUR_ASSET_URL_HERE) |
+   ```
 
 4. **Bullet Point Style:**
    * Start each bullet point with an action verb (e.g., *Added*, *Implemented*, *Fixed*, *Refactored*, *Enhanced*).
