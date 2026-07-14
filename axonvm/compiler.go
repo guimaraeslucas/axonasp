@@ -418,7 +418,8 @@ type CompiledClassFieldDecl struct {
 
 // CompiledClassEventDecl stores one compiled class event metadata entry.
 type CompiledClassEventDecl struct {
-	Name string
+	Name       string
+	ParamCount int // number of formal parameters declared for this event
 }
 
 // CompiledClassMethodDecl stores one compiled class method metadata entry.

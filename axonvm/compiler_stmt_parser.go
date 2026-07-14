@@ -3986,33 +3986,14 @@ func (c *Compiler) parseClassEventDeclaration(className string) {
 	c.move() // consume "Event"
 	eventName := c.expectIdentifier()
 
-	// Events can have parameters in VB6, but for now we'll support empty signatures
-	// or just parse and ignore them to match compatibility if needed.
-	// Classic ASP usually doesn't have events, so we're adding this for VB6 modernization.
-	if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
-		c.move()
-		// Parse parameter list but we don't strictly need it for dispatch yet
-		for {
-			if c.matchEof() {
-				break
-			}
-			if rp, ok2 := c.next.(*vbscript.PunctuationToken); ok2 && rp.Type == vbscript.PunctRParen {
-				break
-			}
-			c.move() // dummy skip for now
-			if comma, ok3 := c.next.(*vbscript.PunctuationToken); ok3 && comma.Type == vbscript.PunctComma {
-				c.move()
-				continue
-			}
-			break
-		}
-		if rp, ok := c.next.(*vbscript.PunctuationToken); !ok || rp.Type != vbscript.PunctRParen {
-			panic(c.vbCompileError(vbscript.SyntaxError, "Expected ')'"))
-		}
-		c.move()
-	}
+	// Parse parameter list with full support for ByVal/ByRef, Optional, and As Type clauses,
+	// reusing the same parsing logic as Sub/Function parameters.
+	paramResult := c.parseProcedureParameterNames()
 
-	c.addClassEventDeclaration(className, CompiledClassEventDecl{Name: eventName})
+	c.addClassEventDeclaration(className, CompiledClassEventDecl{
+		Name:       eventName,
+		ParamCount: len(paramResult.names),
+	})
 
 	classNameIdx := c.addConstant(NewString(className))
 	eventNameIdx := c.addConstant(NewString(eventName))
