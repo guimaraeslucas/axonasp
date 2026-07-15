@@ -32,7 +32,7 @@ At startup, the worker resolves `global.asa` in this order:
 
 1. Explicit `--config.global_asa` directory.
 2. Current working directory.
-3. `server.web_root` from the active TOML config.
+3. `server.web_root` from the active TOML config (or `--server.web_root` CLI flag if set).
 
 If `--config.global_asa` is explicitly provided and `global.asa` is missing in that directory, startup fails with an internal 500 state.
 
@@ -41,6 +41,7 @@ Path enforcement for Step 3:
 - If `server.web_root` is absolute, FastCGI resolves it strictly as absolute.
 - If `server.web_root` is relative, FastCGI resolves it relative to the current working directory.
 - FastCGI does not rewrite absolute `server.web_root` values to `./www`.
+- The `--server.web_root` CLI flag always takes precedence over the TOML `server.web_root` value.
 
 ## Model 2: Multiple Manual Standalone Processes
 
@@ -141,9 +142,17 @@ Correct pattern:
 
 `axonasp-fastcgi` supports these primary startup flags:
 
-- `-c`, `--config.config_file`: Set the AxonASP TOML file path.
-- `--fastcgi.server_port`: Override listen endpoint.
-- `--config.global_asa`: Set explicit directory that must contain `global.asa`.
+| Flag | Description |
+|---|---|
+| `-c`, `--config.config_file` | Set the AxonASP TOML file path. |
+| `--fastcgi.server_port` | Override listen endpoint (port, host:port, `:port`, or `unix:/path/socket`). |
+| `--config.global_asa` | Set explicit directory that must contain `global.asa`. |
+| `--server.web_root` | Override the web root directory. Takes precedence over `server.web_root` from the TOML config file. When run under FPM, this flag is automatically injected from the pool `app_path` directive and should not be set in the TOML config. |
+| `--global.temp_dir` | Override the temporary directory for runtime files such as sessions and cache. |
+| `--pool.name` | Set a pool name identifier used in worker log output. Useful for distinguishing multiple workers in logs. |
+| `-a`, `--about` | Print product and licensing information, then exit. |
+
+**Precedence rule:** CLI flags always override the corresponding values from the TOML configuration file. If a flag is not set on the command line, the worker falls back to the TOML value or its built-in default.
 
 Examples:
 

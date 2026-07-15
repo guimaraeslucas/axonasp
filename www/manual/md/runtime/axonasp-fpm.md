@@ -55,7 +55,7 @@ Each pool file in `/opt/axonasp/fpm/fpm.d/` is a TOML document.
 | `socket` | Yes | String | FastCGI endpoint passed to `--fastcgi.server_port`. Supports Unix socket paths or TCP endpoints. |
 | `config_file` | Yes | String | Absolute path to the AxonASP TOML config file used by the worker (`--config.config_file`). |
 | `global_asa` | No | String | Optional directory passed to the worker as `--config.global_asa`. Use this to force one explicit `global.asa` boundary per pool. |
-| `app_path` | Yes | String | Worker current directory. Must be an existing directory. |
+| `app_path` | Yes | String | Worker current directory and web root. The FPM supervisor sets this as the worker's current working directory and also passes it as `--server.web_root` to the FastCGI process. This guarantees the worker serves files from the correct directory instead of falling back to the default `./www` relative path. Must be an existing directory. |
 | `memory_limit_mb` | Yes | Integer | Memory ceiling in MB. The manager exports memory-related environment variables and attempts cgroup enforcement. |
 | `max_restarts` | Yes | Integer | Maximum restart attempts after crashes. Use `0` for unlimited restarts. |
 | `tmp_dir` | No | String | Temporary directory for the pool. Defaults to `/opt/axonasp/temp/` when omitted. |
@@ -69,6 +69,26 @@ Each pool file in `/opt/axonasp/fpm/fpm.d/` is a TOML document.
 - TCP port only: `9000`
 
 If you use a Unix socket, the manager creates the parent directory, changes ownership to the pool UID and GID, and removes stale socket files before worker start.
+
+## CLI Flags Passed to the FastCGI Worker
+
+The FPM supervisor builds the worker command line automatically from the pool configuration file. The following flags are always passed:
+
+| CLI Flag | Source | Description |
+|---|---|---|
+| `--fastcgi.server_port` | `socket` | FastCGI listen endpoint. |
+| `--config.config_file` | `config_file` | Path to the AxonASP TOML configuration file. |
+| `--global.temp_dir` | `tmp_dir` | Temporary directory for runtime files such as sessions and cache. |
+| `--server.web_root` | `app_path` | Web root directory. Explicitly overrides `server.web_root` from the TOML config so the worker always serves from the correct application directory. |
+
+When the corresponding pool directive is set, these optional flags are also appended:
+
+| CLI Flag | Source | Condition |
+|---|---|---|
+| `--config.global_asa` | `global_asa` | Added when `global_asa` is set and not blank. |
+| `--pool.name` | `site_name` | Added when `site_name` is set and not blank.
+
+**Do not set `--server.web_root` in the worker TOML config when running under FPM.** The FPM supervisor always passes this flag from the pool `app_path` directive, and its value takes precedence over the TOML file.
 
 ## Complete Pool Example
 

@@ -150,6 +150,19 @@ resolveIdentifierNormally:
 		}
 	}
 
+	var udtName string
+	var isUDT bool
+	if op == OpGetGlobal {
+		udtName, isUDT = c.globalRecordTypes[strings.ToLower(trimmedName)]
+	} else if op == OpGetLocal {
+		udtName, isUDT = c.localRecordTypes[strings.ToLower(trimmedName)]
+	}
+	if isUDT {
+		c.updateLastEmittedType(VTRecord, udtName)
+	} else {
+		c.updateLastEmittedType(VTEmpty, "")
+	}
+
 	if op == OpGetGlobal || op == OpGetLocal || op == OpGetClassMember {
 		c.emitTrailingCoerceIfValueContext()
 	}

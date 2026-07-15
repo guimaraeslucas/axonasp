@@ -37,6 +37,7 @@ result = variableName.MemberName
 - Legacy ASP compatibility is preserved: untyped Dim variable declarations still behave as Variant.
 - Type names and member names are resolved case-insensitively.
 - Nested UDT fields are supported when a member is declared as another UDT.
+- **Copy Semantics**: In alignment with VB6/VBA/VBScript specifications, UDTs are value types. Assigning a UDT to another UDT (or UDT member/array element) performs a deep memory copy of the data, rather than copying a reference. Modifying fields in the copy does not mutate fields in the original UDT structure.
 
 ## Code Example
 ```asp

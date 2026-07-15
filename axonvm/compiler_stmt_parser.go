@@ -566,6 +566,24 @@ func (c *Compiler) parseStatement() {
 				c.emit(op, idx)
 				return
 			}
+
+			// Check if both LHS and RHS are UDTs
+			var lhsUDTName string
+			var isLHSUDT bool
+			if c.isLocal {
+				lhsUDTName, isLHSUDT = c.localRecordTypes[strings.ToLower(name)]
+				if !isLHSUDT {
+					lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+				}
+			} else {
+				lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+			}
+
+			rhsUDTName, isRHSUDT := c.lastEmittedUDT()
+			if isLHSUDT && isRHSUDT {
+				c.emitExt(ExtOpCloneRecord)
+			}
+
 			// Plain "name = value" uses Let opcodes to preserve VBScript's
 			// non-Set assignment semantics while keeping variable-slot overwrites
 			// distinct from explicit object-reference Set assignments.
@@ -609,6 +627,24 @@ func (c *Compiler) parseStatement() {
 			if peq, ok := c.next.(*vbscript.PunctuationToken); ok && peq.Type == vbscript.PunctEqual {
 				c.move() // Consume '='
 				c.parseExpression(PrecNone)
+
+				// Check if both LHS and RHS are UDTs
+				var lhsUDTName string
+				var isLHSUDT bool
+				if c.isLocal {
+					lhsUDTName, isLHSUDT = c.localRecordTypes[strings.ToLower(name)]
+					if !isLHSUDT {
+						lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+					}
+				} else {
+					lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+				}
+
+				rhsUDTName, isRHSUDT := c.lastEmittedUDT()
+				if isLHSUDT && isRHSUDT {
+					c.emitExt(ExtOpCloneRecord)
+				}
+
 				midx := c.addConstant(NewString(""))
 				c.emit(OpArraySet, midx, argCount)
 			} else {
@@ -666,10 +702,16 @@ func (c *Compiler) parseStatement() {
 				// Check if target is a known UDT to use fast ExtOpSetRecordMember
 				udtName, isUDT := c.lastEmittedUDTNameFromOp()
 				if isUDT && len(memberChain) == 1 {
-					memberIdx, _, _, found := c.getUDTMemberIndex(udtName, memberName)
+					memberIdx, memberType, _, found := c.getUDTMemberIndex(udtName, memberName)
 					if found {
 						c.move() // Consume '='
 						c.parseExpression(PrecNone)
+
+						rhsUDTName, isRHSUDT := c.lastEmittedUDT()
+						if memberType == VTRecord && isRHSUDT {
+							c.emitExt(ExtOpCloneRecord)
+						}
+
 						c.emitExt(ExtOpSetRecordMember, memberIdx)
 						return
 					}
@@ -3582,12 +3624,16 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	prevFunctionName := c.currentFunctionName
 	prevLabelMap := c.labelMap
 	prevForwardLabelPatches := c.forwardLabelPatches
+	prevLocalVarTypes := c.localVarTypes
+	prevLocalRecordTypes := c.localRecordTypes
 
 	c.isLocal = true
 	c.locals = NewSymbolTable()
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
 	c.staticLocals = make(map[string]int)
+	c.localVarTypes = make(map[string]ValueType)
+	c.localRecordTypes = make(map[string]string)
 	c.labelMap = make(map[string]int)
 	c.forwardLabelPatches = make(map[string][]int)
 	c.currentFunctionName = name
@@ -3642,6 +3688,8 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
 	c.staticLocals = prevStaticLocals
+	c.localVarTypes = prevLocalVarTypes
+	c.localRecordTypes = prevLocalRecordTypes
 	c.currentFunctionName = prevFunctionName
 	c.labelMap = prevLabelMap
 	c.forwardLabelPatches = prevForwardLabelPatches

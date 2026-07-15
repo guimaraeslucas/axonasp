@@ -1162,7 +1162,7 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 			return 9
 		case ExtOpFilePrint, ExtOpFileWrite:
 			return 3
-		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow:
+		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord:
 			return 1
 		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
 			return 1
@@ -1237,7 +1237,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 				ip += 2
 			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax,
 				ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile,
-				ExtOpJSReThrow:
+				ExtOpJSReThrow, ExtOpCloneRecord:
 				// No operands to remap or skip
 			case ExtOpFilePrint, ExtOpFileWrite:
 				ip += 2
@@ -3880,6 +3880,14 @@ aspExecLoop:
 				b := vm.jsToNumber(vm.pop()).Flt
 				a := vm.jsToNumber(vm.pop()).Flt
 				vm.push(NewDouble(math.Max(a, b)))
+
+			case ExtOpCloneRecord:
+				val := vm.pop()
+				if val.Type == VTRecord {
+					vm.push(vm.cloneValue(val))
+				} else {
+					vm.push(val)
+				}
 
 			default:
 				vm.raise(vbscript.InternalError, "Unsupported extended opcode")
@@ -9898,7 +9906,7 @@ func (vm *VM) coerceToDeclaredType(v Value, declaredType ValueType) (Value, erro
 
 	if declaredType == VTRecord {
 		if v.Type == VTRecord {
-			return v, nil
+			return vm.cloneValue(v), nil
 		}
 		return Value{}, fmt.Errorf("Type mismatch: expected Record")
 	}
@@ -10243,6 +10251,33 @@ func (vm *VM) releaseRecord(rec *VBRecord) {
 	rec.DefIdx = 0
 	rec.Members = rec.Members[:0]
 	recordPool.Put(rec)
+}
+
+// cloneValue deep-copies a Value representing a UDT/record.
+func (vm *VM) cloneValue(v Value) Value {
+	if v.Type == VTRecord && v.Rec != nil {
+		rec := vm.acquireRecord(len(v.Rec.Members))
+		rec.DefIdx = v.Rec.DefIdx
+		for i, m := range v.Rec.Members {
+			rec.Members[i] = vm.cloneValue(m)
+		}
+		return Value{Type: VTRecord, Rec: rec}
+	} else if v.Type == VTArray && v.Arr != nil {
+		return Value{Type: VTArray, Arr: vm.cloneArray(v.Arr)}
+	}
+	return v
+}
+
+// cloneArray deep-copies a VBArray.
+func (vm *VM) cloneArray(arr *VBArray) *VBArray {
+	if arr == nil {
+		return nil
+	}
+	values := make([]Value, len(arr.Values))
+	for i := range arr.Values {
+		values[i] = vm.cloneValue(arr.Values[i])
+	}
+	return NewVBArrayFromValues(arr.Lower, values)
 }
 
 func (vm *VM) ensureCLIMode() {

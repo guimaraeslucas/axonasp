@@ -592,6 +592,10 @@ const (
 	// no-op and execution continues at the next instruction.
 	// [OpExtPrefix, ExtOpJSReThrow] (0 operand bytes beyond ext opcode)
 	ExtOpJSReThrow
+
+	// ExtOpCloneRecord clones the UDT record on top of the stack.
+	// [OpExtPrefix, ExtOpCloneRecord] (0 operand bytes)
+	ExtOpCloneRecord
 )
 
 func (op OpCode) String() string {
@@ -1143,6 +1147,8 @@ func (op ExtOpCode) String() string {
 		return "ExtOpFileFreeFile"
 	case ExtOpJSReThrow:
 		return "ExtOpJSReThrow"
+	case ExtOpCloneRecord:
+		return "ExtOpCloneRecord"
 	default:
 		return "ExtOpUnknown"
 	}
