@@ -1152,6 +1152,11 @@ func (c *Compiler) Compile() (err error) {
 		return nil
 	}
 
+	// Pre-register Type declarations (UDTs) before prebindTopLevelDimDeclarations
+	// so that UDT names are in recordDeclLookup when Class declarations that
+	// reference them are compiled during compileDefinitionPreBindingPass.
+	// This uses a cloned lexer and does not consume the main token stream.
+	c.preRegisterTypeDeclarations()
 	c.prebindTopLevelDimDeclarations()
 	c.resetTokenStream()
 	compiledDefinitionBounds := c.compileDefinitionPreBindingPass()

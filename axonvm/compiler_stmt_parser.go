@@ -568,24 +568,22 @@ func (c *Compiler) parseStatement() {
 			}
 
 			// Check if both LHS and RHS are UDTs
-			var lhsUDTName string
 			var isLHSUDT bool
 			if c.isLocal {
-				lhsUDTName, isLHSUDT = c.localRecordTypes[strings.ToLower(name)]
+				_, isLHSUDT = c.localRecordTypes[strings.ToLower(name)]
 				if !isLHSUDT {
-					lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+					_, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
 				}
 			} else {
-				lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+				_, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
 			}
 			if !isLHSUDT && c.currentClassName != "" {
 				if field, ok := c.getClassFieldDeclaration(c.currentClassName, name); ok && field.Type == VTRecord {
-					lhsUDTName = field.ClassType
 					isLHSUDT = true
 				}
 			}
 
-			rhsUDTName, isRHSUDT := c.lastEmittedUDT()
+			_, isRHSUDT := c.lastEmittedUDT()
 			if isLHSUDT && isRHSUDT {
 				c.emitExt(ExtOpCloneRecord)
 			}
@@ -635,24 +633,22 @@ func (c *Compiler) parseStatement() {
 				c.parseExpression(PrecNone)
 
 				// Check if both LHS and RHS are UDTs
-				var lhsUDTName string
 				var isLHSUDT bool
 				if c.isLocal {
-					lhsUDTName, isLHSUDT = c.localRecordTypes[strings.ToLower(name)]
+					_, isLHSUDT = c.localRecordTypes[strings.ToLower(name)]
 					if !isLHSUDT {
-						lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+						_, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
 					}
 				} else {
-					lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+					_, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
 				}
 				if !isLHSUDT && c.currentClassName != "" {
 					if field, ok := c.getClassFieldDeclaration(c.currentClassName, name); ok && field.Type == VTRecord {
-						lhsUDTName = field.ClassType
 						isLHSUDT = true
 					}
 				}
 
-				rhsUDTName, isRHSUDT := c.lastEmittedUDT()
+				_, isRHSUDT := c.lastEmittedUDT()
 				if isLHSUDT && isRHSUDT {
 					c.emitExt(ExtOpCloneRecord)
 				}
@@ -719,7 +715,7 @@ func (c *Compiler) parseStatement() {
 						c.move() // Consume '='
 						c.parseExpression(PrecNone)
 
-						rhsUDTName, isRHSUDT := c.lastEmittedUDT()
+						_, isRHSUDT := c.lastEmittedUDT()
 						if memberType == VTRecord && isRHSUDT {
 							c.emitExt(ExtOpCloneRecord)
 						}
@@ -1609,6 +1605,8 @@ type procParamResult struct {
 	optionalMask  uint64
 	paramArrayIdx int   // index of ParamArray param, -1 if none
 	defaults      []int // constant pool indices for default values, -1 for params without defaults
+	types         []ValueType
+	udtNames      []string
 }
 
 // parseProcedureParameterNames parses Sub/Function formal parameter names and modifiers.
@@ -1682,14 +1680,8 @@ func (c *Compiler) parseProcedureParameterNames() procParamResult {
 
 		// Parse optional As Type clause.
 		declaredType, udtName := c.parseAsTypeClause()
-		if declaredType != VTEmpty {
-			// Record type declaration for the parameter in the local scope.
-			lower := strings.ToLower(paramName)
-			c.localVarTypes[lower] = declaredType
-			if declaredType == VTRecord {
-				c.localRecordTypes[lower] = udtName
-			}
-		}
+		result.types = append(result.types, declaredType)
+		result.udtNames = append(result.udtNames, udtName)
 
 		// Parse optional = DefaultValue for Optional parameters.
 		defaultIdx := -1
@@ -1824,9 +1816,16 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	c.forwardLabelPatches = make(map[string][]int)
 	c.currentFunctionName = methodName
 
-	for _, p := range paramResult.names {
+	for i, p := range paramResult.names {
 		c.locals.Add(p)
 		c.declaredLocals[strings.ToLower(p)] = true
+		if i < len(paramResult.types) && paramResult.types[i] != VTEmpty {
+			lower := strings.ToLower(p)
+			c.localVarTypes[lower] = paramResult.types[i]
+			if paramResult.types[i] == VTRecord || paramResult.types[i] == VTObject {
+				c.localRecordTypes[lower] = paramResult.udtNames[i]
+			}
+		}
 	}
 
 	returnIdx := -1
@@ -1888,6 +1887,8 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	}
 
 	c.constants[placeholder] = NewUserSubEx(entryPoint, len(paramResult.names), c.locals.Count(), isFunc, paramResult.byRefMask, paramResult.optionalMask, paramResult.paramArrayIdx, c.locals.names)
+	c.funcLocalTypes[entryPoint] = c.localVarTypes
+	c.funcLocalRecordTypes[entryPoint] = c.localRecordTypes
 
 	if isFunc {
 		c.emit(OpGetLocal, returnIdx)
@@ -2010,9 +2011,16 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	c.forwardLabelPatches = make(map[string][]int)
 	c.currentFunctionName = propertyName
 
-	for _, p := range paramResult.names {
+	for i, p := range paramResult.names {
 		c.locals.Add(p)
 		c.declaredLocals[strings.ToLower(p)] = true
+		if i < len(paramResult.types) && paramResult.types[i] != VTEmpty {
+			lower := strings.ToLower(p)
+			c.localVarTypes[lower] = paramResult.types[i]
+			if paramResult.types[i] == VTRecord || paramResult.types[i] == VTObject {
+				c.localRecordTypes[lower] = paramResult.udtNames[i]
+			}
+		}
 	}
 
 	returnIdx := -1
@@ -2060,6 +2068,8 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	}
 
 	c.constants[placeholder] = NewUserSubEx(entryPoint, len(paramResult.names), c.locals.Count(), isFunction, paramResult.byRefMask, paramResult.optionalMask, paramResult.paramArrayIdx, c.locals.names)
+	c.funcLocalTypes[entryPoint] = c.localVarTypes
+	c.funcLocalRecordTypes[entryPoint] = c.localRecordTypes
 
 	if isFunction {
 		c.emit(OpGetLocal, returnIdx)
@@ -2296,14 +2306,14 @@ func (c *Compiler) parseStaticStatement() {
 
 			if declaredType == VTRecord {
 				// emitTypedInit will handle the initialization
-				c.emitTypedInit(name, declaredType, udtName)
+				c.emitTypedInit(name, declaredType, udtName, isArray)
 			}
 
 			c.patchJump(jumpIfNotEmpty)
 
 			// Still call emitTypedInit to register the type mappings (without re-initializing record)
 			if declaredType != VTRecord {
-				c.emitTypedInit(name, declaredType, udtName)
+				c.emitTypedInit(name, declaredType, udtName, isArray)
 			}
 		}
 
@@ -2446,7 +2456,8 @@ func (c *Compiler) parseScopedVariableDeclaration() {
 		// Parse optional VB6 As Type clause.
 		declaredType, udtName := c.parseAsTypeClause()
 
-		if c.tryParseArrayDeclaration(name) {
+		isArray := c.tryParseArrayDeclaration(name)
+		if isArray {
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
 				panic(c.vbSyntaxError(vbscript.ExpectedEndOfStatement))
 			}
@@ -2457,7 +2468,7 @@ func (c *Compiler) parseScopedVariableDeclaration() {
 		}
 
 		// Emit type initialization opcode if As Type was specified.
-		c.emitTypedInit(name, declaredType, udtName)
+		c.emitTypedInit(name, declaredType, udtName, isArray)
 
 		if withEvents {
 			c.emitExt(ExtOpWithEventsRegister, 0xFFFF, c.addConstant(NewString(name)))
@@ -2530,7 +2541,7 @@ func (c *Compiler) parseAsTypeClause() (ValueType, string) {
 }
 
 // emitTypedInit records a VB6 As Type declaration for a variable in the compiler's type maps.
-func (c *Compiler) emitTypedInit(name string, declaredType ValueType, udtName string) {
+func (c *Compiler) emitTypedInit(name string, declaredType ValueType, udtName string, isArray bool) {
 	if declaredType == VTEmpty {
 		return // No type declaration, standard variant behavior
 	}
@@ -2563,7 +2574,7 @@ func (c *Compiler) emitTypedInit(name string, declaredType ValueType, udtName st
 	}
 
 	// If it's a UDT, we also need to emit an initialization opcode to allocate the record.
-	if declaredType == VTRecord {
+	if declaredType == VTRecord && !isArray {
 		udtIdx, ok := c.recordDeclLookup[strings.ToLower(udtName)]
 		if ok {
 			c.emitExt(ExtOpInitRecord, udtIdx)
@@ -2589,7 +2600,8 @@ func (c *Compiler) parseDimStatement() {
 		// Parse optional VB6 As Type clause.
 		declaredType, udtName := c.parseAsTypeClause()
 
-		if c.tryParseArrayDeclaration(name) {
+		isArray := c.tryParseArrayDeclaration(name)
+		if isArray {
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
 				panic(c.vbSyntaxError(vbscript.ExpectedEndOfStatement))
 			}
@@ -2600,7 +2612,7 @@ func (c *Compiler) parseDimStatement() {
 		}
 
 		// Emit type initialization opcode if As Type was specified.
-		c.emitTypedInit(name, declaredType, udtName)
+		c.emitTypedInit(name, declaredType, udtName, isArray)
 
 		if withEvents {
 			c.emitExt(ExtOpWithEventsRegister, 0xFFFF, c.addConstant(NewString(name)))
@@ -3700,9 +3712,16 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	c.forwardLabelPatches = make(map[string][]int)
 	c.currentFunctionName = name
 
-	for _, p := range paramResult.names {
+	for i, p := range paramResult.names {
 		c.locals.Add(p)
 		c.declaredLocals[strings.ToLower(p)] = true
+		if i < len(paramResult.types) && paramResult.types[i] != VTEmpty {
+			lower := strings.ToLower(p)
+			c.localVarTypes[lower] = paramResult.types[i]
+			if paramResult.types[i] == VTRecord || paramResult.types[i] == VTObject {
+				c.localRecordTypes[lower] = paramResult.udtNames[i]
+			}
+		}
 	}
 
 	returnIdx := -1
@@ -3744,6 +3763,8 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	}
 
 	c.constants[placeholder] = NewUserSubEx(entryPoint, len(paramResult.names), c.locals.Count(), isFunc, paramResult.byRefMask, paramResult.optionalMask, paramResult.paramArrayIdx, c.locals.names)
+	c.funcLocalTypes[entryPoint] = c.localVarTypes
+	c.funcLocalRecordTypes[entryPoint] = c.localRecordTypes
 
 	if len(c.forwardLabelPatches) > 0 {
 		for label := range c.forwardLabelPatches {
@@ -4050,13 +4071,24 @@ func (c *Compiler) parseTypeDeclaration() {
 	typeName := c.expectIdentifier()
 	lowerTypeName := strings.ToLower(typeName)
 
-	if _, exists := c.recordDeclLookup[lowerTypeName]; exists {
-		panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Type '%s' already defined", typeName)))
-	}
-
-	decl := CompiledRecordDecl{
-		Name:    typeName,
-		Members: make([]CompiledRecordMemberDecl, 0),
+	var decl CompiledRecordDecl
+	if existingIdx, exists := c.recordDeclLookup[lowerTypeName]; exists {
+		// If the type was pre-registered (by preRegisterTypeDeclarations),
+		// reuse the existing slot.
+		if existingIdx >= 0 && existingIdx < len(c.recordDecls) {
+			decl = c.recordDecls[existingIdx]
+			if decl.Members != nil {
+				panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Type '%s' already defined", typeName)))
+			}
+			decl.Members = make([]CompiledRecordMemberDecl, 0)
+		} else {
+			panic(c.vbCompileError(vbscript.SyntaxError, fmt.Sprintf("Type '%s' already defined", typeName)))
+		}
+	} else {
+		decl = CompiledRecordDecl{
+			Name:    typeName,
+			Members: make([]CompiledRecordMemberDecl, 0),
+		}
 	}
 
 	c.expectStatementEnd()
@@ -4087,8 +4119,13 @@ func (c *Compiler) parseTypeDeclaration() {
 		c.expectStatementEnd()
 	}
 
-	c.recordDeclLookup[lowerTypeName] = len(c.recordDecls)
-	c.recordDecls = append(c.recordDecls, decl)
+	if existingIdx, exists := c.recordDeclLookup[lowerTypeName]; exists && existingIdx < len(c.recordDecls) && c.recordDecls[existingIdx].Members == nil {
+		// Update the pre-registered placeholder.
+		c.recordDecls[existingIdx] = decl
+	} else {
+		c.recordDeclLookup[lowerTypeName] = len(c.recordDecls)
+		c.recordDecls = append(c.recordDecls, decl)
+	}
 }
 
 func (c *Compiler) parseResponseWriteFlatChain() int {

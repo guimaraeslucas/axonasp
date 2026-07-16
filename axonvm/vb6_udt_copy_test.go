@@ -195,6 +195,7 @@ func TestVB6ClassUDTField(t *testing.T) {
 
 	out := buf.String()
 	expected := "X=42|Y=99"
+	if out != expected {
 		t.Fatalf("expected %q, got %q", expected, out)
 	}
 }
@@ -249,4 +250,34 @@ func TestVB6ClassUDTReturnAndParams(t *testing.T) {
 	}
 }
 
+func TestVB6RegressionNonObjectMemberSet(t *testing.T) {
+	source := `<%
+	Dim notAnObj
+	notAnObj = 123
+	On Error Resume Next
+	notAnObj.X = 99
+	Response.Write "Err=" & Err.Number & "|" & Err.Description
+	%>`
 
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	out := buf.String()
+	// Object Required is HRESULT 424 (or 800A01A8/800A000D depending on context) in VBScript
+	if !bytes.Contains(buf.Bytes(), []byte("required")) {
+		t.Fatalf("expected 'Object required' error description, got: %q", out)
+	}
+}

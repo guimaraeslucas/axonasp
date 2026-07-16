@@ -3560,9 +3560,7 @@ aspExecLoop:
 					continue
 				}
 				decl := vm.RecordDecls[defIdx]
-				rec := vm.acquireRecord(len(decl.Members))
-				rec.DefIdx = int(defIdx)
-				vm.push(Value{Type: VTRecord, Rec: rec})
+				vm.push(vm.initRecordValueRecursive(decl.Name))
 
 			case ExtOpGetRecordMember:
 				memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -5909,7 +5907,11 @@ func (vm *VM) assignArrayElement(target Value, indexes []Value, assigned Value) 
 	// Decrement reference count of previous value in this array slot.
 	prevVal := current.Values[lastIndex-current.Lower]
 	vm.decrementObjectRefCount(prevVal)
-	// Assign new value.
+	// Assign new value — clone VTRecord values so array elements own their
+	// own copy (value semantics), matching VB6 UDT array behaviour.
+	if assigned.Type == VTRecord && assigned.Rec != nil {
+		assigned = vm.cloneValue(assigned)
+	}
 	current.Values[lastIndex-current.Lower] = assigned
 	// Increment reference count of new value.
 	vm.incrementObjectRefCount(assigned)
@@ -9770,6 +9772,8 @@ func (vm *VM) newRuntimeClassInstance(className string) Value {
 					val.Interface = fieldDef.ClassType
 				}
 				vm.runtimeClassItems[instanceID].Members[fieldKey] = val
+			} else if fieldDef.Type == VTRecord {
+				vm.runtimeClassItems[instanceID].Members[fieldKey] = vm.initRecordValueRecursive(fieldDef.ClassType)
 			} else if fieldDef.Type != VTEmpty {
 				vm.runtimeClassItems[instanceID].Members[fieldKey] = vm.zeroValueForType(fieldDef.Type)
 			} else {
@@ -9794,10 +9798,43 @@ func (vm *VM) pop() Value {
 // applyLocalVarTypes applies VB6 As Type declarations from the compiler to the VM's
 // funcLocalTypes map.
 func (vm *VM) applyLocalVarTypes(compiler *Compiler) {
-	if vm == nil || compiler == nil {
+	if vm == nil || compiler == nil || vm.funcLocalTypes == nil {
 		return
 	}
-	vm.applyLocalVarTypesFromMaps(compiler.LocalVarTypes(), compiler.LocalRecordTypes())
+	for entryPoint, typesMap := range compiler.FuncLocalTypes() {
+		slotTypes := make(map[int]ValueType)
+		slotClassTypes := make(map[int]string)
+		var localNames []string
+		for _, constVal := range vm.constants {
+			if constVal.Type == VTUserSub && int(constVal.Num) == entryPoint {
+				localNames = constVal.Names
+				break
+			}
+		}
+		if len(localNames) == 0 {
+			continue
+		}
+		for offset, name := range localNames {
+			lower := strings.ToLower(name)
+			if declaredType, exists := typesMap[lower]; exists && declaredType != VTEmpty {
+				slotTypes[offset] = declaredType
+				if declaredType == VTObject || declaredType == VTRecord {
+					if className, ok := compiler.FuncLocalRecordTypes()[entryPoint][lower]; ok {
+						slotClassTypes[offset] = className
+					}
+				}
+			}
+		}
+		if len(slotTypes) > 0 {
+			vm.funcLocalTypes[entryPoint] = slotTypes
+		}
+		if len(slotClassTypes) > 0 {
+			if vm.funcLocalClassTypes == nil {
+				vm.funcLocalClassTypes = make(map[int]map[int]string)
+			}
+			vm.funcLocalClassTypes[entryPoint] = slotClassTypes
+		}
+	}
 }
 
 // applyLocalVarTypesFromMaps applies VB6 As Type declarations from provided maps to the VM's
@@ -10266,6 +10303,25 @@ func (vm *VM) cloneValue(v Value) Value {
 		return Value{Type: VTArray, Arr: vm.cloneArray(v.Arr)}
 	}
 	return v
+}
+
+// initRecordValueRecursive recursively allocates and initializes UDT fields and sub-UDTs to their zero values.
+func (vm *VM) initRecordValueRecursive(udtName string) Value {
+	lowerUDT := strings.ToLower(udtName)
+	if defIdx, exists := vm.RecordDeclLookup[lowerUDT]; exists {
+		decl := vm.RecordDecls[defIdx]
+		rec := vm.acquireRecord(len(decl.Members))
+		rec.DefIdx = defIdx
+		for i, m := range decl.Members {
+			if m.Type == VTRecord {
+				rec.Members[i] = vm.initRecordValueRecursive(m.UDTName)
+			} else {
+				rec.Members[i] = vm.zeroValueForType(m.Type)
+			}
+		}
+		return Value{Type: VTRecord, Rec: rec}
+	}
+	return Value{Type: VTRecord}
 }
 
 // cloneArray deep-copies a VBArray.
