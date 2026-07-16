@@ -1776,8 +1776,10 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 
 	methodName := c.expectIdentifier()
 	paramResult := c.parseProcedureParameterNames()
+	var retType ValueType
+	var retUDTName string
 	if c.matchAsKeyword() {
-		c.parseAsTypeClause()
+		retType, retUDTName = c.parseAsTypeClause()
 	}
 	if strings.EqualFold(methodName, "Class_Initialize") || strings.EqualFold(methodName, "Class_Terminate") {
 		if len(paramResult.names) != 0 {
@@ -1807,6 +1809,8 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	prevFunctionName := c.currentFunctionName
 	prevLabelMap := c.labelMap
 	prevForwardLabelPatches := c.forwardLabelPatches
+	prevLocalVarTypes := c.localVarTypes
+	prevLocalRecordTypes := c.localRecordTypes
 
 	c.isLocal = true
 	c.currentClassName = className
@@ -1814,6 +1818,8 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
 	c.staticLocals = make(map[string]int)
+	c.localVarTypes = make(map[string]ValueType)
+	c.localRecordTypes = make(map[string]string)
 	c.labelMap = make(map[string]int)
 	c.forwardLabelPatches = make(map[string][]int)
 	c.currentFunctionName = methodName
@@ -1827,9 +1833,25 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	if isFunc {
 		returnIdx = c.locals.Add(methodName)
 		c.declaredLocals[strings.ToLower(methodName)] = true
+		if retType != VTEmpty {
+			lowerMethodName := strings.ToLower(methodName)
+			c.localVarTypes[lowerMethodName] = retType
+			if retType == VTRecord {
+				c.localRecordTypes[lowerMethodName] = retUDTName
+			}
+		}
 	}
 
 	c.hoistProcedureDimDeclarations(keywordFromBool(isFunc))
+
+	if isFunc && retType == VTRecord {
+		udtIdx, ok := c.recordDeclLookup[strings.ToLower(retUDTName)]
+		if ok {
+			c.emitExt(ExtOpInitRecord, udtIdx)
+			op, idx := c.resolveSetVar(methodName)
+			c.emit(OpSet, int(op), idx)
+		}
+	}
 
 	for !c.matchEof() {
 		if c.checkKeyword(vbscript.KeywordEnd) {
@@ -1908,6 +1930,8 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
 	c.staticLocals = prevStaticLocals
+	c.localVarTypes = prevLocalVarTypes
+	c.localRecordTypes = prevLocalRecordTypes
 	c.currentFunctionName = prevFunctionName
 	c.labelMap = prevLabelMap
 	c.forwardLabelPatches = prevForwardLabelPatches
@@ -1939,8 +1963,10 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 
 	propertyName := c.expectIdentifier()
 	paramResult := c.parseProcedureParameterNames()
+	var retType ValueType
+	var retUDTName string
 	if c.matchAsKeyword() {
-		c.parseAsTypeClause()
+		retType, retUDTName = c.parseAsTypeClause()
 	}
 
 	if (accessorKind == classPropertyAccessorLet || accessorKind == classPropertyAccessorSet) && len(paramResult.names) == 0 {
@@ -1969,6 +1995,8 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	prevFunctionName := c.currentFunctionName
 	prevLabelMap := c.labelMap
 	prevForwardLabelPatches := c.forwardLabelPatches
+	prevLocalVarTypes := c.localVarTypes
+	prevLocalRecordTypes := c.localRecordTypes
 
 	c.isLocal = true
 	c.currentClassName = className
@@ -1976,6 +2004,8 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	c.declaredLocals = make(map[string]bool)
 	c.constLocals = make(map[string]bool)
 	c.staticLocals = make(map[string]int)
+	c.localVarTypes = make(map[string]ValueType)
+	c.localRecordTypes = make(map[string]string)
 	c.labelMap = make(map[string]int)
 	c.forwardLabelPatches = make(map[string][]int)
 	c.currentFunctionName = propertyName
@@ -1989,9 +2019,25 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	if isFunction {
 		returnIdx = c.locals.Add(propertyName)
 		c.declaredLocals[strings.ToLower(propertyName)] = true
+		if retType != VTEmpty {
+			lowerName := strings.ToLower(propertyName)
+			c.localVarTypes[lowerName] = retType
+			if retType == VTRecord {
+				c.localRecordTypes[lowerName] = retUDTName
+			}
+		}
 	}
 
 	c.hoistProcedureDimDeclarations(vbscript.KeywordProperty)
+
+	if isFunction && retType == VTRecord {
+		udtIdx, ok := c.recordDeclLookup[strings.ToLower(retUDTName)]
+		if ok {
+			c.emitExt(ExtOpInitRecord, udtIdx)
+			op, idx := c.resolveSetVar(propertyName)
+			c.emit(OpSet, int(op), idx)
+		}
+	}
 
 	for !c.matchEof() {
 		if c.checkKeyword(vbscript.KeywordEnd) {
@@ -2066,6 +2112,8 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 	c.declaredLocals = prevDeclared
 	c.constLocals = prevConstLocals
 	c.staticLocals = prevStaticLocals
+	c.localVarTypes = prevLocalVarTypes
+	c.localRecordTypes = prevLocalRecordTypes
 	c.currentFunctionName = prevFunctionName
 	c.labelMap = prevLabelMap
 	c.forwardLabelPatches = prevForwardLabelPatches
@@ -3592,8 +3640,10 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 
 	name := c.expectIdentifier()
 	paramResult := c.parseProcedureParameterNames()
+	var retType ValueType
+	var retUDTName string
 	if c.matchAsKeyword() {
-		c.parseAsTypeClause()
+		retType, retUDTName = c.parseAsTypeClause()
 	}
 	if isFunc && len(paramResult.names) == 0 {
 		c.globalZeroArgFuncs[strings.ToLower(name)] = true
@@ -3659,9 +3709,25 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 	if isFunc {
 		returnIdx = c.locals.Add(name)
 		c.declaredLocals[strings.ToLower(name)] = true
+		if retType != VTEmpty {
+			lowerName := strings.ToLower(name)
+			c.localVarTypes[lowerName] = retType
+			if retType == VTRecord {
+				c.localRecordTypes[lowerName] = retUDTName
+			}
+		}
 	}
 
 	c.hoistProcedureDimDeclarations(keywordFromBool(isFunc))
+
+	if isFunc && retType == VTRecord {
+		udtIdx, ok := c.recordDeclLookup[strings.ToLower(retUDTName)]
+		if ok {
+			c.emitExt(ExtOpInitRecord, udtIdx)
+			op, idx := c.resolveSetVar(name)
+			c.emit(OpSet, int(op), idx)
+		}
+	}
 
 	for !c.matchEof() {
 		if c.checkKeyword(vbscript.KeywordEnd) {

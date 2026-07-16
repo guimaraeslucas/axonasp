@@ -39,6 +39,7 @@ result = variableName.MemberName
 - Nested UDT fields are supported when a member is declared as another UDT.
 - **Copy Semantics**: In alignment with VB6/VBA/VBScript specifications, UDTs are value types. Assigning a UDT to another UDT (or UDT member/array element) performs a deep memory copy of the data, rather than copying a reference. Modifying fields in the copy does not mutate fields in the original UDT structure.
 - **Class Fields**: UDTs can be declared as class fields (e.g., `Private m_Pt As Point`). Within class methods, reading or writing members of class-encapsulated UDTs (e.g., `m_Pt.X = x`) is supported and compiled directly to record member offsets instead of invoking runtime object member dispatch.
+- **Parameters and Return Types**: UDTs are supported as parameters and return types in Functions, Subs, and Class Methods (e.g., `Public Function Create() As Point`). If a function returns a UDT, its implicit return variable is pre-initialized as an empty UDT instance, allowing direct member assignments inside the body (e.g., `Create.X = x`).
 
 ## Code Example
 ```asp

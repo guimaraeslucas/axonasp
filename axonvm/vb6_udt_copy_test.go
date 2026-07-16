@@ -195,8 +195,58 @@ func TestVB6ClassUDTField(t *testing.T) {
 
 	out := buf.String()
 	expected := "X=42|Y=99"
+		t.Fatalf("expected %q, got %q", expected, out)
+	}
+}
+
+func TestVB6ClassUDTReturnAndParams(t *testing.T) {
+	source := `<%
+	Type Point
+		X As Integer
+		Y As Integer
+	End Type
+
+	Class PointFactory
+		Public Function Create(x As Integer, y As Integer) As Point
+			Create.X = x
+			Create.Y = y
+		End Function
+
+		Public Function MovePoint(pt As Point, dx As Integer, dy As Integer) As Point
+			MovePoint.X = pt.X + dx
+			MovePoint.Y = pt.Y + dy
+		End Function
+	End Class
+
+	Dim factory, p1, p2
+	Set factory = New PointFactory
+	p1 = factory.Create(10, 20)
+	p2 = factory.MovePoint(p1, 5, -5)
+
+	Response.Write "p1=" & p1.X & "," & p1.Y & "|p2=" & p2.X & "," & p2.Y
+	%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	out := buf.String()
+	expected := "p1=10,20|p2=15,15"
 	if out != expected {
 		t.Fatalf("expected %q, got %q", expected, out)
 	}
 }
+
 
