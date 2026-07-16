@@ -578,6 +578,12 @@ func (c *Compiler) parseStatement() {
 			} else {
 				lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
 			}
+			if !isLHSUDT && c.currentClassName != "" {
+				if field, ok := c.getClassFieldDeclaration(c.currentClassName, name); ok && field.Type == VTRecord {
+					lhsUDTName = field.ClassType
+					isLHSUDT = true
+				}
+			}
 
 			rhsUDTName, isRHSUDT := c.lastEmittedUDT()
 			if isLHSUDT && isRHSUDT {
@@ -638,6 +644,12 @@ func (c *Compiler) parseStatement() {
 					}
 				} else {
 					lhsUDTName, isLHSUDT = c.globalRecordTypes[strings.ToLower(name)]
+				}
+				if !isLHSUDT && c.currentClassName != "" {
+					if field, ok := c.getClassFieldDeclaration(c.currentClassName, name); ok && field.Type == VTRecord {
+						lhsUDTName = field.ClassType
+						isLHSUDT = true
+					}
 				}
 
 				rhsUDTName, isRHSUDT := c.lastEmittedUDT()

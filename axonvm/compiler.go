@@ -335,6 +335,17 @@ func (c *Compiler) lastEmittedUDTNameFromOp() (string, bool) {
 				return udt, true
 			}
 		}
+	case OpGetClassMember:
+		if idx >= 0 && idx < len(c.constants) {
+			fieldName := strings.ToLower(c.constants[idx].Str)
+			if c.currentClassName != "" {
+				if field, ok := c.getClassFieldDeclaration(c.currentClassName, fieldName); ok {
+					if field.Type == VTRecord {
+						return field.ClassType, true
+					}
+				}
+			}
+		}
 	}
 	return "", false
 }
@@ -481,6 +492,25 @@ func (c *Compiler) hasClassFieldDeclaration(className string, fieldName string) 
 		}
 	}
 	return false
+}
+
+// getClassFieldDeclaration finds one class field metadata entry by field name.
+func (c *Compiler) getClassFieldDeclaration(className string, fieldName string) (*CompiledClassFieldDecl, bool) {
+	if c == nil {
+		return nil, false
+	}
+	lowerClassName := strings.ToLower(strings.TrimSpace(className))
+	classIdx, exists := c.classDeclLookup[lowerClassName]
+	if !exists || classIdx < 0 || classIdx >= len(c.classDecls) {
+		return nil, false
+	}
+	trimmedFieldName := strings.TrimSpace(fieldName)
+	for i := range c.classDecls[classIdx].Fields {
+		if strings.EqualFold(c.classDecls[classIdx].Fields[i].Name, trimmedFieldName) {
+			return &c.classDecls[classIdx].Fields[i], true
+		}
+	}
+	return nil, false
 }
 
 // addClassEventDeclaration attaches one class event metadata entry to one class declaration.

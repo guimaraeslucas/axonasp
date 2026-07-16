@@ -145,3 +145,58 @@ func TestVB6UDTArrayCopySemantics(t *testing.T) {
 		t.Fatalf("expected %q, got %q", expected, out)
 	}
 }
+
+func TestVB6ClassUDTField(t *testing.T) {
+	source := `<%
+	Type Point
+		X As Integer
+		Y As Integer
+	End Type
+
+	Class PointHolder
+		Private m_Pt As Point
+
+		Public Sub SetPoint(x As Integer, y As Integer)
+			m_Pt.X = x
+			m_Pt.Y = y
+		End Sub
+
+		Public Function GetX() As Integer
+			GetX = m_Pt.X
+		End Function
+
+		Public Function GetY() As Integer
+			GetY = m_Pt.Y
+		End Function
+	End Class
+
+	Dim holder
+	Set holder = New PointHolder
+	holder.SetPoint 42, 99
+
+	Response.Write "X=" & holder.GetX() & "|Y=" & holder.GetY()
+	%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVMFromCompiler(compiler)
+	host := NewMockHost()
+	var buf bytes.Buffer
+	host.SetOutput(&buf)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	out := buf.String()
+	expected := "X=42|Y=99"
+	if out != expected {
+		t.Fatalf("expected %q, got %q", expected, out)
+	}
+}
+

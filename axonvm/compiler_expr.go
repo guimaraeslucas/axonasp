@@ -156,6 +156,11 @@ resolveIdentifierNormally:
 		udtName, isUDT = c.globalRecordTypes[strings.ToLower(trimmedName)]
 	} else if op == OpGetLocal {
 		udtName, isUDT = c.localRecordTypes[strings.ToLower(trimmedName)]
+	} else if op == OpGetClassMember && c.currentClassName != "" {
+		if field, ok := c.getClassFieldDeclaration(c.currentClassName, trimmedName); ok && field.Type == VTRecord {
+			udtName = field.ClassType
+			isUDT = true
+		}
 	}
 	if isUDT {
 		c.updateLastEmittedType(VTRecord, udtName)
