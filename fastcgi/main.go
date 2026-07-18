@@ -597,7 +597,7 @@ func main() {
 
 	// Load and compile global.asa only when a concrete file location was found.
 	if shouldLoadGlobalASA {
-		fmt.Printf("%sStartup global.asa source directory: %s\n", LogPrefix, globalASARoot)
+		fmt.Printf("%sglobal.asa source directory: %s\n", LogPrefix, globalASARoot)
 		if err := axonvm.GetGlobalASA().LoadAndCompile(globalASARoot, GetSharedApplication()); err != nil {
 			fmt.Printf("%sWarning: Failed to load global.asa: %v\n", LogPrefix, err)
 		} else if axonvm.GetGlobalASA().IsLoaded() {
@@ -607,7 +607,7 @@ func main() {
 			_ = axonvm.GetGlobalASA().ExecuteApplicationOnStart(dummyHost)
 		}
 	} else {
-		fmt.Printf("%sStartup global.asa not found in fallback locations (CWD/server.web_root); skipping global.asa execution.\n", LogPrefix)
+		fmt.Printf("%s!global.asa not found in fallback locations (CWD/server.web_root); skipping global.asa execution.\n", LogPrefix)
 	}
 
 	mux := http.NewServeMux()
@@ -681,6 +681,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	// DEBUG: Log all headers to understand FastCGI parameter passing format
 	fcgiParams := extractFastCGIParams(r)
 	if DebugASP {
+		log.Print("--- FastCGI Request Debug - This is activated by DebugASP configuration in configuration file ---\n")
 		log.Printf("Request: %s %s\n", r.Method, r.URL.Path)
 		log.Printf("All headers/params:\n")
 		for k, v := range fcgiParams {
@@ -691,6 +692,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 			}
 			log.Printf("  %s = %s\n", k, val)
 		}
+		log.Print("--- FastCGI Request Debug End ---\n")
 	}
 
 	// Extract FastCGI parameters from reverse proxy (nginx/Apache).
