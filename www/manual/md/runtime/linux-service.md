@@ -93,7 +93,6 @@ ExecStart=/opt/axonasp/axonasp-fastcgi
 ```
 
 For the **FastCGI FPM**, replace `ExecStart` and User/Group with:
-It is necessary to run FPM as root to allow it to bind to low-numbered ports and manage child processes. Also you need to disable `PrivateTmp` and `NoNewPrivileges` for FPM to allow it to share the `/tmp` directory with child processes.
 
 ```ini
 ExecStart=/opt/axonasp/axonasp-fpm
@@ -102,6 +101,8 @@ Group=root
 PrivateTmp=false
 NoNewPrivileges=false
 ```
+
+It is necessary to run FPM as root to allow it to bind to low-numbered ports and manage child processes. Also you need to disable `PrivateTmp` and `NoNewPrivileges` for FPM to allow it to share the `/tmp` directory with child processes.
 
 ## Enabling and Starting the Service
 

@@ -1,2211 +1,373 @@
-# Use ES6 Features and beyond in Javascript Scripts
+# Use ES6 Features and beyond in JavaScript Scripts
 
 ## Overview
 
-AxonASP's Javascript engine supports a wide range of modern ECMAScript features, including ES6 (ES2015) additions and subsequent standards up to ES2024. This page documents all supported modern capabilities: template literals, block-scoped declarations (`let` and `const`) with Temporal Dead Zone (TDZ), arrow functions, default parameter values, rest parameters, spread in array literals, object literal shorthand, computed property names, `for...of` loops, `Object` static utilities (including `values`, `entries`, and `fromEntries`), property reflection helpers, modern `String` methods (like `includes`, `padStart`, and `at`), full Unicode support in `RegExp`, `Number` static methods, `Math` extensions, `Symbol` primitive, `Set` and `Map` collections, and a comprehensive set of `Array` utilities (including `find`, `flat`, `flatMap`, and immutable `toSorted`/`toReversed`/`toSpliced` methods).
+AxonASP's JavaScript engine supports a wide range of modern ECMAScript features, including ES6 (ES2015) additions and subsequent standards up to ES2024. This page provides a comprehensive index of all supported modern capabilities. Each feature has a dedicated subpage with full syntax, remarks, and code examples.
 
-All ES6 features described here are available in `<script runat="server" language="Javascript">` blocks or setting the `<%@Language="JavaScript"%> header.
-
----
-
-## Proxies
-
-### Syntax
-
-```javascript
-var proxy = new Proxy(target, handler);
-var { proxy, revoke } = Proxy.revocable(target, handler);
-```
-
-### Remarks
-
-- The `Proxy` object allows you to create a proxy for another object, which can intercept and redefine fundamental operations for that object.
-- **Supported traps:** `get`, `set`, `has`, `deleteProperty`, `apply`, `construct`, `ownKeys`, `defineProperty`, `getOwnPropertyDescriptor`, `getPrototypeOf`, `setPrototypeOf`, `isExtensible`, and `preventExtensions`.
-- **Revocable Proxies:** `Proxy.revocable` returns an object with a `proxy` and a `revoke` function. Once revoked, any operation on the proxy throws a `TypeError`.
-- **Centralized Trap Validator:** trap invariant checks are centralized in the runtime validator module to ensure consistent TypeError behavior across `Proxy` and `Reflect` paths.
-- **Invariant Enforcement:** The engine strictly validates every ECMAScript §10.5 trap invariant. A broken trap throws a `TypeError` with an `"invariant"` description. Key rules enforced:
-    - **get:** A non-configurable, non-writable data property must return the exact stored value. A non-configurable accessor with no getter must return `undefined`.
-  - **has:** Cannot return `false` for a non-configurable own property, or for any own property of a non-extensible target.
-  - **set:** Cannot return `true` when the target has a non-configurable, non-writable data property and the new value differs from the stored one.
-  - **deleteProperty:** Cannot return `true` for a non-configurable own property.
-  - **ownKeys:** The result must include every non-configurable own property key. For non-extensible targets the result must exactly match the target's own key set.
-  - **defineProperty:** Cannot return `true` when adding a new property to a non-extensible target, or when making a non-configurable property configurable.
-  - **getOwnPropertyDescriptor:** Cannot return `undefined` for a non-configurable property. Cannot report a descriptor as `configurable: true` when the target property is non-configurable.
-  - **getPrototypeOf:** For a non-extensible target must return the same object as the target's actual prototype.
-  - **setPrototypeOf:** Cannot return `true` when the target is non-extensible and the supplied prototype differs from the target's current prototype.
-  - **preventExtensions:** Cannot return `true` unless the target is already non-extensible at the time the trap returns.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var target = { a: 1, b: 2 };
-var handler = {
-    get: function(target, prop, receiver) {
-        if (prop === 'secret') return '***';
-        return Reflect.get(target, prop, receiver);
-    },
-    has: function(target, prop) {
-        if (prop === 'hidden') return true;
-        return prop in target;
-    }
-};
-
-var p = new Proxy(target, handler);
-Response.Write(p.a + "|" + p.secret + "|" + ('hidden' in p));
-// Output: 1|***|true
-</script>
-```
+All ES6 features described here are available in `<script runat="server" language="JavaScript">` blocks or by setting the `<%@Language="JavaScript"%>` header.
 
 ---
 
-## Reflect API
+## 1. Proxies
 
-### Syntax
+Create proxy objects that intercept and redefine fundamental operations on target objects. Supports all standard traps including `get`, `set`, `has`, `deleteProperty`, `apply`, `construct`, and `ownKeys`. Strict invariant enforcement follows ECMAScript section 10.5 rules.
 
-```javascript
-Reflect.get(target, propertyKey[, receiver])
-Reflect.set(target, propertyKey, value[, receiver])
-Reflect.has(target, propertyKey)
-Reflect.deleteProperty(target, propertyKey)
-Reflect.ownKeys(target)
-Reflect.apply(target, thisArgument, argumentsList)
-Reflect.construct(target, argumentsList[, newTarget])
-```
-
-### Remarks
-
-- `Reflect` is a built-in object that provides methods for interceptable JScript operations.
-- **Parity with Traps:** The methods are the same as those of proxy handlers.
-- **Success Booleans:** Unlike standard operators, `Reflect.set` and `Reflect.deleteProperty` return a boolean indicating whether the operation succeeded, rather than throwing in strict mode.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var obj = { x: 10 };
-Reflect.set(obj, 'y', 20);
-Response.Write(obj.y + "|" + Reflect.has(obj, 'x'));
-// Output: 20|true
-
-function greet(name) { return "Hello " + name; }
-Response.Write(Reflect.apply(greet, undefined, ["World"]));
-// Output: Hello World
-</script>
-```
+Refer to the dedicated Proxies page for syntax, complete trap documentation, and code examples.
 
 ---
 
-## ECMAScript Modules (import and export)
+## 2. Reflect API
 
-### Syntax
+A built-in object providing methods for interceptable JavaScript operations. Methods mirror proxy handler traps and return success booleans instead of throwing exceptions. Includes `Reflect.get`, `Reflect.set`, `Reflect.has`, `Reflect.deleteProperty`, `Reflect.ownKeys`, `Reflect.apply`, and `Reflect.construct`.
 
-```javascript
-import "./side-effects.js";
-import { add, mul as multiply } from "./math.js";
-import square, { PI } from "./math.js"; // Default and named
-import * as ns from "./utils.js"; // Namespace import
-
-export var version = "1.0";
-export function sum(a, b) { return a + b; }
-export default function(x) { return x * x; } // Default export
-export { sum as add };
-export { sum as addAlias } from "./math.js";
-export * from "./other.js"; // Wildcard re-export
-export * as ns from "./other.js"; // Namespace re-export
-```
-
-### Remarks
-
-- `import` and `export` are supported for server-side JavaScript modules loaded from `.js` files.
-- Module loading is **synchronous**. The VM resolves and executes imported modules in the same request execution flow.
-- Module instances are stored per request in a request-local module registry. The same module path executes only once per request and subsequent imports reuse the same module environment.
-- Compiled module bytecode uses the global script cache. This avoids recompilation when the source did not change.
-- Circular dependencies are supported with partial initialization semantics.
-- Standard ASP objects (`Response`, `Request`, `Session`, `Application`, `Server`) are automatically available inside modules.
-- **ReferenceError:** The VM throws a `ReferenceError` if a requested named export is missing from the source module.
+Refer to the dedicated Reflect API page for syntax and code examples.
 
 ---
 
-## Weak Collections (WeakMap and WeakSet)
+## 3. ECMAScript Modules (import and export)
 
-### Syntax
+Supports server-side JavaScript modules with `import` and `export` statements. Module loading is synchronous. Modules are compiled once globally and cached, with per-request isolated execution state. Circular dependencies with partial initialization semantics are supported.
 
-```javascript
-var wm = new WeakMap();
-var ws = new WeakSet();
-
-var key = {};
-wm.set(key, "data");
-ws.add(key);
-
-Response.Write(wm.get(key)); // data
-Response.Write(ws.has(key)); // True
-```
-
-### Remarks
-
-- `WeakMap` and `WeakSet` provide collections where keys (or values in `WeakSet`) are held weakly.
-- **Memory Safety:** Unlike standard `Map` and `Set`, weak collections do not prevent their keys from being garbage collected. This is critical for preventing memory leaks in long-running scripts where objects are used as temporary keys.
-- **Inverted Storage:** AxonASP uses an efficient "inverted storage" pattern where weak data is stored internally within the key object itself, ensuring that when the key is destroyed, the associated data is automatically reclaimed without GC overhead.
-- **Valid Keys:** Objects (`{}`), functions (`function`), and **unique Symbols** (those created via `Symbol()` that are not registered in the global registry via `Symbol.for()` and are not well-known symbols like `Symbol.iterator`) can be used as keys. Attempting to use a primitive (string, number, boolean) or a restricted symbol as a key will throw a `TypeError`.
-- **Non-Iterable:** Weak collections are not iterable. They do not support `for...of` loops, and they do not have `.size`, `.keys()`, `.values()`, or `.entries()` methods.
+Refer to the dedicated ECMAScript Modules page for syntax and code examples.
 
 ---
 
-## Weak References (WeakRef and FinalizationRegistry)
+## 4. Weak Collections (WeakMap and WeakSet)
 
-### Syntax
+Collections where keys are held weakly, preventing memory leaks when objects are used as temporary keys. AxonASP uses an efficient inverted storage pattern for automatic data reclamation. Supports Objects, Functions, and unique Symbols as keys.
 
-```javascript
-var obj = { data: 42 };
-
-// 1. WeakRef
-var wr = new WeakRef(obj);
-var target = wr.deref();
-if (target !== undefined) {
-    Response.Write(target.data);
-}
-
-// 2. FinalizationRegistry
-var registry = new FinalizationRegistry(function(heldValue) {
-    // Callback executed when registered objects are garbage collected
-});
-registry.register(obj, "some context", obj); // register object
-registry.unregister(obj); // unregister
-```
-
-### Remarks
-
-- **WeakRef:** Provides a way to hold a weak reference to an object, function, or symbol, allowing it to be garbage collected while still attempting to access it if it hasn't been collected yet via the `deref()` method.
-- **FinalizationRegistry:** Allows you to register a callback to be invoked when an object is garbage collected.
-- **VM Implementation Note:** AxonASP's JScript engine focuses on short-lived, high-performance HTTP request processing and does not implement a background garbage collector. Objects typically live until the end of the script execution (or request completion). Therefore, `FinalizationRegistry` callbacks will not be triggered during standard execution, but the API and validation semantics are fully implemented for compatibility with modern JavaScript libraries that expect these features to exist.
-- Target objects for `WeakRef` and `FinalizationRegistry.register` must be Objects (`{}`), Functions, or unique Symbols (not registered via `Symbol.for()`). Passing primitives will result in a `TypeError`.
+Refer to the dedicated Weak Collections page for syntax and code examples.
 
 ---
 
-## Block-Scoped Declarations (let and const)
+## 5. Weak References (WeakRef and FinalizationRegistry)
 
-### Syntax
+Provides weak reference semantics and cleanup callbacks via `WeakRef.deref()` and `FinalizationRegistry`. Fully implemented for JavaScript library compatibility. In the AxonASP short-lived request context, garbage collection callbacks are not triggered during standard execution.
 
-```javascript
-let x = 10;
-const y = 20;
-
-{
-    let x = 30; // Shadows outer x
-    const y = 40; // Shadows outer y
-}
-```
-
-### Remarks
-
-- `let` and `const` provide block-level scoping. Variables declared inside a `{}` block are only accessible within that block.
-- **Temporal Dead Zone (TDZ):** Unlike `var`, accessing a `let` or `const` variable before its declaration line in the execution flow results in a `ReferenceError`.
-- `const` bindings are immutable; attempting to reassign a value to a `const` variable results in a `TypeError`.
-
-### Code Example
-
-```javascript
-<%
-let a = 1;
-{
-    // Response.Write(a); // This would throw ReferenceError due to TDZ if 'let a' exists below
-    let a = 2;
-    Response.Write(a); // Output: 2
-}
-Response.Write(a); // Output: 1
-
-const PI = 3.14;
-// PI = 3.15; // This would throw TypeError
-%>
-```
+Refer to the dedicated Weak References page for syntax and code examples.
 
 ---
 
-## Explicit Resource Management (using)
+## 6. Block-Scoped Declarations (let and const)
 
-### Syntax
+Block-level scoping with `let` and `const`. Temporal Dead Zone (TDZ) enforcement prevents access before declaration. `const` bindings are immutable; reassignment throws a `TypeError`.
 
-```javascript
-using resource = expression;
-async using asyncResource = expression;
-```
-
-### Remarks
-
-- `using` is supported as a block-scoped declaration and requires an initializer.
-- Resource cleanup uses symbol-based disposal methods:
-  - `Symbol.dispose` for `using`
-  - `Symbol.asyncDispose` for `async using`
-- Multiple `using` declarations in the same scope are disposed in reverse declaration order.
-- Disposal runs at normal scope exit and during exception unwinding (`throw`) for the same scope.
-- `async using` currently invokes `Symbol.asyncDispose` synchronously (without awaiting Promise settlement).
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var trace = [];
-
-var firstResource = {
-    [Symbol.dispose]: function() {
-        trace.push("dispose:first");
-    }
-};
-
-var secondResource = {
-    [Symbol.dispose]: function() {
-        trace.push("dispose:second");
-    }
-};
-
-{
-    using first = firstResource;
-    using second = secondResource;
-    trace.push("inside");
-}
-
-Response.Write(trace.join("|"));
-// Output: inside|dispose:second|dispose:first
-</script>
-```
+Refer to the dedicated Block-Scoped Declarations page for syntax and code examples.
 
 ---
 
-## Full Unicode Support
+## 7. Explicit Resource Management (using)
 
-### String Code Point Escapes
+Block-scoped resource management using `using` and `async using` declarations. Cleanup uses `Symbol.dispose` and `Symbol.asyncDispose`. Resources are disposed in reverse declaration order on scope exit and during exception unwinding.
 
-ES6 introduces a new escape sequence for Unicode characters that allows representing any character using its code point value in hexadecimal between braces.
-
-#### Syntax
-
-```javascript
-var s = "\u{1D306}"; // Tetragram for Centre
-```
-
-#### Remarks
-
-- Supports values from `0` up to `0x10FFFF`.
-- Correctly handles surrogate pairs internally. A character like `\u{1D306}` has a `.length` of 2 in JScript (representing two UTF-16 code units).
-
-### RegExp /u flag
-
-The `u` flag (Unicode) enables advanced Unicode features in regular expressions.
-
-#### Syntax
-
-```javascript
-var re = /^\u{1D306}$/u;
-```
-
-#### Remarks
-
-- When the `u` flag is present, `.` matches a full Unicode code point (even if it spans multiple UTF-16 code units).
-- Enables `\u{...}` escape sequences inside the regular expression pattern.
-
-### Code Example
-
-```javascript
-<%
-// String length with surrogate pairs
-var s = "\u{1D306}";
-Response.Write(s.length); // Output: 2
-
-// Unicode RegExp matching
-var re = /^.$/u;
-Response.Write(re.test(s)); // Output: true (matches the whole surrogate pair)
-%>
-```
+Refer to the dedicated Explicit Resource Management page for syntax and code examples.
 
 ---
 
-## Modern Regular Expressions (RegExp)
+## 8. Full Unicode Support
 
-AxonASP uses a PCRE-compatible engine for JScript Regular Expressions, supporting advanced features introduced in ES6 and subsequent standards (ES2018+).
+Supports ES6 Unicode code point escapes (`\u{...}`) for characters up to `0x10FFFF`. The RegExp `u` flag enables full code point matching and Unicode escape sequences in patterns.
 
-### Named Capture Groups
-
-Named capture groups allow you to assign names to capturing groups, which can then be accessed via the `groups` property of the match result.
-
-#### Syntax
-
-```javascript
-var re = /(?<name>pattern)/;
-```
-
-### Lookaround Assertions
-
-Lookaround assertions (lookahead and lookbehind) allow matching a pattern based on what precedes or follows it, without including those characters in the match.
-
-#### Syntax
-
-- **Positive Lookahead:** `(?=...)`
-- **Negative Lookahead:** `(?!...)`
-- **Positive Lookbehind:** `(?<=...)`
-- **Negative Lookbehind:** `(?<!...)`
-
-### Sticky Flag (y)
-
-The `y` flag indicates that the match must start exactly at the `lastIndex` property of the regular expression object. If the match fails, `lastIndex` is reset to `0`.
-
-### RegExp.prototype.flags
-
-The `flags` property returns a string containing the flags of the regular expression object, sorted alphabetically (`g`, `i`, `m`, `s`, `u`, `y`).
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// 1. Named Capture Groups
-var re = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
-var match = re.exec("2026-05-14");
-Response.Write(match.groups.year); // Output: 2026
-
-// 2. Lookbehind
-var reLookbehind = /(?<=\$)\d+/;
-Response.Write(reLookbehind.exec("Price: $100")[0]); // Output: 100
-
-// 3. Sticky Flag
-var reSticky = /a/y;
-reSticky.lastIndex = 1;
-Response.Write(reSticky.exec("ba") !== null); // Output: true
-
-// 4. Flags Property
-Response.Write(/abc/gimuy.flags); // Output: gimuy
-</script>
-```
+Refer to the dedicated Full Unicode Support page for syntax and code examples.
 
 ---
 
-## Template Literals
+## 9. Modern Regular Expressions (RegExp)
 
-### Syntax
+PCRE-compatible engine supporting ES6+ features: named capture groups, lookahead and lookbehind assertions, sticky flag (`y`), and the `flags` property.
 
-```javascript
-var result = `static text ${expression} more static text`;
-```
-
-Template literals are enclosed in backticks (`` ` ``). They support embedded expressions using `${expression}` placeholders and preserve literal newlines.
-
-### Remarks
-
-- All `${expression}` placeholders are evaluated at runtime and coerced to strings using standard JScript string coercion.
-- Multiple expressions can be embedded in a single template literal.
-- Multi-line template literals preserve embedded newline characters.
-- Tagged template literals are not supported. A tagged template (e.g., `` tag`...` ``) resolves to `undefined`.
-
-### Code Example
-
-```javascript
-<%
-var name = "World";
-var count = 42;
-var msg = `Hello, ${name}! You have ${count} messages.`;
-Response.Write(msg);
-// Output: Hello, World! You have 42 messages.
-
-var a = 3, b = 4;
-Response.Write(`Sum: ${a + b}`);
-// Output: Sum: 7
-%>
-```
+Refer to the dedicated Modern Regular Expressions page for syntax and code examples.
 
 ---
 
-## Arrow Functions
+## 10. Template Literals
 
-### Syntax
+String literals using backticks (`` ` ``) with `${expression}` interpolation. Preserve literal newlines and support multiple embedded expressions. Tagged template literals are not supported.
 
-```javascript
-// Concise body (expression result is implicitly returned)
-var fn = (param1, param2) => expression;
-
-// Block body
-var fn = (param1, param2) => {
-    // statements
-    return value;
-};
-```
-
-### Remarks
-
-- Arrow functions do not create their own `this` binding. The value of `this` is captured **lexically** from the enclosing scope at the time the arrow function is created. This is useful for callbacks inside constructor methods.
-- Arrow functions cannot be used as constructors. Using `new` with an arrow function is not supported.
-- Single-parameter arrow functions without parentheses (e.g., `x => x * 2`) are supported.
-- Arrow functions have an `arguments` object bound to the enclosing function's `arguments`, not their own.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// Concise arrow function
-var square = (x) => x * x;
-Response.Write(square(5));
-// Output: 25
-
-// Lexical this in a constructor
-function Timer() {
-    this.seconds = 0;
-    this.tick = function() {
-        var increment = () => { this.seconds = this.seconds + 1; };
-        increment();
-    };
-}
-var t = new Timer();
-t.tick();
-t.tick();
-Response.Write(t.seconds);
-// Output: 2
-</script>
-```
+Refer to the dedicated Template Literals page for syntax and code examples.
 
 ---
 
-## Default Parameter Values
+## 11. Arrow Functions
 
-### Syntax
+Concise function syntax with lexical `this` binding. Single-parameter parentheses are optional. Cannot be used as constructors. Arrow functions do not have their own `arguments` object.
 
-```javascript
-function greet(name, message = "Hello") {
-    return message + ", " + name + "!";
-}
-```
-
-### Remarks
-
-- Native default parameter syntax is supported (for example, `function f(a = 10)`).
-- The classic guard pattern `if (x === undefined) x = ...` is still supported and remains useful for compatibility-oriented scripts.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-function multiply(a, b = 2) {
-    return a * b;
-}
-Response.Write(multiply(5));      // Output: 10
-Response.Write(multiply(5, 3));   // Output: 15
-</script>
-```
+Refer to the dedicated Arrow Functions page for syntax and code examples.
 
 ---
 
-## Tail Call Optimization (TCO)
+## 12. Default Parameter Values
 
-The use of Tail Call Optimization **MUST BE AVOIDED** whenever possible. Although the AxonASP implementation includes several mechanisms to prevent memory overflow, the risk generally outweighs the minor gains in performance. A script not well formed can easily consume up to 4GB of memory per execution if implemented incorrectly. Tail Call Optimization is an ECMAScript 6 requirement, but even engines like V8 (Chrome) do not implement it due to the problems TCO can cause. If you choose to implement this type of code, test it thoroughly with the server to avoid the risk of exhausting your service/container memory. 
+Native default parameter syntax allows functions to specify default values for parameters when they are `undefined`. The classic guard pattern remains supported for compatibility.
 
-### Syntax
-
-```javascript
-function sum(n, acc) {
-    if (n === 0) {
-        return acc;
-    }
-    return sum(n - 1, acc + n);
-}
-```
-
-### Remarks
-
-- Tail-position calls in `return` statements are optimized by the JScript VM to reuse the active function frame.
-- The optimization currently applies to direct calls (`return fn(...)`) and member calls (`return obj.fn(...)`).
-- Tail-call optimization is intentionally disabled when the `return` statement is inside `try`, `catch`, or `finally` blocks to preserve exception-handler semantics.
-- If the tail-position call target resolves to a native host function, the VM executes it as a normal call and returns the result without frame reuse.
-- Tail Call Optimization enforces a limit of 10,000 instructions; exceeding this threshold safely and automatically triggers a Stack Overflow error, halting script execution. This mechanism ensures memory stability and prevents malicious scripts from exhausting server memory.
-
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-function sum(n, acc) {
-    if (n === 0) {
-        return acc;
-    }
-    return sum(n - 1, acc + 1);
-}
-
-Response.Write(sum(100000, 0));
-// Output: 100000
-</script>
-```
+Refer to the dedicated Default Parameter Values page for syntax and code examples.
 
 ---
 
-## Rest Parameters
+## 13. Tail Call Optimization (TCO)
 
-### Syntax
+Optimizes tail-position calls by reusing the active function frame. Enforces a 10,000 instruction limit to prevent memory exhaustion. Disabled inside `try`, `catch`, or `finally` blocks. Use with caution.
 
-```javascript
-function fn(first, second, ...rest) {
-    // rest is a standard array of remaining arguments
-}
-```
-
-### Remarks
-
-- The rest parameter must be the last parameter in the function signature.
-- `rest` is a standard JScript array and supports all array methods.
-- Only one rest parameter is allowed per function.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-function pack(head, ...rest) {
-    return head + ":" + rest.length;
-}
-Response.Write(pack("h", 1, 2, 3));
-// Output: h:3
-</script>
-```
+Refer to the dedicated Tail Call Optimization page for syntax, remarks, and code examples.
 
 ---
 
-## Object Literal Property Shorthand
+## 14. Rest Parameters
 
-### Syntax
+Collects remaining function arguments into a standard array. Must be the last parameter in the function signature. Only one rest parameter is allowed per function.
 
-```javascript
-var x = 10;
-var y = 20;
-var point = { x, y }; // equivalent to { x: x, y: y }
-```
-
-### Remarks
-
-- Shorthand property syntax is supported when the variable name and the property name are identical.
-- Method shorthand (e.g., `{ greet() {} }`) follows the same rule and is available as well.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var x = 10;
-var y = 20;
-var p = { x, y };
-Response.Write(p.x + "," + p.y);
-// Output: 10,20
-</script>
-```
+Refer to the dedicated Rest Parameters page for syntax and code examples.
 
 ---
 
-## Spread in Array Literals
+## 15. Object Literal Property Shorthand
 
-### Syntax
+Allows omitting the value when the variable name matches the property name. Method shorthand syntax is also supported.
 
-```javascript
-var out = [1, 2, ...otherArray, 5];
-```
-
-### Remarks
-
-- Spread in array literals expands one source array-like value into individual elements.
-- `null` and `undefined` spread sources raise a JScript `TypeError`.
-- Evaluation order is preserved left to right.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var src = [3, 4];
-var out = [1, 2, ...src, 5];
-Response.Write(out.join(","));
-// Output: 1,2,3,4,5
-</script>
-```
+Refer to the dedicated Object Literal Property Shorthand page for syntax and code examples.
 
 ---
 
-## Object Static Utilities
+## 16. Spread in Array Literals
 
-The following `Object` static methods are available.
+Expands array-like values into individual elements within a new array. Left-to-right evaluation order. `null` and `undefined` spread sources raise a `TypeError`.
 
-### `Object.assign(target, ...sources)`
-
-Copies enumerable own properties from each source object into `target`, from left to right, and returns `target`.
-
-### `Object.keys(object)`
-
-Returns an array of enumerable own property names.
-
-### `Object.values(object)`
-
-Returns an array of enumerable own property values.
-
-### `Object.entries(object)`
-
-Returns an array where each item is a two-element `[key, value]` pair for each enumerable own property.
-
-### `Object.fromEntries(iterable)`
-
-Converts an iterable of key-value pairs (such as an array of `[key, value]` arrays) into a new object.
-
-### `Object.is(value1, value2)`
-
-Returns `true` when both values are the same according to ECMAScript `Object.is` semantics. `NaN` compares equal to `NaN`, and `+0` and `-0` compare as different values.
-
-### `Object.setPrototypeOf(object, prototype)`
-
-Changes the prototype of `object` to `prototype` when the object is extensible. Throws a `TypeError` if the target is not an object or if its prototype cannot be changed.
-
-### Remarks
-
-- `Object.assign` skips `null` and `undefined` sources.
-- `Object.keys`, `Object.values`, and `Object.entries` throw a JScript `TypeError` when called with `null` or `undefined`.
-- Return values are standard JScript arrays and are compatible with existing array operations.
-- Symbol-keyed properties are intentionally excluded from `Object.keys`, `Object.values`, and `Object.entries` to reduce collision risks in legacy code.
-
-### `Object.getOwnPropertySymbols(object)`
-
-Returns an array of the object's own symbol-keyed properties in symbol form.
-
-- `Object.getOwnPropertySymbols` ignores string-keyed properties.
-- Prototype inheritance is not included; only own properties are reported.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var target = { a: 1 };
-Object.assign(target, { b: 2 }, { c: 3 });
-
-Response.Write(Object.keys(target).join(","));
-// Output: a,b,c
-
-Response.Write(Object.values(target).join(","));
-// Output: 1,2,3
-
-var e = Object.entries(target);
-Response.Write(e[0][0] + ":" + e[0][1]);
-// Output: a:1
-
-var entries = [["x", 10], ["y", 20]];
-var obj = Object.fromEntries(entries);
-Response.Write(obj.x + "," + obj.y);
-// Output: 10,20
-
-var s = Symbol("id");
-var o = {};
-Object.setPrototypeOf(o, { inherited: 1 });
-o[s] = 99;
-Response.Write(Object.is(NaN, NaN));
-// Output: true
-Response.Write(Object.getOwnPropertySymbols(o).length);
-// Output: 1
-</script>
-```
+Refer to the dedicated Spread in Array Literals page for syntax and code examples.
 
 ---
 
-## Property Reflection Helpers
+## 17. Object Static Utilities
 
-### `Object.getOwnPropertyDescriptor(object, propertyName)`
+Modern `Object` static methods: `Object.assign`, `Object.keys`, `Object.values`, `Object.entries`, `Object.fromEntries`, `Object.is`, `Object.setPrototypeOf`, and `Object.getOwnPropertySymbols`.
 
-Returns the property descriptor for an own property of `object`. The descriptor object contains the following fields: `value`, `writable`, `enumerable`, and `configurable`.
-
-### `Object.getOwnPropertyDescriptors(object)`
-
-Returns an object whose own properties are the property descriptors for all own properties of `object`. Each key maps to the same descriptor structure returned by `Object.getOwnPropertyDescriptor`.
-
-### Remarks
-
-- Both methods operate only on own properties. Inherited properties are not reported.
-- Symbol-keyed internals follow the same visibility constraints as `Object.keys` and are not included in the result.
-- `Object.defineProperty` is available and can be used to define non-enumerable or read-only properties before inspecting them with these helpers.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var o = {};
-Object.defineProperty(o, "hidden", {
-    value: 10,
-    writable: false,
-    enumerable: false,
-    configurable: false
-});
-var d = Object.getOwnPropertyDescriptor(o, "hidden");
-var all = Object.getOwnPropertyDescriptors(o);
-Response.Write(d.value + "|" + all.hidden.writable);
-// Output: 10|false
-</script>
-```
+Refer to the dedicated Object Static Utilities page for syntax and code examples.
 
 ---
 
-## Array Search Utilities
+## 18. Property Reflection Helpers
 
-### `Array.prototype.find(callback[, thisArg])`
+Reflection support via `Object.getOwnPropertyDescriptor` and `Object.getOwnPropertyDescriptors`. Returns property descriptors with `value`, `writable`, `enumerable`, and `configurable` fields.
 
-Returns the first element that satisfies `callback`. Returns `undefined` when no element matches.
-
-### `Array.prototype.findIndex(callback[, thisArg])`
-
-Returns the index of the first element that satisfies `callback`. Returns `-1` when no element matches.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var arr = [3, 7, 11, 14];
-Response.Write(arr.find(function (x) { return x > 10; }));
-// Output: 11
-Response.Write(arr.findIndex(function (x) { return x > 10; }));
-// Output: 2
-</script>
-```
+Refer to the dedicated Property Reflection Helpers page for syntax and code examples.
 
 ---
 
-## Array Construction Utilities
+## 19. Array Search Utilities
 
-### `Array.from(arrayLike[, mapFn])`
+ES6 array search methods: `Array.prototype.find` returns the first matching element, and `Array.prototype.findIndex` returns the index of the first match. Both accept a callback and optional `thisArg`.
 
-Converts an array-like or iterable object into a standard JScript array. Accepts an optional mapping function that is applied to each element.
-
-### `Array.of(...items)`
-
-Creates a new array from its arguments. Unlike `new Array(n)`, `Array.of(n)` always creates a one-element array containing `n`.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var a = Array.from({ length: 2, 0: "x", 1: "y" });
-var b = Array.of(7, 8, 9);
-Response.Write(a.join("-") + "|" + b.join("-"));
-// Output: x-y|7-8-9
-</script>
-```
+Refer to the dedicated Array Search Utilities page for syntax and code examples.
 
 ---
 
-## Array In-place Operations
+## 20. Array Construction Utilities
 
-### `Array.prototype.fill(value[, start[, end]])`
+`Array.from` converts array-like or iterable objects into standard arrays with an optional mapping function. `Array.of` creates arrays from its arguments, avoiding the `new Array(n)` single-element pitfall.
 
-Fills all elements from `start` to `end` (exclusive) with `value`, in place. Negative indices are resolved relative to the array length. Returns the modified array.
-
-### `Array.prototype.copyWithin(target[, start[, end]])`
-
-Copies a portion of the array (from `start` to `end`, exclusive) to another position (`target`) within the same array, in place. Does not change the array length. Returns the modified array.
-
-### `Array.prototype.keys()`
-
-Returns an Array Iterator object containing each numeric index key from the array.
-
-### `Array.prototype.entries()`
-
-Returns an Array Iterator object containing `[index, value]` pairs for each array element.
-
-### `Array.prototype.at(index)`
-
-Returns the element at the specified `index`. Supports relative indexing from the end if `index` is negative.
-
-### `Array.prototype.flat([depth])`
-
-Returns a new array with all sub-array elements concatenated into it recursively up to the specified `depth`. Defaults to `1`.
-
-### `Array.prototype.flatMap(callback[, thisArg])`
-
-Returns a new array formed by applying a given callback function to each element of the array, and then flattening the result by one level.
-
-### `Array.prototype.toSorted([compareFn])`
-
-Returns a **new** array with the elements sorted in ascending order. Unlike `sort()`, it does not mutate the original array.
-
-### `Array.prototype.toReversed()`
-
-Returns a **new** array with the elements in reversed order. Unlike `reverse()`, it does not mutate the original array.
-
-### `Array.prototype.toSpliced(start[, deleteCount[, ...items]])`
-
-Returns a **new** array with some elements removed and/or replaced at a given index. Unlike `splice()`, it does not mutate the original array.
-
-### Remarks
-
-- Methods like `fill` and `copyWithin` operate in place and return the same array reference.
-- `keys()` and `entries()` return standard iterable Array Iterator objects and can be consumed by `for...of`.
-- Modern immutable methods (`toSorted`, `toReversed`, `toSpliced`) always return a new array instance.
-- Negative index arguments in `at`, `fill`, and `copyWithin` are normalized relative to the array length.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var arr = [1, [2, 3]];
-Response.Write(JSON.stringify(arr.flat()));
-// Output: [1,2,3]
-
-var original = [3, 1, 2];
-var sorted = original.toSorted();
-Response.Write(sorted.join(","));
-// Output: 1,2,3
-Response.Write(original.join(","));
-// Output: 3,1,2 (unchanged)
-
-for (var k of [10, 20].keys()) {
-    Response.Write(k + " ");
-}
-// Output: 0 1
-
-for (var e of [10, 20].entries()) {
-    Response.Write(e[0] + ":" + e[1] + " ");
-}
-// Output: 0:10 1:20
-
-Response.Write("abc".at(-1));
-// Output: c
-</script>
-```
+Refer to the dedicated Array Construction Utilities page for syntax and code examples.
 
 ---
 
-## ES6 String Methods
+## 21. Array In-place Operations
 
-The following methods are available on `String` values.
+Comprehensive array methods including `fill`, `copyWithin`, `keys`, `entries`, `at`, `flat`, `flatMap`, and immutable methods `toSorted`, `toReversed`, and `toSpliced` that return new arrays without mutating the original.
 
-### `String.prototype.includes(searchString[, position])`
-
-Returns `true` if `searchString` is found anywhere within the string at or after `position` (default `0`); `false` otherwise. Case-sensitive. Raises a `TypeError` if `searchString` is a `RegExp`.
-
-### `String.prototype.startsWith(searchString)`
-
-Returns `true` if the string begins with `searchString`; `false` otherwise. Case-sensitive.
-
-### `String.prototype.endsWith(searchString)`
-
-Returns `true` if the string ends with `searchString`; `false` otherwise. Case-sensitive.
-
-### `String.prototype.repeat(count)`
-
-Returns a new string containing `count` repetitions of the original string. Returns an empty string if `count` is 0.
-
-### `String.prototype.at(index)`
-
-Returns the character at the specified `index`. Supports relative indexing from the end if `index` is negative.
-
-### `String.prototype.codePointAt(position)`
-
-Returns the Unicode code point value at `position`. If `position` is out of range, returns `undefined`.
-
-### `String.prototype.normalize([form])`
-
-Returns the Unicode Normalization Form of the string. Supported values are `NFC`, `NFD`, `NFKC`, and `NFKD`. If omitted, `NFC` is used.
-
-### `String.prototype.padStart(targetLength, padString)`
-
-Pads the string from the start with `padString` until the total length reaches `targetLength`. If `padString` is not supplied, spaces are used.
-
-### `String.prototype.padEnd(targetLength, padString)`
-
-Pads the string from the end with `padString` until the total length reaches `targetLength`. If `padString` is not supplied, spaces are used.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var s = "Hello World";
-
-Response.Write(s.includes("World"));        // Output: true
-Response.Write(s.includes("World", 6));     // Output: true
-Response.Write(s.startsWith("Hello"));      // Output: true
-Response.Write(s.endsWith("World"));        // Output: true
-Response.Write("ab".repeat(3));             // Output: ababab
-Response.Write("5".padStart(3, "0"));       // Output: 005
-Response.Write("5".padEnd(3, "0"));         // Output: 500
-Response.Write("A😀B".codePointAt(1));       // Output: 128512
-Response.Write("e\u0301".normalize("NFC")); // Output: é
-
-var regexError = false;
-try {
-    "hello".includes(new RegExp("h"));
-} catch (e) {
-    regexError = String(e).indexOf("TypeError") !== -1;
-}
-Response.Write(regexError);                 // Output: true
-</script>
-```
+Refer to the dedicated Array In-place Operations page for syntax and code examples.
 
 ---
 
-## ES6 Number Static Methods
+## 22. ES6 String Methods
 
-The following static methods are available on the `Number` object.
+Modern string utilities: `includes`, `startsWith`, `endsWith`, `repeat`, `at`, `codePointAt`, `normalize`, `padStart`, and `padEnd`. Regexp-aware `includes` throws `TypeError` for RegExp arguments.
 
-### `Number.isInteger(value)`
-
-Returns `true` only if `value` is a number with no fractional part and is not `Infinity` or `NaN`. Does **not** coerce non-number values; non-numbers return `false`.
-
-### `Number.isNaN(value)`
-
-Returns `true` only if `value` is the numeric `NaN`. Does **not** coerce non-number values; non-numbers always return `false`. This differs from the global `isNaN()` function, which coerces its argument.
-
-### `Number.isFinite(value)`
-
-Returns `true` only if `value` is a finite number. Does **not** coerce non-number values; non-numbers always return `false`.
-
-### `Number.isSafeInteger(value)`
-
-Returns `true` if `value` is an integer in the range `-(2^53 - 1)` to `2^53 - 1` inclusive, and has no fractional part. Does **not** coerce non-number values.
-
-### `Number.parseInt(string, radix)`
-
-Equivalent to the global `parseInt()` function. Parses `string` as an integer in the specified `radix` (2–36). Defaults to base 10.
-
-### `Number.parseFloat(string)`
-
-Equivalent to the global `parseFloat()` function. Parses `string` as a floating-point number.
-
-### Number Constants
-
-The `Number` object exposes the following read-only constants:
-
-| Constant | Value |
-|---|---|
-| `Number.MAX_SAFE_INTEGER` | 9007199254740991 |
-| `Number.MIN_SAFE_INTEGER` | -9007199254740991 |
-| `Number.MAX_VALUE` | ~1.7976931348623157e+308 |
-| `Number.MIN_VALUE` | ~5e-324 |
-| `Number.EPSILON` | ~2.220446049250313e-16 |
-| `Number.POSITIVE_INFINITY` | `Infinity` |
-| `Number.NEGATIVE_INFINITY` | `-Infinity` |
-| `Number.NaN` | `NaN` |
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-Response.Write(Number.isInteger(42));          // Output: true
-Response.Write(Number.isInteger(42.5));        // Output: false
-Response.Write(Number.isInteger("42"));        // Output: false
-
-Response.Write(Number.isNaN(NaN));             // Output: true
-Response.Write(Number.isNaN(42));              // Output: false
-Response.Write(Number.isNaN("NaN"));           // Output: false
-
-Response.Write(Number.isFinite(100));          // Output: true
-Response.Write(Number.isFinite(Infinity));     // Output: false
-
-Response.Write(Number.isSafeInteger(9007199254740991));  // Output: true
-Response.Write(Number.isSafeInteger(9007199254740992));  // Output: false
-
-Response.Write(Number.MAX_SAFE_INTEGER);       // Output: 9007199254740991
-Response.Write(Number.EPSILON);                // Output: 2.220446049250313e-16
-</script>
-```
+Refer to the dedicated ES6 String Methods page for syntax and code examples.
 
 ---
 
-## Binary and Octal Numeric Literals
+## 23. ES6 Number Static Methods
 
-### Syntax
+`Number.isInteger`, `Number.isNaN`, `Number.isFinite`, `Number.isSafeInteger`, `Number.parseInt`, and `Number.parseFloat`. All methods do not coerce non-number values. Includes read-only constants like `Number.MAX_SAFE_INTEGER` and `Number.EPSILON`.
 
-```javascript
-var b = 0b1010; // binary
-var o = 0o744;  // octal
-```
-
-### Remarks
-
-- Prefix `0b` or `0B` parses base-2 integer literals.
-- Prefix `0o` or `0O` parses base-8 integer literals.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-Response.Write(0b1010); // Output: 10
-Response.Write(0o744);  // Output: 484
-</script>
-```
+Refer to the dedicated ES6 Number Static Methods page for syntax and code examples.
 
 ---
 
-## Global URI Functions
+## 24. Binary and Octal Numeric Literals
 
-The following URI helper functions are available globally.
+Binary literals use the `0b` or `0B` prefix. Octal literals use the `0o` or `0O` prefix. Both parse to standard numeric values.
 
-### `encodeURI(uri)`
-
-Encodes a complete URI string while preserving URI-reserved separators such as `:`, `/`, `?`, `&`, `=`, and `#`.
-
-### `decodeURI(uri)`
-
-Decodes a complete URI string. Reserved separators remain preserved when they were percent-encoded.
-
-### `encodeURIComponent(component)`
-
-Encodes a URI component (such as one query value) and escapes reserved characters like `=`, `&`, and `+`.
-
-### `decodeURIComponent(component)`
-
-Decodes an encoded URI component.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var full = "https://example.com/a path/?q=hello world&x=1+2#frag";
-Response.Write(encodeURI(full));
-// Output: https://example.com/a%20path/?q=hello%20world&x=1+2#frag
-
-var component = "q=hello world&x=1+2";
-var encoded = encodeURIComponent(component);
-Response.Write(encoded);
-// Output: q%3Dhello%20world%26x%3D1%2B2
-
-Response.Write(decodeURIComponent(encoded));
-// Output: q=hello world&x=1+2
-</script>
-```
+Refer to the dedicated Binary and Octal Numeric Literals page for syntax and code examples.
 
 ---
 
-## Math Extensions
+## 25. Global URI Functions
 
-The following additional methods are available on the `Math` object.
+`encodeURI`, `decodeURI`, `encodeURIComponent`, and `decodeURIComponent` for percent-encoding and decoding URI strings and components. `encodeURIComponent` escapes reserved characters like `=`, `&`, and `+`.
 
-### `Math.trunc(x)`
-
-Returns the integer part of `x` by removing the fractional digits.
-
-### `Math.sign(x)`
-
-Returns `1` for positive values, `-1` for negative values, and `0` for zero. Returns `NaN` for `NaN` input.
-
-### `Math.cbrt(x)`
-
-Returns the cube root of `x`.
-
-### Additional Methods
-
-- `Math.acosh(x)`
-- `Math.asinh(x)`
-- `Math.atanh(x)`
-- `Math.expm1(x)`
-- `Math.log1p(x)`
-- `Math.log10(x)`
-- `Math.log2(x)`
-- `Math.hypot(...values)`
-- `Math.fround(x)`
-- `Math.imul(a, b)`
-- `Math.clz32(x)`
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-Response.Write(Math.trunc(4.9)); // Output: 4
-Response.Write(Math.sign(-12));  // Output: -1
-Response.Write(Math.cbrt(27));   // Output: 3
-Response.Write(Math.hypot(3, 4)); // Output: 5
-Response.Write(Math.imul(0xffffffff, 5)); // Output: -5
-Response.Write(Math.clz32(1)); // Output: 31
-</script>
-```
+Refer to the dedicated Global URI Functions page for syntax and code examples.
 
 ---
 
-## Symbol Primitive
+## 26. Math Extensions
 
-### Syntax
+Extended `Math` methods: `Math.trunc`, `Math.sign`, `Math.cbrt`, plus hyperbolic, logarithmic, and miscellaneous functions including `Math.hypot`, `Math.imul`, and `Math.clz32`.
 
-```javascript
-var sym = Symbol(description);
-```
-
-### Remarks
-
-- Each call to `Symbol()` returns a unique value that is never equal to any other `Symbol` or primitive.
-- Symbols can be used as object property keys to create collision-safe identifiers.
-- Calling `new Symbol()` raises a `TypeError`. `Symbol` is not a constructor.
-- Symbol-keyed properties are intentionally hidden from `Object.keys`, `Object.values`, and `Object.entries` to prevent unintended exposure in enumeration.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var s1 = Symbol("id");
-var s2 = Symbol("id");
-var o = {};
-o[s1] = 42;
-Response.Write((s1 !== s2) + "|" + o[s1]);
-// Output: true|42
-</script>
-```
+Refer to the dedicated Math Extensions page for syntax and code examples.
 
 ---
 
-## Symbol Primitive — Well-Known Symbols and Global Registry
+## 27. Symbol Primitive
 
-Well-known symbols are pre-defined `Symbol` values stored as properties of the `Symbol` constructor object.
+Unique, immutable primitive values used as collision-safe object property keys. Each call to `Symbol()` returns a unique value. Symbol-keyed properties are hidden from `Object.keys`, `Object.values`, and `Object.entries`.
 
-| Symbol | Description |
-|---|---|
-| `Symbol.iterator` | Default iterator for `for...of` loops |
-| `Symbol.toStringTag` | Object `[object X]` tag override |
-| `Symbol.species` | Species constructor for derived objects |
-| `Symbol.hasInstance` | Custom `instanceof` behavior |
-| `Symbol.toPrimitive` | Custom primitive conversion |
-
-The global symbol registry allows sharing symbols across realms via `Symbol.for` and `Symbol.keyFor`.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// Well-known symbols are of type "symbol"
-Response.Write(typeof Symbol.iterator);   // Output: symbol
-Response.Write(typeof Symbol.toStringTag); // Output: symbol
-
-// Symbol.for — global registry: same key returns same symbol
-var a = Symbol.for("appToken");
-var b = Symbol.for("appToken");
-Response.Write(a === b); // Output: true
-
-// Symbol.keyFor — retrieve key from registry
-Response.Write(Symbol.keyFor(a)); // Output: appToken
-
-// Locally created symbols are NOT in the registry
-var local = Symbol("local");
-Response.Write(Symbol.keyFor(local) === undefined); // Output: true
-</script>
-```
+Refer to the dedicated Symbol Primitive page for syntax and code examples.
 
 ---
 
-## Iteration Protocol — `for...of` and Custom Iterables
+## 28. Symbol Primitive - Well-Known Symbols and Global Registry
 
-The iteration protocol allows JScript objects to define or customize their iteration behavior, such as which values are looped over in a `for...of` construct.
+Pre-defined well-known symbols including `Symbol.iterator`, `Symbol.toStringTag`, `Symbol.species`, `Symbol.hasInstance`, and `Symbol.toPrimitive`. Global symbol registry via `Symbol.for` and `Symbol.keyFor`.
 
-### `for...of` Statement
-
-The `for...of` statement creates a loop iterating over iterable objects, including built-in `Array`, `String`, `Set`, `Map`, and custom iterables.
-
-### Built-in Iterables
-
-- **Array**: Iterates over elements.
-- **String**: Iterates over characters (handling surrogate pairs).
-- **Set**: Iterates over unique values.
-- **Map**: Iterates over `[key, value]` entries.
-
-### Custom Iterables
-
-To make an object iterable, it must implement the `[Symbol.iterator]` method, which returns an **Iterator** object. An iterator is an object that has a `next()` method returning an object with two properties: `value` (the next value) and `done` (a boolean indicating completion).
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// 1. Iterate over an Array
-var fruits = ["Apple", "Orange", "Banana"];
-for (var fruit of fruits) {
-    Response.Write(fruit + " "); // Output: Apple Orange Banana 
-}
-
-// 2. Manual Iterator usage
-var it = fruits[Symbol.iterator]();
-var res = it.next();
-while (!res.done) {
-    Response.Write(res.value + " ");
-    res = it.next();
-}
-
-// 3. Custom Iterable
-var range = {
-    from: 1,
-    to: 3,
-    [Symbol.iterator]: function() {
-        return {
-            current: this.from,
-            last: this.to,
-            next: function() {
-                if (this.current <= this.last) {
-                    return { value: this.current++, done: false };
-                } else {
-                    return { value: undefined, done: true };
-                }
-            }
-        };
-    }
-};
-
-for (var n of range) {
-    Response.Write(n + " "); // Output: 1 2 3
-}
-</script>
-```
+Refer to the dedicated Symbol Well-Known page for syntax and code examples.
 
 ---
 
-## Binary Data — ArrayBuffer, SharedArrayBuffer and Typed Arrays
+## 29. Iteration Protocol - for...of and Custom Iterables
 
-### Syntax
+The `for...of` loop iterates over iterable objects. Built-in iterables include Array, String, Set, and Map. Custom iterables require implementing the `[Symbol.iterator]` method returning an iterator with a `next()` method.
 
-```javascript
-var buffer = new ArrayBuffer(byteLength);
-var sab    = new SharedArrayBuffer(byteLength);
-var view   = new Uint8Array(buffer);
-var view   = new Uint8Array(sab);
-var view   = new Uint8Array(length);
-var view   = new Uint8Array([1, 2, 3]);
-var dv     = new DataView(buffer [, byteOffset [, byteLength]]);
-var dv     = new DataView(sab [, byteOffset [, byteLength]]);
-```
-
-### Remarks
-
-- `ArrayBuffer` holds a raw byte block. Its `byteLength` property returns its size in bytes. Use `ArrayBuffer.isView(v)` to test whether a value is a typed array view.
-- `SharedArrayBuffer` is similar to `ArrayBuffer` but represents memory that can be shared between agents (workers). In the AxonASP single-threaded context, it behaves like a non-transferable `ArrayBuffer`.
-- **Typed arrays** provide strongly-typed views over an `ArrayBuffer` or `SharedArrayBuffer`. All supported types are listed in the table below.
-- `DataView` gives byte-level control over reads and writes including explicit endianness.
-- Typed array constructors can be called with: a byte **length**, an existing **ArrayBuffer/SharedArrayBuffer**, or an **array-like** source (plain array or another typed array).
-- Index reads past the end of the view return `undefined`. Index writes past the end are silently ignored.
-- Calling a typed array constructor without `new` raises a `TypeError`.
-
-### Supported Typed Array Types
-
-| Constructor | Element type | Bytes per element |
-|---|---|---|
-| `Int8Array` | Signed 8-bit integer | 1 |
-| `Uint8Array` | Unsigned 8-bit integer | 1 |
-| `Uint8ClampedArray` | Unsigned 8-bit integer, clamped [0–255] | 1 |
-| `Int16Array` | Signed 16-bit integer | 2 |
-| `Uint16Array` | Unsigned 16-bit integer | 2 |
-| `Int32Array` | Signed 32-bit integer | 4 |
-| `Uint32Array` | Unsigned 32-bit integer | 4 |
-| `Float32Array` | 32-bit IEEE 754 float | 4 |
-| `Float64Array` | 64-bit IEEE 754 float | 8 |
-| `BigInt64Array` | Signed 64-bit integer (BigInt) | 8 |
-| `BigUint64Array` | Unsigned 64-bit integer (BigInt) | 8 |
-
-### Typed Array Properties
-
-| Property | Description |
-|---|---|
-| `length` | Number of elements |
-| `byteLength` | Total size in bytes |
-| `byteOffset` | Offset into the backing `ArrayBuffer` |
-| `buffer` | The underlying `ArrayBuffer` |
-
-### Typed Array Methods
-
-| Method | Description |
-|---|---|
-| `set(array [, offset])` | Copy values from an array-like source |
-| `subarray([begin [, end]])` | Return a new view over the same buffer |
-| `fill(value [, start [, end]])` | Fill all or part of the view with a value |
-| `slice([begin [, end]])` | Return a new typed array copy of the range |
-| `forEach(callback)` | Iterate over each element |
-| `indexOf(value [, fromIndex])` | Return first index of a matching value, or -1 |
-
-### ArrayBuffer Methods
-
-| Method | Description |
-|---|---|
-| `slice([begin [, end]])` | Return a new `ArrayBuffer` containing a copy of the byte range |
-| `ArrayBuffer.isView(value)` | Return `true` if the value is a typed array or DataView |
-
-### DataView Methods
-
-| Method | Description |
-|---|---|
-| `getInt8(offset)` | Read signed 8-bit int |
-| `getUint8(offset)` | Read unsigned 8-bit int |
-| `getInt16(offset [, littleEndian])` | Read signed 16-bit int |
-| `getUint16(offset [, littleEndian])` | Read unsigned 16-bit int |
-| `getInt32(offset [, littleEndian])` | Read signed 32-bit int |
-| `getUint32(offset [, littleEndian])` | Read unsigned 32-bit int |
-| `getFloat32(offset [, littleEndian])` | Read 32-bit float |
-| `getFloat64(offset [, littleEndian])` | Read 64-bit float |
-| `setInt8(offset, value)` | Write signed 8-bit int |
-| `setUint8(offset, value)` | Write unsigned 8-bit int |
-| `setInt16(offset, value [, littleEndian])` | Write signed 16-bit int |
-| `setUint16(offset, value [, littleEndian])` | Write unsigned 16-bit int |
-| `setInt32(offset, value [, littleEndian])` | Write signed 32-bit int |
-| `setUint32(offset, value [, littleEndian])` | Write unsigned 32-bit int |
-| `setFloat32(offset, value [, littleEndian])` | Write 32-bit float |
-| `setFloat64(offset, value [, littleEndian])` | Write 64-bit float |
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// --- ArrayBuffer and Uint8Array ---
-var buffer = new ArrayBuffer(4);
-var view = new Uint8Array(buffer);
-view[0] = 10;
-view[1] = 20;
-view[2] = 30;
-view[3] = 40;
-Response.Write(view[0] + "," + view[1] + "," + view[2] + "," + view[3]);
-// Output: 10,20,30,40
-
-// --- Uint8ClampedArray ---
-var clamped = new Uint8ClampedArray(2);
-clamped[0] = 300; // clamped to 255
-clamped[1] = -5;  // clamped to 0
-Response.Write(clamped[0] + "," + clamped[1]);
-// Output: 255,0
-
-// --- Int32Array from plain array ---
-var ints = new Int32Array([-100, 0, 100]);
-Response.Write(ints[0] + "," + ints.byteLength);
-// Output: -100,12
-
-// --- DataView with explicit endianness ---
-var db = new ArrayBuffer(8);
-var dv = new DataView(db);
-dv.setInt32(0, 0xDEADBEEF, false); // big-endian
-Response.Write(dv.getInt32(0, false));
-// Output: -559038737
-
-// --- ArrayBuffer.slice ---
-var sliced = buffer.slice(1, 3);
-Response.Write(sliced.byteLength);
-// Output: 2
-
-// --- for...of on typed array ---
-var a = new Uint8Array([10, 20, 30]);
-var sum = 0;
-for (var v of a) { sum += v; }
-Response.Write(sum);
-// Output: 60
-</script>
-```
+Refer to the dedicated Iteration Protocol page for syntax and code examples.
 
 ---
 
-## Set and Map Collections
+## 30. Binary Data - ArrayBuffer, SharedArrayBuffer and Typed Arrays
 
-### `Set`
+Raw binary data buffers via `ArrayBuffer` and `SharedArrayBuffer`. Typed array views include `Int8Array`, `Uint8Array`, `Uint8ClampedArray`, `Int16Array`, `Uint16Array`, `Int32Array`, `Uint32Array`, `Float32Array`, `Float64Array`, `BigInt64Array`, and `BigUint64Array`. Byte-level control via `DataView` with explicit endianness.
 
-A `Set` stores unique values. Duplicate values are silently ignored on insertion.
-
-| Method | Description |
-|---|---|
-| `set.add(value)` | Inserts `value` and returns the `Set`. |
-| `set.has(value)` | Returns `true` if `value` is present. |
-| `set.delete(value)` | Removes `value`. Returns `true` if the value existed. |
-| `set.clear()` | Removes all elements. |
-| `set.size` | Returns the number of unique elements. |
-
-### `Map`
-
-A `Map` stores key/value pairs and preserves insertion order.
-
-| Method | Description |
-|---|---|
-| `map.set(key, value)` | Sets the entry for `key` and returns the `Map`. |
-| `map.get(key)` | Returns the value associated with `key`, or `undefined`. |
-| `map.has(key)` | Returns `true` if an entry for `key` exists. |
-| `map.delete(key)` | Removes the entry for `key`. Returns `true` if it existed. |
-| `map.clear()` | Removes all entries. |
-| `map.size` | Returns the number of entries. |
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var s = new Set();
-s.add("a");
-s.add("b");
-s.add("a"); // duplicate, ignored
-Response.Write(s.has("a") + "|" + s.size);
-// Output: true|2
-
-var m = new Map();
-m.set("k", 10);
-Response.Write(m.has("k") + "|" + m.get("k"));
-// Output: true|10
-</script>
-```
+Refer to the dedicated Binary Data page for syntax and code examples.
 
 ---
 
-## Computed Property Names
+## 31. Set and Map Collections
 
-### Syntax
+`Set` stores unique values with `add`, `has`, `delete`, `clear`, and `size`. `Map` stores key/value pairs with insertion order preservation and `set`, `get`, `has`, `delete`, `clear`, and `size`.
 
-```javascript
-var key = "name";
-var obj = { [key]: "Alice" };
-var obj2 = { [prefix + "_en"]: "Hello", ["dynamic"]: 42 };
-```
-
-Use square brackets around a key expression inside an object literal to compute the property name at runtime.
-
-### Remarks
-
-- The expression inside `[...]` is evaluated at runtime and coerced to a string to form the property name.
-- Any valid JScript expression can be used as the key: variables, string concatenations, function calls, and so on.
-- Computed keys can be mixed freely with static keys and shorthand properties in the same literal.
-- Numeric computed keys are coerced to strings before assignment (consistent with JScript's property model).
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var type = "color";
-var o = {
-    static: "fixed",
-    [type]: "red",
-    [type + "_code"]: "#FF0000"
-};
-Response.Write(o.static);       // Output: fixed
-Response.Write(o.color);        // Output: red
-Response.Write(o.color_code);   // Output: #FF0000
-
-// Dynamic method name
-var methodKey = "greet";
-var api = { [methodKey]: function(n) { return "Hello, " + n; } };
-Response.Write(api.greet("World")); // Output: Hello, World
-</script>
-```
+Refer to the dedicated Set and Map Collections page for syntax and code examples.
 
 ---
 
-## Internationalization API (Intl)
+## 32. Computed Property Names
 
-### Syntax
+Use square bracket expressions inside object literals to compute property names at runtime. Any valid JScript expression can be used. Computed keys can be mixed with static keys and shorthand properties.
 
-```javascript
-var dtf = new Intl.DateTimeFormat(locales[, options]);
-var nfmt = new Intl.NumberFormat(locales[, options]);
-var coll = new Intl.Collator(locales[, options]);
-var plur = new Intl.PluralRules(locales[, options]);
-var rtf = new Intl.RelativeTimeFormat(locales[, options]);
-```
-
-### Remarks
-
-- `Intl` is available as a global namespace in JScript.
-- `DateTimeFormat`, `NumberFormat`, `Collator`, `PluralRules`, and `RelativeTimeFormat` use AxonASP locale profiles and the current server locale when no locale is supplied.
-- Locale input can be a string or an array-like value. AxonASP uses the first usable locale tag and falls back to the effective server locale, then `en-US`.
-- `Intl.DateTimeFormat` supports `dateStyle`, `timeStyle`, `year`, `month`, `day`, `weekday`, `hour`, `minute`, `second`, `hour12`, and `formatToParts()`.
-- `Intl.NumberFormat` supports `style: "decimal"`, `style: "currency"`, `style: "percent"`, and `formatToParts()`.
-- `Intl.Collator` supports `usage` ("sort", "search"), `sensitivity` ("base", "accent", "case", "variant"), `numeric`, `caseFirst`, and `ignorePunctuation`.
-- `Intl.PluralRules` supports `type` ("cardinal", "ordinal") and provides `select(number)`.
-- `Intl.RelativeTimeFormat` supports `numeric` ("always", "auto"), `style` ("long", "short", "narrow"), and provides `format(value, unit)` and `formatToParts(value, unit)`.
-- Unsupported locale values and extra options are ignored or fall back to the closest supported locale profile.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var dateValue = new Date(Date.UTC(2026, 0, 2, 3, 4, 5));
-var enDate = new Intl.DateTimeFormat("en-US", { dateStyle: "short" }).format(dateValue);
-var ptDate = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" }).format(dateValue);
-var deNumber = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(1234567.89);
-
-Response.Write(enDate + "\n");
-Response.Write(ptDate + "\n");
-Response.Write(deNumber + "\n");
-// Output:
-// 1/2/2026
-// 02/01/2026
-// € 1.234.567,89
-
-// Collator Example
-var collator = new Intl.Collator("en", { sensitivity: "base" });
-Response.Write(collator.compare("a", "A") === 0); // Output: true
-
-// PluralRules Example
-var pr = new Intl.PluralRules("en");
-Response.Write(pr.select(1)); // one
-Response.Write(pr.select(2)); // other
-
-// RelativeTimeFormat Example
-var rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-Response.Write(rtf.format(-1, "day")); // yesterday
-Response.Write(rtf.format(2, "day"));  // in 2 days
-</script>
-```
+Refer to the dedicated Computed Property Names page for syntax and code examples.
 
 ---
 
-## Destructuring Assignment
+## 33. Internationalization API (Intl)
 
-Destructuring assignment is a syntax that makes it possible to unpack values from arrays, or properties from objects, into distinct variables.
+Locale-sensitive formatting and comparison: `Intl.DateTimeFormat`, `Intl.NumberFormat`, `Intl.Collator`, `Intl.PluralRules`, and `Intl.RelativeTimeFormat`. Uses AxonASP locale profiles with fallback to `en-US`.
 
-### Object Destructuring
-
-Object destructuring allows you to extract multiple properties from an object and assign them to variables in a single statement.
-
-#### Syntax
-
-```javascript
-var { p1, p2 } = object;
-var { p1: v1, p2: v2 } = object;
-var { p1 = defaultValue } = object; // Default value
-var { p1, ...rest } = object; // Object rest
-```
-
-#### Remarks
-
-- If a variable name matches a property name, you can use the shorthand `{ p1, p2 }`.
-- You can map a property to a different variable name using `{ property: variable }`.
-- **Default Values:** You can provide a default value using `=`. The default is only used if the property is strictly `undefined`.
-- **Rest Property:** The `...rest` syntax creates a new object containing all remaining enumerable own properties of the source object.
-- Nested destructuring is supported: `var { a: { b } } = obj;`.
-- Computed property names can be used: `var { [key]: value } = obj;`.
-- **Validation:** Attempting to destructure `null` or `undefined` raises a `TypeError`.
-
-#### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var user = { id: 1, name: "Alice", details: { age: 25 } };
-
-// Basic destructuring
-var { id, name } = user;
-Response.Write(id + ": " + name + "\n"); // Output: 1: Alice
-
-// Default values and rest
-var { role = "guest", ...others } = { id: 2 };
-Response.Write(role + "|" + others.id + "\n"); // Output: guest|2
-
-// Renaming and nested
-var { name: userName, details: { age } } = user;
-Response.Write(userName + " is " + age + "\n"); // Output: Alice is 25
-
-// Assignment without declaration (requires parentheses)
-var x, y;
-({ x, y } = { x: 10, y: 20 });
-Response.Write(x + y); // Output: 30
-</script>
-```
-
-### Array Destructuring
-
-Array destructuring allows you to extract elements from arrays or any iterable object (like Strings, Sets, or Maps) using an array-like syntax.
-
-#### Syntax
-
-```javascript
-var [a, b] = iterable;
-var [a, , c] = iterable; // Elision (skipping elements)
-var [a = 10] = iterable; // Default value
-var [a, ...rest] = iterable; // Array rest
-var [a, [b, c]] = iterable; // Nested array destructuring
-```
-
-#### Remarks
-
-- Values are extracted in order from the source iterable.
-- **Elision:** You can skip elements using commas: `var [first, , last] = [1, 2, 3];`.
-- **Default Values:** Assigns a default if the iterable yields `undefined` or is exhausted.
-- **Rest Elements:** The `...rest` syntax collects all remaining yielded values into a new Array.
-- **Iteration Protocol:** Unlike object destructuring, array destructuring works with any object that implements the ES6 Iteration Protocol. This includes Strings (yielding characters), Maps (yielding `[key, value]` pairs), and Sets.
-- **Validation:** Attempting to destructure a non-iterable value (like `true` or a plain object without `[Symbol.iterator]`) raises a `TypeError`.
-
-#### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// 1. Basic array with rest
-var [first, ...others] = ["Red", "Green", "Blue"];
-Response.Write(first + ":" + others.length + "\n"); // Output: Red:2
-
-// 2. Default values
-var [x = 1, y = 2] = [42];
-Response.Write(x + "|" + y + "\n"); // Output: 42|2
-
-// 3. String (iterable)
-var [h, e, l, l2, o] = "Hello";
-Response.Write(h + e + l + l2 + o + "\n"); // Output: Hello
-
-// 4. Nested
-var [a, [b, c]] = [1, [2, 3]];
-Response.Write(a + b + c + "\n"); // Output: 6
-
-// 5. Map (yields [key, value] pairs)
-var map = new Map();
-map.set("id", 42);
-var [[key, val]] = map;
-Response.Write(key + "=" + val + "\n"); // Output: id=42
-</script>
-```
+Refer to the dedicated Internationalization API page for syntax and code examples.
 
 ---
 
-## ES6 Classes
+## 34. Destructuring Assignment
 
-AxonASP supports ES6 classes for object-oriented programming. Under the hood, classes are built upon JScript's existing prototype-based inheritance model but with modern syntax and strict semantics.
+Unpack values from arrays (or any iterable) and properties from objects into distinct variables. Supports default values, rest patterns, elision, nesting, and computed property names.
 
-### Syntax
-
-```javascript
-class MyClass [extends BaseClass] {
-    constructor(...args) {
-        [super(...args);]
-        // initialization
-    }
-    
-    method() { ... }
-    
-    static staticMethod() { ... }
-    
-    get property() { ... }
-    set property(value) { ... }
-}
-```
-
-### Remarks
-
-- **Strict Mode:** All code within a `class` body (including methods and the constructor) implicitly runs in **Strict Mode**.
-- **No Hoisting:** Unlike function declarations, classes are not hoisted. You must declare a class before you can use it (Temporal Dead Zone applies).
-- **Instantiation:** Classes must be instantiated with the `new` operator. Calling a class constructor as a normal function (without `new`) throws a `TypeError`.
-- **Instance Methods:** Methods defined inside the class are attached to the class's `prototype`.
-- **Static Methods:** Methods marked with the `static` keyword are attached directly to the class constructor function.
-- **Inheritance:** When a class uses `extends`, AxonASP evaluates the superclass, validates that it is a constructor or `null`, and wires both the constructor chain and the prototype chain.
-- **Null Heritage:** `extends null` is supported. In that case, the class prototype chain terminates at `null`.
-- **Accessors:** `get` and `set` syntax is supported for defining property getters and setters.
-- **Private Fields:** ES2022 private class fields (e.g. `#propertyName`) and private static fields (e.g. `static #staticProperty`) are fully supported. They provide true encapsulation without external memory overhead.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-class Person {
-    constructor(name) {
-        this._name = name;
-    }
-
-    // Instance method
-    greet() {
-        return "Hello, I'm " + this._name;
-    }
-
-    // Static method
-    static species() {
-        return "Homo Sapiens";
-    }
-
-    // Accessors
-    get name() {
-        return this._name.toUpperCase();
-    }
-    
-    set name(value) {
-        this._name = value;
-    }
-}
-
-var p = new Person("Alice");
-Response.Write(p.greet() + "<br>");       // Output: Hello, I'm Alice
-Response.Write(Person.species() + "<br>"); // Output: Homo Sapiens
-Response.Write(p.name + "<br>");           // Output: ALICE
-
-p.name = "Bob";
-Response.Write(p.name);                   // Output: BOB
-</script>
-```
-
-### Inheritance with super()
-
-When a class extends another class, you can use the `super()` keyword to invoke the parent class's constructor and `super.method()` to call parent class methods.
-
-#### super() in Derived Class Constructors
-
-The `super()` call must be made before accessing `this` in a derived class constructor. If `this` is accessed before `super()` completes, a `ReferenceError` is thrown (Temporal Dead Zone).
-
-```javascript
-<script runat="server" language="JScript">
-class Animal {
-    constructor(name) {
-        this.name = name;
-    }
-    speak() {
-        return this.name + " makes a sound";
-    }
-}
-
-class Dog extends Animal {
-    constructor(name, breed) {
-        super(name);        // Call parent constructor
-        this.breed = breed;
-    }
-    speak() {
-        return super.speak() + " - woof!";
-    }
-}
-
-var dog = new Dog("Buddy", "Golden Retriever");
-Response.Write(dog.speak()); // Output: Buddy makes a sound - woof!
-</script>
-```
-
-#### super.method() Calls
-
-Use `super.method()` to invoke a method from the parent class. This is useful for extending parent behavior without completely overriding it.
-
-```javascript
-<script runat="server" language="JScript">
-class Calculator {
-    add(a, b) {
-        return a + b;
-    }
-}
-
-class AdvancedCalculator extends Calculator {
-    add(a, b) {
-        var result = super.add(a, b);
-        return result + 10; // Add 10 to the base result
-    }
-}
-
-var calc = new AdvancedCalculator();
-Response.Write(calc.add(5, 3)); // Output: 18 (5 + 3 + 10)
-</script>
-```
-
-#### super Property Access
-
-You can also use `super` to set or access properties on the parent class prototype:
-
-```javascript
-<script runat="server" language="JScript">
-class Base {
-    greet() { return "Hello"; }
-}
-
-class Derived extends Base {
-    greet() {
-        return super.greet() + " World";
-    }
-    setData(val) {
-        super.data = val; // Set on instance via parent
-    }
-}
-
-var d = new Derived();
-Response.Write(d.greet());   // Output: Hello World
-d.setData(42);
-Response.Write(d.data);      // Output: 42
-</script>
-```
-
-#### Remarks
-
-- `super()` **must** be called in a derived class constructor before accessing `this`. Accessing `this` before `super()` throws a `ReferenceError`.
-- `super.method()` resolves the method from the parent class's prototype and calls it with the current `this` context.
-- Multi-level inheritance is fully supported: `class C extends B extends A` works as expected, with each level able to call its parent via `super`.
-- Static methods cannot use `super.method()` unless they are inside a derived static method that explicitly calls a parent static method.
+Refer to the dedicated Destructuring Assignment page for syntax and code examples.
 
 ---
 
-## Optional Chaining (?.)
+## 35. ES6 Classes
 
-### Syntax
+Modern class syntax with `constructor`, instance methods, static methods, getters/setters, private fields (`#property`), and inheritance via `extends` and `super`. Strict mode is implicit within all class bodies.
 
-```javascript
-obj?.property
-obj?.[expression]
-obj?.method()
-```
-
-### Remarks
-
-- The optional chaining operator (`?.`) allows reading the value of a property located deep within a chain of connected objects without having to expressly validate that each reference in the chain is valid.
-- If the object before the `?.` is `null` or `undefined`, the expression short-circuits and returns `undefined` instead of throwing an error.
-- Works for property access, bracket access, and function calls.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var user = { info: { name: "Alice" } };
-Response.Write(user?.info?.name); // Output: Alice
-Response.Write(user?.settings?.theme); // Output: undefined (no error)
-
-var fn = null;
-Response.Write(fn?.()); // Output: undefined (no error)
-</script>
-```
+Refer to the dedicated ES6 Classes page for syntax and code examples.
 
 ---
 
-## new.target meta-property
+## 36. Optional Chaining (?.)
 
-### Syntax
+Safely access deeply nested properties without explicit null checks. Short-circuits to `undefined` when the operand before `?.` is `null` or `undefined`. Works for property access, bracket access, and function calls.
 
-```javascript
-new.target
-```
-
-### Remarks
-
-- `new.target` allows you to detect whether a function or constructor was called using the `new` operator.
-- In constructors and functions invoked via the `new` operator, `new.target` returns a reference to the constructor or function.
-- In normal function calls, `new.target` is `undefined`.
-- This is particularly useful in class constructors to identify the specific class being instantiated (especially in inheritance scenarios).
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-function Foo() {
-  if (!new.target) {
-    Response.Write("Called as function");
-  } else {
-    Response.Write("Called with new");
-  }
-}
-
-Foo();      // Output: Called as function
-new Foo();  // Output: Called with new
-</script>
-```
+Refer to the dedicated Optional Chaining page for syntax and code examples.
 
 ---
 
-## Nullish Coalescing (??)
+## 37. new.target meta-property
 
-### Syntax
+Detect whether a function or constructor was called with the `new` operator. Returns the constructor reference when called with `new`, and `undefined` for normal function calls.
 
-```javascript
-var result = leftExpr ?? rightExpr;
-```
-
-### Remarks
-
-- The nullish coalescing operator (`??`) is a logical operator that returns its right-hand side operand when its left-hand side operand is `null` or `undefined`, and otherwise returns its left-hand side operand.
-- Unlike the OR operator (`||`), it does not return the right-hand side for other "falsy" values like `0`, `""`, or `false`.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-Response.Write(null ?? "default"); // Output: default
-Response.Write(undefined ?? "default"); // Output: default
-Response.Write(0 ?? 42); // Output: 0
-Response.Write("" ?? "hello"); // Output: (empty string)
-Response.Write(false ?? true); // Output: False
-</script>
-```
+Refer to the dedicated new.target page for syntax and code examples.
 
 ---
 
-## Logical Assignment (||=, &&=, ??=)
+## 38. Nullish Coalescing (??)
 
-### Syntax
+Returns the right-hand side operand only when the left-hand side is `null` or `undefined`. Unlike `||`, it does not treat `0`, `""`, or `false` as values requiring a fallback.
 
-```javascript
-a ||= b;  // Logical OR assignment
-a &&= b;  // Logical AND assignment
-a ??= b;  // Nullish coalescing assignment
-```
-
-### Remarks
-
-- `a ||= b` only assigns `b` to `a` if `a` is falsy.
-- `a &&= b` only assigns `b` to `a` if `a` is truthy.
-- `a ??= b` only assigns `b` to `a` if `a` is nullish (`null` or `undefined`).
-- These operators short-circuit; the right-hand side is only evaluated if the assignment condition is met.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var a = 0;
-a ||= 10;
-Response.Write(a); // Output: 10
-
-var b = 5;
-b &&= 20;
-Response.Write(b); // Output: 20
-
-var c = null;
-c ??= 30;
-Response.Write(c); // Output: 30
-</script>
-```
+Refer to the dedicated Nullish Coalescing page for syntax and code examples.
 
 ---
 
-## Exponentiation Operator (**)
+## 39. Logical Assignment (||=, &&=, ??=)
 
-### Syntax
+Short-circuit assignment operators: `||=` assigns when the target is falsy, `&&=` assigns when the target is truthy, and `??=` assigns when the target is nullish. Right-hand side is only evaluated when needed.
 
-```javascript
-var result = base ** exponent;
-var a **= exponent;
-```
-
-### Remarks
-
-- The exponentiation operator (`**`) returns the result of raising the first operand to the power of the second operand.
-- It is equivalent to `Math.pow()`, but also supports `BigInt`.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-Response.Write(2 ** 3); // Output: 8
-var x = 3;
-x **= 2;
-Response.Write(x); // Output: 9
-</script>
-```
+Refer to the dedicated Logical Assignment page for syntax and code examples.
 
 ---
 
-## BigInt Support
+## 40. Exponentiation Operator (**)
 
-### Syntax
+Returns the result of raising the first operand to the power of the second operand. Equivalent to `Math.pow()` with additional BigInt support. Includes the `**=` assignment variant.
 
-```javascript
-var large = 100n;
-var another = BigInt("9007199254740991");
-```
-
-### Remarks
-
-- `BigInt` is a primitive wrapper object used to represent and manipulate primitive `bigint` values—which are too large to be represented by the `number` primitive.
-- A `BigInt` value is created by appending `n` to the end of an integer literal, or by calling the `BigInt()` constructor.
-- **Restriction:** You cannot mix `BigInt` and `Number` in the same operation (e.g., `10n + 5` throws `TypeError`). You must use explicit conversion.
-- Arithmetic operations (`+`, `-`, `*`, `/`, `%`, `**`) and comparison operators are supported.
-- `BigInt` division truncates towards zero.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var a = 10n;
-var b = 20n;
-Response.Write(a + b); // Output: 30
-Response.Write(2n ** 64n); // Output: 18446744073709551616
-
-try {
-    Response.Write(10n + 5);
-} catch (e) {
-    Response.Write("Error: " + e.message); // Output: Error: Cannot mix BigInt and other types...
-}
-</script>
-```
+Refer to the dedicated Exponentiation Operator page for syntax and code examples.
 
 ---
 
-## Promises
+## 41. BigInt Support
 
-### Syntax
+Arbitrary-precision integers using the `n` suffix or `BigInt()` constructor. Supports arithmetic and comparison operators. Mixing BigInt and Number in the same operation throws a `TypeError`.
 
-```javascript
-var p = new Promise(function(resolve, reject) {
-    // asynchronous operation
-    if (success) resolve(data);
-    else reject(error);
-});
-
-p.then(onFulfilled, onRejected)
- .catch(onRejected)
- .finally(onFinally);
-```
-
-### Remarks
-
-- AxonASP implements the full ES6 `Promise` API.
-- **Microtask Queue:** Promises are resolved using a Microtask queue. In the ASP environment, the queue is processed automatically when the script finishes or when an `await` is hit.
-- Supported static methods: `Promise.resolve(v)`, `Promise.reject(r)`, `Promise.all(iterable)`, `Promise.race(iterable)`.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var p = Promise.resolve(42);
-p.then(function(val) {
-    Response.Write("Promise resolved with: " + val);
-});
-</script>
-```
+Refer to the dedicated BigInt Support page for syntax and code examples.
 
 ---
 
-## Generators (function*)
+## 42. Promises
 
-### Syntax
+Full ES6 Promise API with `then`, `catch`, and `finally`. Uses a microtask queue processed automatically. Static methods include `Promise.resolve`, `Promise.reject`, `Promise.all`, and `Promise.race`.
 
-```javascript
-function* myGenerator() {
-    yield 1;
-    yield 2;
-    return 3;
-}
-
-var g = myGenerator();
-var result = g.next(); // { value: 1, done: false }
-```
-
-### Remarks
-
-- Generators are functions that can be exited and later re-entered. Their context (variable bindings) will be saved across re-entrances.
-- Calling a generator function does not execute its body immediately; it returns an iterator object.
-- `yield` pauses generator execution and returns a value to the caller.
-- `yield*` delegates to another generator or iterable (currently implemented as basic yield).
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-function* idMaker() {
-    var index = 0;
-    while (true)
-        yield index++;
-}
-
-var gen = idMaker();
-Response.Write(gen.next().value + "|"); // 0
-Response.Write(gen.next().value + "|"); // 1
-Response.Write(gen.next().value);       // 2
-</script>
-```
+Refer to the dedicated Promises page for syntax and code examples.
 
 ---
 
-## Async/Await
+## 43. Generators (function*)
 
-### Syntax
+Functions that can be paused and resumed using `yield`. Calling a generator function returns an iterator object. Generator context is preserved across re-entrances. `yield*` delegation is supported.
 
-```javascript
-async function fetchData() {
-    var response = await someAsyncOperation();
-    return response.data;
-}
-
-fetchData().then(function(data) {
-    Response.Write(data);
-});
-```
-
-### Remarks
-
-- `async` functions return a `Promise`.
-- `await` pauses the execution of the async function until the promise is settled.
-- **Synchronous Blocking:** In the AxonASP environment, `await` blocks the current request thread while pumping the microtask queue, ensuring predictable execution order for ASP pages.
-- Standard `try...catch` blocks can be used to handle rejections from awaited promises.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-async function calculate(a, b) {
-    var val = await Promise.resolve(a + b);
-    return val * 2;
-}
-
-calculate(10, 5).then(function(result) {
-    Response.Write("Result: " + result); // Output: Result: 30
-});
-</script>
-```
+Refer to the dedicated Generators page for syntax and code examples.
 
 ---
 
-## ECMAScript Modules (ESM)
+## 44. Async/Await
 
-### Syntax
+`async` functions return a Promise. `await` pauses execution until the Promise settles. In the AxonASP environment, `await` blocks synchronously while pumping the microtask queue. Standard `try...catch` works for error handling.
 
-```javascript
-// math.js
-export const PI = 3.14159;
-export function add(a, b) { return a + b; }
-
-// main.asp
-import { PI, add } from './math.js';
-Response.Write(add(PI, 10));
-```
-
-### Remarks
-
-- AxonASP supports ES Modules via the `import` and `export` statements.
-- **Global AST Cache:** Modules are read and compiled into AST/Bytecode ONCE globally and shared across all requests.
-- **Request-Local Registry:** Each request has its own isolated module execution state. Top-level variables in a module are NOT shared between different users or subsequent requests.
-- **Singleton per Request:** A module is executed only once within a single request, even if imported multiple times.
-- **VM Reset:** Module instances are automatically cleared at the end of each request to prevent memory leaks and state contamination.
-- **Module Resolution:** Imports are resolved relative to the current file path. Absolute paths and standard ASP virtual paths are also supported.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-// Assume 'config.js' exists with: export const version = "2.0";
-import { version } from './config.js';
-Response.Write("Application Version: " + version);
-</script>
-```
-
-## Atomics
-
-### Syntax
-
-```javascript
-Atomics.add(typedArray, index, value)
-Atomics.sub(typedArray, index, value)
-Atomics.and(typedArray, index, value)
-Atomics.or(typedArray, index, value)
-Atomics.xor(typedArray, index, value)
-Atomics.load(typedArray, index)
-Atomics.store(typedArray, index, value)
-Atomics.exchange(typedArray, index, value)
-Atomics.compareExchange(typedArray, index, expectedValue, replacementValue)
-Atomics.isLockFree(size)
-```
-
-### Remarks
-
-- The `Atomics` object provides atomic operations as static methods. They are used with `SharedArrayBuffer` objects to ensure that concurrent memory accesses are predictable and safe.
-- **Strict Validation:** In AxonASP, `Atomics` methods strictly require an integer TypedArray (e.g., `Int32Array`, `Uint8Array`) backed by a `SharedArrayBuffer`. Using a standard `ArrayBuffer` will throw a `TypeError`.
-- **Atomic Operations:** These operations cannot be interrupted and are performed as a single unit. Even in the single-threaded context of a standard ASP request, they provide the necessary semantics for modern JavaScript libraries.
-- `Atomics.isLockFree(size)` returns `true` for sizes 1, 2, 4, and 8, indicating that these operations are performed natively and efficiently by the CPU.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var sab = new SharedArrayBuffer(1024);
-var u32 = new Uint32Array(sab);
-
-Atomics.store(u32, 0, 100);
-var old = Atomics.add(u32, 0, 50);
-
-Response.Write("Old: " + old + ", New: " + Atomics.load(u32, 0));
-// Output: Old: 100, New: 150
-</script>
-```
+Refer to the dedicated Async/Await page for syntax and code examples.
 
 ---
 
-## SharedArrayBuffer
+## 45. Atomics
 
-### Syntax
+Atomic operations on SharedArrayBuffer-backed integer TypedArrays: `add`, `sub`, `and`, `or`, `xor`, `load`, `store`, `exchange`, `compareExchange`, and `isLockFree`. Strictly validates that the backing buffer is a SharedArrayBuffer.
 
-```javascript
-var sab = new SharedArrayBuffer(byteLength);
-```
-
-### Remarks
-
-- `SharedArrayBuffer` represents a generic, fixed-length raw binary data buffer, similar to `ArrayBuffer`.
-- Unlike `ArrayBuffer`, a `SharedArrayBuffer` cannot be detached and its memory can be shared across multiple agents (workers).
-- In the AxonASP single-threaded VM context, `SharedArrayBuffer` behaves identically to `ArrayBuffer` but provides the necessary API compatibility for modern libraries and prepares the engine for future multi-agent support.
-- `SharedArrayBuffer` objects can be used as the backing store for any TypedArray or `DataView`.
-
-### Code Example
-
-```javascript
-<script runat="server" language="JScript">
-var sab = new SharedArrayBuffer(1024);
-var u8 = new Uint8Array(sab);
-u8[0] = 42;
-Response.Write("Value: " + u8[0] + ", Length: " + sab.byteLength);
-// Output: Value: 42, Length: 1024
-</script>
-```
+Refer to the dedicated Atomics page for syntax and code examples.
 
 ---
+
+## Additional Resources
+
+Each feature documented above has its own dedicated page with complete syntax definitions, detailed remarks, and runnable code examples. Navigate to the specific subpage from the documentation menu to view the full reference.
