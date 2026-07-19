@@ -58,6 +58,7 @@
 * ASP/VBScript Modernization 
     * [Strong Typing Variables](md/asp-modernization/strong-typing-variables.md)
     * [Global Console Object](md/asp-modernization/console-object.md)
+    * [Modern VBScript Operators](md/asp-modernization/modern-operators.md)
     * [Enumerations (Enum)](md/asp-modernization/enums.md)
     * [Advanced Arrays/Option Base](md/asp-modernization/advanced-arrays.md)
     * [Static Variables (Static)](md/asp-modernization/static-variables.md)

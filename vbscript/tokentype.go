@@ -99,6 +99,8 @@ const (
 	PunctGreater
 	PunctGreaterOrEqual
 	PunctHash
+	PunctShiftLeft
+	PunctShiftRight
 )
 
 // Keyword represents VBScript keywords
@@ -182,6 +184,9 @@ const (
 	KeywordFreeFile
 	KeywordAs
 	KeywordWrite
+	KeywordIsNot
+	KeywordAndAlso
+	KeywordOrElse
 )
 
 // String returns the string representation of a Keyword
@@ -339,6 +344,12 @@ func (k Keyword) String() string {
 		return "As"
 	case KeywordWrite:
 		return "Write"
+	case KeywordIsNot:
+		return "IsNot"
+	case KeywordAndAlso:
+		return "AndAlso"
+	case KeywordOrElse:
+		return "OrElse"
 	default:
 		return "Unknown"
 	}

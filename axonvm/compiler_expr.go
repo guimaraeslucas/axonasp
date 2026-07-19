@@ -40,6 +40,7 @@ const (
 	PrecAnd                   // And
 	PrecNot                   // Not
 	PrecEquality              // = <> < > <= >= Is
+	PrecShift                 // << >>
 	PrecConcat                // &
 	PrecTerm                  // + -
 	PrecFactor                // * / \ Mod
@@ -182,7 +183,7 @@ func (c *Compiler) emitTrailingCoerceIfValueContext() {
 	}
 	if !suppressCoerce {
 		if kw, ok := c.next.(*vbscript.KeywordToken); ok {
-			suppressCoerce = kw.Keyword == vbscript.KeywordIs
+			suppressCoerce = kw.Keyword == vbscript.KeywordIs || kw.Keyword == vbscript.KeywordIsNot
 		}
 	}
 	if !suppressCoerce {
@@ -574,6 +575,8 @@ func (c *Compiler) getPrecedence(token vbscript.Token) Precedence {
 			return PrecFactor
 		case vbscript.PunctEqual, vbscript.PunctNotEqual, vbscript.PunctLess, vbscript.PunctGreater, vbscript.PunctLessOrEqual, vbscript.PunctGreaterOrEqual:
 			return PrecEquality
+		case vbscript.PunctShiftLeft, vbscript.PunctShiftRight:
+			return PrecShift
 		}
 	case *vbscript.KeywordToken:
 		switch t.Keyword {
@@ -583,15 +586,15 @@ func (c *Compiler) getPrecedence(token vbscript.Token) Precedence {
 			return PrecImp
 		case vbscript.KeywordXor:
 			return PrecXor
-		case vbscript.KeywordAnd:
+		case vbscript.KeywordAnd, vbscript.KeywordAndAlso:
 			return PrecAnd
-		case vbscript.KeywordOr:
+		case vbscript.KeywordOr, vbscript.KeywordOrElse:
 			return PrecOr
 		case vbscript.KeywordNot:
 			return PrecNot
 		case vbscript.KeywordMod:
 			return PrecFactor
-		case vbscript.KeywordIs:
+		case vbscript.KeywordIs, vbscript.KeywordIsNot:
 			return PrecEquality
 		}
 	}
@@ -1023,6 +1026,18 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 				c.parseExpression(PrecFactor)
 				c.emit(OpIDiv)
 			}
+		case vbscript.PunctShiftLeft:
+			return func(c *Compiler, tk vbscript.Token) {
+				c.clearLastCallTarget()
+				c.parseExpression(PrecShift)
+				c.emitExt(ExtOpShiftLeft)
+			}
+		case vbscript.PunctShiftRight:
+			return func(c *Compiler, tk vbscript.Token) {
+				c.clearLastCallTarget()
+				c.parseExpression(PrecShift)
+				c.emitExt(ExtOpShiftRight)
+			}
 		}
 	case *vbscript.KeywordToken:
 		switch t.Keyword {
@@ -1047,6 +1062,12 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 					c.emit(OpIsRef)
 				}
 			}
+		case vbscript.KeywordIsNot:
+			return func(c *Compiler, tk vbscript.Token) {
+				c.undoTrailingCoerce()
+				c.parseExpression(PrecEquality)
+				c.emit(OpIsNotRef)
+			}
 		case vbscript.KeywordAnd:
 			return func(c *Compiler, tk vbscript.Token) {
 				c.clearLastCallTarget()
@@ -1058,6 +1079,43 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 				c.clearLastCallTarget()
 				c.parseExpression(PrecOr)
 				c.emit(OpOr)
+			}
+		case vbscript.KeywordAndAlso:
+			return func(c *Compiler, tk vbscript.Token) {
+				c.clearLastCallTarget()
+				// LHS is already on the stack from the outer parseExpression loop.
+				// If LHS is false, short-circuit: skip RHS evaluation, push False.
+				shortJump := c.emitJump(OpJumpIfFalse)
+				// Parse RHS (only reached if LHS is truthy).
+				c.parseExpression(PrecAnd)
+				shortJump2 := c.emitJump(OpJumpIfFalse)
+				trueIdx := c.addConstant(NewBool(true))
+				c.emit(OpConstant, trueIdx)
+				endJump := c.emitJump(OpJump)
+				// Short-circuit target: push False.
+				falseIdx := c.addConstant(NewBool(false))
+				c.patchJump(shortJump)
+				c.patchJump(shortJump2)
+				c.emit(OpConstant, falseIdx)
+				c.patchJump(endJump)
+			}
+		case vbscript.KeywordOrElse:
+			return func(c *Compiler, tk vbscript.Token) {
+				c.clearLastCallTarget()
+				// LHS is already on the stack from the outer parseExpression loop.
+				// If LHS is true, short-circuit: skip RHS evaluation, push True.
+				shortJump := c.emitJump(OpJumpIfTrue)
+				// Parse RHS (only reached if LHS is falsy).
+				c.parseExpression(PrecOr)
+				shortJump2 := c.emitJump(OpJumpIfTrue)
+				falseIdx := c.addConstant(NewBool(false))
+				c.emit(OpConstant, falseIdx)
+				endJump := c.emitJump(OpJump)
+				trueIdx := c.addConstant(NewBool(true))
+				c.patchJump(shortJump)
+				c.patchJump(shortJump2)
+				c.emit(OpConstant, trueIdx)
+				c.patchJump(endJump)
 			}
 		case vbscript.KeywordXor:
 			return func(c *Compiler, tk vbscript.Token) {

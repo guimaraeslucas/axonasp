@@ -1989,7 +1989,11 @@ func (l *Lexer) nextPunctuation() Token {
 			punctType = &p
 		}
 	case '<':
-		if next == '=' {
+		if next == '<' {
+			l.Index++
+			p := PunctShiftLeft
+			punctType = &p
+		} else if next == '=' {
 			l.Index++
 			p := PunctLessOrEqual
 			punctType = &p
@@ -2021,7 +2025,11 @@ func (l *Lexer) nextPunctuation() Token {
 			punctType = &p
 		}
 	case '>':
-		if next == '=' {
+		if next == '>' {
+			l.Index++
+			p := PunctShiftRight
+			punctType = &p
+		} else if next == '=' {
 			l.Index++
 			p := PunctGreaterOrEqual
 			punctType = &p

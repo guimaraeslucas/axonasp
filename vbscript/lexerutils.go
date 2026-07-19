@@ -56,6 +56,7 @@ var (
 	// keywords maps lowercase keyword strings to their keyword enum values
 	keywords = map[string]Keyword{
 		"and":        KeywordAnd,
+		"andalso":    KeywordAndAlso,
 		"byref":      KeywordByRef,
 		"byval":      KeywordByVal,
 		"call":       KeywordCall,
@@ -81,6 +82,7 @@ var (
 		"implements": KeywordImplements,
 		"in":         KeywordIn,
 		"is":         KeywordIs,
+		"isnot":      KeywordIsNot,
 		"let":        KeywordLet,
 		"loop":       KeywordLoop,
 		"mod":        KeywordMod,
@@ -91,6 +93,7 @@ var (
 		"open":       KeywordOpen,
 		"option":     KeywordOption,
 		"or":         KeywordOr,
+		"orelse":     KeywordOrElse,
 		"preserve":   KeywordPreserve,
 		"private":    KeywordPrivate,
 		"public":     KeywordPublic,

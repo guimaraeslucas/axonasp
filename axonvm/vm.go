@@ -1166,7 +1166,7 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 			return 9
 		case ExtOpFilePrint, ExtOpFileWrite:
 			return 3
-		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord:
+		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight:
 			return 1
 		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
 			return 1
@@ -1241,7 +1241,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 				ip += 2
 			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax,
 				ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile,
-				ExtOpJSReThrow, ExtOpCloneRecord:
+				ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight:
 				// No operands to remap or skip
 			case ExtOpFilePrint, ExtOpFileWrite:
 				ip += 2
@@ -3891,6 +3891,36 @@ aspExecLoop:
 					vm.push(vm.cloneValue(val))
 				} else {
 					vm.push(val)
+				}
+
+			case ExtOpShiftLeft:
+				right := vm.pop()
+				left := vm.pop()
+				if isNull(left) || isNull(right) {
+					vm.push(NewNull())
+					continue
+				}
+				shift := uint64(vm.coerceInt64(right))
+				val := uint64(vm.coerceInt64(left))
+				if shift >= 64 {
+					vm.push(NewInteger(0))
+				} else {
+					vm.push(NewInteger(int64(val << shift)))
+				}
+
+			case ExtOpShiftRight:
+				right := vm.pop()
+				left := vm.pop()
+				if isNull(left) || isNull(right) {
+					vm.push(NewNull())
+					continue
+				}
+				shift := uint64(vm.coerceInt64(right))
+				val := uint64(vm.coerceInt64(left))
+				if shift >= 64 {
+					vm.push(NewInteger(0))
+				} else {
+					vm.push(NewInteger(int64(val >> shift)))
 				}
 
 			default:

@@ -596,6 +596,18 @@ const (
 	// ExtOpCloneRecord clones the UDT record on top of the stack.
 	// [OpExtPrefix, ExtOpCloneRecord] (0 operand bytes)
 	ExtOpCloneRecord
+
+	// ExtOpShiftLeft performs a logical left shift (<<). Both operands on stack.
+	// Stack before: [..., left, right]
+	// Stack after:  [..., left << right]
+	// [OpExtPrefix, ExtOpShiftLeft] (0 operand bytes beyond ext opcode)
+	ExtOpShiftLeft
+
+	// ExtOpShiftRight performs a logical right shift (>>). Both operands on stack.
+	// Stack before: [..., left, right]
+	// Stack after:  [..., left >> right]
+	// [OpExtPrefix, ExtOpShiftRight] (0 operand bytes beyond ext opcode)
+	ExtOpShiftRight
 )
 
 func (op OpCode) String() string {
@@ -1149,6 +1161,10 @@ func (op ExtOpCode) String() string {
 		return "ExtOpJSReThrow"
 	case ExtOpCloneRecord:
 		return "ExtOpCloneRecord"
+	case ExtOpShiftLeft:
+		return "ExtOpShiftLeft"
+	case ExtOpShiftRight:
+		return "ExtOpShiftRight"
 	default:
 		return "ExtOpUnknown"
 	}
