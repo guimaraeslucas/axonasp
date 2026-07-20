@@ -1,0 +1,32 @@
+:8080 {
+	root * ./www
+	route {
+		axonasp {
+			site_name test_site_1
+			global_asa_path ./www/global.asa
+		}
+		file_server
+	}
+}
+
+:8081 {
+	root * ./www2
+	route {
+		axonasp {
+			site_name test_site_2
+			global_asa_path ./www2/global.asa
+		}
+		file_server
+	}
+}
+
+:8082 {
+	root * ../www
+	route {
+		axonasp {
+			site_name test_site_3
+			global_asa_path ../www/global.asa
+		}
+		file_server
+	}
+}

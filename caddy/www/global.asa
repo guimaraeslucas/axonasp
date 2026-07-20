@@ -1,0 +1,10 @@
+<script language="VBScript" runat="Server">
+Sub Application_OnStart
+    Application("SiteName") = "AxonASP Caddy Test"
+    Application("RequestsCount") = 0
+End Sub
+
+Sub Session_OnStart
+    Session("UserStarted") = Now()
+End Sub
+</script>

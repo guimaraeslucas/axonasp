@@ -18,6 +18,7 @@
  * Modifications to the core source code of AxonASP Server must be
  * made available under this same license terms.
  */
+ // Package axonvm provides the core functions of AxonASP Server, it provides the virtual machine and the runtime environment for executing VBScript and JScript code, as well as the built-in objects and libraries used by ASP pages.
 package axonvm
 
 import (

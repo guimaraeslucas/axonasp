@@ -18,6 +18,7 @@
  * Modifications to the core source code of AxonASP Server must be
  * made available under this same license terms.
  */
+// Package axonconfig provides configuration management for AxonASP Server using Viper and also the AboutG3pixAxonASP function to provide information about the project.
 package axonconfig
 
 import (
