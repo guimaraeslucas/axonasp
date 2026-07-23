@@ -1475,6 +1475,15 @@ func (vm *VM) fsoResolvePath(path string) (string, bool) {
 		return "", false
 	}
 
+	// Trusted desktop applications (e.g., AxonHTA) may need unrestricted
+	// filesystem access to read files outside the web root (e.g., user-
+	// selected directories via path aliases). When unrestricted mode is
+	// enabled, skip the sandbox containment check.
+	if vm.host != nil && vm.host.Server().UnrestrictedFS() {
+		globalFSOCache.pathCache.Store(cacheKey, absResolved)
+		return absResolved, true
+	}
+
 	cleanRoot := strings.ToLower(filepath.Clean(absRoot))
 	cleanResolved := strings.ToLower(filepath.Clean(absResolved))
 

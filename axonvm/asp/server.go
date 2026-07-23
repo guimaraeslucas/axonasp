@@ -39,13 +39,14 @@ const (
 
 // Server provides server utility methods.
 type Server struct {
-	mu            sync.RWMutex
-	scriptTimeout int
-	rootDir       string
-	requestPath   string
-	lastError     *ASPError
-	execStart     time.Time
-	execDepth     int
+	mu             sync.RWMutex
+	scriptTimeout  int
+	rootDir        string
+	requestPath    string
+	lastError      *ASPError
+	execStart      time.Time
+	execDepth      int
+	unrestrictedFS bool
 }
 
 // NewServer creates a new Server object with ASP-compatible defaults.
@@ -66,6 +67,23 @@ func (s *Server) SetRootDir(rootDir string) {
 		return
 	}
 	s.rootDir = rootDir
+}
+
+// SetUnrestrictedFS enables or disables unrestricted filesystem access for
+// trusted desktop applications (e.g., AxonHTA). When enabled, the FSO sandbox
+// check in fsoResolvePath is bypassed, allowing Scripting.FileSystemObject to
+// access paths outside the web root.
+func (s *Server) SetUnrestrictedFS(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unrestrictedFS = enabled
+}
+
+// UnrestrictedFS returns whether unrestricted filesystem access is enabled.
+func (s *Server) UnrestrictedFS() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.unrestrictedFS
 }
 
 // SetRequestPath stores the current request URL path for relative MapPath resolution.

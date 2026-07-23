@@ -23,6 +23,7 @@ package axonvm
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -45,6 +46,11 @@ type fsoCacheManager struct {
 	// This ensures that concurrent requests for the same path only trigger one disk I/O.
 	inflightMu sync.Mutex
 	inflight   map[string]*sync.WaitGroup
+
+	// cacheDisabled, when true, causes GetStat and GetReadDir to always read
+	// directly from disk, bypassing the TTL cache. This is used by trusted
+	// desktop hosts (e.g. AxonHTA) that need real-time filesystem access.
+	cacheDisabled atomic.Bool
 }
 
 // globalFSOCache provides process-wide caching for FSO operations.
@@ -53,8 +59,20 @@ var globalFSOCache = &fsoCacheManager{
 	inflight: make(map[string]*sync.WaitGroup),
 }
 
+// SetFSOCacheDisabled toggles the FSO metadata cache. When disabled, every
+// GetStat/GetReadDir call reads directly from disk. Trusted desktop hosts
+// (AxonHTA) call this at startup so that FSO operations always reflect the
+// current filesystem state.
+func SetFSOCacheDisabled(disabled bool) {
+	globalFSOCache.cacheDisabled.Store(disabled)
+}
+
 // GetStat returns cached FileInfo for a path or performs os.Stat and caches it.
 func (c *fsoCacheManager) GetStat(path string) (os.FileInfo, error) {
+	if c.cacheDisabled.Load() {
+		return os.Stat(path)
+	}
+
 	c.mu.RLock()
 	item, ok := c.items[path]
 	c.mu.RUnlock()
@@ -116,6 +134,10 @@ func (c *fsoCacheManager) GetStat(path string) (os.FileInfo, error) {
 
 // GetReadDir returns cached directory entries for a path or performs os.ReadDir and caches it.
 func (c *fsoCacheManager) GetReadDir(path string) ([]os.DirEntry, error) {
+	if c.cacheDisabled.Load() {
+		return os.ReadDir(path)
+	}
+
 	c.mu.RLock()
 	item, ok := c.items[path]
 	c.mu.RUnlock()
