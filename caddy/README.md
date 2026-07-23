@@ -119,7 +119,7 @@ To use AxonASP in your Caddy configuration, use the `axonasp` directive inside y
     route {
         axonasp {
             site_name my_asp_app
-            global_asa_path ./www/
+            global_asa_path ./www/global.asa
         }
         # 3. Fallback to serving static files (HTML, CSS, JS, etc.)
         file_server
