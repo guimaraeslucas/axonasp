@@ -72,3 +72,5 @@ mcp/search-index/
 *.seg
 *.snp
 *.compiled
+/.qoder
+/axonhta/HTAtest
