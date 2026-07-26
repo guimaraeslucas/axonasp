@@ -10,7 +10,7 @@
 build/
 *.wasm
 xcaddy.exe
-
+caddy.exe
 
 # Code coverage profiles and other test artifacts
 *.out

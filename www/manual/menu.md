@@ -11,6 +11,7 @@
     * [Running as a Linux Service](md/runtime/linux-service.md)
     * [Service Wrapper](md/runtime/service-wrapper.md)
     * [IIS Support](md/runtime/iis-support.md)
+    * [Caddy Server Module](md/runtime/caddy-module.md)
     * [FastCGI Setup](md/runtime/fastcgi-setup.md)
     * [AxonASP-FPM](md/runtime/axonasp-fpm.md)
     * [Reverse Proxy Setup](md/runtime/reverse-proxy.md)

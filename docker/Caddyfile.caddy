@@ -1,0 +1,22 @@
+# AxonASP Caddy Edition - Default Caddyfile
+#
+# This file is used when running AxonASP inside the Docker Caddy image.
+# To customise, mount your own Caddyfile at /opt/axonasp/Caddyfile:
+#
+#   docker run -v /path/to/my/Caddyfile:/opt/axonasp/Caddyfile ...
+#
+# Or override the command to pass a different config path:
+#
+#   docker run ... ghcr.io/guimaraeslucas/axonasp:caddy-latest \
+#     ./caddy run --config /etc/caddy/my-caddyfile
+
+:8801 {
+    root * ./www
+    route {
+        axonasp {
+            site_name  axonasp
+            global_asa_path ./www/global.asa
+        }
+        file_server
+    }
+}

@@ -101,8 +101,12 @@ jobs:
         run: |
           set -e
           LDFLAGS="-s -w -X main.Version=${FULL_VERSION}"
+          HTA_LDFLAGS="${LDFLAGS}"
           EXT=""
-          [ "${GOOS}" = "windows" ] && EXT=".exe"
+          if [ "${GOOS}" = "windows" ]; then
+            EXT=".exe"
+            HTA_LDFLAGS="-s -w -H windowsgui -X main.Version=${FULL_VERSION}"
+          fi
 
           build_one() { go build -trimpath -ldflags "${LDFLAGS}" -o "$1" "./$2"; }
 
@@ -113,7 +117,79 @@ jobs:
           build_one "axonasp-admin$EXT"     admin
           build_one "axonasp-service$EXT"   service
           build_one "axonasp-testsuite$EXT" testsuite
+          go build -trimpath -ldflags "${HTA_LDFLAGS}" -o "axonhta$EXT" ./axonhta
           if [ "${GOOS}" != "windows" ]; then build_one "axonasp-fpm" fpm; fi
+
+      - name: Install xcaddy
+        if: matrix.goos == 'linux' || matrix.goos == 'darwin' || matrix.goos == 'windows'
+        run: go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+
+      - name: Build AxonASP Caddy executable
+        if: matrix.goos == 'linux' || matrix.goos == 'darwin' || matrix.goos == 'windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -e
+          export PATH="$(go env GOPATH)/bin:${PATH}"
+          pushd caddy
+          rm -f caddy caddy.exe
+          xcaddy build \
+            --with g3pix.com.br/axonasp/caddy=. \
+            --replace "g3pix.com.br/axonasp=${GITHUB_WORKSPACE}" \
+            --replace "github.com/google/cel-go=github.com/google/cel-go@v0.20.1"
+          popd
+
+      - name: Stage AxonASP Caddy package
+        if: matrix.goos == 'linux' || matrix.goos == 'darwin' || matrix.goos == 'windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          set -e
+          CADDY_OS="${GOOS}"
+          [ "${CADDY_OS}" = "darwin" ] && CADDY_OS="macos"
+          CADDY_STAGE="axonasp-caddy-${CADDY_OS}-${GOARCH}"
+          mkdir -p "${CADDY_STAGE}"
+
+          CADDY_BIN="caddy"
+          [ "${GOOS}" = "windows" ] && CADDY_BIN="caddy.exe"
+          cp "caddy/${CADDY_BIN}" "${CADDY_STAGE}/${CADDY_BIN}"
+
+          cp -r config "${CADDY_STAGE}/config"
+          cp -r www "${CADDY_STAGE}/www"
+          rm -rf "${CADDY_STAGE}/www/tests"
+          cp LICENSE.txt "${CADDY_STAGE}/LICENSE.txt"
+
+          cat > "${CADDY_STAGE}/Caddyfile" <<'CADDYFILE'
+          :8801 {
+              root * ./www
+              route {
+                  axonasp {
+                      site_name  axonasp
+                      global_asa_path ./www/global.asa
+                  }
+                  file_server
+              }
+          }
+          CADDYFILE
+
+      - name: Create AxonASP Caddy archive
+        if: matrix.goos == 'linux' || matrix.goos == 'darwin' || matrix.goos == 'windows'
+        env:
+          GOOS: ${{ matrix.goos }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.goarch }}
+        run: |
+          set -e
+          CADDY_OS="${GOOS}"
+          [ "${CADDY_OS}" = "darwin" ] && CADDY_OS="macos"
+          CADDY_STAGE="axonasp-caddy-${CADDY_OS}-${ARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            zip -r "axonasp-caddy-${CADDY_OS}-${VERSION}-${ARCH}.zip" "${CADDY_STAGE}/"
+          else
+            tar -czf "axonasp-caddy-${CADDY_OS}-${VERSION}-${ARCH}.tar.gz" "${CADDY_STAGE}/"
+          fi
 
       - name: Remove test directory from www
         run: rm -rf ./www/test/ || true
@@ -144,6 +220,21 @@ jobs:
             nfpm package --packager "${packager}" --target .
           done
 
+      - name: Build Linux Caddy packages
+        if: matrix.goos == 'linux'
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -e
+          CADDY_STAGE="axonasp-caddy-linux-${GOARCH}"
+          cp nfpm-caddy.yaml "${CADDY_STAGE}/nfpm-caddy.yaml"
+          pushd "${CADDY_STAGE}"
+          for packager in deb rpm apk; do
+            nfpm package --config nfpm-caddy.yaml --packager "${packager}" --target .
+          done
+          popd
+
       # ──────────────────────────────────────────────────────────────
       # Windows: portable zip (x64 only)
       # ──────────────────────────────────────────────────────────────
@@ -157,7 +248,7 @@ jobs:
           mkdir -p "${STAGE}"
           cp *.exe "${STAGE}/"
           cp -r www config fpm/fpm.d mcp resources LICENSE.txt \
-                LEGAL-DISCLAIMER.md global.asa \
+              LEGAL-DISCLAIMER.md global.asa index.hta \
                 iis-http.cmd install-service.ps1 uninstall-service.ps1 "${STAGE}/"
           zip -r "axonasp-windows-${VERSION}-${ARCH}.zip" "${STAGE}/"
 
@@ -173,9 +264,9 @@ jobs:
           STAGE="axonasp-macos-${ARCH}"
           mkdir -p "${STAGE}"
           cp axonasp-http axonasp-fastcgi axonasp-cli axonasp-mcp \
-             axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm "${STAGE}/"
+             axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm axonhta "${STAGE}/"
           cp -r www fpm/fpm.d config mcp resources LICENSE.txt \
-                LEGAL-DISCLAIMER.md global.asa "${STAGE}/"
+               LEGAL-DISCLAIMER.md global.asa index.hta "${STAGE}/"
           zip -r "axonasp-macos-${VERSION}-${ARCH}.zip" "${STAGE}/"
 
       # ──────────────────────────────────────────────────────────────
@@ -190,8 +281,8 @@ jobs:
           STAGE="axonasp-freebsd-${ARCH}"
           mkdir -p "${STAGE}"
           cp axonasp-http axonasp-fastcgi axonasp-cli axonasp-mcp \
-             axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm "${STAGE}/"
-          cp -r www config fpm/fpm.d resources mcp LICENSE.txt LEGAL-DISCLAIMER.md global.asa "${STAGE}/"
+             axonasp-admin axonasp-service axonasp-testsuite axonasp-fpm axonhta "${STAGE}/"
+          cp -r www config fpm/fpm.d resources mcp LICENSE.txt LEGAL-DISCLAIMER.md global.asa index.hta "${STAGE}/"
           tar -cJf "axonasp-freebsd-${VERSION}-${ARCH}.tar.xz" "${STAGE}/"
 
       - name: Upload artifacts
@@ -204,6 +295,7 @@ jobs:
             *.apk
             *.pkg.tar.zst
             *.zip
+            *.tar.gz
             *.tar.xz
           if-no-files-found: error
 

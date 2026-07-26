@@ -11,10 +11,42 @@ Set-Location $ScriptDir
 
 # Build Caddy with the AxonASP module if it doesn't exist
 if (-not (Test-Path "caddy.exe")) {
-    Write-Host "Building custom Caddy executable with AxonASP module..." -ForegroundColor Yellow
-    & go build -o caddy.exe ./cmd/main.go
+    $XcaddyCmd = Get-Command xcaddy -ErrorAction SilentlyContinue
+    $XcaddyExec = "xcaddy"
+
+    if (-not $XcaddyCmd) {
+        $GoPath = & go env GOPATH 2>$null
+        if ($GoPath) {
+            $Candidate = Join-Path $GoPath "bin\xcaddy.exe"
+            if (Test-Path $Candidate) {
+                $XcaddyExec = $Candidate
+                $XcaddyCmd = $true
+            }
+        }
+    }
+
+    if (-not $XcaddyCmd) {
+        Write-Host "xcaddy not found. Downloading/installing xcaddy..." -ForegroundColor Yellow
+        & go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to install xcaddy. Ensure Go is installed and configured correctly."
+            exit 1
+        }
+        
+        $GoPath = & go env GOPATH 2>$null
+        if ($GoPath) {
+            $Candidate = Join-Path $GoPath "bin\xcaddy.exe"
+            if (Test-Path $Candidate) {
+                $XcaddyExec = $Candidate
+            }
+        }
+    }
+
+    $ParentDir = (Get-Item "..").FullName
+    Write-Host "Building custom Caddy executable with AxonASP module via xcaddy..." -ForegroundColor Yellow
+    & $XcaddyExec build --with g3pix.com.br/axonasp/caddy=. --replace "g3pix.com.br/axonasp=$ParentDir" --replace "github.com/google/cel-go=github.com/google/cel-go@v0.20.1"
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to compile custom Caddy server. Make sure Go is installed."
+        Write-Error "Failed to compile custom Caddy server using xcaddy."
         exit 1
     }
     Write-Host "Caddy built successfully." -ForegroundColor Green
