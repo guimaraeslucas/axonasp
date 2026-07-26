@@ -18,6 +18,10 @@
  * Modifications to the core source code of AxonASP Server must be
  * made available under this same license terms.
  */
+//Use go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+//Then run "go generate" in the project root to embed version info into the executable
+//You need to specify -64=false/-arm=true if you're trying to create an 32-bit or ARM windows binary, this is required by the new version of golang
+//go:generate goversioninfo -icon=icon_hta.ico -64=true
 package main
 
 import (
@@ -80,7 +84,7 @@ var htaConfig *HtaConfig
 func waitForServer(url string) {
 	heartbeatURL := url + "__heartbeat__"
 	client := &http.Client{Timeout: 300 * time.Millisecond}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		resp, err := client.Get(heartbeatURL)
 		if err == nil {
 			resp.Body.Close()

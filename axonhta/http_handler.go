@@ -291,14 +291,8 @@ func buildSourceContext(filePath string, lineNum, contextLines int) string {
 		return ""
 	}
 	lines := strings.Split(string(data), "\n")
-	start := lineNum - contextLines - 1
-	if start < 0 {
-		start = 0
-	}
-	end := lineNum + contextLines
-	if end > len(lines) {
-		end = len(lines)
-	}
+	start := max(lineNum-contextLines-1, 0)
+	end := min(lineNum+contextLines, len(lines))
 
 	var buf strings.Builder
 	buf.WriteString(`<div class="src">`)

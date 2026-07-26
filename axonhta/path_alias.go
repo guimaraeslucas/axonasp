@@ -149,8 +149,8 @@ func resolveAlias(urlPath string) (PathAlias, string) {
 	pathAliasesMu.RLock()
 	defer pathAliasesMu.RUnlock()
 	for _, a := range pathAliases {
-		if strings.HasPrefix(urlPath, a.VirtualPrefix) {
-			relPath := strings.TrimPrefix(urlPath, a.VirtualPrefix)
+		if after, ok := strings.CutPrefix(urlPath, a.VirtualPrefix); ok {
+			relPath := after
 			return a, relPath
 		}
 	}

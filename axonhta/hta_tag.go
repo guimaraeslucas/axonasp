@@ -61,7 +61,7 @@ func ParseHTATag(filePath string) *HtaConfig {
 	}
 
 	match := htaTagRegex.FindStringSubmatch(string(data))
-	if match == nil || len(match) < 2 {
+	if len(match) < 2 {
 		return nil
 	}
 
