@@ -67,10 +67,13 @@ Source: "axonasp-fastcgi.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "axonasp-mcp.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "axonasp-testsuite.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "axonasp-service.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "axonhta.exe"; DestDir: "{app}"; Flags: ignoreversion
+
 
 Source: "install-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "uninstall-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "iis-http.cmd"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "index.hta"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LEGAL-DISCLAIMER.md"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "global.asa"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
@@ -87,6 +90,7 @@ Name: "{group}\{#MyAppName} CLI"; Filename: "{app}\axonasp-cli.exe"; WorkingDir:
 Name: "{group}\{#MyAppName} TestSuite"; Filename: "{app}\axonasp-testsuite.exe"; WorkingDir: "{app}"
 Name: "{group}\{#MyAppName} MCP"; Filename: "{app}\axonasp-mcp.exe"; WorkingDir: "{app}"
 Name: "{group}\{#MyAppName} Configuration Manager"; Filename: "{app}\axonasp-admin.exe"; WorkingDir: "{app}"
+Name: "{group}\{#MyAppName} HTA"; Filename: "{app}\axonhta.exe"; WorkingDir: "{app}"
 Name: "{group}\{#MyAppName} Service"; Filename: "{app}\axonasp-service.exe"; WorkingDir: "{app}"
 Name: "{group}\{#MyAppName} Install Service"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; IconFilename: "{app}\icon_service.ico"; WorkingDir: "{app}"
 Name: "{group}\{#MyAppName} Uninstall Service"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\uninstall-service.ps1"""; IconFilename: "{app}\icon_service.ico"; WorkingDir: "{app}"

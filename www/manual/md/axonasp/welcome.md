@@ -1,4 +1,4 @@
-﻿# ❖ AxonASP 2.3: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
+# ❖ AxonASP 2.3: The Ultimate Classic ASP Engine for the Modern Web with VBScript and JavaScript support
 
 Supercharge your legacy code. Build blazing-fast modern APIs. Experience Classic ASP like never before.
 
@@ -67,6 +67,9 @@ Covers deployment modes, internal architecture, script caching, locale support, 
 
 ### Section: Configuration
 Documents the `axonasp.toml` configuration file: all available keys, default values, and explanations for each setting that controls the engine, server, sessions, caching, and logging.
+
+### Section: AxonHTA
+Covers building and deploying desktop applications with AxonHTA using pure VBScript/JScript and HTML/CSS, Chromium app-mode integration, virtual path aliases, and reference projects in `./axonhta/HTAtest`.
 
 ### Section: ASP Foundations
 A complete reference for Classic ASP fundamentals with VBScript and JScript guidance: the `#include` directive, variables, procedures, conditionals, looping, syntax overview, quick reference, forms, cookies, intrinsic ASP objects (Request, Response, Server, Session, Application), ASPError, Scripting.Dictionary, JScript page directives, and global `console` diagnostics.

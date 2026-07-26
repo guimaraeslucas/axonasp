@@ -1,0 +1,115 @@
+<hta:application
+  applicationname="Music Player"
+  border="thick"
+  caption="yes"
+  maximizebutton="yes"
+  minimizebutton="yes"
+  showintaskbar="yes"
+  singleinstance="yes"
+  windowstate="normal"
+  scroll="no"
+/>
+<!-- #include virtual="/lib/state.asp" -->
+<%
+' ============================================================
+' index.hta - Minimal entry point
+' HTA tag + save_state handler + initial state + HTML shell
+' All playlist/folder logic lives in /api/*.asp
+' ============================================================
+
+' Handle save_state POST (fire-and-forget from Alpine.js)
+If Request.ServerVariables("REQUEST_METHOD") = "POST" And Request.Form("action") = "save_state" Then
+    SaveState Request.Form("idx"), Request.Form("vol")
+    Response.ContentType = "text/plain"
+    Response.Write "ok"
+    Response.End
+End If
+
+' Load saved playback state for initial page render
+Dim savedIdx, savedVol
+LoadState savedIdx, savedVol
+%>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Music Player</title>
+<link rel="stylesheet" href="style.css">
+<script src="vendor/htmx.min.js"></script>
+<script defer src="vendor/alpine.min.js"></script>
+<script src="app.js"></script>
+</head>
+<body>
+
+<audio id="app-audio" preload="auto"></audio>
+
+<div id="player" class="player" x-data="audioPlayer()" x-init="init()"
+     data-si="<%=savedIdx%>" data-sv="<%=savedVol%>"
+     @htmx:after-swap.window="refreshFromDOM()">
+
+  <!-- Now Playing -->
+  <div class="now-playing">
+    <div class="artwork" :class="{active: playing}">
+      <svg viewBox="0 0 80 80" class="disc">
+        <circle cx="40" cy="40" r="38" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <circle cx="40" cy="40" r="28" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+        <circle cx="40" cy="40" r="14" fill="rgba(255,255,255,0.1)"/>
+        <circle cx="40" cy="40" r="4" fill="rgba(255,255,255,0.25)"/>
+      </svg>
+    </div>
+    <div class="track-info">
+      <div class="track-title" x-text="title">Loading...</div>
+      <div class="track-sub" x-show="hasTracks" x-text="sub"></div>
+    </div>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-section" x-show="hasTracks">
+    <div class="time" x-text="fmtTime(currentTime)">0:00</div>
+    <div class="progress-bar" @click="seek($event)">
+      <div class="progress-fill" :style="'width:'+progress+'%'"><div class="progress-thumb"></div></div>
+    </div>
+    <div class="time right" x-text="fmtTime(duration)">0:00</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <button class="btn-ctrl" @click="prev()" :disabled="trackCount < 2" title="Previous">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+    </button>
+    <button class="btn-play" @click="toggle()" :disabled="trackCount === 0">
+      <svg x-show="!playing" viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+      <svg x-show="playing" viewBox="0 0 24 24" width="28" height="28"><path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+    </button>
+    <button class="btn-ctrl" @click="next()" :disabled="trackCount < 2" title="Next">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
+    </button>
+  </div>
+
+  <!-- Volume -->
+  <div class="volume-section">
+    <svg viewBox="0 0 24 24" width="18" height="18" class="vol-icon"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3z"/></svg>
+    <input type="range" min="0" max="100" step="1"
+           value="<%=savedVol%>" @input="setVolume($event.target.value)"
+           class="volume-slider">
+  </div>
+
+  <!-- Playlist Area - loaded via HTMX from /api/playlist.asp -->
+  <div id="playlist-area"
+       hx-get="/api/playlist.asp"
+       hx-trigger="load"
+       hx-swap="outerHTML">
+    <div class="playlist-loading">Loading playlist...</div>
+  </div>
+
+</div>
+
+<!-- Folder Browser Modal -->
+<div id="folder-browser-overlay" class="fb-overlay" style="display:none">
+  <div id="folder-browser-body" class="fb-modal">
+    <!-- HTMX loads folder listing from /api/browse.asp -->
+  </div>
+</div>
+
+</body>
+</html>

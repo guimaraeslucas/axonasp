@@ -10,7 +10,7 @@
 build/
 *.wasm
 xcaddy.exe
-
+caddy.exe
 
 # Code coverage profiles and other test artifacts
 *.out
@@ -72,3 +72,8 @@ mcp/search-index/
 *.seg
 *.snp
 *.compiled
+/.qoder
+
+# AxonHTA test apps - exclude runtime data
+/axonhta/HTAtest/*/temp/
+/axonhta/HTAtest/*/data/state.dat

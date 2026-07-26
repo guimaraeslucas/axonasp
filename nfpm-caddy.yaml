@@ -1,0 +1,44 @@
+# nfpm-caddy.yaml
+name: "axonasp-caddy"
+arch: "amd64"
+platform: "linux"
+version: "${VERSION}" # Injected by GitHub Actions
+section: "web"
+priority: "extra"
+maintainer: "Lucas Guimarães - G3pix <axonasp@g3pix.com.br>"
+description: "AxonASP Caddy Edition - Caddy server bundled with the AxonASP plugin, configuration, and web root."
+vendor: "G3pix"
+homepage: "https://g3pix.com.br/axonasp"
+license: "MPL-2.0"
+
+archlinux:
+  packager: G3pix <axonasp@g3pix.com.br>
+
+contents:
+  # Caddy-integrated executable and runtime assets
+  - src: ./caddy
+    dst: /opt/axonasp/caddy
+  - src: ./Caddyfile
+    dst: /opt/axonasp/Caddyfile
+    type: config|noreplace
+  - src: ./LICENSE.txt
+    dst: /opt/axonasp/LICENSE.txt
+
+  # License for Archlinux package
+  - src: ./LICENSE.txt
+    dst: /usr/share/licenses/axonasp-caddy/LICENSE
+    file_info:
+      mode: 0644
+
+  # Runtime directories
+  - src: ./www/
+    dst: /opt/axonasp/www/
+    type: tree
+  - src: ./config/
+    dst: /opt/axonasp/config/
+    type: config|noreplace
+
+  # Symlink for easier access
+  - src: /opt/axonasp/caddy
+    dst: /usr/bin/axonasp-caddy
+    type: symlink

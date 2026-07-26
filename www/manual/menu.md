@@ -11,6 +11,7 @@
     * [Running as a Linux Service](md/runtime/linux-service.md)
     * [Service Wrapper](md/runtime/service-wrapper.md)
     * [IIS Support](md/runtime/iis-support.md)
+    * [Caddy Server Module](md/runtime/caddy-module.md)
     * [FastCGI Setup](md/runtime/fastcgi-setup.md)
     * [AxonASP-FPM](md/runtime/axonasp-fpm.md)
     * [Reverse Proxy Setup](md/runtime/reverse-proxy.md)
@@ -36,6 +37,10 @@
     * [The Client-Side Script](md/axonlive/client_script.md)
     * [AxonLive Builder](md/axonlive/builder.md)
     * [WASM Support](md/axonlive/wasm.md)
+* AxonHTA
+    * [Overview and Architecture](md/axonhta/index.md)
+    * [Building and Running Applications](md/axonhta/getting_started.md)
+    * [Sample Applications](md/axonhta/examples.md)
 * ASP Foundations
     * [global.asa](md/asp/global-asa.md)
     * [The #include Directive](md/asp/include.md)

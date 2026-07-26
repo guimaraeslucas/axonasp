@@ -4270,14 +4270,14 @@ aspExecLoop:
 			classNameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			instance := vm.newRuntimeClassInstance(vm.constants[classNameIdx].Str)
-			
+
 			if instance.Type != VTObject {
 				vm.push(instance)
 				continue
 			}
 
 			isPrivateConstructor := false
-			classDef, exists := vm.runtimeClasses[strings.ToLower(strings.TrimSpace(instance.ClassName))]
+			classDef, exists := vm.runtimeClasses[strings.ToLower(strings.TrimSpace(instance.Str))]
 			if exists && classDef.Methods != nil {
 				if initMethod, ok := classDef.Methods["class_initialize"]; ok {
 					if !initMethod.IsPublic {
@@ -4292,7 +4292,7 @@ aspExecLoop:
 					callerFrame := vm.callStack[len(vm.callStack)-1]
 					if callerFrame.boundObj != 0 {
 						if callerInstance, ok := vm.runtimeClassItems[callerFrame.boundObj]; ok {
-							if strings.EqualFold(callerInstance.ClassName, instance.ClassName) {
+							if strings.EqualFold(callerInstance.ClassName, instance.Str) {
 								isInternal = true
 							}
 						}

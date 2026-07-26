@@ -19,6 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/caddyserver/caddy/v2"
+	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"github.com/spf13/viper"
@@ -27,6 +28,15 @@ import (
 	"g3pix.com.br/axonasp/axonconfig"
 	"g3pix.com.br/axonasp/axonvm"
 	"g3pix.com.br/axonasp/axonvm/asp"
+)
+
+// Interface guards to verify implementation of standard Caddy v2 interfaces.
+var (
+	_ caddy.Module                = (*AxonASP)(nil)
+	_ caddy.Provisioner           = (*AxonASP)(nil)
+	_ caddy.Validator             = (*AxonASP)(nil)
+	_ caddyhttp.MiddlewareHandler = (*AxonASP)(nil)
+	_ caddyfile.Unmarshaler       = (*AxonASP)(nil)
 )
 
 func init() {
@@ -211,6 +221,10 @@ func (a *AxonASP) Provision(ctx caddy.Context) error {
 	a.config = v
 	a.logger.Info("Loaded AxonASP config for Caddy", zap.String("path", configPath))
 
+	siteTemp := a.resolveSiteTempDir(nil)
+	a.setupSiteTempDir(siteTemp)
+	a.logger.Info("Provision: Intercepted AxonASP TempDir to Caddy native temp storage", zap.String("path", siteTemp))
+
 	// Verify logo path exists if configured
 	logoPath := active.GetString("axfunctions.ax_default_logo_path")
 	if logoPath != "" {
@@ -253,6 +267,21 @@ func (a *AxonASP) Provision(ctx caddy.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// Validate ensures the module is properly configured.
+func (a *AxonASP) Validate() error {
+	if a.ConfigFile != "" {
+		if _, err := os.Stat(a.ConfigFile); os.IsNotExist(err) {
+			return fmt.Errorf("configured config_file path does not exist: %s", a.ConfigFile)
+		}
+	}
+	if a.GlobalAsaPath != "" {
+		if _, err := os.Stat(a.GlobalAsaPath); os.IsNotExist(err) {
+			return fmt.Errorf("configured global_asa_path does not exist: %s", a.GlobalAsaPath)
+		}
+	}
 	return nil
 }
 
@@ -372,6 +401,17 @@ func (a *AxonASP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	if path == "" {
 		path = "/"
 	}
+
+	cleanReqPath := strings.TrimRight(path, "/")
+	reqFile := strings.ToLower(filepath.Base(cleanReqPath))
+	if reqFile == "global.asa" || reqFile == "myinfo.xml" {
+		w.WriteHeader(http.StatusNotFound)
+		http.Error(w, "404 page not found", http.StatusNotFound)
+		return nil
+	}
+
+	siteTemp := a.resolveSiteTempDir(r)
+	a.setupSiteTempDir(siteTemp)
 
 	webRoot := "."
 	if a.GlobalAsaPath != "" {
@@ -884,6 +924,72 @@ func relativePathToDoc(path, doc string) string {
 	return filepath.Join(filepath.FromSlash(path), doc)
 }
 
+func caddyNativeTempDir() string {
+	if dir := os.Getenv("CADDY_DATA_DIR"); dir != "" {
+		return filepath.Join(dir, "temp")
+	}
+	if dir := os.Getenv("XDG_DATA_HOME"); dir != "" {
+		return filepath.Join(dir, "caddy", "temp")
+	}
+	if userConfig, err := os.UserConfigDir(); err == nil && userConfig != "" {
+		return filepath.Join(userConfig, "Caddy", "temp")
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return filepath.Join(home, ".local", "share", "caddy", "temp")
+	}
+	return filepath.Join(os.TempDir(), "caddy", "temp")
+}
+
+func (a *AxonASP) resolveSiteTempDir(r *http.Request) string {
+	siteKey := strings.TrimSpace(a.SiteName)
+	if siteKey == "" && r != nil {
+		siteKey = requestServerName(r)
+	}
+	if siteKey == "" && a.GlobalAsaPath != "" {
+		siteKey = filepath.Base(filepath.Dir(a.GlobalAsaPath))
+	}
+	if siteKey == "" {
+		siteKey = "default"
+	}
+
+	siteKey = sanitizeDirName(siteKey)
+	return filepath.Join(caddyNativeTempDir(), "axonasp", siteKey)
+}
+
+func sanitizeDirName(name string) string {
+	name = strings.TrimSpace(name)
+	var sb strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('_')
+		}
+	}
+	res := sb.String()
+	if res == "" || res == "." || res == ".." {
+		return "default"
+	}
+	return res
+}
+
+func (a *AxonASP) setupSiteTempDir(siteTemp string) {
+	cacheDir := filepath.Join(siteTemp, "cache")
+	sessionsDir := filepath.Join(siteTemp, "sessions")
+	sessionDir := filepath.Join(siteTemp, "session")
+
+	_ = os.MkdirAll(siteTemp, 0o755)
+	_ = os.MkdirAll(cacheDir, 0o755)
+	_ = os.MkdirAll(sessionsDir, 0o755)
+	_ = os.MkdirAll(sessionDir, 0o755)
+
+	axonconfig.NewViper().Set("global.temp_dir", siteTemp)
+	if a.config != nil {
+		a.config.Set("global.temp_dir", siteTemp)
+	}
+	asp.SetSessionStorageDir(sessionsDir)
+}
+
 func resolveDefaultASPPath(webRoot, requestPath string) (string, bool) {
 	directoryPath := requestPath
 	if directoryPath == "" {
@@ -906,7 +1012,7 @@ func resolveDefaultASPPath(webRoot, requestPath string) (string, bool) {
 		return requestPath, false
 	}
 
-	defaultDocs := []string{"default.asp", "index.asp"}
+	defaultDocs := []string{"index.asp", "default.asp", "home.asp", "main.asp"}
 	for _, doc := range defaultDocs {
 		testPath := filepath.Join(webRoot, relativePathToDoc(directoryPath, doc))
 		if info, err := os.Stat(testPath); err == nil && !info.IsDir() {
@@ -914,7 +1020,7 @@ func resolveDefaultASPPath(webRoot, requestPath string) (string, bool) {
 		}
 	}
 
-	return strings.TrimSuffix(directoryPath, "/") + "/index.asp", true
+	return requestPath, false
 }
 
 // singleHeaderResponseWriter prevents duplicate WriteHeader calls

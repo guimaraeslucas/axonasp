@@ -109,6 +109,7 @@ if ($Clean) {
     Remove-Item -Path "axonasp-mcp.exe"     -ErrorAction SilentlyContinue
     Remove-Item -Path "axonasp-service.exe" -ErrorAction SilentlyContinue
     Remove-Item -Path "axonasp-admin.exe"   -ErrorAction SilentlyContinue
+    Remove-Item -Path "axonhta.exe"        -ErrorAction SilentlyContinue
     Remove-Item -Path "build" -Recurse -Force -ErrorAction SilentlyContinue
     Write-Success "Cleaned."
     Write-Host ""
@@ -122,8 +123,8 @@ $Targets = @(
     @{ Label = "Test Suite"; Output = "axonasp-testsuite"; Source = "./testsuite" },
     @{ Label = "MCP"; Output = "axonasp-mcp"; Source = "./mcp" },
     @{ Label = "Service Wrapper"; Output = "axonasp-service"; Source = "./service" },
-    @{ Label = "Admin Tool"; Output = "axonasp-admin"; Source = "./admin" }
-
+    @{ Label = "Admin Tool"; Output = "axonasp-admin"; Source = "./admin" },
+    @{ Label = "HTA Desktop"; Output = "axonhta"; Source = "./axonhta" }
 )
 
 function Build-Binary {
@@ -142,6 +143,10 @@ function Build-Binary {
     $OutputFile = "${OutputName}${Extension}"
     # Linker flags: -s (strip symbol table), -w (omit DWARF), -X main.Version=... (embed version)
     $LdFlags = "-s -w -X main.Version=$FullVersion"
+    # AxonHTA is a desktop app: hide the console window on Windows.
+    if ($OutputName -eq "axonhta" -and $TargetOS -eq "windows") {
+        $LdFlags += " -H windowsgui"
+    }
     $BuildArgs = @("build", "-trimpath", "-ldflags", $LdFlags, "-o", $OutputFile)
     if ($NormalizedTags) {
         $BuildArgs += @("-tags", $NormalizedTags)
@@ -254,7 +259,7 @@ if ($BuildSuccess) {
     Write-Host ""
     Write-Host "  Executables:" -ForegroundColor White
 
-    @("axonasp-http.exe", "axonasp-fastcgi.exe", "axonasp-cli.exe", "axonasp-testsuite.exe", "axonasp-mcp.exe", "axonasp-service.exe", "axonasp-admin.exe") | ForEach-Object {
+    @("axonasp-http.exe", "axonasp-fastcgi.exe", "axonasp-cli.exe", "axonasp-testsuite.exe", "axonasp-mcp.exe", "axonasp-service.exe", "axonasp-admin.exe", "axonhta.exe") | ForEach-Object {
         if (Test-Path $_) { Write-Host "    - $_" -ForegroundColor Cyan }
     }
 
@@ -273,6 +278,7 @@ if ($BuildSuccess) {
     Write-Host "    MCP         : .\axonasp-mcp.exe" -ForegroundColor Gray
     Write-Host "    Service     : .\axonasp-service.exe install|start|stop|uninstall" -ForegroundColor Gray
     Write-Host "    Admin Tool  : .\axonasp-admin.exe" -ForegroundColor Gray
+    Write-Host "    HTA Desktop : .\axonhta.exe --app .\axonhta\HTAtest\axonhta-todo-app" -ForegroundColor Gray
 }
 else {
     Write-Err "  BUILD FAILED!"

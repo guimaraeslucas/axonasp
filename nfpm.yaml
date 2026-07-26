@@ -35,6 +35,8 @@ contents:
     dst: /opt/axonasp/axonasp-service
   - src: ./axonasp-admin
     dst: /opt/axonasp/axonasp-admin
+  - src: ./axonhta
+    dst: /opt/axonasp/axonhta
   - src: ./install-service.sh
     dst: /opt/axonasp/install-service.sh
   - src: ./uninstall-service.sh
@@ -50,6 +52,8 @@ contents:
   - src: ./global.asa
     dst: /opt/axonasp/global.asa
     type: config|noreplace
+  - src: ./index.hta
+    dst: /opt/axonasp/index.hta
 
   # License for Archlinux package
   - src: ./LICENSE.txt
@@ -97,6 +101,9 @@ contents:
     type: symlink
   - src: /opt/axonasp/axonasp-testsuite
     dst: /usr/bin/axonasp-testsuite
+    type: symlink
+  - src: /opt/axonasp/axonhta
+    dst: /usr/bin/axonhta
     type: symlink
   - src: /opt/axonasp/config/axonasp.toml
     dst: /etc/axonasp/config/axonasp.toml

@@ -114,16 +114,16 @@ cd "$SCRIPT_DIR" || exit 1
 # Clean previous builds
 if [ "$CLEAN" -eq 1 ]; then
     write_info "Cleaning previous builds..."
-    rm -f axonasp-http.exe axonasp-fastcgi.exe axonasp-cli.exe axonasp-testsuite.exe axonasp-mcp.exe axonasp-service.exe axonasp-admin.exe axonasp-http axonasp-fastcgi axonasp-cli axonasp-testsuite axonasp-mcp axonasp-service axonasp-admin
+    rm -f axonasp-http.exe axonasp-fastcgi.exe axonasp-cli.exe axonasp-testsuite.exe axonasp-mcp.exe axonasp-service.exe axonasp-admin.exe axonhta.exe axonasp-http axonasp-fastcgi axonasp-cli axonasp-testsuite axonasp-mcp axonasp-service axonasp-admin axonhta
     rm -rf build
     write_success "Cleaned."
     echo ""
 fi
 
 # Targets
-TARGET_LABELS=("HTTP Server" "FastCGI Server" "CLI" "Test Suite" "MCP" "Service Wrapper" "Admin Tool")
-TARGET_OUTPUTS=("axonasp-http" "axonasp-fastcgi" "axonasp-cli" "axonasp-testsuite" "axonasp-mcp" "axonasp-service" "axonasp-admin")
-TARGET_SOURCES=("./server" "./fastcgi" "./cli" "./testsuite" "./mcp" "./service" "./admin")
+TARGET_LABELS=("HTTP Server" "FastCGI Server" "CLI" "Test Suite" "MCP" "Service Wrapper" "Admin Tool" "HTA Desktop")
+TARGET_OUTPUTS=("axonasp-http" "axonasp-fastcgi" "axonasp-cli" "axonasp-testsuite" "axonasp-mcp" "axonasp-service" "axonasp-admin" "axonhta")
+TARGET_SOURCES=("./server" "./fastcgi" "./cli" "./testsuite" "./mcp" "./service" "./admin" "./axonhta")
 
 BUILD_SUCCESS=true
 
@@ -144,6 +144,10 @@ build_binary() {
 
     local output_file="${output_name}${extension}"
     local ldflags="-X main.Version=$FULL_VERSION"
+    # AxonHTA is a desktop app: hide the console window on Windows.
+    if [ "$output_name" = "axonhta" ] && [ "$target_os" = "windows" ]; then
+        ldflags="$ldflags -H windowsgui"
+    fi
     local build_args=(build -trimpath -ldflags "$ldflags" -o "$output_file")
     if [ -n "$NORMALIZED_TAGS" ]; then
         build_args+=(-tags "$NORMALIZED_TAGS")
@@ -268,7 +272,7 @@ if [ "$BUILD_SUCCESS" = true ]; then
     echo -e " ${WHITE} Executables:${NC}"
 
     # List root executables
-    for file in axonasp-http axonasp-fastcgi axonasp-cli axonasp-testsuite axonasp-mcp axonasp-service axonasp-admin; do
+    for file in axonasp-http axonasp-fastcgi axonasp-cli axonasp-testsuite axonasp-mcp axonasp-service axonasp-admin axonhta; do
         if [ -f "$file" ]; then echo -e "    - ${CYAN}$file${NC}"; fi
     done
 
@@ -288,6 +292,7 @@ if [ "$BUILD_SUCCESS" = true ]; then
     echo -e "    ${DARKGRAY}MCP         : ./axonasp-mcp${NC}"
     echo -e "    ${DARKGRAY}Service     : ./axonasp-service install|start|stop|uninstall${NC}"
     echo -e "    ${DARKGRAY}Admin Tool  : ./axonasp-admin${NC}"
+    echo -e "    ${DARKGRAY}HTA Desktop : ./axonhta --app ./axonhta/HTAtest/axonhta-todo-app${NC}"
     
     echo -e "${MAGENTA}=======================================================${NC}"
     echo ""

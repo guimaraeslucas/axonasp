@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"g3pix.com.br/axonasp/vbscript"
+	_"g3pix.com.br/axonasp/vbscript"
 )
 
 func TestASPPrivateConstructorEncapsulation(t *testing.T) {
@@ -39,7 +39,7 @@ End If
 	}
 
 	var output bytes.Buffer
-	vm := NewVM(compiler.Bytecode, compiler.Constants, compiler.GlobalNames)
+	vm := NewVMFromCompiler(compiler)
 	vm.SetOutput(&output)
 
 	// Run the script to test external instantiation failure
@@ -72,7 +72,7 @@ End If
 
 	if vm.beginUserSubCall(method, nil, false, instance.Num) {
 		// execute the method body
-		err := vm.runLoop()
+		err := vm.Run()
 		if err != nil {
 			t.Fatalf("CreateInternal failed: %v", err)
 		}

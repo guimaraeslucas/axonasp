@@ -147,6 +147,10 @@ func (self *_parser) parseTryStatement() ast.Statement {
 		Body: self.parseBlockStatement(),
 	}
 
+	for self.token == token.SEMICOLON {
+		self.next()
+	}
+
 	if self.token == token.CATCH {
 		catch := self.idx
 		self.next()
@@ -161,6 +165,10 @@ func (self *_parser) parseTryStatement() ast.Statement {
 			Parameter: parameter,
 			Body:      self.parseBlockStatement(),
 		}
+	}
+
+	for self.token == token.SEMICOLON {
+		self.next()
 	}
 
 	if self.token == token.FINALLY {
@@ -1103,6 +1111,10 @@ func (self *_parser) parseIfStatement() ast.Statement {
 	} else {
 		self.scope.allowLet = false
 		node.Consequent = self.parseStatement()
+	}
+
+	for self.token == token.SEMICOLON {
+		self.next()
 	}
 
 	if self.token == token.ELSE {
