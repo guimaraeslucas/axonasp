@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	_ "g3pix.com.br/axonasp/vbscript"
+	_"g3pix.com.br/axonasp/vbscript"
 )
 
 func TestASPPrivateConstructorEncapsulation(t *testing.T) {
