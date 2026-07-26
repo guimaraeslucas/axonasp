@@ -84,8 +84,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Branch push → :latest (main only) and :sha-<short>
-            type=raw,value=latest,enable={{is_default_branch}}
+            # Branch/tag push → :latest and :sha-<short>
+            type=raw,value=latest
             type=sha,prefix=sha-,format=short
             # Semver tags → :v1.2.3, :1.2, :1
             type=semver,pattern={{version}}
@@ -157,7 +157,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=caddy,enable={{is_default_branch}}
+            type=raw,value=caddy
             type=sha,prefix=caddy-sha-,format=short
             type=semver,pattern=caddy-{{version}}
             type=semver,pattern=caddy-{{major}}.{{minor}}
