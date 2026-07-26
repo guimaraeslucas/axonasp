@@ -117,7 +117,10 @@ jobs:
           build_one "axonasp-admin$EXT"     admin
           build_one "axonasp-service$EXT"   service
           build_one "axonasp-testsuite$EXT" testsuite
-          go build -trimpath -ldflags "${HTA_LDFLAGS}" -o "axonhta$EXT" ./axonhta
+          # axonhta source directory conflicts with the output name when no .exe
+          # suffix is used.  Build to a temporary name then rename.
+          go build -trimpath -ldflags "${HTA_LDFLAGS}" -o "axonhta${EXT}.tmp" ./axonhta
+          mv "axonhta${EXT}.tmp" "axonhta${EXT}"
           if [ "${GOOS}" != "windows" ]; then build_one "axonasp-fpm" fpm; fi
 
       - name: Install xcaddy
