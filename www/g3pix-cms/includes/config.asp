@@ -37,8 +37,8 @@ function ResolveExistingFolder(candidates) {
 function ResolveDataDirectoryFS() {
     var rootFolderName = GetRootFolderName();
     var candidates = [
-        Server.MapPath("/../" + rootFolderName + "/data"),
         Server.MapPath(G3PIX_ROOT_PATH + "/data"),
+        Server.MapPath("/../" + rootFolderName + "/data"),
         Server.MapPath("./data"),
         Server.MapPath("../data")
     ];
@@ -54,7 +54,7 @@ function ResolveUploadDirectoryFS() {
 }
 
 var G3PIX_DATA_DIR_FS = ResolveDataDirectoryFS();
-var G3PIX_DB_FILE = G3PIX_DATA_DIR_FS + "\\g3pix.sqlite";
+var G3PIX_DB_FILE = G3PIX_DATA_DIR_FS + "/g3pix.sqlite";
 var G3PIX_UPLOAD_DIR_FS = ResolveUploadDirectoryFS();
 
 function GetAxonCssHref() {
