@@ -7,13 +7,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"io"
-	"os"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 	"g3pix.com.br/axonasp/axonvm"
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 )
 
 // g3alEndpoint is the URL prefix for all G3AxonLive communication.

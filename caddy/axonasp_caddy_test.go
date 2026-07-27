@@ -208,4 +208,3 @@ End If
 		t.Errorf("POST /g3al valid session: expected %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
 	}
 }
-

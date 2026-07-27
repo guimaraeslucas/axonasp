@@ -89,3 +89,43 @@ func TestJScriptCollectionCompatibility(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeJScriptCollectionAssignmentsRegexEscapedQuotes(t *testing.T) {
+	input := `
+function escapeAttr(s) {
+  return (s + '').replace(/\\/g, "\\\\").replace(/\'/g, "&#39;").replace(/\"/g, "&quot;");
+}
+var sItems = escapeAttr("hello 'world'");
+Response.Cookies("SelectedItem") = sItems;
+`
+	expected := `
+function escapeAttr(s) {
+  return (s + '').replace(/\\/g, "\\\\").replace(/\'/g, "&#39;").replace(/\"/g, "&quot;");
+}
+var sItems = escapeAttr("hello 'world'");
+Response.Cookies("SelectedItem", sItems);
+`
+	got := normalizeJScriptCollectionAssignments(input)
+	if got != expected {
+		t.Errorf("normalizeJScriptCollectionAssignments failed.\nExpected:\n%s\nGot:\n%s", expected, got)
+	}
+}
+
+func TestJScriptCollectionAssignmentWithEscapedQuoteRegex(t *testing.T) {
+	source := `<%@LANGUAGE="JScript"%>
+<%
+function escapeAttr(s) {
+  return (s + '').replace(/\\/g, "\\\\").replace(/\'/g, "&#39;").replace(/\"/g, "&quot;");
+}
+
+var sItems = escapeAttr("hello 'world'");
+
+Response.Cookies("SelectedItem") = sItems;
+Response.Write("done");
+%>`
+
+	out := runASPSourceForTest(t, source)
+	if strings.TrimSpace(out) != "done" {
+		t.Fatalf("expected output 'done', got %q", out)
+	}
+}
