@@ -267,6 +267,10 @@ func (a *AxonASP) Provision(ctx caddy.Context) error {
 		}
 	}
 
+	if a.isG3AxonLiveActive() {
+		axonvm.G3ALStartCleanup(30)
+	}
+
 	return nil
 }
 
@@ -402,6 +406,12 @@ func (a *AxonASP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		path = "/"
 	}
 
+	if isAxonLiveEndpoint(path) {
+		if a.isG3AxonLiveActive() {
+			return a.handleAxonLive(w, r)
+		}
+	}
+
 	cleanReqPath := strings.TrimRight(path, "/")
 	reqFile := strings.ToLower(filepath.Base(cleanReqPath))
 	if reqFile == "global.asa" || reqFile == "myinfo.xml" {
@@ -413,12 +423,7 @@ func (a *AxonASP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	siteTemp := a.resolveSiteTempDir(r)
 	a.setupSiteTempDir(siteTemp)
 
-	webRoot := "."
-	if a.GlobalAsaPath != "" {
-		webRoot = filepath.Dir(a.GlobalAsaPath)
-	} else if docRoot, ok := caddyhttp.GetVar(r.Context(), "root").(string); ok && docRoot != "" {
-		webRoot = docRoot
-	}
+	webRoot := a.resolveWebRoot(r)
 
 	if path != "/" && !strings.HasSuffix(path, "/") {
 		relativePath := strings.TrimPrefix(path, "/")
@@ -450,6 +455,10 @@ func (a *AxonASP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 		return next.ServeHTTP(w, r)
 	}
 
+	return a.executeASPFile(w, r, webRoot, cleanPath)
+}
+
+func (a *AxonASP) executeASPFile(w http.ResponseWriter, r *http.Request, webRoot string, cleanPath string) error {
 	w.Header().Set("X-Powered-By", "AxonASP")
 
 	single := newSingleHeaderResponseWriter(w, 0)
