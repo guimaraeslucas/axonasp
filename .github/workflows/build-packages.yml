@@ -485,7 +485,7 @@ jobs:
       - name: Flatten artifacts for release
         run: |
           mkdir -p release-assets
-          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.apk" -o -name "*.pkg.tar.zst" -o -name "*.zip" -o -name "*.tar.xz" -o -name "*.pkg" -o -name "*.exe" \) -exec cp {} release-assets/ \;
+          find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.apk" -o -name "*.pkg.tar.zst" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.tar.xz" -o -name "*.pkg" -o -name "*.exe" \) -exec cp {} release-assets/ \;
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
