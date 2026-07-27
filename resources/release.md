@@ -34,8 +34,8 @@ Example of the "Downloads & Installation" section that you must follow exactly:
       | :--- | :--- | :--- | :--- |
       | **Windows** | x64 / x86 | Portable Zip | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp-windows-2.3.3-amd64.zip) |
       | **macOS** | Apple Silicon | Package (`.pkg`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp-macos-2.3.3-arm64.pkg) |
-      | **Linux Debian ** | x64 | Deb Package (`.deb`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp_2.3.3_amd64.deb) |
-      | **Linux Debian (Caddy)** | x64 | Deb Package (`.deb`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp-caddy_2.3.3_amd64.deb) |
+      | **Linux Debian** | x64 | Deb Package (`.deb`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp_2.3.3_amd64.deb) |
+      | **Linux (Caddy)** | x64 | Tarball (`.tar.gz`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp-caddy_2.3.3_amd64.tar.gz) |
       | **FreeBSD** | x64| Tarball (`.tar.xz`) | [Download](https://github.com/guimaraeslucas/axonasp/releases/download/v2.3.3/axonasp-freebsd-2.3.3-amd64.tar.xz) |
 
       If you prefer the portable binaries or are deploying on other environments like BSD or want the WASM, choose the appropriate package from the assets below
