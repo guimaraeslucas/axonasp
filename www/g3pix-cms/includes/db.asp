@@ -2,7 +2,11 @@
 <%
 function OpenCmsDb() {
     var db = Server.CreateObject("G3DB");
-    if (!db.Open("sqlite", G3PIX_DB_FILE)) {
+    var dsn = G3PIX_DB_FILE;
+    if (dsn.indexOf("?") < 0) {
+        dsn += "?_busy_timeout=6000";
+    }
+    if (!db.Open("sqlite", dsn)) {
         return null;
     }
     return db;
