@@ -11,6 +11,7 @@ build/
 *.wasm
 xcaddy.exe
 caddy.exe
+caddy-linux-amd64
 
 # Code coverage profiles and other test artifacts
 *.out

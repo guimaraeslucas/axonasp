@@ -4071,6 +4071,13 @@ func normalizeJScriptCollectionAssignments(source string) string {
 			}
 			continue
 		}
+		// Check for backslash escape in general code context (e.g. inside regex literals like /\'/ or /\"/)
+		if source[i] == '\\' && i+1 < n {
+			result.WriteByte('\\')
+			result.WriteByte(source[i+1])
+			i += 2
+			continue
+		}
 
 		// Try matching anchored assignment pattern
 		if loc := jscriptCallAssignmentAnchorPattern.FindStringSubmatchIndex(source[i:]); loc != nil {

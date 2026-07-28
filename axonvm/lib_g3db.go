@@ -277,6 +277,14 @@ func (g *G3DB) open(driver, dsn string) bool {
 		return false
 	}
 
+	// SQLite optimization for concurrency, POSIX file locking, and WAL journal mode
+	if driver == "sqlite" {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+		_, _ = db.Exec("PRAGMA journal_mode = WAL")
+		_, _ = db.Exec("PRAGMA busy_timeout = 6000")
+	}
+
 	g.db = db
 	g.driver = driver
 	g.dsn = dsn
