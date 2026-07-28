@@ -62,7 +62,6 @@
     * [ASP Dictionary](md/asp/dictionary.md)
 * ASP/VBScript Modernization 
     * [Strong Typing Variables](md/asp-modernization/strong-typing-variables.md)
-    * [Private Constructors (Encapsulation)](md/asp-modernization/private-constructors.md)
     * [Global Console Object](md/asp-modernization/console-object.md)
     * [Modern VBScript Operators](md/asp-modernization/modern-operators.md)
     * [Enumerations (Enum)](md/asp-modernization/enums.md)

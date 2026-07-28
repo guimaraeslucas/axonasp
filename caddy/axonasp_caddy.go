@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"html"
 	"io"
-	_"log"
 	"mime"
 	"net"
 	"net/http"
@@ -88,7 +87,6 @@ var (
 func initOffsets(vmType reflect.Type) {
 	offsetOnce.Do(func() {
 		for f := range vmType.Fields() {
-			f := f
 			switch f.Name {
 			case "pooledFrom":
 				vmPooledFromOffset = f.Offset
