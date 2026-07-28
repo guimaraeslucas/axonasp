@@ -42,6 +42,7 @@ var (
 func init() {
 	caddy.RegisterModule(AxonASP{})
 	httpcaddyfile.RegisterHandlerDirective("axonasp", parseCaddyfile)
+	httpcaddyfile.RegisterDirectiveOrder("axonasp", httpcaddyfile.Before, "file_server")
 	_ = mime.AddExtensionType(".svg", "image/svg+xml")
 }
 
@@ -167,9 +168,6 @@ func (a *AxonASP) Provision(ctx caddy.Context) error {
 	axonvm.SetRuntimeVersion(strings.TrimSpace(Version))
 
 	a.logger = ctx.Logger(a)
-
-	// Redirect standard logger to Caddy zap logger
-	log.SetOutput(&zapLogWriter{logger: a.logger})
 
 	a.vmPools = &vmPoolManager{pools: make(map[string]unsafe.Pointer)}
 
@@ -408,6 +406,8 @@ func (a *AxonASP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 
 	if isAxonLiveEndpoint(path) {
 		if a.isG3AxonLiveActive() {
+			siteTemp := a.resolveSiteTempDir(r)
+			a.setupSiteTempDir(siteTemp)
 			return a.handleAxonLive(w, r)
 		}
 	}
@@ -415,47 +415,84 @@ func (a *AxonASP) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyht
 	cleanReqPath := strings.TrimRight(path, "/")
 	reqFile := strings.ToLower(filepath.Base(cleanReqPath))
 	if reqFile == "global.asa" || reqFile == "myinfo.xml" {
-		w.WriteHeader(http.StatusNotFound)
 		http.Error(w, "404 page not found", http.StatusNotFound)
+		return nil
+	}
+
+	webRoot := a.resolveWebRoot(r)
+
+	aspPath, shouldExecuteASP, shouldRedirect := a.matchASPRequest(webRoot, path)
+
+	if !shouldExecuteASP {
+		return next.ServeHTTP(w, r)
+	}
+
+	if shouldRedirect {
+		redirectPath := path + "/"
+		if r.URL.RawQuery != "" {
+			redirectPath += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, redirectPath, http.StatusMovedPermanently)
 		return nil
 	}
 
 	siteTemp := a.resolveSiteTempDir(r)
 	a.setupSiteTempDir(siteTemp)
 
-	webRoot := a.resolveWebRoot(r)
+	return a.executeASPFile(w, r, webRoot, aspPath)
+}
 
-	if path != "/" && !strings.HasSuffix(path, "/") {
-		relativePath := strings.TrimPrefix(path, "/")
-		dirPath := filepath.Clean(filepath.Join(webRoot, filepath.FromSlash(relativePath)))
-		if info, err := os.Stat(dirPath); err == nil && info.IsDir() {
-			redirectPath := path + "/"
-			if r.URL.RawQuery != "" {
-				redirectPath += "?" + r.URL.RawQuery
-			}
-			http.Redirect(w, r, redirectPath, http.StatusMovedPermanently)
-			return nil
+func (a *AxonASP) matchASPRequest(webRoot, path string) (aspPath string, shouldExecuteASP bool, shouldRedirect bool) {
+	cleanReqPath := strings.TrimPrefix(path, "/")
+	filePath := filepath.Clean(filepath.Join(webRoot, filepath.FromSlash(cleanReqPath)))
+
+	// Security check: ensure target path is within webRoot
+	absRoot, rootErr := filepath.Abs(webRoot)
+	absFile, fileErr := filepath.Abs(filePath)
+	if rootErr == nil && fileErr == nil {
+		if !strings.HasPrefix(absFile+string(filepath.Separator), absRoot+string(filepath.Separator)) && absFile != absRoot {
+			return "", false, false
 		}
 	}
 
-	if resolvedPath, ok := resolveDefaultASPPath(webRoot, path); ok {
-		path = resolvedPath
+	ext := strings.ToLower(filepath.Ext(filePath))
+
+	// Direct ASP file request
+	if ext == ".asp" {
+		if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
+			return filePath, true, false
+		}
+		return "", false, false
 	}
 
-	relativePath := strings.TrimPrefix(path, "/")
-	filePath := filepath.Join(webRoot, filepath.FromSlash(relativePath))
-	cleanPath := filepath.Clean(filePath)
-
-	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		return next.ServeHTTP(w, r)
+	// Non-ASP extensions (.php, .html, .js, .css, etc.) bypass ASP execution
+	if ext != "" && ext != "." {
+		return "", false, false
 	}
 
-	ext := strings.ToLower(filepath.Ext(cleanPath))
-	if ext != ".asp" {
-		return next.ServeHTTP(w, r)
+	// Directory or root path request
+	isDirRequest := path == "/" || strings.HasSuffix(path, "/")
+	if !isDirRequest {
+		if info, err := os.Stat(filePath); err == nil && info.IsDir() {
+			if resolved, ok := resolveDefaultASPPath(webRoot, path+"/"); ok {
+				resolvedFilePath := filepath.Clean(filepath.Join(webRoot, filepath.FromSlash(strings.TrimPrefix(resolved, "/"))))
+				if infoRes, errRes := os.Stat(resolvedFilePath); errRes == nil && !infoRes.IsDir() {
+					return resolvedFilePath, true, true
+				}
+			}
+		}
+		return "", false, false
 	}
 
-	return a.executeASPFile(w, r, webRoot, cleanPath)
+	// Directory request ending with "/"
+	if resolved, ok := resolveDefaultASPPath(webRoot, path); ok {
+		resolvedFilePath := filepath.Clean(filepath.Join(webRoot, filepath.FromSlash(strings.TrimPrefix(resolved, "/"))))
+		if infoRes, errRes := os.Stat(resolvedFilePath); errRes == nil && !infoRes.IsDir() {
+			return resolvedFilePath, true, false
+		}
+	}
+
+	return "", false, false
 }
 
 func (a *AxonASP) executeASPFile(w http.ResponseWriter, r *http.Request, webRoot string, cleanPath string) error {
