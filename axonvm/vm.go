@@ -6586,12 +6586,18 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			return Value{Type: VTEmpty}
 		case strings.EqualFold(member, "ServerVariables"):
 			if len(args) >= 1 {
-				return NewString(request.GetCollectionValue("ServerVariables", args[0].String()))
+				if value, ok := request.ServerVars.GetValue(args[0].String()); ok {
+					return vm.newRequestCollectionValueItem(value)
+				}
+				return Value{Type: VTEmpty}
 			}
 			return Value{Type: VTEmpty}
 		case strings.EqualFold(member, "ClientCertificate"):
 			if len(args) >= 1 {
-				return NewString(request.GetCollectionValue("ClientCertificate", args[0].String()))
+				if value, ok := request.ClientCertificate.GetValue(args[0].String()); ok {
+					return vm.newRequestCollectionValueItem(value)
+				}
+				return Value{Type: VTEmpty}
 			}
 			return Value{Type: VTEmpty}
 		case strings.EqualFold(member, "TotalBytes"):
