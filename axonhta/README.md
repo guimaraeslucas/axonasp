@@ -185,6 +185,13 @@ A music player built with **HTMX + Alpine.js** on top of AxonHTA.
 - `caption="no"` (borderless window) and per-app `icon` from the HTA tag are not supported in app mode.
 - Requires a Chromium-based browser to be installed on the system.
 
+## Credits
+
+**AxonHTA** was developed by [Jeffrey He](https://github.com/jeffreyheping) (@jeffreyheping) using the [AxonASP](https://github.com/guimaraeslucas/axonasp) platform.
+
+The application lives inside the `axonhta/` package of the AxonASP repository, but all credit for its design and implementation goes to Jeffrey He.
+
 ## License
 
 Follows the AxonASP main project (MPL-2.0).
+
