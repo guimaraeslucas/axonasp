@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"html"
 	"io"
-	"log"
+	_"log"
 	"mime"
 	"net"
 	"net/http"
