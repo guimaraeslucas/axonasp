@@ -109,9 +109,10 @@ G3pix ❖ AxonASP
 ────────────────────────────
 
 The high-performance, cross-platform engine driving VBScript and JavaScript
-into the next era. Built on a zero-allocation VM for Web, FastCGI, and CLI,
-it bridges core logic with modern APIs across all systems. High-powered,
-open-source, and ready for the future.
+into the next era. Run applications with a blazing-fast, cross-platform VM. 
+Execute VBScript and ES6+ JavaScript natively. Features seamless deployment 
+via a native Caddy module, alongside FastCGI, CLI, HTA, and AI-ready MCP 
+tools.
 
 Contributing to AxonASP:
 As an open-source project, AxonASP relies on community support to remain 

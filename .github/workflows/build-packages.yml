@@ -43,7 +43,7 @@ jobs:
       version: ${{ steps.version.outputs.value }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Compute version string
@@ -74,10 +74,10 @@ jobs:
           - { goos: freebsd, goarch: amd64 }
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -317,10 +317,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -360,10 +360,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download Windows binaries from build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: axonasp-windows-amd64
           path: .
@@ -407,10 +407,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download macOS binaries from build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: axonasp-darwin-arm64
           path: .
@@ -463,7 +463,7 @@ jobs:
           fi
 
       - name: Upload pkg artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: axonasp-macos-pkg-arm64
           path: "*.pkg"
@@ -478,7 +478,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -488,6 +488,6 @@ jobs:
           find artifacts -type f \( -name "*.deb" -o -name "*.rpm" -o -name "*.apk" -o -name "*.pkg.tar.zst" -o -name "*.zip" -o -name "*.tar.gz" -o -name "*.tar.xz" -o -name "*.pkg" -o -name "*.exe" \) -exec cp {} release-assets/ \;
 
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: release-assets/*
