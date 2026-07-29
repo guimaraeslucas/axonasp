@@ -946,6 +946,11 @@ func newCLIHost(out *bytes.Buffer, requestPath string, tuiMode bool) *axonvm.Moc
 	host.Request().ServerVars.Add("REQUEST_METHOD", "CLI")
 	host.Request().ServerVars.Add("URL", requestPath)
 	host.Request().ServerVars.Add("PATH_TRANSLATED", filepath.Join(serverRootDir, filepath.FromSlash(strings.TrimPrefix(requestPath, "/"))))
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		serverPort = "80"
+	}
+	host.Request().ServerVars.Add("SERVER_PORT", serverPort)
 	if tuiMode {
 		host.Request().ServerVars.Add("AXONASP_CLI_TUI", "1")
 	}

@@ -1019,6 +1019,16 @@ func serializeApplicationValue(buf *bytes.Buffer, v ApplicationValue) {
 		for i := range v.Arr {
 			serializeApplicationValue(buf, v.Arr[i])
 		}
+	case ApplicationValueNativeObject, ApplicationValueObject, ApplicationValueJSObject:
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], uint64(v.Num))
+		buf.Write(b[:])
+		writeUint32(buf, uint32(len(v.Str)))
+		buf.WriteString(v.Str)
+		writeUint32(buf, uint32(len(v.Interface)))
+		buf.WriteString(v.Interface)
+	case ApplicationValueNothing:
+		// No extra bytes needed
 	}
 }
 
@@ -1056,6 +1066,22 @@ func deserializeApplicationValue(r *bytes.Reader) (ApplicationValue, error) {
 			}
 			v.Arr[i] = elem
 		}
+	case ApplicationValueNativeObject, ApplicationValueObject, ApplicationValueJSObject:
+		v.Num = int64(readUint64(r))
+		lStr := readUint32(r)
+		if lStr > 0 {
+			str := make([]byte, lStr)
+			_, _ = r.Read(str)
+			v.Str = string(str)
+		}
+		lIface := readUint32(r)
+		if lIface > 0 {
+			iface := make([]byte, lIface)
+			_, _ = r.Read(iface)
+			v.Interface = string(iface)
+		}
+	case ApplicationValueNothing:
+		// No extra bytes needed
 	}
 	return v, nil
 }

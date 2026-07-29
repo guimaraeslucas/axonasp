@@ -44,15 +44,22 @@ const (
 
 // ApplicationValue stores a VM-compatible primitive without using interface allocations.
 // ApplicationValueArray stores a VBScript array (including multi-dimensional) recursively.
-const ApplicationValueArray ApplicationValueType = 5
+const (
+	ApplicationValueArray        ApplicationValueType = 5
+	ApplicationValueNativeObject ApplicationValueType = 6
+	ApplicationValueObject       ApplicationValueType = 7
+	ApplicationValueNothing      ApplicationValueType = 8
+	ApplicationValueJSObject     ApplicationValueType = 9
+)
 
 type ApplicationValue struct {
-	Type     ApplicationValueType
-	Num      int64
-	Flt      float64
-	Str      string
-	Arr      []ApplicationValue // Elements when Type == ApplicationValueArray.
-	ArrLower int                // Lower bound of this array dimension.
+	Type      ApplicationValueType
+	Num       int64
+	Flt       float64
+	Str       string
+	Interface string
+	Arr       []ApplicationValue // Elements when Type == ApplicationValueArray.
+	ArrLower  int                // Lower bound of this array dimension.
 }
 
 // NewApplicationArray creates an ApplicationValue holding a VBScript array dimension.
@@ -88,9 +95,34 @@ func NewApplicationBool(v bool) ApplicationValue {
 	return ApplicationValue{Type: ApplicationValueBool, Num: 0}
 }
 
+// NewApplicationNativeObject creates a native object application value.
+func NewApplicationNativeObject(id int64, str string, iface string) ApplicationValue {
+	return ApplicationValue{Type: ApplicationValueNativeObject, Num: id, Str: str, Interface: iface}
+}
+
+// NewApplicationObject creates a user class object application value.
+func NewApplicationObject(id int64, str string, iface string) ApplicationValue {
+	return ApplicationValue{Type: ApplicationValueObject, Num: id, Str: str, Interface: iface}
+}
+
+// NewApplicationNothing creates a Nothing application value.
+func NewApplicationNothing() ApplicationValue {
+	return ApplicationValue{Type: ApplicationValueNothing}
+}
+
+// NewApplicationJSObject creates a JS object application value.
+func NewApplicationJSObject(id int64, str string, iface string) ApplicationValue {
+	return ApplicationValue{Type: ApplicationValueJSObject, Num: id, Str: str, Interface: iface}
+}
+
 // Bool returns the boolean representation for boolean values.
 func (v ApplicationValue) Bool() bool {
 	return v.Num != 0
+}
+
+// IsObject reports whether this application value is an object reference.
+func (v ApplicationValue) IsObject() bool {
+	return v.Type == ApplicationValueNativeObject || v.Type == ApplicationValueObject || v.Type == ApplicationValueJSObject || v.Type == ApplicationValueNothing
 }
 
 // normalizeApplicationKey normalizes a key for case-insensitive lookup semantics.

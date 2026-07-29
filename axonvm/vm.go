@@ -6329,6 +6329,16 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return consoleDispatch(vm, member, args)
 	}
 
+	// emptyForCtx returns the appropriate empty value depending on the execution context.
+	// In JScript/JavaScript mode, missing members return an empty string ("") to match
+	// browser/JavaScript semantics. In VBScript mode, they return VTEmpty.
+	emptyForCtx := func() Value {
+		if vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 {
+			return NewString("")
+		}
+		return Value{Type: VTEmpty}
+	}
+
 	switch objID {
 	case nativeObjectResponse: // Response
 		response := vm.host.Response()
@@ -6554,12 +6564,6 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeObjectRequest: // Request
 		request := vm.host.Request()
-		emptyForCtx := func() Value {
-			if vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 {
-				return NewString("")
-			}
-			return Value{Type: VTEmpty}
-		}
 		switch {
 		case member == "":
 			if len(args) >= 1 {
@@ -6604,7 +6608,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				}
 				return emptyForCtx()
 			}
-			return emptyForCtx()
+			return Value{Type: VTNativeObject, Num: nativeRequestServerVariables}
 		case strings.EqualFold(member, "ClientCertificate"):
 			if len(args) >= 1 {
 				if value, ok := request.ClientCertificate.GetValue(args[0].String()); ok {
@@ -6612,7 +6616,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				}
 				return emptyForCtx()
 			}
-			return emptyForCtx()
+			return Value{Type: VTNativeObject, Num: nativeRequestClientCertificate}
 		case strings.EqualFold(member, "TotalBytes"):
 			return NewInteger(request.TotalBytes())
 		case strings.EqualFold(member, "BinaryRead"):
@@ -6735,8 +6739,10 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeRequestServerVariables:
 		if (member == "" || strings.EqualFold(member, "Item")) && len(args) >= 1 {
-			value, _ := vm.host.Request().ServerVars.GetValue(args[0].String())
-			return vm.newRequestCollectionValueItem(value)
+			if value, ok := vm.host.Request().ServerVars.GetValue(args[0].String()); ok {
+				return vm.newRequestCollectionValueItem(value)
+			}
+			return emptyForCtx()
 		}
 		if strings.EqualFold(member, "Count") {
 			return NewInteger(int64(vm.host.Request().ServerVars.Count()))
@@ -6747,8 +6753,10 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeRequestClientCertificate:
 		if (member == "" || strings.EqualFold(member, "Item")) && len(args) >= 1 {
-			value, _ := vm.host.Request().ClientCertificate.GetValue(args[0].String())
-			return vm.newRequestCollectionValueItem(value)
+			if value, ok := vm.host.Request().ClientCertificate.GetValue(args[0].String()); ok {
+				return vm.newRequestCollectionValueItem(value)
+			}
+			return emptyForCtx()
 		}
 		if strings.EqualFold(member, "Count") {
 			return NewInteger(int64(vm.host.Request().ClientCertificate.Count()))
@@ -8734,6 +8742,23 @@ func (vm *VM) valueToApplicationValue(v Value) asp.ApplicationValue {
 		return asp.NewApplicationString(v.Str)
 	case VTEmpty:
 		return asp.NewApplicationEmpty()
+	case VTNothing:
+		return asp.NewApplicationNothing()
+	case VTNativeObject:
+		if v.Num == 0 {
+			return asp.NewApplicationNothing()
+		}
+		return asp.NewApplicationNativeObject(v.Num, v.Str, v.Interface)
+	case VTObject:
+		if v.Num == 0 {
+			return asp.NewApplicationNothing()
+		}
+		return asp.NewApplicationObject(v.Num, v.Str, v.Interface)
+	case VTJSObject:
+		if v.Num == 0 {
+			return asp.NewApplicationNothing()
+		}
+		return asp.NewApplicationJSObject(v.Num, v.Str, v.Interface)
 	case VTArray:
 		if v.Arr != nil {
 			return vm.vbArrayToApplicationValue(v.Arr)
@@ -8776,6 +8801,14 @@ func (vm *VM) applicationValueToValue(v asp.ApplicationValue) Value {
 			return vm.materializeStaticObjectFromMarker(v.Str)
 		}
 		return NewString(v.Str)
+	case asp.ApplicationValueNativeObject:
+		return Value{Type: VTNativeObject, Num: v.Num, Str: v.Str, Interface: v.Interface}
+	case asp.ApplicationValueObject:
+		return Value{Type: VTObject, Num: v.Num, Str: v.Str, Interface: v.Interface}
+	case asp.ApplicationValueJSObject:
+		return Value{Type: VTJSObject, Num: v.Num, Str: v.Str, Interface: v.Interface}
+	case asp.ApplicationValueNothing:
+		return Value{Type: VTNothing}
 	case asp.ApplicationValueArray:
 		return vm.applicationValueToVBArray(v)
 	default:
@@ -10157,24 +10190,6 @@ func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 
 func (vm *VM) raiseVMError(vme *VMError) {
 	vm.errSetFromVMError(vme)
-
-	isJS := len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 || len(vm.jsTryStack) > 0 || len(vm.jsErrStack) > 0 || vm.engineMode == EngineModeJavaScript
-	if isJS {
-		vm.lastError = vme
-		errObj := vm.jsCreateErrorObject("Error", vme.Msg)
-		vm.jsMemberSet(errObj, "number", NewInteger(int64(vme.Number)))
-		vm.jsMemberSet(errObj, "description", NewString(vme.Msg))
-		vm.jsMemberSet(errObj, "message", NewString(vme.Msg))
-
-		if len(vm.jsTryStack) > 0 {
-			target := vm.jsTryStack[len(vm.jsTryStack)-1]
-			vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
-			vm.jsErrStack = append(vm.jsErrStack, errObj)
-			vm.ip = target
-			return
-		}
-		panic(&jsAsyncRejectionError{reason: errObj})
-	}
 
 	if vm.onResumeNext || vm.executeGlobalResumeGuard {
 		vm.lastError = vme
