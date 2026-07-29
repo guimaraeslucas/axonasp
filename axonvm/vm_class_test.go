@@ -1,13 +1,14 @@
 package axonvm
 
 import (
+	"bytes"
 	"testing"
 )
 
 // TestIISCompatiblePrivateInitialize ensures that 'Private Sub Class_Initialize'
 // does NOT block external instantiation, matching legacy IIS/VBScript behavior.
 func TestIISCompatiblePrivateInitialize(t *testing.T) {
-	script := `
+	script := `<%
 	Class MyTestClass
 		Private initCount
 
@@ -23,23 +24,26 @@ func TestIISCompatiblePrivateInitialize(t *testing.T) {
 
 	Dim obj
 	Set obj = New MyTestClass
-	Dim result
-	result = obj.GetInitCount()
-	`
+	Response.Write obj.GetInitCount()
+	%>`
 
-	vm := NewVM()
-	err := vm.Run(script)
+	compiler := NewASPCompiler(script)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("Compilation failed: %v", err)
+	}
 
-	if err != nil {
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	host.Response().SetBuffer(false)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
 		t.Fatalf("Expected successful instantiation, got error: %v", err)
 	}
 
-	result, err := vm.GetValue("result")
-	if err != nil {
-		t.Fatalf("Failed to retrieve result: %v", err)
-	}
-
-	if result.Value() != 42 {
-		t.Errorf("Expected initCount to be 42, got %v. Class_Initialize was not executed properly.", result.Value())
+	if output.String() != "42" {
+		t.Errorf("Expected '42', got %q. Class_Initialize was not executed properly.", output.String())
 	}
 }

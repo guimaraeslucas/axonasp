@@ -2325,9 +2325,9 @@ func (vm *VM) jsAllocSymbolID() int64 {
 func (vm *VM) jsValueMapKey(v Value) string {
 	v = resolveCallable(vm, v)
 	switch v.Type {
-	case VTJSUndefined:
+	case VTJSUndefined, VTEmpty:
 		return "u"
-	case VTNull, VTEmpty:
+	case VTNull:
 		return "n"
 	case VTBool:
 		return "b:" + strconv.FormatInt(v.Num, 10)
@@ -10111,9 +10111,9 @@ func (vm *VM) jsToString(v Value) string {
 		v = vm.stack[int(v.Num)]
 	}
 	switch v.Type {
-	case VTJSUndefined:
+	case VTJSUndefined, VTEmpty:
 		return "undefined"
-	case VTNull, VTEmpty:
+	case VTNull:
 		return "null"
 	case VTBool:
 		if v.Num != 0 {
@@ -10162,9 +10162,9 @@ func (vm *VM) jsToNumber(v Value) Value {
 	case VTJSBigInt:
 		vm.jsThrowTypeError("Cannot convert a BigInt value to a number")
 		return NewDouble(math.NaN())
-	case VTJSUndefined:
+	case VTJSUndefined, VTEmpty:
 		return NewDouble(math.NaN())
-	case VTNull, VTEmpty:
+	case VTNull:
 		return NewDouble(0)
 	case VTInteger:
 		return Value{Type: VTDouble, Flt: float64(v.Num)}

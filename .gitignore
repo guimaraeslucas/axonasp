@@ -22,6 +22,9 @@ profile.cov
 #Ignore pandoc
 pandoc.exe
 
+#Ignore internal tests
+G3PIX-WEBSITE/
+
 # Git and IDE
 .vscode/
 .DS_Store
