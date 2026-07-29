@@ -8742,6 +8742,23 @@ func (vm *VM) valueToApplicationValue(v Value) asp.ApplicationValue {
 		return asp.NewApplicationString(v.Str)
 	case VTEmpty:
 		return asp.NewApplicationEmpty()
+	case VTNothing:
+		return asp.NewApplicationNothing()
+	case VTNativeObject:
+		if v.Num == 0 {
+			return asp.NewApplicationNothing()
+		}
+		return asp.NewApplicationNativeObject(v.Num, v.Str, v.Interface)
+	case VTObject:
+		if v.Num == 0 {
+			return asp.NewApplicationNothing()
+		}
+		return asp.NewApplicationObject(v.Num, v.Str, v.Interface)
+	case VTJSObject:
+		if v.Num == 0 {
+			return asp.NewApplicationNothing()
+		}
+		return asp.NewApplicationJSObject(v.Num, v.Str, v.Interface)
 	case VTArray:
 		if v.Arr != nil {
 			return vm.vbArrayToApplicationValue(v.Arr)
@@ -8784,6 +8801,14 @@ func (vm *VM) applicationValueToValue(v asp.ApplicationValue) Value {
 			return vm.materializeStaticObjectFromMarker(v.Str)
 		}
 		return NewString(v.Str)
+	case asp.ApplicationValueNativeObject:
+		return Value{Type: VTNativeObject, Num: v.Num, Str: v.Str, Interface: v.Interface}
+	case asp.ApplicationValueObject:
+		return Value{Type: VTObject, Num: v.Num, Str: v.Str, Interface: v.Interface}
+	case asp.ApplicationValueJSObject:
+		return Value{Type: VTJSObject, Num: v.Num, Str: v.Str, Interface: v.Interface}
+	case asp.ApplicationValueNothing:
+		return Value{Type: VTNothing}
 	case asp.ApplicationValueArray:
 		return vm.applicationValueToVBArray(v)
 	default:
