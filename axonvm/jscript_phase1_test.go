@@ -365,6 +365,107 @@ func TestJScriptObjectToStringBooleanWrapper(t *testing.T) {
 	}
 }
 
+// TestJScriptStringTypeConversion verifies that the JScript String() function
+// performs proper type conversion (ES5 §15.5.1) rather than the VBScript
+// String(n, char) builtin which repeats the first character n times.
+// Regression test: the JScript root environment must be initialized before
+// the first global name lookup so that builtins like String, Number, Boolean,
+// Date, Array resolve to their JScript intrinsic objects instead of VTBuiltin.
+func TestJScriptStringTypeConversion(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		Response.Write(String(42) + "|");
+		Response.Write(String(true) + "|");
+		Response.Write(String(null) + "|");
+		Response.Write(String(undefined) + "|");
+		Response.Write(String(3.14) + "|");
+		Response.Write(String("hello") + "|");
+		Response.Write(String(0) + "|");
+		Response.Write(String(false) + "|");
+		Response.Write(String(NaN));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "42|true|null|undefined|3.14|hello|0|false|NaN"
+	if out != expected {
+		t.Errorf("expected %q, got %q", expected, out)
+	}
+}
+
+// TestJScriptStringTypeConversionNoArgs verifies String() with zero arguments
+// returns empty string (ES5 behavior), not VBScript String() which would
+// also return empty but for different reasons.
+func TestJScriptStringTypeConversionNoArgs(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		Response.Write("[" + String() + "]");
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "[]"
+	if out != expected {
+		t.Errorf("expected %q, got %q", expected, out)
+	}
+}
+
+// TestJScriptNumberTypeConversion verifies Number() works in JScript mode
+// and does not resolve to any VBScript builtin.
+func TestJScriptNumberTypeConversion(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		Response.Write(Number("42") + "|");
+		Response.Write(Number("3.14") + "|");
+		Response.Write(Number("") + "|");
+		Response.Write(Number(true) + "|");
+		Response.Write(Number(false));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "42|3.14|0|1|0"
+	if out != expected {
+		t.Errorf("expected %q, got %q", expected, out)
+	}
+}
+
+// TestJScriptBooleanTypeConversion verifies Boolean() works in JScript mode.
+func TestJScriptBooleanTypeConversion(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		Response.Write((Boolean(1) ? "true" : "false") + "|");
+		Response.Write((Boolean(0) ? "true" : "false") + "|");
+		Response.Write((Boolean("") ? "true" : "false") + "|");
+		Response.Write((Boolean("hello") ? "true" : "false") + "|");
+		Response.Write((Boolean(null) ? "true" : "false") + "|");
+		Response.Write((Boolean(undefined) ? "true" : "false"));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "true|false|false|true|false|false"
+	if out != expected {
+		t.Errorf("expected %q, got %q", expected, out)
+	}
+}
+
+// TestJScriptStringBuiltinNotVBScript verifies that the VBScript String(n, char)
+// builtin is NOT called when using String() in JScript mode. In VBScript,
+// String(3, "x") returns "xxx". In JScript, String(3, "x") should still call
+// String() with 2 args — which per ES5 spec ignores extra args and returns
+// String(3) = "3".
+func TestJScriptStringBuiltinNotVBScript(t *testing.T) {
+	out, err := runJScript2(t, jscriptSrc(`
+		Response.Write(String(3, "x"));
+	`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// JScript String() ignores extra args → returns String(3) = "3"
+	// VBScript String(3, "x") would return "xxx"
+	expected := "3"
+	if out != expected {
+		t.Errorf("expected %q, got %q (if got 'xxx', VBScript builtin is being called)", expected, out)
+	}
+}
+
 func TestJScriptMathRoundNegative(t *testing.T) {
 	out, err := runJScript2(t, jscriptSrc(`
 		var r1 = Math.round(-1.5);

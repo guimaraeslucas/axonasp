@@ -1992,6 +1992,13 @@ func (vm *VM) Run() (err error) {
 		vm.stringWorkBuffer = vm.stringWorkBuffer[:0]
 	}
 
+	// Ensure the JScript root environment is initialized before any JScript
+	// bytecode executes. Without this, JScript builtins such as String(),
+	// Number(), Boolean(), Array(), Date(), etc. would resolve to their
+	// VBScript counterparts (VTBuiltin) instead of the correct JScript
+	// intrinsic objects, breaking fundamental type conversion functions.
+	vm.ensureJSRootEnv()
+
 aspExecLoop:
 	for vm.ip < len(vm.bytecode) {
 		operationCount++
