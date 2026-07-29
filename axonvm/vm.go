@@ -5777,7 +5777,7 @@ aspExecLoop:
 		vm.jsProcessMicrotasks()
 	}
 
-	if vm.host != nil && vm.host.Response() != nil {
+	if vm.host != nil && vm.host.Response() != nil && isRootRun {
 		vm.host.Response().Flush()
 	}
 
