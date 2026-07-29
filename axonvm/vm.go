@@ -6547,59 +6547,65 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeObjectRequest: // Request
 		request := vm.host.Request()
+		emptyForCtx := func() Value {
+			if vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 {
+				return NewString("")
+			}
+			return Value{Type: VTEmpty}
+		}
 		switch {
 		case member == "":
 			if len(args) >= 1 {
 				return NewString(request.GetValue(args[0].String()))
 			}
-			return Value{Type: VTEmpty}
+			return emptyForCtx()
 		case strings.EqualFold(member, "QueryString"):
 			if len(args) >= 1 {
 				if value, ok := request.QueryString.GetValue(args[0].String()); ok {
 					return vm.newRequestCollectionValueItem(value)
 				}
-				return Value{Type: VTEmpty}
+				return emptyForCtx()
 			}
-			return Value{Type: VTEmpty}
+			return emptyForCtx()
 		case strings.EqualFold(member, "Form"):
 			if len(args) >= 1 {
 				if request.IsBinaryReadUsed() {
-					return Value{Type: VTEmpty}
+					return emptyForCtx()
 				}
 				request.MarkFormUsed()
 				if value, ok := request.Form.GetValue(args[0].String()); ok {
 					return vm.newRequestCollectionValueItem(value)
 				}
-				return Value{Type: VTEmpty}
+				return emptyForCtx()
 			}
-			return Value{Type: VTEmpty}
+			return emptyForCtx()
 		case strings.EqualFold(member, "Cookies"):
 			if len(args) == 1 {
 				if value, ok := request.Cookies.GetValue(args[0].String()); ok {
 					return vm.newRequestCollectionValueItem(value)
 				}
-				return Value{Type: VTEmpty}
+				return emptyForCtx()
 			}
 			if len(args) >= 2 {
 				return NewString(request.GetCookieAttribute(args[0].String(), args[1].String()))
 			}
-			return Value{Type: VTEmpty}
+			return emptyForCtx()
 		case strings.EqualFold(member, "ServerVariables"):
 			if len(args) >= 1 {
 				if value, ok := request.ServerVars.GetValue(args[0].String()); ok {
 					return vm.newRequestCollectionValueItem(value)
 				}
-				return Value{Type: VTEmpty}
+				return emptyForCtx()
 			}
-			return Value{Type: VTEmpty}
+			return emptyForCtx()
 		case strings.EqualFold(member, "ClientCertificate"):
 			if len(args) >= 1 {
 				if value, ok := request.ClientCertificate.GetValue(args[0].String()); ok {
 					return vm.newRequestCollectionValueItem(value)
 				}
-				return Value{Type: VTEmpty}
+				return emptyForCtx()
 			}
-			return Value{Type: VTEmpty}
+			return emptyForCtx()
 		case strings.EqualFold(member, "TotalBytes"):
 			return NewInteger(request.TotalBytes())
 		case strings.EqualFold(member, "BinaryRead"):
@@ -8309,12 +8315,6 @@ func (vm *VM) valueToString(v Value) string {
 			return vm.host.Response().GetCookieValue(cookieName)
 		}
 		if collectionValue, exists := vm.requestCollectionValueItems[v.Num]; exists {
-			if len(collectionValue.Values) == 0 {
-				isJS := len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 || len(vm.jsTryStack) > 0 || len(vm.jsErrStack) > 0 || vm.engineMode == EngineModeJavaScript
-				if isJS {
-					return "undefined"
-				}
-			}
 			return collectionValue.Joined()
 		}
 		if errObj, exists := vm.aspErrorItems[v.Num]; exists {
