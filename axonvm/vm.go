@@ -6604,7 +6604,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				}
 				return emptyForCtx()
 			}
-			return emptyForCtx()
+			return Value{Type: VTNativeObject, Num: nativeRequestServerVariables}
 		case strings.EqualFold(member, "ClientCertificate"):
 			if len(args) >= 1 {
 				if value, ok := request.ClientCertificate.GetValue(args[0].String()); ok {
@@ -6612,7 +6612,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 				}
 				return emptyForCtx()
 			}
-			return emptyForCtx()
+			return Value{Type: VTNativeObject, Num: nativeRequestClientCertificate}
 		case strings.EqualFold(member, "TotalBytes"):
 			return NewInteger(request.TotalBytes())
 		case strings.EqualFold(member, "BinaryRead"):
@@ -6735,8 +6735,10 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeRequestServerVariables:
 		if (member == "" || strings.EqualFold(member, "Item")) && len(args) >= 1 {
-			value, _ := vm.host.Request().ServerVars.GetValue(args[0].String())
-			return vm.newRequestCollectionValueItem(value)
+			if value, ok := vm.host.Request().ServerVars.GetValue(args[0].String()); ok {
+				return vm.newRequestCollectionValueItem(value)
+			}
+			return emptyForCtx()
 		}
 		if strings.EqualFold(member, "Count") {
 			return NewInteger(int64(vm.host.Request().ServerVars.Count()))
@@ -6747,8 +6749,10 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeRequestClientCertificate:
 		if (member == "" || strings.EqualFold(member, "Item")) && len(args) >= 1 {
-			value, _ := vm.host.Request().ClientCertificate.GetValue(args[0].String())
-			return vm.newRequestCollectionValueItem(value)
+			if value, ok := vm.host.Request().ClientCertificate.GetValue(args[0].String()); ok {
+				return vm.newRequestCollectionValueItem(value)
+			}
+			return emptyForCtx()
 		}
 		if strings.EqualFold(member, "Count") {
 			return NewInteger(int64(vm.host.Request().ClientCertificate.Count()))
