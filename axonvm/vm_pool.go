@@ -373,6 +373,8 @@ func (vm *VM) resetForReuse() {
 	clear(vm.runtimeClassItems)
 	vm.nextDynamicNativeID = 20000
 	vm.nextDynamicClassID = 60000
+	vm.jsActiveEnvID = 0
+	vm.jsRootEnvID = 0
 	vm.comInitialized = false
 	vm.comThreadLocked = false
 	// Zero-fill icState for fresh execution.

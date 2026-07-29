@@ -10166,24 +10166,6 @@ func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 func (vm *VM) raiseVMError(vme *VMError) {
 	vm.errSetFromVMError(vme)
 
-	isJS := len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 || len(vm.jsTryStack) > 0 || len(vm.jsErrStack) > 0 || vm.engineMode == EngineModeJavaScript
-	if isJS {
-		vm.lastError = vme
-		errObj := vm.jsCreateErrorObject("Error", vme.Msg)
-		vm.jsMemberSet(errObj, "number", NewInteger(int64(vme.Number)))
-		vm.jsMemberSet(errObj, "description", NewString(vme.Msg))
-		vm.jsMemberSet(errObj, "message", NewString(vme.Msg))
-
-		if len(vm.jsTryStack) > 0 {
-			target := vm.jsTryStack[len(vm.jsTryStack)-1]
-			vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
-			vm.jsErrStack = append(vm.jsErrStack, errObj)
-			vm.ip = target
-			return
-		}
-		panic(&jsAsyncRejectionError{reason: errObj})
-	}
-
 	if vm.onResumeNext || vm.executeGlobalResumeGuard {
 		vm.lastError = vme
 		vm.skipToNextStmt = true
