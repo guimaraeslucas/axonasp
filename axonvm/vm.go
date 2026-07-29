@@ -6329,6 +6329,16 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return consoleDispatch(vm, member, args)
 	}
 
+	// emptyForCtx returns the appropriate empty value depending on the execution context.
+	// In JScript/JavaScript mode, missing members return an empty string ("") to match
+	// browser/JavaScript semantics. In VBScript mode, they return VTEmpty.
+	emptyForCtx := func() Value {
+		if vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 {
+			return NewString("")
+		}
+		return Value{Type: VTEmpty}
+	}
+
 	switch objID {
 	case nativeObjectResponse: // Response
 		response := vm.host.Response()
@@ -6554,12 +6564,6 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeObjectRequest: // Request
 		request := vm.host.Request()
-		emptyForCtx := func() Value {
-			if vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 {
-				return NewString("")
-			}
-			return Value{Type: VTEmpty}
-		}
 		switch {
 		case member == "":
 			if len(args) >= 1 {
