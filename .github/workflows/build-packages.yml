@@ -241,6 +241,8 @@ jobs:
           for packager in deb rpm apk; do
             nfpm package --config nfpm-caddy.yaml --packager "${packager}" --target .
           done
+          # Move packages to workspace root so upload-artifact globs find them
+          mv ./*.deb ./*.rpm ./*.apk ../
           popd
 
       # ──────────────────────────────────────────────────────────────
@@ -296,7 +298,7 @@ jobs:
           tar -cJf "axonasp-freebsd-${VERSION}-${ARCH}.tar.xz" "${STAGE}/"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: axonasp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
@@ -346,7 +348,7 @@ jobs:
           zip -r "axonasp-wasm-${VERSION}.zip" "${STAGE}/"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: axonasp-wasm
           path: "*.zip"
@@ -393,7 +395,7 @@ jobs:
         shell: pwsh
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: axonasp-installer-amd64
           path: installer-src\Output\*.exe
