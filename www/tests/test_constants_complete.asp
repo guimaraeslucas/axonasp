@@ -104,12 +104,12 @@ End Function
             <div class="results">
                 <%
                 TestNumericConstant "vbBlack", vbBlack, 0, "Black color"
-                TestNumericConstant "vbRed", vbRed, 16711680, "Red color"
+                TestNumericConstant "vbRed", vbRed, 255, "Red color"
                 TestNumericConstant "vbGreen", vbGreen, 65280, "Green color"
-                TestNumericConstant "vbYellow", vbYellow, 16776960, "Yellow color"
-                TestNumericConstant "vbBlue", vbBlue, 255, "Blue color"
+                TestNumericConstant "vbYellow", vbYellow, 65535, "Yellow color"
+                TestNumericConstant "vbBlue", vbBlue, 16711680, "Blue color"
                 TestNumericConstant "vbMagenta", vbMagenta, 16711935, "Magenta color"
-                TestNumericConstant "vbCyan", vbCyan, 65535, "Cyan color"
+                TestNumericConstant "vbCyan", vbCyan, 16776960, "Cyan color"
                 TestNumericConstant "vbWhite", vbWhite, 16777215, "White color"
                 %>
             </div>

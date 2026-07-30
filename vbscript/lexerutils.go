@@ -186,34 +186,69 @@ func GetDate(s string) (time.Time, error) {
 	s = strings.ReplaceAll(s, " -", "-")
 	s = strings.ReplaceAll(s, "- ", "-")
 
+	// Ensure space before AM/PM if missing (e.g., "1:45:30PM" -> "1:45:30 PM")
+	upper := strings.ToUpper(s)
+	if idx := strings.Index(upper, "PM"); idx > 0 && s[idx-1] != ' ' {
+		s = s[:idx] + " " + s[idx:]
+	} else if idx := strings.Index(upper, "AM"); idx > 0 && s[idx-1] != ' ' {
+		s = s[:idx] + " " + s[idx:]
+	}
+
 	// Replace multiple spaces with single space for time portions
 	for strings.Contains(s, "  ") {
 		s = strings.ReplaceAll(s, "  ", " ")
 	}
 
-	// Try common date formats
-	// Use '1' and '2' for month/day to allow single digits
+	// Try common date and time formats.
+	// Use '1' and '2' for month/day to allow single digits.
 	formats := []string{
 		"1/2/2006",
+		"1/2/06",
 		"2006-1-2",
 		"2006-01-02",
 		"01/02/2006",
 		"1/2/2006 3:04:05 PM",
+		"1/2/2006 3:04 PM",
 		"1/2/2006 15:04:05",
+		"1/2/2006 15:04",
+		"1/2/06 3:04:05 PM",
+		"1/2/06 3:04 PM",
+		"1/2/06 15:04:05",
+		"1/2/06 15:04",
 		"2006-1-2 15:04:05",
+		"2006-1-2 15:04",
 		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
 		"3:04:05 PM",
+		"3:04 PM",
 		"15:04:05",
+		"15:04",
+		"Jan 2, 2006",
+		"2 Jan 2006",
+		"Jan 2 2006",
+		"2-Jan-2006",
+		"2-Jan-06",
+		"Jan 2, 2006 3:04:05 PM",
+		"Jan 2, 2006 15:04:05",
+		"2-Jan-2006 15:04:05",
+		"2-Jan-2006 3:04:05 PM",
 		time.RFC3339,
 		time.RFC3339Nano,
 	}
 
 	for _, format := range formats {
 		if t, err := time.Parse(format, s); err == nil {
+			if t.Year() == 0 {
+				t = time.Date(1899, time.December, 30, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
+			}
 			return t, nil
 		}
 	}
 
 	// Fall back to Go's time.Parse which handles many common formats
-	return time.Parse(time.RFC3339, s)
+	t, err := time.Parse(time.RFC3339, s)
+	if err == nil && t.Year() == 0 {
+		t = time.Date(1899, time.December, 30, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
+	}
+	return t, err
 }
