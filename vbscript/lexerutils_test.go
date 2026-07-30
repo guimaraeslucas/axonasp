@@ -63,9 +63,12 @@ func TestGetDateUSFormat(t *testing.T) {
 		// ISO format with time
 		{input: "2026-03-04 15:04:05", year: 2026, month: time.March, day: 4, hour: 15, minute: 4, second: 5},
 
-		// Time only
-		{input: "3:04:05 PM", year: 0, month: time.January, day: 1, hour: 15, minute: 4, second: 5},
-		{input: "15:04:05", year: 0, month: time.January, day: 1, hour: 15, minute: 4, second: 5},
+		// Time only (VBScript serial 0 date component is December 30, 1899)
+		{input: "3:04:05 PM", year: 1899, month: time.December, day: 30, hour: 15, minute: 4, second: 5},
+		{input: "15:04:05", year: 1899, month: time.December, day: 30, hour: 15, minute: 4, second: 5},
+		{input: "13:45:30", year: 1899, month: time.December, day: 30, hour: 13, minute: 45, second: 30},
+		{input: "1:45:30 PM", year: 1899, month: time.December, day: 30, hour: 13, minute: 45, second: 30},
+		{input: "1:45:30PM", year: 1899, month: time.December, day: 30, hour: 13, minute: 45, second: 30},
 	}
 
 	for _, tt := range tests {

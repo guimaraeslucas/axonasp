@@ -386,9 +386,15 @@ func parseLocalizedTimeValue(text string, location *time.Location, profile built
 		}
 		seen[layout] = struct{}{}
 		if parsed, err := monday.ParseInLocation(layout, text, location, profile.mondayLocale); err == nil {
+			if parsed.Year() == 0 {
+				parsed = time.Date(1899, time.December, 30, parsed.Hour(), parsed.Minute(), parsed.Second(), parsed.Nanosecond(), location)
+			}
 			return parsed
 		}
 		if parsed, err := time.ParseInLocation(layout, text, location); err == nil {
+			if parsed.Year() == 0 {
+				parsed = time.Date(1899, time.December, 30, parsed.Hour(), parsed.Minute(), parsed.Second(), parsed.Nanosecond(), location)
+			}
 			return parsed
 		}
 	}

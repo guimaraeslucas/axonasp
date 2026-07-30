@@ -124,13 +124,13 @@ var VBSConstants = []VBSConstant{
 	// Defined here only for documentation completeness — not used as numeric slots.
 
 	// ── Color constants ───────────────────────────────────────────
-	{"vbBlack", NewInteger(0x000000)},
-	{"vbRed", NewInteger(0xFF0000)},
-	{"vbGreen", NewInteger(0x00FF00)},
-	{"vbYellow", NewInteger(0xFFFF00)},
-	{"vbBlue", NewInteger(0x0000FF)},
+	{"vbBlack", NewInteger(0x00)},
+	{"vbRed", NewInteger(0xFF)},
+	{"vbGreen", NewInteger(0xFF00)},
+	{"vbYellow", NewInteger(0xFFFF)},
+	{"vbBlue", NewInteger(0xFF0000)},
 	{"vbMagenta", NewInteger(0xFF00FF)},
-	{"vbCyan", NewInteger(0x00FFFF)},
+	{"vbCyan", NewInteger(0xFFFF00)},
 	{"vbWhite", NewInteger(0xFFFFFF)},
 
 	// ── MsgBox button/return constants (rarely used in ASP but present in spec) ─
