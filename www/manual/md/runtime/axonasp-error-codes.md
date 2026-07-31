@@ -205,6 +205,24 @@ AxonASP error codes are internal to the G3Pix AxonASP platform. They are never r
 | 9023 | G3SEARCH: failed to write index |
 | 9024 | G3SEARCH: search execution failed |
 
+### G3FILEUPLOADER Native File Upload Library (9100–9112)
+
+| Code | Description |
+|------|-------------|
+| 9100 | G3FILEUPLOADER: No HTTP request context found |
+| 9101 | G3FILEUPLOADER: Failed to parse multipart form data |
+| 9102 | G3FILEUPLOADER: No multipart form data received |
+| 9103 | G3FILEUPLOADER: File field '%s' not found in request |
+| 9104 | G3FILEUPLOADER: File extension '%s' is not allowed |
+| 9105 | G3FILEUPLOADER: File size exceeds the maximum allowed limit |
+| 9106 | G3FILEUPLOADER: The specified target directory is invalid or inaccessible |
+| 9107 | G3FILEUPLOADER: Failed to create temporary file for upload |
+| 9108 | G3FILEUPLOADER: Failed to write data to temporary file |
+| 9109 | G3FILEUPLOADER: Failed to sync temporary file to disk |
+| 9110 | G3FILEUPLOADER: Failed to move uploaded file to its final destination |
+| 9111 | G3FILEUPLOADER: Failed to open uploaded file for processing |
+| 9112 | G3FILEUPLOADER: Failed to move uploaded file to its final destination (appends the underlying operating-system error) |
+
 ### G3DATE Date/Time Library (9200–9204)
 
 | Code | Description |

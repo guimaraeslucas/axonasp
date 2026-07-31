@@ -252,3 +252,79 @@ func TestG3FileUploader_Compatibility(t *testing.T) {
 		t.Fatalf("expected form file field to return file object, got %+v", formFileVal)
 	}
 }
+
+// TestG3FileUploader_MoveUploadedFile verifies the cross-volume-safe move
+// helper: the fast os.Rename path and the copy+delete fallback used when the
+// temp directory and the final destination live on different drives.
+func TestG3FileUploader_MoveUploadedFile(t *testing.T) {
+	payload := []byte("upload payload content")
+
+	// Same-volume fast path: os.Rename is used and must succeed.
+	dirA, err := os.MkdirTemp("", "axon_move_a_*")
+	if err != nil {
+		t.Fatalf("failed to create source temp dir: %v", err)
+	}
+	defer os.RemoveAll(dirA)
+	dirB, err := os.MkdirTemp("", "axon_move_b_*")
+	if err != nil {
+		t.Fatalf("failed to create dest temp dir: %v", err)
+	}
+	defer os.RemoveAll(dirB)
+
+	srcPath := filepath.Join(dirA, "upload_*.tmp")
+	srcFile, err := os.CreateTemp(dirA, "upload_*.tmp")
+	if err != nil {
+		t.Fatalf("failed to create temp source: %v", err)
+	}
+	srcPath = srcFile.Name()
+	if _, err := srcFile.Write(payload); err != nil {
+		t.Fatalf("failed to write temp source: %v", err)
+	}
+	if err := srcFile.Close(); err != nil {
+		t.Fatalf("failed to close temp source: %v", err)
+	}
+
+	finalPath := filepath.Join(dirB, "renamed.bin")
+	if err := moveUploadedFile(srcPath, finalPath); err != nil {
+		t.Fatalf("moveUploadedFile (rename path) failed: %v", err)
+	}
+	if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
+		t.Errorf("expected source temp file to be removed, stat err = %v", err)
+	}
+	got, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatalf("failed to read moved file: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Errorf("moved content mismatch: got %q, want %q", got, payload)
+	}
+
+	// Copy+delete fallback: the path used when rename crosses volumes.
+	src2Path := filepath.Join(dirA, "upload_copy_*.tmp")
+	src2, err := os.CreateTemp(dirA, "upload_copy_*.tmp")
+	if err != nil {
+		t.Fatalf("failed to create temp source: %v", err)
+	}
+	src2Path = src2.Name()
+	if _, err := src2.Write(payload); err != nil {
+		t.Fatalf("failed to write temp source: %v", err)
+	}
+	if err := src2.Close(); err != nil {
+		t.Fatalf("failed to close temp source: %v", err)
+	}
+
+	fallbackPath := filepath.Join(dirB, "copied.bin")
+	if err := copyUploadedFile(src2Path, fallbackPath); err != nil {
+		t.Fatalf("copyUploadedFile failed: %v", err)
+	}
+	if _, err := os.Stat(src2Path); !os.IsNotExist(err) {
+		t.Errorf("expected source temp file to be removed after copy, stat err = %v", err)
+	}
+	got2, err := os.ReadFile(fallbackPath)
+	if err != nil {
+		t.Fatalf("failed to read copied file: %v", err)
+	}
+	if string(got2) != string(payload) {
+		t.Errorf("copied content mismatch: got %q, want %q", got2, payload)
+	}
+}

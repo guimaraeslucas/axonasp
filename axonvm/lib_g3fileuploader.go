@@ -756,6 +756,76 @@ func (f *G3FileUploader) wrapResultAsDict(m map[string]any) Value {
 	return dictVal
 }
 
+// moveUploadedFile relocates a fully written temp upload file to its final
+// destination. It prefers an atomic os.Rename when both paths share the same
+// volume, and falls back to a streaming copy+delete when the temp directory and
+// the target directory live on different drives (os.Rename cannot cross volumes
+// on Windows). A short retry loop absorbs transient sharing violations raised by
+// antivirus scanners right after the temp file is closed.
+func moveUploadedFile(tempPath, finalPath string) error {
+	const maxAttempts = 3
+	var err error
+	for i := 0; i < maxAttempts; i++ {
+		err = os.Rename(tempPath, finalPath)
+		if err == nil {
+			return nil
+		}
+		// Brief pause to let transient locks (AV scans, editors) be released
+		// before retrying or falling back to a cross-volume copy.
+		time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+	}
+	return copyUploadedFile(tempPath, finalPath)
+}
+
+// copyUploadedFile streams the temp file to finalPath and removes the source,
+// providing a cross-volume-safe fallback when os.Rename is not possible. All
+// handles are closed before the temp file is removed so the cleanup never
+// trips a Windows sharing violation on its own open handle.
+func copyUploadedFile(tempPath, finalPath string) error {
+	src, err := os.Open(tempPath)
+	if err != nil {
+		return err
+	}
+
+	dst, err := os.Create(finalPath)
+	if err != nil {
+		src.Close()
+		return err
+	}
+
+	_, copyErr := io.Copy(dst, src)
+	srcCloseErr := src.Close()
+	syncErr := dst.Sync()
+	dstCloseErr := dst.Close()
+
+	if copyErr != nil {
+		os.Remove(finalPath)
+		return copyErr
+	}
+	if syncErr != nil {
+		return syncErr
+	}
+	if dstCloseErr != nil {
+		return dstCloseErr
+	}
+	if srcCloseErr != nil {
+		return srcCloseErr
+	}
+
+	// The destination file is fully written, synced, and closed; the source temp
+	// file is closed too. Best-effort removal with a short retry loop absorbs
+	// transient sharing violations (e.g. antivirus scanners) without failing an
+	// upload whose final destination was already persisted.
+	for i := 0; i < 3; i++ {
+		if err := os.Remove(tempPath); err == nil {
+			return nil
+		} else if i < 2 {
+			time.Sleep(time.Duration(50*(i+1)) * time.Millisecond)
+		}
+	}
+	return nil
+}
+
 func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string) Value {
 	if f.vm.host == nil || f.vm.host.Request() == nil || f.vm.host.Request().HTTPRequest() == nil {
 		return f.wrapResultAsDict(map[string]any{
@@ -880,12 +950,12 @@ func (f *G3FileUploader) processUpload(fieldName, targetDir, newFileName string)
 	tempFile.Close()
 
 	finalPath := filepath.Join(mappedDir, finalFileName)
-	err = os.Rename(tempPath, finalPath)
+	err = moveUploadedFile(tempPath, finalPath)
 	if err != nil {
 		os.Remove(tempPath)
 		return f.wrapResultAsDict(map[string]any{
 			"IsSuccess":    false,
-			"ErrorMessage": ErrG3FUFinalMoveFailed.String(),
+			"ErrorMessage": fmt.Sprintf(ErrG3FUFinalMoveFailedDetail.String(), err),
 		})
 	}
 
@@ -1037,13 +1107,13 @@ func (f *G3FileUploader) processAllUploads(targetDir string) Value {
 			file.Close()
 
 			finalPath := filepath.Join(mappedDir, finalFileName)
-			err = os.Rename(tempPath, finalPath)
+			err = moveUploadedFile(tempPath, finalPath)
 			if err != nil {
 				os.Remove(tempPath)
 				results = append(results, f.wrapResultAsDict(map[string]any{
 					"IsSuccess":        false,
 					"OriginalFileName": fileName,
-					"ErrorMessage":     ErrG3FUFinalMoveFailed.String(),
+					"ErrorMessage":     fmt.Sprintf(ErrG3FUFinalMoveFailedDetail.String(), err),
 				}))
 				continue
 			}
