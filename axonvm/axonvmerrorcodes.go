@@ -168,18 +168,19 @@ const (
 	ErrG3SearchSearchFailed     AxonASPErrorCode = 9024
 
 	// G3FILEUPLOADER native file upload library errors (9100-9199).
-	ErrG3FUNoHTTPRequest        AxonASPErrorCode = 9100
-	ErrG3FUFormParseFailed      AxonASPErrorCode = 9101
-	ErrG3FUNoMultipartData      AxonASPErrorCode = 9102
-	ErrG3FUFileFieldNotFound    AxonASPErrorCode = 9103
-	ErrG3FUExtensionNotAllowed  AxonASPErrorCode = 9104
-	ErrG3FUFileSizeExceedsMax   AxonASPErrorCode = 9105
-	ErrG3FUInvalidTargetDir     AxonASPErrorCode = 9106
-	ErrG3FUTempFileCreateFailed AxonASPErrorCode = 9107
-	ErrG3FUTempFileWriteFailed  AxonASPErrorCode = 9108
-	ErrG3FUTempFileSyncFailed   AxonASPErrorCode = 9109
-	ErrG3FUFinalMoveFailed      AxonASPErrorCode = 9110
-	ErrG3FUOpenFileFailed       AxonASPErrorCode = 9111
+	ErrG3FUNoHTTPRequest         AxonASPErrorCode = 9100
+	ErrG3FUFormParseFailed       AxonASPErrorCode = 9101
+	ErrG3FUNoMultipartData       AxonASPErrorCode = 9102
+	ErrG3FUFileFieldNotFound     AxonASPErrorCode = 9103
+	ErrG3FUExtensionNotAllowed   AxonASPErrorCode = 9104
+	ErrG3FUFileSizeExceedsMax    AxonASPErrorCode = 9105
+	ErrG3FUInvalidTargetDir      AxonASPErrorCode = 9106
+	ErrG3FUTempFileCreateFailed  AxonASPErrorCode = 9107
+	ErrG3FUTempFileWriteFailed   AxonASPErrorCode = 9108
+	ErrG3FUTempFileSyncFailed    AxonASPErrorCode = 9109
+	ErrG3FUFinalMoveFailed       AxonASPErrorCode = 9110
+	ErrG3FUOpenFileFailed        AxonASPErrorCode = 9111
+	ErrG3FUFinalMoveFailedDetail AxonASPErrorCode = 9112
 	// G3DATE date/time library errors (9200-9210).
 	ErrG3DateInvalidArgCount AxonASPErrorCode = 9200
 	ErrG3DateInvalidTimezone AxonASPErrorCode = 9201
@@ -367,18 +368,19 @@ var AxonASPErrorMessages = map[AxonASPErrorCode]string{
 	ErrG3SearchSearchFailed:     "G3SEARCH: search execution failed",
 
 	// G3FILEUPLOADER native file upload library
-	ErrG3FUNoHTTPRequest:        "G3FILEUPLOADER: No HTTP request context found",
-	ErrG3FUFormParseFailed:      "G3FILEUPLOADER: Failed to parse multipart form data",
-	ErrG3FUNoMultipartData:      "G3FILEUPLOADER: No multipart form data received",
-	ErrG3FUFileFieldNotFound:    "G3FILEUPLOADER: File field '%s' not found in request",
-	ErrG3FUExtensionNotAllowed:  "G3FILEUPLOADER: File extension '%s' is not allowed",
-	ErrG3FUFileSizeExceedsMax:   "G3FILEUPLOADER: File size exceeds the maximum allowed limit",
-	ErrG3FUInvalidTargetDir:     "G3FILEUPLOADER: The specified target directory is invalid or inaccessible",
-	ErrG3FUTempFileCreateFailed: "G3FILEUPLOADER: Failed to create temporary file for upload",
-	ErrG3FUTempFileWriteFailed:  "G3FILEUPLOADER: Failed to write data to temporary file",
-	ErrG3FUTempFileSyncFailed:   "G3FILEUPLOADER: Failed to sync temporary file to disk",
-	ErrG3FUFinalMoveFailed:      "G3FILEUPLOADER: Failed to move uploaded file to its final destination",
-	ErrG3FUOpenFileFailed:       "G3FILEUPLOADER: Failed to open uploaded file for processing",
+	ErrG3FUNoHTTPRequest:         "G3FILEUPLOADER: No HTTP request context found",
+	ErrG3FUFormParseFailed:       "G3FILEUPLOADER: Failed to parse multipart form data",
+	ErrG3FUNoMultipartData:       "G3FILEUPLOADER: No multipart form data received",
+	ErrG3FUFileFieldNotFound:     "G3FILEUPLOADER: File field '%s' not found in request",
+	ErrG3FUExtensionNotAllowed:   "G3FILEUPLOADER: File extension '%s' is not allowed",
+	ErrG3FUFileSizeExceedsMax:    "G3FILEUPLOADER: File size exceeds the maximum allowed limit",
+	ErrG3FUInvalidTargetDir:      "G3FILEUPLOADER: The specified target directory is invalid or inaccessible",
+	ErrG3FUTempFileCreateFailed:  "G3FILEUPLOADER: Failed to create temporary file for upload",
+	ErrG3FUTempFileWriteFailed:   "G3FILEUPLOADER: Failed to write data to temporary file",
+	ErrG3FUTempFileSyncFailed:    "G3FILEUPLOADER: Failed to sync temporary file to disk",
+	ErrG3FUFinalMoveFailed:       "G3FILEUPLOADER: Failed to move uploaded file to its final destination",
+	ErrG3FUFinalMoveFailedDetail: "G3FILEUPLOADER: Failed to move uploaded file to its final destination: %v",
+	ErrG3FUOpenFileFailed:        "G3FILEUPLOADER: Failed to open uploaded file for processing",
 
 	// G3DATE date/time library
 	ErrG3DateInvalidArgCount: "G3DATE: invalid number of arguments",

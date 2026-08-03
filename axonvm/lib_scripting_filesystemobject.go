@@ -921,7 +921,13 @@ func (vm *VM) fsoReleasePathObjects(path string) {
 func (vm *VM) fsoRemoveWithRetry(path string, recursive bool) error {
 	var lastErr error
 	for range 5 {
-		_ = os.Chmod(path, 0666)
+		if st, err := os.Stat(path); err == nil {
+			if st.IsDir() {
+				_ = os.Chmod(path, 0777)
+			} else {
+				_ = os.Chmod(path, 0666)
+			}
+		}
 		if recursive {
 			lastErr = os.RemoveAll(path)
 		} else {
