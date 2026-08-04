@@ -3153,30 +3153,63 @@ func (vm *VM) jsAsConcatArray(v Value) (Value, bool) {
 
 // jsArrayToString returns the ES3/ES5 Array toString()-style comma-joined representation.
 func (vm *VM) jsArrayToString(v Value) string {
-	if v.Type != VTArray || v.Arr == nil || len(v.Arr.Values) == 0 {
-		return ""
-	}
-	parts := make([]string, len(v.Arr.Values))
-	totalSize := 0
-	for i := 0; i < len(v.Arr.Values); i++ {
-		item := v.Arr.Values[i]
-		if item.Type == VTJSUndefined || item.Type == VTNull || item.Type == VTEmpty {
-			parts[i] = ""
-		} else {
-			parts[i] = vm.jsConcatString(item)
-		}
-		totalSize += len(parts[i])
-		if i > 0 {
-			totalSize++
-		}
-		if !vm.jsEnsureStringSize(totalSize) {
+	if v.Type == VTArray {
+		if v.Arr == nil || len(v.Arr.Values) == 0 {
 			return ""
 		}
+		parts := make([]string, len(v.Arr.Values))
+		totalSize := 0
+		for i := 0; i < len(v.Arr.Values); i++ {
+			item := v.Arr.Values[i]
+			if item.Type == VTJSUndefined || item.Type == VTNull || item.Type == VTEmpty {
+				parts[i] = ""
+			} else {
+				parts[i] = vm.jsConcatString(item)
+			}
+			totalSize += len(parts[i])
+			if i > 0 {
+				totalSize++
+			}
+			if !vm.jsEnsureStringSize(totalSize) {
+				return ""
+			}
+		}
+		if !vm.jsChargeStringWork(totalSize) {
+			return ""
+		}
+		return strings.Join(parts, ",")
 	}
-	if !vm.jsChargeStringWork(totalSize) {
-		return ""
+	if v.Type == VTJSObject {
+		length, isArrayLike, _ := vm.jsArrayLikeLength(v)
+		if !isArrayLike {
+			return vm.jsObjectToStringTag(v)
+		}
+		if length <= 0 {
+			return ""
+		}
+		parts := make([]string, length)
+		totalSize := 0
+		for i := range length {
+			item, ok := vm.jsArrayLikeGetIndex(v, i)
+			if !ok || item.Type == VTJSUndefined || item.Type == VTNull || item.Type == VTEmpty {
+				parts[i] = ""
+			} else {
+				parts[i] = vm.jsConcatString(item)
+			}
+			totalSize += len(parts[i])
+			if i > 0 {
+				totalSize++
+			}
+			if !vm.jsEnsureStringSize(totalSize) {
+				return ""
+			}
+		}
+		if !vm.jsChargeStringWork(totalSize) {
+			return ""
+		}
+		return strings.Join(parts, ",")
 	}
-	return strings.Join(parts, ",")
+	return ""
 }
 
 // jsEnsureStringSize guards JScript string-producing operations against runaway growth.
@@ -6849,6 +6882,8 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return NewString(vm.jsRegExpToString(target)), true
 				case "Enumerator":
 					return NewString("[object Object]"), true
+				case "Array":
+					return NewString(vm.jsArrayToString(target)), true
 				default:
 					return NewString(vm.jsObjectToStringTag(target)), true
 				}
@@ -9764,7 +9799,7 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			}
 			return Value{Type: VTJSUndefined}
 		case "ArrayPrototypeToString":
-			if thisVal.Type == VTArray {
+			if thisVal.Type == VTArray || thisVal.Type == VTJSObject {
 				return NewString(vm.jsArrayToString(thisVal))
 			}
 			return NewString(vm.jsObjectToStringTag(thisVal))
@@ -11533,6 +11568,9 @@ func (vm *VM) jsRegExpExec(reVal Value, input string) Value {
 	resID := vm.allocJSID()
 	res := make(map[string]Value)
 	res["__js_type"] = NewString("Array")
+	if proto := vm.jsGetIntrinsicPrototype("Array"); proto.Type == VTJSObject {
+		res["__js_proto"] = proto
+	}
 	// JScript index is the start of the match in UTF-16.
 	matchStartUTF16 := int64(0)
 	currentRuneIdx = 0

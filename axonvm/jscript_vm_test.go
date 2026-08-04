@@ -2202,3 +2202,19 @@ func TestJScriptErrorMSProperties(t *testing.T) {
 		})
 	}
 }
+
+func TestJScriptStringMatchToPrimitiveCoercion(t *testing.T) {
+	source := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`var ts = "Hello World";` +
+		`var m = ts.match(/World/);` +
+		`Response.Write("m: " + m + "|");` +
+		`Response.Write("str: " + String(m) + "|");` +
+		`Response.Write("empty: " + ("" + m));` +
+		`%>`
+	out := runASPSourceForTest(t, source)
+	expected := "m: World|str: World|empty: World"
+	if out != expected {
+		t.Fatalf("expected match ToPrimitive conversion output %q, got %q", expected, out)
+	}
+}
