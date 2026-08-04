@@ -47,34 +47,77 @@ else
     echo "User 'axonasp' already exists. Skipping creation."
 fi
 
-# 2. Debian specific: Add to www-data group if it exists
-# This allows AxonASP to write to standard /var/www/ directories in Debian/Ubuntu
-if grep -q "^www-data:" /etc/group; then
-    echo "Detected 'www-data' group. Adding 'axonasp' to it..."
-    if command -v usermod >/dev/null 2>&1; then
-        usermod -aG www-data axonasp
-    elif command -v adduser >/dev/null 2>&1; then # Alpine fallback just in case
-        adduser axonasp www-data
+# 2. Add 'axonasp' to standard web server groups if present (Debian: www-data, Fedora/RPM: apache/nginx, Arch: http)
+for webgroup in www-data apache nginx http; do
+    if grep -q "^${webgroup}:" /etc/group 2>/dev/null; then
+        echo "Detected '${webgroup}' group. Adding 'axonasp' to it..."
+        if command -v usermod >/dev/null 2>&1; then
+            usermod -aG "$webgroup" axonasp 2>/dev/null || true
+        elif command -v adduser >/dev/null 2>&1; then # Alpine fallback
+            adduser axonasp "$webgroup" 2>/dev/null || true
+        fi
     fi
-fi
+done
 
 # 3. Apply Ownership
 echo "Setting ownership for /opt/axonasp..."
-chown -R axonasp:axonasp /opt/axonasp
+if [ -d /opt/axonasp ]; then
+    chown -R axonasp:axonasp /opt/axonasp
+fi
 
-# 4. Apply Group-Write Permissions
-echo "Applying group-write permissions..."
-# ug+rwX gives User and Group Read/Write access. 
-# The uppercase 'X' ensures directories are accessible without making normal files executable.
+# 4. Apply Write Permissions for /opt/axonasp and /opt/axonasp/www (and all subfolders)
+echo "Applying permissions for /opt/axonasp and /opt/axonasp/www..."
 chmod -R ug+rwX /opt/axonasp
+
+if [ -d /opt/axonasp/www ]; then
+    echo "Ensuring recursive write permissions on /opt/axonasp/www and all subdirectories..."
+    chown -R axonasp:axonasp /opt/axonasp/www
+    find /opt/axonasp/www -type d -exec chmod 775 {} + 2>/dev/null || chmod -R ug+rwX /opt/axonasp/www
+    find /opt/axonasp/www -type f -exec chmod 664 {} + 2>/dev/null || true
+fi
+
+if [ -d /opt/axonasp/temp ]; then
+    echo "Ensuring write permissions on /opt/axonasp/temp..."
+    chown -R axonasp:axonasp /opt/axonasp/temp
+    find /opt/axonasp/temp -type d -exec chmod 775 {} + 2>/dev/null || true
+    find /opt/axonasp/temp -type f -exec chmod 664 {} + 2>/dev/null || true
+fi
 
 # Explicitly ensure binaries are executable (in case they lost the +x flag)
 chmod +x /opt/axonasp/axonasp-* 2>/dev/null || true
 chmod +x /opt/axonasp/*.sh 2>/dev/null || true
 
-echo "G3pix ❖ AxonASP installation setup completed successfully!\n\n"
+# 5. SELinux configuration (Fedora / RHEL / CentOS / Rocky / AlmaLinux)
+if command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then
+    echo "SELinux detected. Configuring security contexts for /opt/axonasp..."
+    
+    # Register persistent file context rules if semanage is installed
+    if command -v semanage >/dev/null 2>&1; then
+        semanage fcontext -a -t httpd_sys_rw_content_t "/opt/axonasp/www(/.*)?" 2>/dev/null || true
+        semanage fcontext -a -t httpd_sys_rw_content_t "/opt/axonasp/temp(/.*)?" 2>/dev/null || true
+    fi
+    
+    # Restore contexts using restorecon if available
+    if command -v restorecon >/dev/null 2>&1; then
+        restorecon -R /opt/axonasp/www 2>/dev/null || true
+        restorecon -R /opt/axonasp/temp 2>/dev/null || true
+    fi
+    
+    # Apply immediate context via chcon as fallback/guarantee
+    if command -v chcon >/dev/null 2>&1; then
+        chcon -R -t httpd_sys_rw_content_t /opt/axonasp/www 2>/dev/null || true
+        chcon -R -t httpd_sys_rw_content_t /opt/axonasp/temp 2>/dev/null || true
+    fi
+elif command -v chcon >/dev/null 2>&1; then
+    # Direct chcon attempt if SELinux tools are partially present
+    chcon -R -t httpd_sys_rw_content_t /opt/axonasp/www 2>/dev/null || true
+    chcon -R -t httpd_sys_rw_content_t /opt/axonasp/temp 2>/dev/null || true
+fi
+
+echo "G3pix ❖ AxonASP installation setup completed successfully!"
+echo ""
 echo "If you want to install the systemd service, please run: sudo ./install-service.sh"
 echo "The server is located at /opt/axonasp and runs under the 'axonasp' user for security."
-echo "If you're upgrading from a previous version, please ensure that you axonasp.toml is updated with the latest configuration keys."
+echo "If you're upgrading from a previous version, please ensure that your axonasp.toml is updated with the latest configuration keys."
 echo "Check the manual for further configuration and usage instructions: https://g3pix.com.br/axonasp/manual/"
 echo "You can also interactively test ASP code by running 'axonasp-cli' from the command line."
