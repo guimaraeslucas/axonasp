@@ -2243,3 +2243,29 @@ func TestJScriptEscapeFunctionIsolation(t *testing.T) {
 	}
 }
 
+func TestJScriptStringPrototypeHTMLWrappers(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write("test".anchor("main") + "|");` +
+		`Response.Write("test".big() + "|");` +
+		`Response.Write("test".blink() + "|");` +
+		`Response.Write("test".bold() + "|");` +
+		`Response.Write("test".fixed() + "|");` +
+		`Response.Write("test".fontcolor("red") + "|");` +
+		`Response.Write("test".fontsize(7) + "|");` +
+		`Response.Write("test".italics() + "|");` +
+		`Response.Write("test".link("http://localhost") + "|");` +
+		`Response.Write("test".small() + "|");` +
+		`Response.Write("test".strike() + "|");` +
+		`Response.Write("test".sub() + "|");` +
+		`Response.Write("test".sup() + "|");` +
+		`Response.Write(String.prototype.bold.call("hello"));` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := `<a name="main">test</a>|<big>test</big>|<blink>test</blink>|<b>test</b>|<tt>test</tt>|<font color="red">test</font>|<font size="7">test</font>|<i>test</i>|<a href="http://localhost">test</a>|<small>test</small>|<strike>test</strike>|<sub>test</sub>|<sup>test</sup>|<b>hello</b>`
+	if jsOut != jsExpected {
+		t.Fatalf("expected JScript String HTML wrappers output %q, got %q", jsExpected, jsOut)
+	}
+}
+
+

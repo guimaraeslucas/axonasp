@@ -217,6 +217,9 @@ func (vm *VM) jsPopulatePrototypes(bindings map[string]Value) {
 				Writable:     true,
 			})
 			vm.jsSetDescriptor(proto.Num, "matchAll", jsBuiltinMethodDescriptor(vm.jsCreateNativeFunction("matchAll", "StringPrototypeMatchAll")))
+			for _, name := range []string{"anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize", "italics", "link", "small", "strike", "sub", "sup"} {
+				vm.jsSetDescriptor(proto.Num, name, jsBuiltinMethodDescriptor(vm.jsCreateNativeFunction(name, "StringPrototypeHTMLWrapper")))
+			}
 		}
 	}
 

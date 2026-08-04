@@ -6445,6 +6445,14 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				return Value{Type: VTJSUndefined}, true
 			}
 			return NewString(padded), true
+		case strings.EqualFold(member, "anchor"), strings.EqualFold(member, "big"),
+			strings.EqualFold(member, "blink"), strings.EqualFold(member, "bold"),
+			strings.EqualFold(member, "fixed"), strings.EqualFold(member, "fontcolor"),
+			strings.EqualFold(member, "fontsize"), strings.EqualFold(member, "italics"),
+			strings.EqualFold(member, "link"), strings.EqualFold(member, "small"),
+			strings.EqualFold(member, "strike"), strings.EqualFold(member, "sub"),
+			strings.EqualFold(member, "sup"):
+			return vm.jsStringHTMLWrapper(target, member, args), true
 		}
 	case VTArray:
 		if target.Arr == nil {
@@ -8249,6 +8257,50 @@ func (vm *VM) jsStringReplace(source string, patternArg Value, replacementArg Va
 	return NewString(out)
 }
 
+// jsStringHTMLWrapper implements legacy ECMAScript Annex B HTML wrapper methods on String.prototype.
+func (vm *VM) jsStringHTMLWrapper(thisVal Value, method string, args []Value) Value {
+	str := vm.valueToString(thisVal)
+	var out string
+	switch strings.ToLower(method) {
+	case "anchor":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<a name=\"" + attr + "\">" + str + "</a>"
+	case "big":
+		out = "<big>" + str + "</big>"
+	case "blink":
+		out = "<blink>" + str + "</blink>"
+	case "bold":
+		out = "<b>" + str + "</b>"
+	case "fixed":
+		out = "<tt>" + str + "</tt>"
+	case "fontcolor":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<font color=\"" + attr + "\">" + str + "</font>"
+	case "fontsize":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<font size=\"" + attr + "\">" + str + "</font>"
+	case "italics":
+		out = "<i>" + str + "</i>"
+	case "link":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<a href=\"" + attr + "\">" + str + "</a>"
+	case "small":
+		out = "<small>" + str + "</small>"
+	case "strike":
+		out = "<strike>" + str + "</strike>"
+	case "sub":
+		out = "<sub>" + str + "</sub>"
+	case "sup":
+		out = "<sup>" + str + "</sup>"
+	default:
+		return Value{Type: VTJSUndefined}
+	}
+	if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
+		return Value{Type: VTJSUndefined}
+	}
+	return NewString(out)
+}
+
 // jsStringReplaceRegex applies one or all RegExp matches to the source string.
 func (vm *VM) jsStringReplaceRegex(source string, pattern string, flags string, replacementArg Value, replaceAll bool) Value {
 	re, err := vm.jsCompileRegExp(pattern, flags)
@@ -9766,6 +9818,9 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsCreateArrayIterator(thisVal, 2)
 		case "StringIteratorFactory":
 			return vm.jsCreateStringIterator(vm.valueToString(thisVal))
+		case "StringPrototypeHTMLWrapper":
+			methodName := vm.jsObjectStringProperty(callee, "name")
+			return vm.jsStringHTMLWrapper(thisVal, methodName, args)
 		case "RegExpStringIteratorIterator":
 			return thisVal
 		case "StringPrototypeMatchAll":
