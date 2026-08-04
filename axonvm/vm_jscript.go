@@ -1909,6 +1909,8 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["decodeURIComponent"] = vm.jsCreateIntrinsicObject("", "decodeURIComponent")
 	bindings["encodeURI"] = vm.jsCreateIntrinsicObject("", "encodeURI")
 	bindings["encodeURIComponent"] = vm.jsCreateIntrinsicObject("", "encodeURIComponent")
+	bindings["escape"] = vm.jsCreateIntrinsicObject("", "escape")
+	bindings["unescape"] = vm.jsCreateIntrinsicObject("", "unescape")
 	bindings["ScriptEngine"] = vm.jsCreateIntrinsicObject("", "ScriptEngine")
 	bindings["ScriptEngineMajorVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineMajorVersion")
 	bindings["ScriptEngineMinorVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineMinorVersion")
@@ -2913,7 +2915,8 @@ func (vm *VM) jsIsConstructor(v Value) bool {
 		ctorName := vm.jsObjectStringProperty(v, "__js_ctor")
 		return ctorName != "" && ctorName != "Symbol" && ctorName != "isNaN" && ctorName != "isFinite" &&
 			ctorName != "parseInt" && ctorName != "parseFloat" && ctorName != "decodeURI" &&
-			ctorName != "decodeURIComponent" && ctorName != "encodeURI" && ctorName != "encodeURIComponent"
+			ctorName != "decodeURIComponent" && ctorName != "encodeURI" && ctorName != "encodeURIComponent" &&
+			ctorName != "escape" && ctorName != "unescape"
 	case VTJSProxy:
 		if proxy, ok := vm.jsProxyItems[v.Num]; ok && !proxy.Revoked {
 			return vm.jsIsConstructor(proxy.Target)
@@ -4061,6 +4064,75 @@ func jsEncodeURIValue(input string, component bool) string {
 		}
 	}
 
+	return out.String()
+}
+
+// jsEscapeValue implements classic JScript / ECMAScript 3 escape() encoding.
+func jsEscapeValue(input string) string {
+	if input == "" {
+		return ""
+	}
+	var out strings.Builder
+	out.Grow(len(input))
+	for _, r := range input {
+		switch {
+		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') ||
+			r == '*' || r == '@' || r == '-' || r == '_' || r == '+' || r == '.' || r == '/':
+			out.WriteRune(r)
+		case r < 256:
+			out.WriteByte('%')
+			out.WriteByte(jsHexUpperDigits[r>>4])
+			out.WriteByte(jsHexUpperDigits[r&0x0F])
+		case r <= 0xFFFF:
+			out.WriteString("%u")
+			out.WriteByte(jsHexUpperDigits[(r>>12)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r>>8)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r>>4)&0x0F])
+			out.WriteByte(jsHexUpperDigits[r&0x0F])
+		default:
+			r1, r2 := utf16.EncodeRune(r)
+			out.WriteString("%u")
+			out.WriteByte(jsHexUpperDigits[(r1>>12)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r1>>8)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r1>>4)&0x0F])
+			out.WriteByte(jsHexUpperDigits[r1&0x0F])
+			out.WriteString("%u")
+			out.WriteByte(jsHexUpperDigits[(r2>>12)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r2>>8)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r2>>4)&0x0F])
+			out.WriteByte(jsHexUpperDigits[r2&0x0F])
+		}
+	}
+	return out.String()
+}
+
+// jsUnescapeValue implements classic JScript / ECMAScript 3 unescape() decoding.
+func jsUnescapeValue(input string) string {
+	if input == "" {
+		return ""
+	}
+	var out strings.Builder
+	out.Grow(len(input))
+	runes := []rune(input)
+	n := len(runes)
+	for i := 0; i < n; i++ {
+		if runes[i] == '%' {
+			if i+5 < n && (runes[i+1] == 'u' || runes[i+1] == 'U') {
+				if val, err := strconv.ParseUint(string(runes[i+2:i+6]), 16, 16); err == nil {
+					out.WriteRune(rune(val))
+					i += 5
+					continue
+				}
+			} else if i+2 < n {
+				if val, err := strconv.ParseUint(string(runes[i+1:i+3]), 16, 8); err == nil {
+					out.WriteRune(rune(val))
+					i += 2
+					continue
+				}
+			}
+		}
+		out.WriteRune(runes[i])
+	}
 	return out.String()
 }
 
@@ -9923,6 +9995,10 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return NewString(jsEncodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)), false))
 		case "encodeURIComponent":
 			return NewString(jsEncodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)), true))
+		case "escape":
+			return NewString(jsEscapeValue(vm.valueToString(jsArgOrUndefined(args, 0))))
+		case "unescape":
+			return NewString(jsUnescapeValue(vm.valueToString(jsArgOrUndefined(args, 0))))
 		}
 		return Value{Type: VTJSUndefined}
 	case VTBuiltin:

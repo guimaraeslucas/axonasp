@@ -2218,3 +2218,28 @@ func TestJScriptStringMatchToPrimitiveCoercion(t *testing.T) {
 		t.Fatalf("expected match ToPrimitive conversion output %q, got %q", expected, out)
 	}
 }
+
+func TestJScriptEscapeFunctionIsolation(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write(escape(" ") + "|");` +
+		`Response.Write(escape("こんにちは") + "|");` +
+		`Response.Write(unescape("%20"));` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := "%20|%u3053%u3093%u306B%u3061%u306F| "
+	if jsOut != jsExpected {
+		t.Fatalf("expected JScript escape output %q, got %q", jsExpected, jsOut)
+	}
+
+	vbsSource := `<%@ Language="VBScript" %>` +
+		`<%` +
+		`Response.Write Escape(" ")` +
+		`%>`
+	vbsOut := runASPSourceForTest(t, vbsSource)
+	vbsExpected := "+"
+	if vbsOut != vbsExpected {
+		t.Fatalf("expected VBScript Escape output %q, got %q", vbsExpected, vbsOut)
+	}
+}
+
