@@ -895,7 +895,10 @@ func (vm *VM) jsEval(args []Value) Value {
 	compiler := NewASPCompiler("")
 	compiler.sourceName = vm.sourceName
 	vm.jsPrepareDynamicCompilerIC(compiler)
-	compiler.compileJScriptEvalSnippet(expr)
+	if err := compiler.compileJScriptEvalSnippet(expr); err != nil {
+		vm.jsThrowJSError(jscript.SyntaxError)
+		return Value{Type: VTJSUndefined}
+	}
 
 	if len(compiler.bytecode) == 0 {
 		return Value{Type: VTJSUndefined}
@@ -7897,11 +7900,12 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 
 func (vm *VM) jsCreateErrorObject(name string, msg string) Value {
 	objID := vm.allocJSID()
-	obj := make(map[string]Value, 4)
+	obj := make(map[string]Value, 5)
 	obj["__js_type"] = NewString("Error")
 	obj["__js_ctor"] = NewString(name)
 	obj["name"] = NewString(name)
 	obj["message"] = NewString(msg)
+	obj["description"] = NewString(msg)
 	if proto := vm.jsGetIntrinsicPrototype(name); proto.Type == VTJSObject {
 		obj["__js_proto"] = proto
 	} else if proto := vm.jsGetIntrinsicPrototype("Error"); proto.Type == VTJSObject {
@@ -9989,7 +9993,17 @@ func (vm *VM) jsThrowJSError(code jscript.JSSyntaxErrorCode) {
 	}
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]
 	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
-	vm.jsErrStack = append(vm.jsErrStack, vm.jsCreateErrorObject("TypeError", msg)) // Most ES6+ errors are TypeErrors
+	ctorName := "TypeError"
+	if code == jscript.SyntaxError {
+		ctorName = "SyntaxError"
+	} else if code == jscript.UndefinedIdentifier {
+		ctorName = "ReferenceError"
+	}
+	errObj := vm.jsCreateErrorObject(ctorName, msg)
+	if items, ok := vm.jsObjectItems[errObj.Num]; ok && items != nil {
+		items["number"] = NewInteger(int64(jscript.HRESULTFromJScriptCode(code)))
+	}
+	vm.jsErrStack = append(vm.jsErrStack, errObj)
 	vm.ip = target
 }
 
@@ -10727,7 +10741,10 @@ func (vm *VM) jsConstructFunction(args []Value) Value {
 	compiler := NewASPCompiler("")
 	compiler.sourceName = vm.sourceName
 	vm.jsPrepareDynamicCompilerIC(compiler)
-	compiler.compileJScriptEvalSnippet(code)
+	if err := compiler.compileJScriptEvalSnippet(code); err != nil {
+		vm.jsThrowJSError(jscript.SyntaxError)
+		return Value{Type: VTJSUndefined}
+	}
 	if len(compiler.bytecode) == 0 {
 		return Value{Type: VTJSUndefined}
 	}
