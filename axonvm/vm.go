@@ -7906,6 +7906,11 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 		switch {
 		case strings.EqualFold(member, "ScriptTimeout"):
 			return NewInteger(int64(vm.host.Server().GetScriptTimeout()))
+		case strings.EqualFold(member, "GetLastError"):
+			// Bare VBScript access (Server.GetLastError without parentheses) compiles to
+			// OpMemberGet, so route it here to return the wrapped ASPError native object.
+			// Parenthesized calls reach dispatchNativeCall directly; both paths must agree.
+			return vm.newASPErrorObject(vm.host.Server().GetLastError())
 		}
 	case nativeObjectSessionContents:
 		session := vm.host.Session()

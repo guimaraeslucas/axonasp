@@ -22,6 +22,7 @@ package axonvm
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -195,4 +196,15 @@ func (c *fsoCacheManager) GetReadDir(path string) ([]os.DirEntry, error) {
 	}
 
 	return entries, nil
+}
+
+// Invalidate removes cached stat and readdir items for a path.
+func (c *fsoCacheManager) Invalidate(path string) {
+	if path == "" {
+		return
+	}
+	c.mu.Lock()
+	delete(c.items, path)
+	delete(c.items, filepath.Clean(path))
+	c.mu.Unlock()
 }

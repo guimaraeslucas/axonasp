@@ -183,18 +183,30 @@ func (c *Compiler) compileJScriptBlockWithLineAnchors(source string, anchors []j
 
 // compileJScriptEvalSnippet parses one JScript eval source and emits OpJS bytecode
 // that leaves the completion value on the stack and terminates with OpHalt.
-func (c *Compiler) compileJScriptEvalSnippet(source string) {
+func (c *Compiler) compileJScriptEvalSnippet(source string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if jsErr, ok := r.(*jscript.JSSyntaxError); ok {
+				err = jsErr
+			} else if compileErr, ok := r.(error); ok {
+				err = compileErr
+			} else {
+				err = fmt.Errorf("jscript eval compile panic: %v", r)
+			}
+		}
+	}()
+
 	source = normalizeJScriptCollectionAssignments(source)
 
-	program, err := jsparser.ParseFile(nil, c.sourceName, source, jsparser.ModeTopLevelAwait)
-	if err != nil {
-		panic(c.newJScriptCompileErrorFromParse(err, "jscript eval parse error"))
+	program, parseErr := jsparser.ParseFile(nil, c.sourceName, source, jsparser.ModeTopLevelAwait)
+	if parseErr != nil {
+		return c.newJScriptCompileErrorFromParse(parseErr, "jscript eval parse error")
 	}
 
 	if len(program.Body) == 0 {
 		c.emit(OpJSLoadUndefined)
 		c.emit(OpHalt)
-		return
+		return nil
 	}
 
 	// Detect "use strict" directive at the beginning
@@ -250,6 +262,7 @@ func (c *Compiler) compileJScriptEvalSnippet(source string) {
 
 	c.jsICNodeCount = c.jsNextICNodeID
 	c.emit(OpHalt)
+	return nil
 }
 
 // newJScriptCompileErrorFromParse converts parser failures into a JScript syntax error.

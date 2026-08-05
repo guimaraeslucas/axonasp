@@ -53,3 +53,4 @@ Example of the "Downloads & Installation" section that you must follow exactly:
    * Do not repeat phrases like "Classic ASP" redundantly. AxonASP is a "modern cross-platform engine for VBScript and JavaScript".
    * Never output conversational filler before or after
    * Make the text SEO aware
+   * Do not add any external links or references outside of the GitHub release links provided. Don't use Google search links or any other external references.

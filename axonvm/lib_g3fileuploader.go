@@ -765,7 +765,7 @@ func (f *G3FileUploader) wrapResultAsDict(m map[string]any) Value {
 func moveUploadedFile(tempPath, finalPath string) error {
 	const maxAttempts = 3
 	var err error
-	for i := 0; i < maxAttempts; i++ {
+	for i := range maxAttempts {
 		err = os.Rename(tempPath, finalPath)
 		if err == nil {
 			return nil
@@ -816,7 +816,7 @@ func copyUploadedFile(tempPath, finalPath string) error {
 	// file is closed too. Best-effort removal with a short retry loop absorbs
 	// transient sharing violations (e.g. antivirus scanners) without failing an
 	// upload whose final destination was already persisted.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := os.Remove(tempPath); err == nil {
 			return nil
 		} else if i < 2 {

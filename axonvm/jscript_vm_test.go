@@ -2202,3 +2202,108 @@ func TestJScriptErrorMSProperties(t *testing.T) {
 		})
 	}
 }
+
+func TestJScriptStringMatchToPrimitiveCoercion(t *testing.T) {
+	source := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`var ts = "Hello World";` +
+		`var m = ts.match(/World/);` +
+		`Response.Write("m: " + m + "|");` +
+		`Response.Write("str: " + String(m) + "|");` +
+		`Response.Write("empty: " + ("" + m));` +
+		`%>`
+	out := runASPSourceForTest(t, source)
+	expected := "m: World|str: World|empty: World"
+	if out != expected {
+		t.Fatalf("expected match ToPrimitive conversion output %q, got %q", expected, out)
+	}
+}
+
+func TestJScriptEscapeFunctionIsolation(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write(escape(" ") + "|");` +
+		`Response.Write(escape("こんにちは") + "|");` +
+		`Response.Write(unescape("%20"));` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := "%20|%u3053%u3093%u306B%u3061%u306F| "
+	if jsOut != jsExpected {
+		t.Fatalf("expected JScript escape output %q, got %q", jsExpected, jsOut)
+	}
+
+	vbsSource := `<%@ Language="VBScript" %>` +
+		`<%` +
+		`Response.Write Escape(" ")` +
+		`%>`
+	vbsOut := runASPSourceForTest(t, vbsSource)
+	vbsExpected := "+"
+	if vbsOut != vbsExpected {
+		t.Fatalf("expected VBScript Escape output %q, got %q", vbsExpected, vbsOut)
+	}
+}
+
+func TestJScriptStringPrototypeHTMLWrappers(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write("test".anchor("main") + "|");` +
+		`Response.Write("test".big() + "|");` +
+		`Response.Write("test".blink() + "|");` +
+		`Response.Write("test".bold() + "|");` +
+		`Response.Write("test".fixed() + "|");` +
+		`Response.Write("test".fontcolor("red") + "|");` +
+		`Response.Write("test".fontsize(7) + "|");` +
+		`Response.Write("test".italics() + "|");` +
+		`Response.Write("test".link("http://localhost") + "|");` +
+		`Response.Write("test".small() + "|");` +
+		`Response.Write("test".strike() + "|");` +
+		`Response.Write("test".sub() + "|");` +
+		`Response.Write("test".sup() + "|");` +
+		`Response.Write(String.prototype.bold.call("hello"));` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := `<A NAME="main">test</A>|<BIG>test</BIG>|<BLINK>test</BLINK>|<B>test</B>|<TT>test</TT>|<FONT COLOR="red">test</FONT>|<FONT SIZE="7">test</FONT>|<I>test</I>|<A HREF="http://localhost">test</A>|<SMALL>test</SMALL>|<STRIKE>test</STRIKE>|<SUB>test</SUB>|<SUP>test</SUP>|<B>hello</B>`
+	if jsOut != jsExpected {
+		t.Fatalf("expected JScript String HTML wrappers output %q, got %q", jsExpected, jsOut)
+	}
+}
+
+func TestJScriptStringMethodsParity(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write(String.fromCharCode(72, 101, 108, 108, 111) + "|");` +
+		`Response.Write("canal".lastIndexOf("a") + "|");` +
+		`Response.Write("canal".lastIndexOf("a", 2) + "|");` +
+		`Response.Write("alphabet".toLocaleUpperCase() + "|");` +
+		`Response.Write("ALPHABET".toLocaleLowerCase());` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := "Hello|3|1|ALPHABET|alphabet"
+	if jsOut != jsExpected {
+		t.Fatalf("expected JScript String methods parity output %q, got %q", jsExpected, jsOut)
+	}
+}
+
+func TestJScriptFunctionsASPPageParity(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write(("HW".anchor("top").indexOf("<A") >= 0) + "|");` +
+		`Response.Write(("hi".big().indexOf("<BIG>") >= 0) + "|");` +
+		`Response.Write(("hi".blink().indexOf("<BLINK>") >= 0) + "|");` +
+		`Response.Write(("hi".bold().indexOf("<B>") >= 0) + "|");` +
+		`Response.Write(("hi".fixed().indexOf("<TT>") >= 0) + "|");` +
+		`Response.Write(("hi".fontcolor("red").toLowerCase().indexOf("red") >= 0) + "|");` +
+		`Response.Write(("hi".fontsize(5).indexOf("5") >= 0) + "|");` +
+		`Response.Write(("hi".italics().indexOf("<I>") >= 0) + "|");` +
+		`Response.Write(("HW".link("http://x").toLowerCase().indexOf("href") >= 0) + "|");` +
+		`Response.Write(("hi".small().indexOf("<SMALL>") >= 0) + "|");` +
+		`Response.Write(("hi".strike().indexOf("<STRIKE>") >= 0) + "|");` +
+		`Response.Write(("hi".sub().indexOf("<SUB>") >= 0) + "|");` +
+		`Response.Write(("hi".sup().indexOf("<SUP>") >= 0));` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := "true|true|true|true|true|true|true|true|true|true|true|true|true"
+	if jsOut != jsExpected {
+		t.Fatalf("expected test_js_functions.asp assertions output %q, got %q", jsExpected, jsOut)
+	}
+}

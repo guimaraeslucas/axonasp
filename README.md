@@ -55,12 +55,75 @@ You can use the **AxonLive Builder** available in the `www/axonlive/builder/` di
 
 ## 🚀 Quick Deployment & Execution
 
-AxonASP is ready for modern CI/CD pipelines and containerization.
+AxonASP is ready for modern CI/CD pipelines and containerization. Official multi-architecture Docker images (`linux/amd64`, `linux/arm64`) are published to GitHub Container Registry (`ghcr.io`).
 
-### Prerequisites
-* GoLang 1.26+ (if building from source)
+### Docker Deployment
 
-### Building the Engine
+AxonASP provides two official Docker container variants:
+
+#### 1. Standalone AxonASP Server Container
+Runs the native AxonASP HTTP engine (`axonasp-http`), FastCGI server (`axonasp-fastcgi`), and MCP server (`axonasp-mcp`).
+
+* **Image:** `ghcr.io/guimaraeslucas/axonasp:latest` (or versioned tag `:v2.3.0`)
+* **Default Ports:** `8801` (HTTP), `9000` (FastCGI), `8000` (MCP)
+
+```bash
+# Pull the standalone image
+docker pull ghcr.io/guimaraeslucas/axonasp:latest
+
+# Run standalone server with web root mounted
+docker run -d \
+  --name axonasp \
+  -p 8801:8801 \
+  -v $(pwd)/www:/opt/axonasp/www \
+  --restart unless-stopped \
+  ghcr.io/guimaraeslucas/axonasp:latest
+```
+
+#### 2. Caddy Server Container (AxonASP Caddy Edition)
+Bundles the Caddy Web Server with the native AxonASP Go module compiled directly in. Provides zero-process ASP execution, automatic TLS (HTTPS), and native Caddyfile routing. Avoid all the complexity of reverse proxying, FPM and TLS certificate management.
+
+* **Image:** `ghcr.io/guimaraeslucas/axonasp:caddy` (or versioned tag `:caddy-v2.3.0`)
+* **Default Port:** `8801` (or `80`/`443` with custom Caddyfile)
+
+```bash
+# Pull the Caddy edition image
+docker pull ghcr.io/guimaraeslucas/axonasp:caddy
+
+# Run Caddy server with web root mounted
+docker run -d \
+  --name axonasp-caddy \
+  -p 8801:8801 \
+  -v $(pwd)/www:/opt/axonasp/www \
+  --restart unless-stopped \
+  ghcr.io/guimaraeslucas/axonasp:caddy
+```
+
+You can also supply a custom `Caddyfile`:
+
+```bash
+docker run -d \
+  --name axonasp-caddy \
+  -p 80:80 \
+  -p 443:443 \
+  -v $(pwd)/www:/opt/axonasp/www \
+  -v $(pwd)/Caddyfile:/opt/axonasp/Caddyfile \
+  --restart unless-stopped \
+  ghcr.io/guimaraeslucas/axonasp:caddy
+```
+
+### Local Development with Docker Compose
+
+Run the local development stack with hot-reloading:
+
+```bash
+docker compose up -d
+```
+
+### Building from Source
+
+Prerequisites: GoLang 1.26+ (if building from source)
+
 Use the provided build scripts to compile AxonASP for your target architecture:
 
 **Linux / macOS:**
@@ -76,7 +139,7 @@ Use the provided build scripts to compile AxonASP for your target architecture:
 You can optionally disable specific libraries (e.g., `lib_g3crypto_disabled`) to create leaner binaries. See the manual for details.
 
 ### Deployment Architecture
-Deploy AxonASP via its built-in HTTP server (Reverse Proxy Mode) or via FastCGI (`axonasp-fastcgi`). It integrates flawlessly with Nginx and Apache allowing you to serve Classic ASP applications in modern web environments. You can use the experimental Caddy module to run AxonASP directly inside Caddy server for a fully integrated experience without need for FastCGI.
+Deploy AxonASP via its built-in HTTP server (Reverse Proxy Mode), via FastCGI (`axonasp-fastcgi`), or integrated natively inside Caddy Server (`ghcr.io/guimaraeslucas/axonasp:caddy`). It integrates flawlessly with Nginx, Apache, and Caddy allowing you to serve Classic ASP applications in modern web environments.
 
 See our full documentation in `www/manual/md/` for examples and complete API details.
 

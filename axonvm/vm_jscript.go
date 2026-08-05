@@ -895,7 +895,10 @@ func (vm *VM) jsEval(args []Value) Value {
 	compiler := NewASPCompiler("")
 	compiler.sourceName = vm.sourceName
 	vm.jsPrepareDynamicCompilerIC(compiler)
-	compiler.compileJScriptEvalSnippet(expr)
+	if err := compiler.compileJScriptEvalSnippet(expr); err != nil {
+		vm.jsThrowJSError(jscript.SyntaxError)
+		return Value{Type: VTJSUndefined}
+	}
 
 	if len(compiler.bytecode) == 0 {
 		return Value{Type: VTJSUndefined}
@@ -1906,6 +1909,8 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["decodeURIComponent"] = vm.jsCreateIntrinsicObject("", "decodeURIComponent")
 	bindings["encodeURI"] = vm.jsCreateIntrinsicObject("", "encodeURI")
 	bindings["encodeURIComponent"] = vm.jsCreateIntrinsicObject("", "encodeURIComponent")
+	bindings["escape"] = vm.jsCreateIntrinsicObject("", "escape")
+	bindings["unescape"] = vm.jsCreateIntrinsicObject("", "unescape")
 	bindings["ScriptEngine"] = vm.jsCreateIntrinsicObject("", "ScriptEngine")
 	bindings["ScriptEngineMajorVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineMajorVersion")
 	bindings["ScriptEngineMinorVersion"] = vm.jsCreateIntrinsicObject("", "ScriptEngineMinorVersion")
@@ -2910,7 +2915,8 @@ func (vm *VM) jsIsConstructor(v Value) bool {
 		ctorName := vm.jsObjectStringProperty(v, "__js_ctor")
 		return ctorName != "" && ctorName != "Symbol" && ctorName != "isNaN" && ctorName != "isFinite" &&
 			ctorName != "parseInt" && ctorName != "parseFloat" && ctorName != "decodeURI" &&
-			ctorName != "decodeURIComponent" && ctorName != "encodeURI" && ctorName != "encodeURIComponent"
+			ctorName != "decodeURIComponent" && ctorName != "encodeURI" && ctorName != "encodeURIComponent" &&
+			ctorName != "escape" && ctorName != "unescape"
 	case VTJSProxy:
 		if proxy, ok := vm.jsProxyItems[v.Num]; ok && !proxy.Revoked {
 			return vm.jsIsConstructor(proxy.Target)
@@ -3150,30 +3156,63 @@ func (vm *VM) jsAsConcatArray(v Value) (Value, bool) {
 
 // jsArrayToString returns the ES3/ES5 Array toString()-style comma-joined representation.
 func (vm *VM) jsArrayToString(v Value) string {
-	if v.Type != VTArray || v.Arr == nil || len(v.Arr.Values) == 0 {
-		return ""
-	}
-	parts := make([]string, len(v.Arr.Values))
-	totalSize := 0
-	for i := 0; i < len(v.Arr.Values); i++ {
-		item := v.Arr.Values[i]
-		if item.Type == VTJSUndefined || item.Type == VTNull || item.Type == VTEmpty {
-			parts[i] = ""
-		} else {
-			parts[i] = vm.jsConcatString(item)
-		}
-		totalSize += len(parts[i])
-		if i > 0 {
-			totalSize++
-		}
-		if !vm.jsEnsureStringSize(totalSize) {
+	if v.Type == VTArray {
+		if v.Arr == nil || len(v.Arr.Values) == 0 {
 			return ""
 		}
+		parts := make([]string, len(v.Arr.Values))
+		totalSize := 0
+		for i := 0; i < len(v.Arr.Values); i++ {
+			item := v.Arr.Values[i]
+			if item.Type == VTJSUndefined || item.Type == VTNull || item.Type == VTEmpty {
+				parts[i] = ""
+			} else {
+				parts[i] = vm.jsConcatString(item)
+			}
+			totalSize += len(parts[i])
+			if i > 0 {
+				totalSize++
+			}
+			if !vm.jsEnsureStringSize(totalSize) {
+				return ""
+			}
+		}
+		if !vm.jsChargeStringWork(totalSize) {
+			return ""
+		}
+		return strings.Join(parts, ",")
 	}
-	if !vm.jsChargeStringWork(totalSize) {
-		return ""
+	if v.Type == VTJSObject {
+		length, isArrayLike, _ := vm.jsArrayLikeLength(v)
+		if !isArrayLike {
+			return vm.jsObjectToStringTag(v)
+		}
+		if length <= 0 {
+			return ""
+		}
+		parts := make([]string, length)
+		totalSize := 0
+		for i := range length {
+			item, ok := vm.jsArrayLikeGetIndex(v, i)
+			if !ok || item.Type == VTJSUndefined || item.Type == VTNull || item.Type == VTEmpty {
+				parts[i] = ""
+			} else {
+				parts[i] = vm.jsConcatString(item)
+			}
+			totalSize += len(parts[i])
+			if i > 0 {
+				totalSize++
+			}
+			if !vm.jsEnsureStringSize(totalSize) {
+				return ""
+			}
+		}
+		if !vm.jsChargeStringWork(totalSize) {
+			return ""
+		}
+		return strings.Join(parts, ",")
 	}
-	return strings.Join(parts, ",")
+	return ""
 }
 
 // jsEnsureStringSize guards JScript string-producing operations against runaway growth.
@@ -4025,6 +4064,75 @@ func jsEncodeURIValue(input string, component bool) string {
 		}
 	}
 
+	return out.String()
+}
+
+// jsEscapeValue implements classic JScript / ECMAScript 3 escape() encoding.
+func jsEscapeValue(input string) string {
+	if input == "" {
+		return ""
+	}
+	var out strings.Builder
+	out.Grow(len(input))
+	for _, r := range input {
+		switch {
+		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') ||
+			r == '*' || r == '@' || r == '-' || r == '_' || r == '+' || r == '.' || r == '/':
+			out.WriteRune(r)
+		case r < 256:
+			out.WriteByte('%')
+			out.WriteByte(jsHexUpperDigits[r>>4])
+			out.WriteByte(jsHexUpperDigits[r&0x0F])
+		case r <= 0xFFFF:
+			out.WriteString("%u")
+			out.WriteByte(jsHexUpperDigits[(r>>12)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r>>8)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r>>4)&0x0F])
+			out.WriteByte(jsHexUpperDigits[r&0x0F])
+		default:
+			r1, r2 := utf16.EncodeRune(r)
+			out.WriteString("%u")
+			out.WriteByte(jsHexUpperDigits[(r1>>12)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r1>>8)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r1>>4)&0x0F])
+			out.WriteByte(jsHexUpperDigits[r1&0x0F])
+			out.WriteString("%u")
+			out.WriteByte(jsHexUpperDigits[(r2>>12)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r2>>8)&0x0F])
+			out.WriteByte(jsHexUpperDigits[(r2>>4)&0x0F])
+			out.WriteByte(jsHexUpperDigits[r2&0x0F])
+		}
+	}
+	return out.String()
+}
+
+// jsUnescapeValue implements classic JScript / ECMAScript 3 unescape() decoding.
+func jsUnescapeValue(input string) string {
+	if input == "" {
+		return ""
+	}
+	var out strings.Builder
+	out.Grow(len(input))
+	runes := []rune(input)
+	n := len(runes)
+	for i := 0; i < n; i++ {
+		if runes[i] == '%' {
+			if i+5 < n && (runes[i+1] == 'u' || runes[i+1] == 'U') {
+				if val, err := strconv.ParseUint(string(runes[i+2:i+6]), 16, 16); err == nil {
+					out.WriteRune(rune(val))
+					i += 5
+					continue
+				}
+			} else if i+2 < n {
+				if val, err := strconv.ParseUint(string(runes[i+1:i+3]), 16, 8); err == nil {
+					out.WriteRune(rune(val))
+					i += 2
+					continue
+				}
+			}
+		}
+		out.WriteRune(runes[i])
+	}
 	return out.String()
 }
 
@@ -6069,18 +6177,62 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 			idxVal, _ := vm.jsMemberGet(res, "index")
 			return idxVal, true
-		case strings.EqualFold(member, "toLowerCase"):
+		case strings.EqualFold(member, "toLowerCase"), strings.EqualFold(member, "toLocaleLowerCase"):
 			out := strings.ToLower(text)
 			if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 				return Value{Type: VTJSUndefined}, true
 			}
 			return NewString(out), true
-		case strings.EqualFold(member, "toUpperCase"):
+		case strings.EqualFold(member, "toUpperCase"), strings.EqualFold(member, "toLocaleUpperCase"):
 			out := strings.ToUpper(text)
 			if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 				return Value{Type: VTJSUndefined}, true
 			}
 			return NewString(out), true
+		case strings.EqualFold(member, "lastIndexOf"):
+			if len(args) == 0 {
+				return NewInteger(-1), true
+			}
+			search := vm.valueToString(args[0])
+			searchRunes := []rune(search)
+			searchLen := len(searchRunes)
+			length := len(runes)
+			start := length
+			if len(args) > 1 && args[1].Type != VTJSUndefined {
+				num := vm.jsToNumber(args[1])
+				if math.IsNaN(num.Flt) {
+					start = length
+				} else {
+					n := int(num.Flt)
+					if n < 0 {
+						start = 0
+					} else if n > length {
+						start = length
+					} else {
+						start = n
+					}
+				}
+			}
+			if searchLen == 0 {
+				return NewInteger(int64(start)), true
+			}
+			maxStart := min(start, length-searchLen)
+			if maxStart < 0 {
+				return NewInteger(-1), true
+			}
+			for i := maxStart; i >= 0; i-- {
+				match := true
+				for j := range searchLen {
+					if runes[i+j] != searchRunes[j] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return NewInteger(int64(i)), true
+				}
+			}
+			return NewInteger(-1), true
 		case strings.EqualFold(member, "localeCompare"):
 			other := vm.valueToString(jsArgOrUndefined(args, 0))
 			cmp := strings.Compare(text, other)
@@ -6337,6 +6489,14 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				return Value{Type: VTJSUndefined}, true
 			}
 			return NewString(padded), true
+		case strings.EqualFold(member, "anchor"), strings.EqualFold(member, "big"),
+			strings.EqualFold(member, "blink"), strings.EqualFold(member, "bold"),
+			strings.EqualFold(member, "fixed"), strings.EqualFold(member, "fontcolor"),
+			strings.EqualFold(member, "fontsize"), strings.EqualFold(member, "italics"),
+			strings.EqualFold(member, "link"), strings.EqualFold(member, "small"),
+			strings.EqualFold(member, "strike"), strings.EqualFold(member, "sub"),
+			strings.EqualFold(member, "sup"):
+			return vm.jsStringHTMLWrapper(target, member, args), true
 		}
 	case VTArray:
 		if target.Arr == nil {
@@ -6846,6 +7006,8 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 					return NewString(vm.jsRegExpToString(target)), true
 				case "Enumerator":
 					return NewString("[object Object]"), true
+				case "Array":
+					return NewString(vm.jsArrayToString(target)), true
 				default:
 					return NewString(vm.jsObjectToStringTag(target)), true
 				}
@@ -6967,6 +7129,24 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 		case "String":
 			switch {
+			case strings.EqualFold(member, "fromCharCode"):
+				if len(args) == 0 {
+					return NewString(""), true
+				}
+				codeUnits := make([]uint16, len(args))
+				for i := range args {
+					num := vm.jsToNumber(args[i])
+					if math.IsNaN(num.Flt) || math.IsInf(num.Flt, 0) {
+						codeUnits[i] = 0
+					} else {
+						codeUnits[i] = uint16(uint32(num.Flt))
+					}
+				}
+				res := string(utf16.Decode(codeUnits))
+				if !vm.jsEnsureStringSize(len(res)) || !vm.jsChargeStringWork(len(res)) {
+					return Value{Type: VTJSUndefined}, true
+				}
+				return NewString(res), true
 			case strings.EqualFold(member, "fromCodePoint"):
 				// String.fromCodePoint(...codePoints)
 				// Converts one or more code points to a string
@@ -7897,11 +8077,12 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 
 func (vm *VM) jsCreateErrorObject(name string, msg string) Value {
 	objID := vm.allocJSID()
-	obj := make(map[string]Value, 4)
+	obj := make(map[string]Value, 5)
 	obj["__js_type"] = NewString("Error")
 	obj["__js_ctor"] = NewString(name)
 	obj["name"] = NewString(name)
 	obj["message"] = NewString(msg)
+	obj["description"] = NewString(msg)
 	if proto := vm.jsGetIntrinsicPrototype(name); proto.Type == VTJSObject {
 		obj["__js_proto"] = proto
 	} else if proto := vm.jsGetIntrinsicPrototype("Error"); proto.Type == VTJSObject {
@@ -8132,6 +8313,50 @@ func (vm *VM) jsStringReplace(source string, patternArg Value, replacementArg Va
 		start = idx + len(search)
 	}
 	out := b.String()
+	if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
+		return Value{Type: VTJSUndefined}
+	}
+	return NewString(out)
+}
+
+// jsStringHTMLWrapper implements legacy ECMAScript Annex B / classic JScript HTML wrapper methods on String.prototype.
+func (vm *VM) jsStringHTMLWrapper(thisVal Value, method string, args []Value) Value {
+	str := vm.valueToString(thisVal)
+	var out string
+	switch strings.ToLower(method) {
+	case "anchor":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<A NAME=\"" + attr + "\">" + str + "</A>"
+	case "big":
+		out = "<BIG>" + str + "</BIG>"
+	case "blink":
+		out = "<BLINK>" + str + "</BLINK>"
+	case "bold":
+		out = "<B>" + str + "</B>"
+	case "fixed":
+		out = "<TT>" + str + "</TT>"
+	case "fontcolor":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<FONT COLOR=\"" + attr + "\">" + str + "</FONT>"
+	case "fontsize":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<FONT SIZE=\"" + attr + "\">" + str + "</FONT>"
+	case "italics":
+		out = "<I>" + str + "</I>"
+	case "link":
+		attr := vm.valueToString(jsArgOrUndefined(args, 0))
+		out = "<A HREF=\"" + attr + "\">" + str + "</A>"
+	case "small":
+		out = "<SMALL>" + str + "</SMALL>"
+	case "strike":
+		out = "<STRIKE>" + str + "</STRIKE>"
+	case "sub":
+		out = "<SUB>" + str + "</SUB>"
+	case "sup":
+		out = "<SUP>" + str + "</SUP>"
+	default:
+		return Value{Type: VTJSUndefined}
+	}
 	if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 		return Value{Type: VTJSUndefined}
 	}
@@ -9655,6 +9880,31 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsCreateArrayIterator(thisVal, 2)
 		case "StringIteratorFactory":
 			return vm.jsCreateStringIterator(vm.valueToString(thisVal))
+		case "StringPrototypeHTMLWrapper":
+			methodName := vm.jsObjectStringProperty(callee, "name")
+			return vm.jsStringHTMLWrapper(thisVal, methodName, args)
+		case "StringFromCharCode":
+			if len(args) == 0 {
+				return NewString("")
+			}
+			codeUnits := make([]uint16, len(args))
+			for i := range args {
+				num := vm.jsToNumber(args[i])
+				if math.IsNaN(num.Flt) || math.IsInf(num.Flt, 0) {
+					codeUnits[i] = 0
+				} else {
+					codeUnits[i] = uint16(uint32(num.Flt))
+				}
+			}
+			res := string(utf16.Decode(codeUnits))
+			if !vm.jsEnsureStringSize(len(res)) || !vm.jsChargeStringWork(len(res)) {
+				return Value{Type: VTJSUndefined}
+			}
+			return NewString(res)
+		case "StringPrototypeMethod":
+			methodName := vm.jsObjectStringProperty(callee, "name")
+			res, _ := vm.jsCallMember(thisVal, methodName, args)
+			return res
 		case "RegExpStringIteratorIterator":
 			return thisVal
 		case "StringPrototypeMatchAll":
@@ -9760,7 +10010,7 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			}
 			return Value{Type: VTJSUndefined}
 		case "ArrayPrototypeToString":
-			if thisVal.Type == VTArray {
+			if thisVal.Type == VTArray || thisVal.Type == VTJSObject {
 				return NewString(vm.jsArrayToString(thisVal))
 			}
 			return NewString(vm.jsObjectToStringTag(thisVal))
@@ -9884,6 +10134,10 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return NewString(jsEncodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)), false))
 		case "encodeURIComponent":
 			return NewString(jsEncodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)), true))
+		case "escape":
+			return NewString(jsEscapeValue(vm.valueToString(jsArgOrUndefined(args, 0))))
+		case "unescape":
+			return NewString(jsUnescapeValue(vm.valueToString(jsArgOrUndefined(args, 0))))
 		}
 		return Value{Type: VTJSUndefined}
 	case VTBuiltin:
@@ -9989,7 +10243,17 @@ func (vm *VM) jsThrowJSError(code jscript.JSSyntaxErrorCode) {
 	}
 	target := vm.jsTryStack[len(vm.jsTryStack)-1]
 	vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
-	vm.jsErrStack = append(vm.jsErrStack, vm.jsCreateErrorObject("TypeError", msg)) // Most ES6+ errors are TypeErrors
+	ctorName := "TypeError"
+	if code == jscript.SyntaxError {
+		ctorName = "SyntaxError"
+	} else if code == jscript.UndefinedIdentifier {
+		ctorName = "ReferenceError"
+	}
+	errObj := vm.jsCreateErrorObject(ctorName, msg)
+	if items, ok := vm.jsObjectItems[errObj.Num]; ok && items != nil {
+		items["number"] = NewInteger(int64(jscript.HRESULTFromJScriptCode(code)))
+	}
+	vm.jsErrStack = append(vm.jsErrStack, errObj)
 	vm.ip = target
 }
 
@@ -10727,7 +10991,10 @@ func (vm *VM) jsConstructFunction(args []Value) Value {
 	compiler := NewASPCompiler("")
 	compiler.sourceName = vm.sourceName
 	vm.jsPrepareDynamicCompilerIC(compiler)
-	compiler.compileJScriptEvalSnippet(code)
+	if err := compiler.compileJScriptEvalSnippet(code); err != nil {
+		vm.jsThrowJSError(jscript.SyntaxError)
+		return Value{Type: VTJSUndefined}
+	}
 	if len(compiler.bytecode) == 0 {
 		return Value{Type: VTJSUndefined}
 	}
@@ -11516,6 +11783,9 @@ func (vm *VM) jsRegExpExec(reVal Value, input string) Value {
 	resID := vm.allocJSID()
 	res := make(map[string]Value)
 	res["__js_type"] = NewString("Array")
+	if proto := vm.jsGetIntrinsicPrototype("Array"); proto.Type == VTJSObject {
+		res["__js_proto"] = proto
+	}
 	// JScript index is the start of the match in UTF-16.
 	matchStartUTF16 := int64(0)
 	currentRuneIdx = 0
