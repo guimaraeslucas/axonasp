@@ -2262,7 +2262,7 @@ func TestJScriptStringPrototypeHTMLWrappers(t *testing.T) {
 		`Response.Write(String.prototype.bold.call("hello"));` +
 		`%>`
 	jsOut := runASPSourceForTest(t, jsSource)
-	jsExpected := `<a name="main">test</a>|<big>test</big>|<blink>test</blink>|<b>test</b>|<tt>test</tt>|<font color="red">test</font>|<font size="7">test</font>|<i>test</i>|<a href="http://localhost">test</a>|<small>test</small>|<strike>test</strike>|<sub>test</sub>|<sup>test</sup>|<b>hello</b>`
+	jsExpected := `<A NAME="main">test</A>|<BIG>test</BIG>|<BLINK>test</BLINK>|<B>test</B>|<TT>test</TT>|<FONT COLOR="red">test</FONT>|<FONT SIZE="7">test</FONT>|<I>test</I>|<A HREF="http://localhost">test</A>|<SMALL>test</SMALL>|<STRIKE>test</STRIKE>|<SUB>test</SUB>|<SUP>test</SUP>|<B>hello</B>`
 	if jsOut != jsExpected {
 		t.Fatalf("expected JScript String HTML wrappers output %q, got %q", jsExpected, jsOut)
 	}
@@ -2281,5 +2281,29 @@ func TestJScriptStringMethodsParity(t *testing.T) {
 	jsExpected := "Hello|3|1|ALPHABET|alphabet"
 	if jsOut != jsExpected {
 		t.Fatalf("expected JScript String methods parity output %q, got %q", jsExpected, jsOut)
+	}
+}
+
+func TestJScriptFunctionsASPPageParity(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write(("HW".anchor("top").indexOf("<A") >= 0) + "|");` +
+		`Response.Write(("hi".big().indexOf("<BIG>") >= 0) + "|");` +
+		`Response.Write(("hi".blink().indexOf("<BLINK>") >= 0) + "|");` +
+		`Response.Write(("hi".bold().indexOf("<B>") >= 0) + "|");` +
+		`Response.Write(("hi".fixed().indexOf("<TT>") >= 0) + "|");` +
+		`Response.Write(("hi".fontcolor("red").toLowerCase().indexOf("red") >= 0) + "|");` +
+		`Response.Write(("hi".fontsize(5).indexOf("5") >= 0) + "|");` +
+		`Response.Write(("hi".italics().indexOf("<I>") >= 0) + "|");` +
+		`Response.Write(("HW".link("http://x").toLowerCase().indexOf("href") >= 0) + "|");` +
+		`Response.Write(("hi".small().indexOf("<SMALL>") >= 0) + "|");` +
+		`Response.Write(("hi".strike().indexOf("<STRIKE>") >= 0) + "|");` +
+		`Response.Write(("hi".sub().indexOf("<SUB>") >= 0) + "|");` +
+		`Response.Write(("hi".sup().indexOf("<SUP>") >= 0));` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := "true|true|true|true|true|true|true|true|true|true|true|true|true"
+	if jsOut != jsExpected {
+		t.Fatalf("expected test_js_functions.asp assertions output %q, got %q", jsExpected, jsOut)
 	}
 }

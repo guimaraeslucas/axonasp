@@ -8319,41 +8319,41 @@ func (vm *VM) jsStringReplace(source string, patternArg Value, replacementArg Va
 	return NewString(out)
 }
 
-// jsStringHTMLWrapper implements legacy ECMAScript Annex B HTML wrapper methods on String.prototype.
+// jsStringHTMLWrapper implements legacy ECMAScript Annex B / classic JScript HTML wrapper methods on String.prototype.
 func (vm *VM) jsStringHTMLWrapper(thisVal Value, method string, args []Value) Value {
 	str := vm.valueToString(thisVal)
 	var out string
 	switch strings.ToLower(method) {
 	case "anchor":
 		attr := vm.valueToString(jsArgOrUndefined(args, 0))
-		out = "<a name=\"" + attr + "\">" + str + "</a>"
+		out = "<A NAME=\"" + attr + "\">" + str + "</A>"
 	case "big":
-		out = "<big>" + str + "</big>"
+		out = "<BIG>" + str + "</BIG>"
 	case "blink":
-		out = "<blink>" + str + "</blink>"
+		out = "<BLINK>" + str + "</BLINK>"
 	case "bold":
-		out = "<b>" + str + "</b>"
+		out = "<B>" + str + "</B>"
 	case "fixed":
-		out = "<tt>" + str + "</tt>"
+		out = "<TT>" + str + "</TT>"
 	case "fontcolor":
 		attr := vm.valueToString(jsArgOrUndefined(args, 0))
-		out = "<font color=\"" + attr + "\">" + str + "</font>"
+		out = "<FONT COLOR=\"" + attr + "\">" + str + "</FONT>"
 	case "fontsize":
 		attr := vm.valueToString(jsArgOrUndefined(args, 0))
-		out = "<font size=\"" + attr + "\">" + str + "</font>"
+		out = "<FONT SIZE=\"" + attr + "\">" + str + "</FONT>"
 	case "italics":
-		out = "<i>" + str + "</i>"
+		out = "<I>" + str + "</I>"
 	case "link":
 		attr := vm.valueToString(jsArgOrUndefined(args, 0))
-		out = "<a href=\"" + attr + "\">" + str + "</a>"
+		out = "<A HREF=\"" + attr + "\">" + str + "</A>"
 	case "small":
-		out = "<small>" + str + "</small>"
+		out = "<SMALL>" + str + "</SMALL>"
 	case "strike":
-		out = "<strike>" + str + "</strike>"
+		out = "<STRIKE>" + str + "</STRIKE>"
 	case "sub":
-		out = "<sub>" + str + "</sub>"
+		out = "<SUB>" + str + "</SUB>"
 	case "sup":
-		out = "<sup>" + str + "</sup>"
+		out = "<SUP>" + str + "</SUP>"
 	default:
 		return Value{Type: VTJSUndefined}
 	}
