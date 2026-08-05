@@ -6177,18 +6177,62 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 			idxVal, _ := vm.jsMemberGet(res, "index")
 			return idxVal, true
-		case strings.EqualFold(member, "toLowerCase"):
+		case strings.EqualFold(member, "toLowerCase"), strings.EqualFold(member, "toLocaleLowerCase"):
 			out := strings.ToLower(text)
 			if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 				return Value{Type: VTJSUndefined}, true
 			}
 			return NewString(out), true
-		case strings.EqualFold(member, "toUpperCase"):
+		case strings.EqualFold(member, "toUpperCase"), strings.EqualFold(member, "toLocaleUpperCase"):
 			out := strings.ToUpper(text)
 			if !vm.jsEnsureStringSize(len(out)) || !vm.jsChargeStringWork(len(out)) {
 				return Value{Type: VTJSUndefined}, true
 			}
 			return NewString(out), true
+		case strings.EqualFold(member, "lastIndexOf"):
+			if len(args) == 0 {
+				return NewInteger(-1), true
+			}
+			search := vm.valueToString(args[0])
+			searchRunes := []rune(search)
+			searchLen := len(searchRunes)
+			length := len(runes)
+			start := length
+			if len(args) > 1 && args[1].Type != VTJSUndefined {
+				num := vm.jsToNumber(args[1])
+				if math.IsNaN(num.Flt) {
+					start = length
+				} else {
+					n := int(num.Flt)
+					if n < 0 {
+						start = 0
+					} else if n > length {
+						start = length
+					} else {
+						start = n
+					}
+				}
+			}
+			if searchLen == 0 {
+				return NewInteger(int64(start)), true
+			}
+			maxStart := min(start, length-searchLen)
+			if maxStart < 0 {
+				return NewInteger(-1), true
+			}
+			for i := maxStart; i >= 0; i-- {
+				match := true
+				for j := range searchLen {
+					if runes[i+j] != searchRunes[j] {
+						match = false
+						break
+					}
+				}
+				if match {
+					return NewInteger(int64(i)), true
+				}
+			}
+			return NewInteger(-1), true
 		case strings.EqualFold(member, "localeCompare"):
 			other := vm.valueToString(jsArgOrUndefined(args, 0))
 			cmp := strings.Compare(text, other)
@@ -7085,6 +7129,24 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			}
 		case "String":
 			switch {
+			case strings.EqualFold(member, "fromCharCode"):
+				if len(args) == 0 {
+					return NewString(""), true
+				}
+				codeUnits := make([]uint16, len(args))
+				for i := range args {
+					num := vm.jsToNumber(args[i])
+					if math.IsNaN(num.Flt) || math.IsInf(num.Flt, 0) {
+						codeUnits[i] = 0
+					} else {
+						codeUnits[i] = uint16(uint32(num.Flt))
+					}
+				}
+				res := string(utf16.Decode(codeUnits))
+				if !vm.jsEnsureStringSize(len(res)) || !vm.jsChargeStringWork(len(res)) {
+					return Value{Type: VTJSUndefined}, true
+				}
+				return NewString(res), true
 			case strings.EqualFold(member, "fromCodePoint"):
 				// String.fromCodePoint(...codePoints)
 				// Converts one or more code points to a string
@@ -9821,6 +9883,28 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 		case "StringPrototypeHTMLWrapper":
 			methodName := vm.jsObjectStringProperty(callee, "name")
 			return vm.jsStringHTMLWrapper(thisVal, methodName, args)
+		case "StringFromCharCode":
+			if len(args) == 0 {
+				return NewString("")
+			}
+			codeUnits := make([]uint16, len(args))
+			for i := range args {
+				num := vm.jsToNumber(args[i])
+				if math.IsNaN(num.Flt) || math.IsInf(num.Flt, 0) {
+					codeUnits[i] = 0
+				} else {
+					codeUnits[i] = uint16(uint32(num.Flt))
+				}
+			}
+			res := string(utf16.Decode(codeUnits))
+			if !vm.jsEnsureStringSize(len(res)) || !vm.jsChargeStringWork(len(res)) {
+				return Value{Type: VTJSUndefined}
+			}
+			return NewString(res)
+		case "StringPrototypeMethod":
+			methodName := vm.jsObjectStringProperty(callee, "name")
+			res, _ := vm.jsCallMember(thisVal, methodName, args)
+			return res
 		case "RegExpStringIteratorIterator":
 			return thisVal
 		case "StringPrototypeMatchAll":

@@ -2268,4 +2268,18 @@ func TestJScriptStringPrototypeHTMLWrappers(t *testing.T) {
 	}
 }
 
-
+func TestJScriptStringMethodsParity(t *testing.T) {
+	jsSource := `<%@ Language="JScript" CodePage="65001" %>` +
+		`<%` +
+		`Response.Write(String.fromCharCode(72, 101, 108, 108, 111) + "|");` +
+		`Response.Write("canal".lastIndexOf("a") + "|");` +
+		`Response.Write("canal".lastIndexOf("a", 2) + "|");` +
+		`Response.Write("alphabet".toLocaleUpperCase() + "|");` +
+		`Response.Write("ALPHABET".toLocaleLowerCase());` +
+		`%>`
+	jsOut := runASPSourceForTest(t, jsSource)
+	jsExpected := "Hello|3|1|ALPHABET|alphabet"
+	if jsOut != jsExpected {
+		t.Fatalf("expected JScript String methods parity output %q, got %q", jsExpected, jsOut)
+	}
+}

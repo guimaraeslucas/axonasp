@@ -206,6 +206,7 @@ func (vm *VM) jsPopulatePrototypes(bindings map[string]Value) {
 
 	// String.prototype[Symbol.iterator]
 	if stringCtor, ok := bindings["String"]; ok {
+		vm.jsSetDescriptor(stringCtor.Num, "fromCharCode", jsBuiltinMethodDescriptor(vm.jsCreateNativeFunction("fromCharCode", "StringFromCharCode")))
 		if proto, deferred := vm.jsMemberGet(stringCtor, "prototype"); !deferred && proto.Type == VTJSObject {
 			itKey := jsSymbolPropertyPrefix + strconv.FormatInt(jsWellKnownSymbolIterator, 10)
 			itFn := vm.jsCreateNativeFunction("[Symbol.iterator]", "StringIteratorFactory")
@@ -219,6 +220,9 @@ func (vm *VM) jsPopulatePrototypes(bindings map[string]Value) {
 			vm.jsSetDescriptor(proto.Num, "matchAll", jsBuiltinMethodDescriptor(vm.jsCreateNativeFunction("matchAll", "StringPrototypeMatchAll")))
 			for _, name := range []string{"anchor", "big", "blink", "bold", "fixed", "fontcolor", "fontsize", "italics", "link", "small", "strike", "sub", "sup"} {
 				vm.jsSetDescriptor(proto.Num, name, jsBuiltinMethodDescriptor(vm.jsCreateNativeFunction(name, "StringPrototypeHTMLWrapper")))
+			}
+			for _, name := range []string{"lastIndexOf", "toLocaleLowerCase", "toLocaleUpperCase"} {
+				vm.jsSetDescriptor(proto.Num, name, jsBuiltinMethodDescriptor(vm.jsCreateNativeFunction(name, "StringPrototypeMethod")))
 			}
 		}
 	}
