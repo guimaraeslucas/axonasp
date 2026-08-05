@@ -208,4 +208,3 @@ func (c *fsoCacheManager) Invalidate(path string) {
 	delete(c.items, filepath.Clean(path))
 	c.mu.Unlock()
 }
-

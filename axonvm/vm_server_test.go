@@ -1706,3 +1706,97 @@ Response.Write "|after"
 		t.Fatalf("unexpected output: %q (expected empty because Response.Redirect clears the buffer)", output.String())
 	}
 }
+
+// TestServerGetLastErrorBareCall verifies that bare VBScript access
+// (Server.GetLastError without parentheses) returns the wrapped ASPError
+// native object (VarType 9), matching the parenthesized call path.
+func TestServerGetLastErrorBareCall2(t *testing.T) {
+	code := `
+Dim objASP
+Set objASP = Server.GetLastError
+Response.Write "VT=" & VarType(objASP)
+Response.Write ";N=" & objASP.Number
+Response.Write ";DESC=" & objASP.Description
+`
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+	if !strings.Contains(output, "VT=9") {
+		t.Fatalf("expected VarType 9 for bare Server.GetLastError, got %q", output)
+	}
+	if !strings.Contains(output, ";N=0") {
+		t.Fatalf("expected default Number 0 for empty error state, got %q", output)
+	}
+}
+
+// TestServerGetLastErrorAllProperties verifies all 9 ASPError properties are
+// readable after a forced Server.CreateObject failure captured under
+// On Error Resume Next.
+func TestServerGetLastErrorAllProperties2(t *testing.T) {
+	code := `
+On Error Resume Next
+Dim x
+Set x = Server.CreateObject("NoSuchObject.XYZ")
+Dim e
+Set e = Server.GetLastError()
+Response.Write "VT=" & VarType(e)
+Response.Write "|N=" & e.Number
+Response.Write "|SRC=" & e.Source
+Response.Write "|CAT=" & e.Category
+Response.Write "|DESC=" & e.Description
+Response.Write "|ASPCODE=" & e.ASPCode
+Response.Write "|ASPDESC=" & e.ASPDescription
+Response.Write "|FILE=" & e.File
+Response.Write "|LINE=" & e.Line
+Response.Write "|COL=" & e.Column
+`
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+	if !strings.Contains(output, "VT=9") {
+		t.Fatalf("expected VarType 9 after forced error, got %q", output)
+	}
+	if !strings.Contains(output, "|N=") {
+		t.Fatalf("Number property missing: %q", output)
+	}
+	for _, prop := range []string{"SRC=", "CAT=", "DESC=", "ASPCODE=", "ASPDESC=", "FILE=", "LINE=", "COL="} {
+		if !strings.Contains(output, "|"+prop) {
+			t.Fatalf("property %q missing from output: %q", prop, output)
+		}
+	}
+	if !strings.Contains(output, "ASPCODE=429") {
+		t.Fatalf("expected ASPCode 429 for failed CreateObject, got %q", output)
+	}
+	if !strings.Contains(output, "SRC=Server.CreateObject") {
+		t.Fatalf("expected Source 'Server.CreateObject', got %q", output)
+	}
+}
+
+// TestServerGetLastErrorReadOnly verifies ASPError properties are read-only:
+// assigning to them must not raise a runtime error and must not mutate the value.
+func TestServerGetLastErrorReadOnly2(t *testing.T) {
+	code := `
+On Error Resume Next
+Dim x
+Set x = Server.CreateObject("NoSuchObject.XYZ")
+Dim e
+Set e = Server.GetLastError()
+e.Number = 999
+e.Description = "HACKED"
+Response.Write "N=" & e.Number
+Response.Write "|DESC=" & e.Description
+`
+	output, err := runVBScriptTest(code)
+	if err != nil {
+		t.Fatalf("Execution failed: %v", err)
+	}
+	// Number stays at the Invalid ProgID HRESULT (-2147221005), not 999.
+	if !strings.Contains(output, "N=-2147221005") {
+		t.Fatalf("expected Number to remain read-only, got %q", output)
+	}
+	if strings.Contains(output, "DESC=HACKED") {
+		t.Fatalf("expected Description to remain read-only, got %q", output)
+	}
+}

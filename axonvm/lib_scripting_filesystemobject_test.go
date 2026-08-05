@@ -160,6 +160,3 @@ Response.Write(fl.Name);
 		t.Fatalf("expected file name %q, got %q", "renamed.txt", parts[4])
 	}
 }
-
-
-
