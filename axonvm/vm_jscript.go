@@ -1856,6 +1856,7 @@ func (vm *VM) ensureJSRootEnv() {
 	bindings["Math"] = vm.jsCreateMathObject()
 	bindings["Date"] = vm.jsCreateIntrinsicObject("", "Date")
 	bindings["RegExp"] = vm.jsCreateIntrinsicObject("", "RegExp")
+	bindings["ActiveXObject"] = vm.jsCreateIntrinsicObject("", "ActiveXObject")
 	bindings["Enumerator"] = vm.jsCreateIntrinsicObject("", "Enumerator")
 	bindings["VBArray"] = vm.jsCreateIntrinsicObject("", "VBArray")
 	bindings["String"] = vm.jsCreateIntrinsicObject("", "String")
@@ -3420,7 +3421,7 @@ func (vm *VM) jsBeginFunctionCall(fn Value, thisVal Value, args []Value, ctorObj
 		bindings[closure.restParam] = ValueFromVBArray(NewVBArrayFromValues(0, restValues))
 	}
 	if _, hasArguments := bindings["arguments"]; !hasArguments {
-		argumentsObject := vm.jsCreateArgumentsObject(args, closure.params, envID)
+		argumentsObject := vm.jsCreateArgumentsObject(fn, args, closure.params, envID)
 		bindings["arguments"] = argumentsObject
 	}
 	vm.jsEnvItems[envID] = &jsEnvFrame{parentID: closure.envID, bindings: bindings}
@@ -3455,7 +3456,7 @@ func (vm *VM) jsBeginDirectCall(callee Value, thisVal Value, args []Value) bool 
 	}
 	if closure.isClassConstructor {
 		vm.jsThrowTypeError("Class constructor cannot be invoked without 'new'")
-		return false
+		return true
 	}
 	if closure.isGenerator {
 		return false
@@ -3597,10 +3598,10 @@ func (vm *VM) jsReleaseEnvFrame(envID int64) {
 }
 
 // jsRefreshArgumentsObject rewrites one existing arguments object in place.
-func (vm *VM) jsRefreshArgumentsObject(objID int64, args []Value, params []string, envID int64) {
+func (vm *VM) jsRefreshArgumentsObject(objID int64, callee Value, args []Value, params []string, envID int64) {
 	obj, ok := vm.jsObjectItems[objID]
 	if !ok {
-		obj = make(map[string]Value, len(args)+1)
+		obj = make(map[string]Value, len(args)+2)
 		vm.jsObjectItems[objID] = obj
 	} else {
 		clear(obj)
@@ -3609,6 +3610,9 @@ func (vm *VM) jsRefreshArgumentsObject(objID int64, args []Value, params []strin
 		obj[strconv.Itoa(i)] = args[i]
 	}
 	obj["length"] = NewInteger(int64(len(args)))
+	if callee.Type == VTJSFunction || callee.Type == VTJSObject {
+		obj["callee"] = callee
+	}
 
 	if len(params) > 0 && len(args) > 0 {
 		alias, ok := vm.jsArgumentsItems[objID]
@@ -3701,13 +3705,13 @@ func (vm *VM) jsTailCallValue(callee Value, thisVal Value, args []Value) bool {
 	if _, hasArguments := bindings["arguments"]; !hasArguments {
 		if canReuseEnv {
 			if reusedArgs.Type == VTJSObject {
-				vm.jsRefreshArgumentsObject(reusedArgs.Num, args, closure.params, envID)
+				vm.jsRefreshArgumentsObject(reusedArgs.Num, callee, args, closure.params, envID)
 				bindings["arguments"] = reusedArgs
 			} else {
-				bindings["arguments"] = vm.jsCreateArgumentsObject(args, closure.params, envID)
+				bindings["arguments"] = vm.jsCreateArgumentsObject(callee, args, closure.params, envID)
 			}
 		} else {
-			bindings["arguments"] = vm.jsCreateArgumentsObject(args, closure.params, envID)
+			bindings["arguments"] = vm.jsCreateArgumentsObject(callee, args, closure.params, envID)
 		}
 	}
 
@@ -3739,13 +3743,16 @@ func (vm *VM) jsTailCallValue(callee Value, thisVal Value, args []Value) bool {
 	return true
 }
 
-func (vm *VM) jsCreateArgumentsObject(args []Value, params []string, envID int64) Value {
+func (vm *VM) jsCreateArgumentsObject(callee Value, args []Value, params []string, envID int64) Value {
 	objID := vm.allocJSID()
-	obj := make(map[string]Value, len(args)+1)
+	obj := make(map[string]Value, len(args)+2)
 	for i := range args {
 		obj[strconv.Itoa(i)] = args[i]
 	}
 	obj["length"] = NewInteger(int64(len(args)))
+	if callee.Type == VTJSFunction || callee.Type == VTJSObject {
+		obj["callee"] = callee
+	}
 	vm.jsObjectItems[objID] = obj
 	vm.jsPropertyItems[objID] = make(map[string]jsPropertyDescriptor, len(args)+1)
 	if len(params) > 0 && len(args) > 0 {
@@ -5327,6 +5334,11 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 				return vm.jsCreateIntrinsicFunction(member, "DatePrototype"), false
 			}
 		}
+		if vm.jsObjectStringProperty(target, "__js_ctor") == "Function" {
+			if strings.EqualFold(member, "caller") {
+				return vm.jsGetFunctionCaller(target), false
+			}
+		}
 		// Handle global/globalThis object - access properties from root environment bindings first
 		if target.Num == vm.jsRootEnvID && vm.jsRootEnvID != 0 {
 			if rootEnv, ok := vm.jsEnvItems[vm.jsRootEnvID]; ok {
@@ -5433,6 +5445,9 @@ func (vm *VM) jsMemberGet(target Value, member string) (Value, bool) {
 	case VTJSFunction:
 		if strings.EqualFold(member, "length") {
 			return NewInteger(int64(vm.jsFunctionExpectedLength(target))), false
+		}
+		if strings.EqualFold(member, "caller") {
+			return vm.jsGetFunctionCaller(target), false
 		}
 		desc, hasDesc := vm.jsResolveObjectMember(target.Num, member, make(map[int64]struct{}, 4))
 		if hasDesc {
@@ -6282,6 +6297,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 				lastByteIdx := 0
 				m, err := re.FindStringMatch(text)
 				for m != nil && (limit < 0 || len(values) < limit) {
+					vm.jsUpdateRegExpStaticProperties(text, m)
 					startByte := vm.jsRuneToByteOffset(text, m.Index)
 					lengthByte := vm.jsRuneToByteOffset(text[startByte:], m.Length)
 					values = append(values, NewString(text[lastByteIdx:startByte]))
@@ -8384,6 +8400,7 @@ func (vm *VM) jsStringReplaceRegex(source string, pattern string, flags string, 
 	}
 
 	for m != nil {
+		vm.jsUpdateRegExpStaticProperties(source, m)
 		startByte := vm.jsRuneToByteOffset(source, m.Index)
 		lengthByte := vm.jsRuneToByteOffset(source[startByte:], m.Length)
 		endByte := startByte + lengthByte
@@ -10039,6 +10056,8 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 	case VTJSObject:
 		ctorName := vm.jsObjectStringProperty(callee, "__js_ctor")
 		switch ctorName {
+		case "ActiveXObject":
+			return vm.dispatchNativeCall(nativeObjectServer, "CreateObject", args)
 		case "Function":
 			return vm.jsConstructFunction(args)
 		case "Object":
@@ -11069,6 +11088,8 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 	if constructor.Type == VTJSObject || constructor.Type == VTJSFunction {
 		ctorName := vm.jsObjectStringProperty(constructor, "__js_ctor")
 		switch ctorName {
+		case "ActiveXObject":
+			return vm.dispatchNativeCall(nativeObjectServer, "CreateObject", args)
 		case "Function":
 			return vm.jsConstructFunction(args)
 		case "Object":
@@ -11842,7 +11863,128 @@ func (vm *VM) jsRegExpExec(reVal Value, input string) Value {
 		res["groups"] = Value{Type: VTJSUndefined}
 	}
 
+	vm.jsUpdateRegExpStaticProperties(input, m)
 	return Value{Type: VTJSObject, Num: resID}
+}
+
+func (vm *VM) jsUpdateRegExpStaticProperties(input string, m *regexp2.Match) {
+	if m == nil {
+		return
+	}
+	regExpCtor := vm.jsGetName("RegExp")
+	if regExpCtor.Type != VTJSObject && regExpCtor.Type != VTJSFunction {
+		return
+	}
+
+	groups := m.Groups()
+	fullMatch := m.String()
+
+	dollar1, dollar2, dollar3, dollar4, dollar5, dollar6, dollar7, dollar8, dollar9 := "", "", "", "", "", "", "", "", ""
+	for i := 1; i <= 9; i++ {
+		val := ""
+		if i < len(groups) && groups[i].Capture.Length >= 0 {
+			val = groups[i].String()
+		}
+		switch i {
+		case 1:
+			dollar1 = val
+		case 2:
+			dollar2 = val
+		case 3:
+			dollar3 = val
+		case 4:
+			dollar4 = val
+		case 5:
+			dollar5 = val
+		case 6:
+			dollar6 = val
+		case 7:
+			dollar7 = val
+		case 8:
+			dollar8 = val
+		case 9:
+			dollar9 = val
+		}
+	}
+
+	lastParen := ""
+	for i := len(groups) - 1; i >= 1; i-- {
+		if groups[i].Capture.Length >= 0 {
+			lastParen = groups[i].String()
+			break
+		}
+	}
+
+	startByte := vm.jsRuneToByteOffset(input, m.Index)
+	lengthByte := vm.jsRuneToByteOffset(input[startByte:], m.Length)
+	leftContext := input[:startByte]
+	rightContext := input[startByte+lengthByte:]
+
+	vm.jsMemberSet(regExpCtor, "$1", NewString(dollar1))
+	vm.jsMemberSet(regExpCtor, "$2", NewString(dollar2))
+	vm.jsMemberSet(regExpCtor, "$3", NewString(dollar3))
+	vm.jsMemberSet(regExpCtor, "$4", NewString(dollar4))
+	vm.jsMemberSet(regExpCtor, "$5", NewString(dollar5))
+	vm.jsMemberSet(regExpCtor, "$6", NewString(dollar6))
+	vm.jsMemberSet(regExpCtor, "$7", NewString(dollar7))
+	vm.jsMemberSet(regExpCtor, "$8", NewString(dollar8))
+	vm.jsMemberSet(regExpCtor, "$9", NewString(dollar9))
+
+	vm.jsMemberSet(regExpCtor, "input", NewString(input))
+	vm.jsMemberSet(regExpCtor, "$_", NewString(input))
+
+	vm.jsMemberSet(regExpCtor, "lastMatch", NewString(fullMatch))
+	vm.jsMemberSet(regExpCtor, "$&", NewString(fullMatch))
+
+	vm.jsMemberSet(regExpCtor, "lastParen", NewString(lastParen))
+	vm.jsMemberSet(regExpCtor, "$+", NewString(lastParen))
+
+	vm.jsMemberSet(regExpCtor, "leftContext", NewString(leftContext))
+	vm.jsMemberSet(regExpCtor, "$`", NewString(leftContext))
+
+	vm.jsMemberSet(regExpCtor, "rightContext", NewString(rightContext))
+	vm.jsMemberSet(regExpCtor, "$'", NewString(rightContext))
+}
+
+func (vm *VM) jsGetFunctionCaller(target Value) Value {
+	if len(vm.jsCallStack) == 0 {
+		return NewNull()
+	}
+	isIntrinsicFunctionCtor := false
+	if target.Type == VTJSObject || target.Type == VTJSFunction {
+		if ctor := vm.jsGetName("Function"); ctor.Type == target.Type && ctor.Num == target.Num {
+			isIntrinsicFunctionCtor = true
+		}
+	}
+	if isIntrinsicFunctionCtor {
+		if len(vm.jsCallStack) >= 2 {
+			callerFn := vm.jsCallStack[len(vm.jsCallStack)-2].fn
+			if callerFn.Type == VTJSFunction {
+				return callerFn
+			}
+		}
+		return NewNull()
+	}
+
+	for i := len(vm.jsCallStack) - 1; i >= 0; i-- {
+		frameFn := vm.jsCallStack[i].fn
+		if frameFn.Type == target.Type && frameFn.Num == target.Num {
+			if i > 0 {
+				callerFn := vm.jsCallStack[i-1].fn
+				if callerFn.Type == VTJSFunction {
+					return callerFn
+				}
+			}
+			return NewNull()
+		}
+	}
+	if len(vm.jsCallStack) >= 2 {
+		callerFn := vm.jsCallStack[len(vm.jsCallStack)-2].fn
+		if callerFn.Type == VTJSFunction {
+			return callerFn
+		}
+	}
+	return NewNull()
 }
 
 func (vm *VM) jsRuneToByteOffset(s string, runeIdx int) int {
