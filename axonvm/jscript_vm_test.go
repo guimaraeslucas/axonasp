@@ -2302,7 +2302,7 @@ func TestJScriptFunctionsASPPageParity(t *testing.T) {
 		`Response.Write(("hi".sup().indexOf("<SUP>") >= 0));` +
 		`%>`
 	jsOut := runASPSourceForTest(t, jsSource)
-	jsExpected := "true|true|true|true|true|true|true|true|true|true|true|true|true"
+	jsExpected := "true|true|true|true|true|true|true|true|true|true|true|true|True"
 	if jsOut != jsExpected {
 		t.Fatalf("expected test_js_functions.asp assertions output %q, got %q", jsExpected, jsOut)
 	}
