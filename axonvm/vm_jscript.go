@@ -3456,7 +3456,7 @@ func (vm *VM) jsBeginDirectCall(callee Value, thisVal Value, args []Value) bool 
 	}
 	if closure.isClassConstructor {
 		vm.jsThrowTypeError("Class constructor cannot be invoked without 'new'")
-		return false
+		return true
 	}
 	if closure.isGenerator {
 		return false

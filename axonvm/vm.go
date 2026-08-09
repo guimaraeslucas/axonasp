@@ -237,6 +237,7 @@ type CallFrame struct {
 	savedOnResumeNext   bool             // On Error Resume Next state before entering this call frame; restored on OpRet.
 	savedSkipToNextStmt bool             // Per-statement Resume Next skip state before entering this call frame; restored on OpRet.
 	savedStmtSP         int              // Statement-start SP before entering this call frame; restored on OpRet.
+	terminateObjID      int64            // Object ID being terminated if this frame is a Class_Terminate call, 0 otherwise.
 }
 
 // RuntimeClassMethodDef stores one compiled class method runtime entry.
@@ -2080,15 +2081,14 @@ aspExecLoop:
 				vm.bindWithEvents(nil, vm.globalNames[idx], newVal)
 			}
 
-			// Decrement reference count only for object slots to avoid hot-path call overhead.
-			if vm.Globals[idx].Type == VTObject {
-				vm.decrementObjectRefCount(vm.Globals[idx])
-			}
-			// Assign new value.
+			// Decrement reference count of previous value in this global slot.
+			prevVal := vm.Globals[idx]
 			vm.Globals[idx] = newVal
-			// Increment reference count only for object values to avoid hot-path call overhead.
 			if newVal.Type == VTObject {
 				vm.incrementObjectRefCount(newVal)
+			}
+			if prevVal.Type == VTObject {
+				vm.decrementObjectRefCount(prevVal)
 			}
 
 		case OpEraseGlobal:
@@ -2218,15 +2218,14 @@ aspExecLoop:
 			} else {
 				newVal.Interface = ""
 			}
-			// Decrement reference count only for object slots to avoid hot-path call overhead.
-			if vm.stack[slot].Type == VTObject {
-				vm.decrementObjectRefCount(vm.stack[slot])
-			}
-			// Assign new value.
+			// Decrement reference count of previous value in this local slot.
+			prevVal := vm.stack[slot]
 			vm.stack[slot] = newVal
-			// Increment reference count only for object values to avoid hot-path call overhead.
 			if newVal.Type == VTObject {
 				vm.incrementObjectRefCount(newVal)
+			}
+			if prevVal.Type == VTObject {
+				vm.decrementObjectRefCount(prevVal)
 			}
 
 		case OpEraseLocal:
@@ -2374,12 +2373,13 @@ aspExecLoop:
 						}
 					}
 				}
-				if vm.Globals[destIdx].Type == VTObject {
-					vm.decrementObjectRefCount(vm.Globals[destIdx])
-				}
+				prevVal := vm.Globals[destIdx]
 				vm.Globals[destIdx] = newVal
 				if newVal.Type == VTObject {
 					vm.incrementObjectRefCount(newVal)
+				}
+				if prevVal.Type == VTObject {
+					vm.decrementObjectRefCount(prevVal)
 				}
 			} else if destOp == OpSetLocal {
 				slot := vm.fp + int(destIdx)
@@ -2401,12 +2401,13 @@ aspExecLoop:
 						}
 					}
 				}
-				if vm.stack[slot].Type == VTObject {
-					vm.decrementObjectRefCount(vm.stack[slot])
-				}
+				prevVal := vm.stack[slot]
 				vm.stack[slot] = newVal
 				if newVal.Type == VTObject {
 					vm.incrementObjectRefCount(newVal)
+				}
+				if prevVal.Type == VTObject {
+					vm.decrementObjectRefCount(prevVal)
 				}
 			} else {
 				vm.raise(vbscript.InternalError, "Invalid OpSet destination")
@@ -2467,12 +2468,13 @@ aspExecLoop:
 				vm.Globals[idx] = current
 			default:
 				next := vm.addValues(current, NewInteger(1))
-				if current.Type == VTObject {
-					vm.decrementObjectRefCount(current)
-				}
+				prevVal := vm.Globals[idx]
 				vm.Globals[idx] = next
 				if next.Type == VTObject {
 					vm.incrementObjectRefCount(next)
+				}
+				if prevVal.Type == VTObject {
+					vm.decrementObjectRefCount(prevVal)
 				}
 			}
 
@@ -2489,12 +2491,13 @@ aspExecLoop:
 				vm.Globals[idx] = current
 			default:
 				next := vm.subtractValues(current, NewInteger(1))
-				if current.Type == VTObject {
-					vm.decrementObjectRefCount(current)
-				}
+				prevVal := vm.Globals[idx]
 				vm.Globals[idx] = next
 				if next.Type == VTObject {
 					vm.incrementObjectRefCount(next)
+				}
+				if prevVal.Type == VTObject {
+					vm.decrementObjectRefCount(prevVal)
 				}
 			}
 
@@ -5710,9 +5713,15 @@ aspExecLoop:
 			frame := vm.callStack[len(vm.callStack)-1]
 			vm.callStack = vm.callStack[:len(vm.callStack)-1]
 
-			// Decrement reference counts for all local variables going out of scope.
-			for i := vm.fp; i <= vm.sp; i++ {
-				vm.decrementObjectRefCount(vm.stack[i])
+			// If this call frame was for Class_Terminate, release member values now that Class_Terminate has finished.
+			if frame.terminateObjID != 0 {
+				if instance, ok := vm.runtimeClassItems[frame.terminateObjID]; ok && instance != nil {
+					members := instance.Members
+					instance.Members = nil
+					for _, val := range members {
+						vm.decrementObjectRefCount(val)
+					}
+				}
 			}
 
 			// ByRef write-back: read callee's param values before restoring fp/sp.
@@ -5736,6 +5745,25 @@ aspExecLoop:
 					}
 				}
 			}
+
+			// Collect local variables going out of scope before restoring caller frame.
+			calleeFP := vm.fp
+			calleeSP := vm.sp
+			if frame.callee.Type == VTUserSub {
+				localCount := max(frame.callee.UserSubLocalCount(), frame.callee.UserSubParamCount())
+				calleeSP = max(calleeFP+localCount-1, calleeSP)
+			}
+
+			var exitingLocals []Value
+			for i := calleeFP; i <= calleeSP; i++ {
+				if i >= 0 && i < StackSize {
+					if vm.stack[i].Type == VTObject {
+						exitingLocals = append(exitingLocals, vm.stack[i])
+					}
+					vm.stack[i] = Value{Type: VTEmpty}
+				}
+			}
+
 			vm.sp = frame.oldSP
 			vm.fp = frame.oldFP
 			vm.ip = frame.returnIP
@@ -5748,6 +5776,11 @@ aspExecLoop:
 			}
 			if !frame.discard {
 				vm.push(retVal)
+			}
+
+			// Decrement reference counts for all local variables going out of scope.
+			for _, val := range exitingLocals {
+				vm.decrementObjectRefCount(val)
 			}
 
 		case OpSwap:
@@ -9167,9 +9200,8 @@ func (vm *VM) setClassMemberValueByObjectID(objectID int64, memberName string, v
 	instance.Members[strings.ToLower(strings.TrimSpace(memberName))] = value
 }
 
-// decrementObjectRefCount decrements the reference count of a VTObject and marks it
-// for termination if the count reaches zero. The actual Class_Terminate call will be
-// queued and executed during the next available opportunity in the VM loop.
+// decrementObjectRefCount decrements the reference count of a VTObject and executes
+// Class_Terminate synchronously if refCount reaches zero.
 func (vm *VM) decrementObjectRefCount(obj Value) {
 	if obj.Type != VTObject {
 		return
@@ -9184,9 +9216,34 @@ func (vm *VM) decrementObjectRefCount(obj Value) {
 	instance.refCount--
 	if instance.refCount <= 0 {
 		instance.refCount = 0 // Ensure non-negative for safety.
-		// Mark for termination; the actual termination will happen via
-		// prepareClassTerminateCall during cleanup or when explicitly triggered.
 		instance.terminated = true
+
+		if !vm.suppressTerminate {
+			target, ok := vm.resolveRuntimeClassMethod(
+				Value{Type: VTObject, Num: obj.Num, Str: instance.ClassName},
+				"Class_Terminate",
+				false,
+			)
+			if ok {
+				if target.UserSubParamCount() != 0 {
+					vm.raise(vbscript.ClassInitializeOrTerminateDoNotHaveArguments, "Class_Terminate must not declare arguments")
+					return
+				}
+				if vm.beginUserSubCall(target, nil, true, obj.Num) {
+					if len(vm.callStack) > 0 {
+						vm.callStack[len(vm.callStack)-1].terminateObjID = obj.Num
+					}
+					return
+				}
+			}
+		}
+
+		// If no Class_Terminate or termination call not begun, release member values.
+		members := instance.Members
+		instance.Members = nil
+		for _, val := range members {
+			vm.decrementObjectRefCount(val)
+		}
 	}
 }
 
@@ -9855,7 +9912,7 @@ func (vm *VM) newRuntimeClassInstance(className string) Value {
 		Members:         make(map[string]Value),
 		Observers:       make(map[string][]EventObserver),
 		WithEventsNames: make(map[string]bool),
-		refCount:        1, // Initial reference from creation
+		refCount:        0, // Initial reference count (incremented when assigned)
 		terminated:      false,
 	}
 	// Track creation order so Class_Terminate fires in reverse-construction order at cleanup.
