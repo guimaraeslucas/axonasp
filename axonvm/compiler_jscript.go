@@ -110,6 +110,12 @@ func (c *Compiler) compileJScriptBlockWithLineAnchors(source string, anchors []j
 		panic(c.newJScriptCompileErrorFromParse(err, "jscript parse error"))
 	}
 
+	prevFile := c.jsCurrentFile
+	c.jsCurrentFile = program.File
+	defer func() {
+		c.jsCurrentFile = prevFile
+	}()
+
 	prevLocalEnabled := c.jsLocalEnabled
 	prevLocalSlotCount := c.jsLocalSlotCount
 	prevLocalScopeStack := c.jsLocalScopeStack
@@ -202,6 +208,12 @@ func (c *Compiler) compileJScriptEvalSnippet(source string) (err error) {
 	if parseErr != nil {
 		return c.newJScriptCompileErrorFromParse(parseErr, "jscript eval parse error")
 	}
+
+	prevFile := c.jsCurrentFile
+	c.jsCurrentFile = program.File
+	defer func() {
+		c.jsCurrentFile = prevFile
+	}()
 
 	if len(program.Body) == 0 {
 		c.emit(OpJSLoadUndefined)
@@ -537,6 +549,13 @@ func (c *Compiler) jsInferredType(expr jsast.Expression) jsType {
 }
 
 func (c *Compiler) compileJScriptStatement(stmt jsast.Statement) {
+	if c != nil && c.jsCurrentFile != nil && stmt != nil && stmt.Idx0() != 0 {
+		pos := c.jsCurrentFile.Position(int(stmt.Idx0()))
+		if pos.Line > 0 {
+			mappedLine := c.mapJScriptParseLineToMerged(pos.Line)
+			c.emitLine(mappedLine, pos.Column)
+		}
+	}
 	switch node := stmt.(type) {
 	case *jsast.ExpressionStatement:
 		c.compileJScriptExpression(node.Expression)
