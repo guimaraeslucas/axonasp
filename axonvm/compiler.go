@@ -35,6 +35,7 @@ import (
 
 	"g3pix.com.br/axonasp/jscript"
 	jsast "g3pix.com.br/axonasp/jscript/ast"
+	jsfile "g3pix.com.br/axonasp/jscript/file"
 	"g3pix.com.br/axonasp/vbscript"
 )
 
@@ -263,6 +264,7 @@ type Compiler struct {
 	jsLocalSlotCount      int               // Number of local slots allocated for current function
 	jsInGeneratorFunction bool              // True when compiling a generator body.
 	jsCompileLineAnchors  []jscriptCompileLineAnchor
+	jsCurrentFile         *jsfile.File
 	jsNextICNodeID        uint32 // Next available inline cache node ID for JScript AST nodes
 	jsICNodeCount         uint32 // Total inline cache nodes assigned across the program
 	// withDepth tracks nesting level of With...End With blocks at compile time.

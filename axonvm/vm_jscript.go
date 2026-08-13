@@ -43,6 +43,7 @@ import (
 	"unicode/utf8"
 
 	"g3pix.com.br/axonasp/axonconfig"
+	"g3pix.com.br/axonasp/axonvm/asp"
 	"g3pix.com.br/axonasp/jscript"
 	"g3pix.com.br/axonasp/jscript/ftoa"
 	"g3pix.com.br/axonasp/vbscript"
@@ -8077,7 +8078,7 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 	// General fallback: dispatch based on target type
 	switch target.Type {
 	case VTNativeObject:
-		return vm.dispatchNativeCall(target.Num, member, args), true
+		return vm.jsDispatchNativeCall(target.Num, member, args), true
 	case VTJSObject, VTJSFunction, VTArray, VTString, VTDate, VTInteger, VTDouble, VTBool:
 		callee, deferred := vm.jsMemberGet(target, member)
 		if deferred {
@@ -8647,7 +8648,7 @@ func (vm *VM) jsNativeCollectionItemByKeyIndex(source Value, idx int) Value {
 		return Value{Type: VTJSUndefined}
 	}
 	lookup := func(pos int) Value {
-		key := vm.dispatchNativeCall(keyMethod.Num, "", []Value{NewInteger(int64(pos))})
+		key := vm.jsDispatchNativeCall(keyMethod.Num, "", []Value{NewInteger(int64(pos))})
 		if key.Type == VTJSUndefined || key.Type == VTEmpty {
 			return Value{Type: VTJSUndefined}
 		}
@@ -8655,7 +8656,7 @@ func (vm *VM) jsNativeCollectionItemByKeyIndex(source Value, idx int) Value {
 		if keyStr == "" {
 			return Value{Type: VTJSUndefined}
 		}
-		return vm.dispatchNativeCall(source.Num, "", []Value{NewString(keyStr)})
+		return vm.jsDispatchNativeCall(source.Num, "", []Value{NewString(keyStr)})
 	}
 	value := lookup(idx + 1)
 	if value.Type != VTJSUndefined && value.Type != VTEmpty {
@@ -8719,20 +8720,20 @@ func (vm *VM) jsEnumeratorItem(obj Value) Value {
 		}
 		keyMethod := vm.dispatchMemberGet(source, "Key")
 		if keyMethod.Type != VTJSUndefined && keyMethod.Type != VTEmpty {
-			key := vm.dispatchNativeCall(keyMethod.Num, "", []Value{NewInteger(int64(idx + 1))})
+			key := vm.jsDispatchNativeCall(keyMethod.Num, "", []Value{NewInteger(int64(idx + 1))})
 			if key.Type != VTJSUndefined && key.Type != VTEmpty {
 				return key
 			}
-			key = vm.dispatchNativeCall(keyMethod.Num, "", []Value{NewInteger(int64(idx))})
+			key = vm.jsDispatchNativeCall(keyMethod.Num, "", []Value{NewInteger(int64(idx))})
 			if key.Type != VTJSUndefined && key.Type != VTEmpty {
 				return key
 			}
 		}
-		zeroBased := vm.dispatchNativeCall(source.Num, "Item", []Value{NewInteger(int64(idx))})
+		zeroBased := vm.jsDispatchNativeCall(source.Num, "Item", []Value{NewInteger(int64(idx))})
 		if zeroBased.Type != VTJSUndefined && zeroBased.Type != VTEmpty {
 			return zeroBased
 		}
-		oneBased := vm.dispatchNativeCall(source.Num, "Item", []Value{NewInteger(int64(idx + 1))})
+		oneBased := vm.jsDispatchNativeCall(source.Num, "Item", []Value{NewInteger(int64(idx + 1))})
 		if oneBased.Type != VTJSUndefined && oneBased.Type != VTEmpty {
 			return oneBased
 		}
@@ -10052,12 +10053,12 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 		}
 		return Value{Type: VTJSUndefined}
 	case VTNativeObject:
-		return vm.dispatchNativeCall(callee.Num, "", args)
+		return vm.jsDispatchNativeCall(callee.Num, "", args)
 	case VTJSObject:
 		ctorName := vm.jsObjectStringProperty(callee, "__js_ctor")
 		switch ctorName {
 		case "ActiveXObject":
-			return vm.dispatchNativeCall(nativeObjectServer, "CreateObject", args)
+			return vm.jsDispatchNativeCall(nativeObjectServer, "CreateObject", args)
 		case "Function":
 			return vm.jsConstructFunction(args)
 		case "Object":
@@ -10196,25 +10197,27 @@ func (vm *VM) jsThrow(v Value) {
 	vm.ip = target
 }
 
-// jsRaiseRuntimeError raises an uncaught JavaScript runtime error in ASP-compatible shape.
+// jsRaiseRuntimeError raises an uncaught JScript runtime error in ASP-compatible shape.
 func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 	description := strings.TrimSpace(msg)
 	if description == "" {
 		description = code.String()
 	}
 
+	file, line, column := vm.mapRuntimeLocation(vm.lastLine, vm.lastColumn)
 	vbCode := vbscript.VBSyntaxErrorCode(code)
 	vme := &VMError{
 		Code:           vbCode,
-		Line:           vm.lastLine,
-		Column:         vm.lastColumn,
+		Line:           line,
+		Column:         column,
+		File:           file,
 		Msg:            description,
 		ASPCode:        int(code),
 		ASPDescription: description,
-		Category:       "JavaScript runtime",
+		Category:       "JScript runtime error",
 		Description:    description,
 		Number:         jscript.HRESULTFromJScriptCode(code),
-		Source:         "JavaScript runtime error",
+		Source:         "JScript runtime error",
 	}
 
 	vm.errSetFromVMError(vme)
@@ -10226,6 +10229,92 @@ func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 	}
 
 	panic(vme)
+}
+
+// jsHandleNativeError handles errors produced by native call dispatches during JScript execution.
+// If a JScript try/catch block is active, it catches the exception and transfers control to the catch handler.
+// Otherwise, it raises a JScript runtime error in ASP-compatible format.
+func (vm *VM) jsHandleNativeError(hresult int, errMsg string, vme *VMError) {
+	if len(vm.jsTryStack) > 0 {
+		target := vm.jsTryStack[len(vm.jsTryStack)-1]
+		vm.jsTryStack = vm.jsTryStack[:len(vm.jsTryStack)-1]
+
+		errObj := vm.jsCreateErrorObject("Error", errMsg)
+		if items, ok := vm.jsObjectItems[errObj.Num]; ok && items != nil {
+			items["number"] = NewInteger(int64(hresult))
+		}
+		vm.jsErrStack = append(vm.jsErrStack, errObj)
+		vm.ip = target
+		return
+	}
+
+	line := vm.lastLine
+	col := vm.lastColumn
+	filePath := ""
+	if vme != nil {
+		if line == 0 {
+			line = vme.Line
+		}
+		if col == 0 {
+			col = vme.Column
+		}
+		filePath = vme.File
+	}
+	if filePath == "" {
+		filePath, line, col = vm.mapRuntimeLocation(line, col)
+	}
+
+	description := errMsg
+	if description == "" && vme != nil {
+		description = vme.Msg
+	}
+
+	code := vbscript.ActiveXCannotCreateObject
+	if vme != nil {
+		code = vme.Code
+	}
+
+	vmeJS := &VMError{
+		Code:           code,
+		Line:           line,
+		Column:         col,
+		File:           filePath,
+		Msg:            description,
+		ASPCode:        int(code),
+		ASPDescription: description,
+		Category:       "JScript runtime error",
+		Description:    description,
+		Number:         hresult,
+		Source:         "JScript runtime error",
+	}
+
+	vm.errSetFromVMError(vmeJS)
+	panic(vmeJS)
+}
+
+// jsDispatchNativeCall executes a native object method call on behalf of JScript.
+// If a panic occurs during native dispatch (e.g. invalid class string 0x800401F3 from Server.CreateObject),
+// it intercepts the error and routes it through JScript exception handling or telemetry.
+func (vm *VM) jsDispatchNativeCall(targetID int64, member string, args []Value) (res Value) {
+	defer func() {
+		if r := recover(); r != nil {
+			if vme, ok := r.(*VMError); ok {
+				hresult := vme.Number
+				if hresult == 0 {
+					hresult = asp.InvalidProgIDHRESULT
+				}
+				errMsg := vme.Msg
+				if vme.Code == vbscript.ActiveXCannotCreateObject || strings.EqualFold(member, "CreateObject") {
+					errMsg = "Invalid class string"
+				}
+				vm.jsHandleNativeError(hresult, errMsg, vme)
+				res = Value{Type: VTJSUndefined}
+				return
+			}
+			panic(r)
+		}
+	}()
+	return vm.dispatchNativeCall(targetID, member, args)
 }
 
 // jsThrowError throws a standard JScript Error that can be caught by a JS try/catch.
@@ -11089,7 +11178,7 @@ func (vm *VM) jsConstruct(constructor Value, args []Value, newTarget Value, isSu
 		ctorName := vm.jsObjectStringProperty(constructor, "__js_ctor")
 		switch ctorName {
 		case "ActiveXObject":
-			return vm.dispatchNativeCall(nativeObjectServer, "CreateObject", args)
+			return vm.jsDispatchNativeCall(nativeObjectServer, "CreateObject", args)
 		case "Function":
 			return vm.jsConstructFunction(args)
 		case "Object":
