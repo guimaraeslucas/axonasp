@@ -9203,7 +9203,7 @@ func (vm *VM) setClassMemberValueByObjectID(objectID int64, memberName string, v
 // decrementObjectRefCount decrements the reference count of a VTObject and executes
 // Class_Terminate synchronously if refCount reaches zero.
 func (vm *VM) decrementObjectRefCount(obj Value) {
-	if obj.Type != VTObject {
+	if vm == nil || obj.Type != VTObject || vm.runtimeClassItems == nil {
 		return
 	}
 	instance, exists := vm.runtimeClassItems[obj.Num]
@@ -9249,7 +9249,7 @@ func (vm *VM) decrementObjectRefCount(obj Value) {
 
 // incrementObjectRefCount increments the reference count when a VTObject is assigned to a new slot.
 func (vm *VM) incrementObjectRefCount(obj Value) {
-	if obj.Type != VTObject {
+	if vm == nil || obj.Type != VTObject || vm.runtimeClassItems == nil {
 		return
 	}
 	instance, exists := vm.runtimeClassItems[obj.Num]
@@ -9677,14 +9677,22 @@ func (vm *VM) beginUserSubCall(target Value, args []Value, discardReturn bool, b
 
 		if argIdx < len(args) {
 			// Normal argument provided.
-			vm.stack[vm.fp+paramIdx] = args[argIdx]
+			argVal := args[argIdx]
+			vm.stack[vm.fp+paramIdx] = argVal
+			if argVal.Type == VTObject {
+				vm.incrementObjectRefCount(argVal)
+			}
 			argIdx++
 		} else if (optionalMask>>uint(paramIdx))&1 == 1 {
 			// Optional parameter with no argument provided - use default value.
 			if hasDefaults && paramIdx < len(defaults) && defaults[paramIdx] >= 0 {
 				defaultIdx := defaults[paramIdx]
 				if defaultIdx >= 0 && defaultIdx < len(vm.constants) {
-					vm.stack[vm.fp+paramIdx] = vm.constants[defaultIdx]
+					val := vm.constants[defaultIdx]
+					vm.stack[vm.fp+paramIdx] = val
+					if val.Type == VTObject {
+						vm.incrementObjectRefCount(val)
+					}
 				} else {
 					vm.stack[vm.fp+paramIdx] = Value{Type: VTEmpty}
 				}
