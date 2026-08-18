@@ -922,6 +922,39 @@ func (c *Compiler) parseStatementCallChain() bool {
 				return true
 			}
 
+			// Member sub call without parentheses: obj(i).Method arg1, arg2.
+			// When the token after the member name starts an argument expression
+			// (not '(', '=', '.' and not end-of-statement), parse the no-paren
+			// argument list. Mirrors the inline path in parseStatement that
+			// already handles "obj.Method arg1, arg2" for simple-variable callees.
+			if nd, ok := c.next.(*vbscript.PunctuationToken); !ok || nd.Type != vbscript.PunctDot {
+				if !c.isStatementEnd() {
+					argCount := 0
+					for {
+						if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
+							emptyIdx := c.addConstant(NewEmpty())
+							c.emit(OpConstant, emptyIdx)
+						} else if c.isStatementEnd() {
+							emptyIdx := c.addConstant(NewEmpty())
+							c.emit(OpConstant, emptyIdx)
+						} else {
+							mscArgStartPos := len(c.bytecode)
+							c.parseExpression(PrecNone)
+							c.patchArgRefInBytecode(mscArgStartPos)
+						}
+						argCount++
+						if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
+							c.move()
+						} else {
+							break
+						}
+					}
+					c.emit(OpCallMember, midx, argCount)
+					c.emit(OpPop)
+					return true
+				}
+			}
+
 			c.emit(OpConstant, midx)
 			c.emit(OpMemberGet)
 			continue
