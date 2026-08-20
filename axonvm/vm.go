@@ -5780,7 +5780,8 @@ aspExecLoop:
 
 			// Decrement reference counts for all local variables going out of scope.
 			for _, val := range exitingLocals {
-				vm.decrementObjectRefCount(val)
+				isRetVal := !frame.discard && retVal.Type == VTObject && val.Type == VTObject && val.Num == retVal.Num
+				vm.decrementObjectRefCountEx(val, isRetVal)
 			}
 
 		case OpSwap:
@@ -9203,6 +9204,11 @@ func (vm *VM) setClassMemberValueByObjectID(objectID int64, memberName string, v
 // decrementObjectRefCount decrements the reference count of a VTObject and executes
 // Class_Terminate synchronously if refCount reaches zero.
 func (vm *VM) decrementObjectRefCount(obj Value) {
+	vm.decrementObjectRefCountEx(obj, false)
+}
+
+// decrementObjectRefCountEx decrements refCount and optionally protects active return values from premature termination.
+func (vm *VM) decrementObjectRefCountEx(obj Value, isReturnValue bool) {
 	if vm == nil || obj.Type != VTObject || vm.runtimeClassItems == nil {
 		return
 	}
@@ -9216,6 +9222,9 @@ func (vm *VM) decrementObjectRefCount(obj Value) {
 	instance.refCount--
 	if instance.refCount <= 0 {
 		instance.refCount = 0 // Ensure non-negative for safety.
+		if isReturnValue {
+			return // Do not terminate or nullify Members when this object is the active return value being passed to caller.
+		}
 		instance.terminated = true
 
 		if !vm.suppressTerminate {
