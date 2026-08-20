@@ -922,9 +922,39 @@ func (c *Compiler) parseStatementCallChain() bool {
 				return true
 			}
 
-			c.emit(OpConstant, midx)
-			c.emit(OpMemberGet)
-			continue
+			if dot2, ok := c.next.(*vbscript.PunctuationToken); ok && dot2.Type == vbscript.PunctDot {
+				c.emit(OpConstant, midx)
+				c.emit(OpMemberGet)
+				continue
+			}
+
+			// No-parens member call (or 0-argument sub call at statement end) on call chain target:
+			// e.g. m_Obs(i).Update news  or  m_Arr(0).Receive msg, fromUser
+			argCount := 0
+			if !c.isStatementEnd() {
+				for {
+					if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
+						emptyIdx := c.addConstant(NewEmpty())
+						c.emit(OpConstant, emptyIdx)
+					} else if c.isStatementEnd() {
+						emptyIdx := c.addConstant(NewEmpty())
+						c.emit(OpConstant, emptyIdx)
+					} else {
+						mscArgStartPos := len(c.bytecode)
+						c.parseExpression(PrecNone)
+						c.patchArgRefInBytecode(mscArgStartPos)
+					}
+					argCount++
+					if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
+						c.move()
+					} else {
+						break
+					}
+				}
+			}
+			c.emit(OpCallMember, midx, argCount)
+			c.emit(OpPop)
+			return true
 		}
 
 		if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
@@ -945,6 +975,29 @@ func (c *Compiler) parseStatementCallChain() bool {
 	}
 
 	if handled {
+		if !c.isStatementEnd() {
+			argCount := 0
+			for {
+				if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
+					emptyIdx := c.addConstant(NewEmpty())
+					c.emit(OpConstant, emptyIdx)
+				} else if c.isStatementEnd() {
+					emptyIdx := c.addConstant(NewEmpty())
+					c.emit(OpConstant, emptyIdx)
+				} else {
+					mscArgStartPos := len(c.bytecode)
+					c.parseExpression(PrecNone)
+					c.patchArgRefInBytecode(mscArgStartPos)
+				}
+				argCount++
+				if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
+					c.move()
+				} else {
+					break
+				}
+			}
+			c.emit(OpCall, argCount)
+		}
 		c.emit(OpPop)
 	}
 	return handled
