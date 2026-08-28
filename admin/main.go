@@ -49,7 +49,7 @@ import (
 	"strings"
 	"time"
 
-	"g3pix.com.br/axonasp/axonconfig"
+	"g3pix.com.br/axonasp/v2/axonconfig"
 
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"

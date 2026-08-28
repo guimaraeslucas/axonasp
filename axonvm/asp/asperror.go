@@ -24,8 +24,8 @@ import (
 	"fmt"
 	"strings"
 
-	"g3pix.com.br/axonasp/jscript"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/jscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // ASPError captures details of runtime errors.

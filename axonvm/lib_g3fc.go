@@ -42,7 +42,7 @@ import (
 	"strings"
 	"time"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"

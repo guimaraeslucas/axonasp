@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 // TestOptimizationRedimPreserve verifies the O(log N) capacity growth logic.

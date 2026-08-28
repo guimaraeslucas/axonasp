@@ -36,7 +36,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"g3pix.com.br/axonasp/axonvm"
+	"g3pix.com.br/axonasp/v2/axonvm"
 )
 
 // fcgiG3alEndpoint is the URL prefix for G3AxonLive communication in FastCGI mode.

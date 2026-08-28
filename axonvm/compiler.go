@@ -33,10 +33,10 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"g3pix.com.br/axonasp/jscript"
-	jsast "g3pix.com.br/axonasp/jscript/ast"
-	jsfile "g3pix.com.br/axonasp/jscript/file"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/jscript"
+	jsast "g3pix.com.br/axonasp/v2/jscript/ast"
+	jsfile "g3pix.com.br/axonasp/v2/jscript/file"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // dumpPreprocessedSourceEnabled controls whether compiled source is written to ./temp/ for debugging.

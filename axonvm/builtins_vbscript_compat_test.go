@@ -25,7 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // callBuiltin resolves and executes one built-in by name for tests.

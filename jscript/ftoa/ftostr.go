@@ -4,7 +4,7 @@ import (
 	"math"
 	"strconv"
 
-	"g3pix.com.br/axonasp/jscript/ftoa/internal/fast"
+	"g3pix.com.br/axonasp/v2/jscript/ftoa/internal/fast"
 )
 
 type FToStrMode int

@@ -24,7 +24,7 @@ import (
 	"bytes"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 // TestVMApplicationDispatch verifies native Application member dispatch and value roundtrip.

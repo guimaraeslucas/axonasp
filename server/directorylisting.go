@@ -36,7 +36,7 @@ import (
 	"sync"
 	"time"
 
-	"g3pix.com.br/axonasp/axonconfig"
+	"g3pix.com.br/axonasp/v2/axonconfig"
 )
 
 // DirectoryListingRenderer renders folder listings using a configurable HTML template.

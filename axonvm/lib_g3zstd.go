@@ -30,7 +30,7 @@ import (
 	_ "runtime"
 	"strings"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 	"github.com/klauspost/compress/zstd"
 )
 

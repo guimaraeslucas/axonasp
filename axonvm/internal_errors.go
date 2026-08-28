@@ -31,8 +31,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"g3pix.com.br/axonasp/axonconfig"
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonconfig"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 var (

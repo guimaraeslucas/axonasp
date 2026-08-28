@@ -30,11 +30,11 @@ import (
 	"strconv"
 	"strings"
 
-	"g3pix.com.br/axonasp/jscript"
-	jsast "g3pix.com.br/axonasp/jscript/ast"
-	jsparser "g3pix.com.br/axonasp/jscript/parser"
-	jstoken "g3pix.com.br/axonasp/jscript/token"
-	jsunistring "g3pix.com.br/axonasp/jscript/unistring"
+	"g3pix.com.br/axonasp/v2/jscript"
+	jsast "g3pix.com.br/axonasp/v2/jscript/ast"
+	jsparser "g3pix.com.br/axonasp/v2/jscript/parser"
+	jstoken "g3pix.com.br/axonasp/v2/jscript/token"
+	jsunistring "g3pix.com.br/axonasp/v2/jscript/unistring"
 )
 
 var jscriptCallAssignmentAnchorPattern = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(\s*((?:"[^"]*"|'[^']*'|[^'")\s]+)(?:\s*,\s*(?:"[^"]*"|'[^']*'|[^'")\s]+))*)\s*\)\s*=\s+([^;\r\n]+);`)

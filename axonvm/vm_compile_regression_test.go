@@ -31,8 +31,8 @@ import (
 	"strings"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm/asp"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // TestASPCompileSupportsBooleanLiteralArguments verifies boolean literals compile in statement-style member calls.

@@ -32,8 +32,8 @@ import (
 	"strings"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm"
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonvm"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 type countingReadCloser struct {

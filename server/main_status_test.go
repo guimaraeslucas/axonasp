@@ -28,7 +28,7 @@ import (
 	"strings"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm"
+	"g3pix.com.br/axonasp/v2/axonvm"
 )
 
 // TestHandleRequestServesStaticPNG verifies non-ASP image requests are served

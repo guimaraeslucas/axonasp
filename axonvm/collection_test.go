@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // TestCollectionBuiltin verifies Server.CreateObject("Collection") allows .Add and direct For Each element iteration.

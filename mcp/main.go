@@ -31,7 +31,7 @@ import (
 	"strings"
 	"sync"
 
-	"g3pix.com.br/axonasp/axonconfig"
+	"g3pix.com.br/axonasp/v2/axonconfig"
 	"github.com/blugelabs/bluge"
 	"github.com/fsnotify/fsnotify"
 	"github.com/joho/godotenv"

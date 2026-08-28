@@ -26,8 +26,8 @@ import (
 	"slices"
 	"strings"
 
-	"g3pix.com.br/axonasp/axonvm/asp"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // G3TestFailure stores one failed assertion message produced by one suite run.
