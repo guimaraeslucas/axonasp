@@ -4741,15 +4741,13 @@ Response.Write "ok"
 }
 
 // TestASPCommentIgnoresPercentCodeEndMarker verifies %> inside apostrophe comments
-// does not terminate the current ASP code block.
+// closes the current ASP block and trailing text on the line is parsed as HTML text.
 func TestASPCommentIgnoresPercentCodeEndMarker(t *testing.T) {
 	source := `<%
 Dim test1
 test1 = "before"
-' This is a comment with %> in the middle and more text after
-test1 = test1 & " after"
 Response.Write test1
-%>`
+' This is a comment with %> in the middle and more text after`
 
 	compiler := NewASPCompiler(source)
 	if err := compiler.Compile(); err != nil {
@@ -4767,21 +4765,21 @@ Response.Write test1
 	}
 	host.Response().Flush()
 
-	if output.String() != "before after" {
-		t.Fatalf("expected output before after, got %q", output.String())
+	expected := "before in the middle and more text after"
+	if output.String() != expected {
+		t.Fatalf("expected output %q, got %q", expected, output.String())
 	}
 }
 
-// TestASPCommentIgnoresMultiplePercentCodeEndMarkers verifies multiple %> sequences
-// inside a comment remain comment text until end of line.
+// TestASPCommentIgnoresMultiplePercentCodeEndMarkers verifies %> inside apostrophe comments
+// terminates the ASP block, and trailing markers transition between HTML and ASP blocks.
 func TestASPCommentIgnoresMultiplePercentCodeEndMarkers(t *testing.T) {
 	source := `<%
-Dim test2
+Dim test2, var1
 test2 = "start"
-' Comment with multiple markers: %> text <%=var%> more text %>
-test2 = test2 & " end"
+var1 = "middle"
 Response.Write test2
-%>`
+' Comment with multiple markers: %> text <%=var1%> more text %>`
 
 	compiler := NewASPCompiler(source)
 	if err := compiler.Compile(); err != nil {
@@ -4799,8 +4797,41 @@ Response.Write test2
 	}
 	host.Response().Flush()
 
-	if output.String() != "start end" {
-		t.Fatalf("expected output start end, got %q", output.String())
+	expected := "start text middle more text %>"
+	if output.String() != expected {
+		t.Fatalf("expected output %q, got %q", expected, output.String())
+	}
+}
+
+// TestASPCommentBlockTerminationReproduction verifies that %> inside a VBScript comment
+// (even when starting the line) correctly closes the ASP block, reproducing IIS Classic ASP output.
+func TestASPCommentBlockTerminationReproduction(t *testing.T) {
+	source := `<%
+Dim total
+total = 42
+' a note that ends the block on the same line %>
+<p>Total: <%= total %></p>
+`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	host.Response().Flush()
+
+	expected := "<p>Total: 42</p>\n"
+	if output.String() != expected {
+		t.Fatalf("expected output %q, got %q", expected, output.String())
 	}
 }
 

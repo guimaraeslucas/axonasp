@@ -987,17 +987,15 @@ func (l *Lexer) nextComment() Token {
 	for !l.isEof() {
 		c := l.getChar(l.Index)
 		if c == '\'' {
-			inlineComment := l.hasCodeBeforeCurrentToken()
 			l.Index++
-			return l.nextCommentBody(1, false, inlineComment)
+			return l.nextCommentBody(1, false)
 		} else if CharEquals(c, 'r') {
 			c2 := l.getChar(l.Index + 1)
 			c3 := l.getChar(l.Index + 2)
 			c4 := l.getChar(l.Index + 3)
 			if CharEquals(c2, 'e') && CharEquals(c3, 'm') && IsWhiteSpace(c4) {
-				inlineComment := l.hasCodeBeforeCurrentToken()
 				l.Index += 3
-				return l.nextCommentBody(3, true, inlineComment)
+				return l.nextCommentBody(3, true)
 			}
 			break
 		} else {
@@ -1007,13 +1005,13 @@ func (l *Lexer) nextComment() Token {
 	return nil
 }
 
-func (l *Lexer) nextCommentBody(offset int, isRem bool, inlineComment bool) Token {
+func (l *Lexer) nextCommentBody(offset int, isRem bool) Token {
 	start := l.Index - offset
 	l.sb.Reset()
 
 	for !l.isEof() {
 		c := l.getChar(l.Index)
-		if inlineComment && l.Mode == ModeASP && l.InASPBlock && l.BlockType == BlockTypePercent {
+		if l.Mode == ModeASP && l.InASPBlock && l.BlockType == BlockTypePercent {
 			next := l.getChar(l.Index + 1)
 			if c == '%' && next == '>' {
 				break
@@ -1036,18 +1034,6 @@ func (l *Lexer) nextCommentBody(offset int, isRem bool, inlineComment bool) Toke
 		Comment: l.sb.String(),
 		IsRem:   isRem,
 	}
-}
-
-// hasCodeBeforeCurrentToken reports whether there is non-whitespace content
-// earlier on the same line before the current token start.
-func (l *Lexer) hasCodeBeforeCurrentToken() bool {
-	for i := l.CurrentLineStart; i < l.Index; i++ {
-		ch := l.getChar(i)
-		if ch != ' ' && ch != '\t' {
-			return true
-		}
-	}
-	return false
 }
 
 func (l *Lexer) isScriptServerStart() (int, bool, string) {
