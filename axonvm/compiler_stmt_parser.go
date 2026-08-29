@@ -2948,13 +2948,28 @@ func (c *Compiler) parseInlineIfBranchStatements() {
 	}
 }
 
+// isLineEndAfterThen returns true if the token following Then is a line terminator, comment, ASP code end, or EOF.
+// In VBScript, Then starts a block If ONLY when nothing but whitespace or a comment follows it on the same line.
+// A colon (:) is a statement separator on the same line, so if a colon follows Then (even with intervening whitespace),
+// it must be evaluated as a single-line If.
+func (c *Compiler) isLineEndAfterThen() bool {
+	if c.matchEof() {
+		return true
+	}
+	switch c.next.(type) {
+	case *vbscript.LineTerminationToken, *vbscript.CommentToken, *vbscript.ASPCodeEndToken:
+		return true
+	}
+	return false
+}
+
 func (c *Compiler) parseIfStatement() {
 	c.expectKeyword(vbscript.KeywordIf)
 	c.parseExpression(PrecNone)
 	c.expectKeyword(vbscript.KeywordThen)
 	jumpEndOffsets := make([]int, 0, 2)
 
-	if !c.isStatementEnd() {
+	if !c.isLineEndAfterThen() {
 		jumpFalseOffset := c.emitJump(OpJumpIfFalse)
 		c.parseInlineIfBranchStatements()
 
@@ -3016,10 +3031,10 @@ func (c *Compiler) parseIfStatement() {
 		c.expectKeyword(vbscript.KeywordThen)
 
 		jumpFalseOffset = c.emitJump(OpJumpIfFalse)
-		if c.isStatementEnd() {
+		if c.isLineEndAfterThen() {
 			c.parseIfConditionalBlock()
 		} else {
-			c.parseStatement()
+			c.parseInlineIfBranchStatements()
 		}
 	}
 
