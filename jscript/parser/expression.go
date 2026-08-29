@@ -374,10 +374,8 @@ func (self *_parser) parseObjectPropertyKey() (string, unistring.String, ast.Exp
 		}
 	case token.PRIVATE_IDENTIFIER:
 		value = &ast.PrivateIdentifier{
-			Identifier: ast.Identifier{
-				Idx:  idx,
-				Name: parsedLiteral,
-			},
+			Idx:  idx,
+			Name: parsedLiteral,
 		}
 	default:
 		// null, false, class, etc.
@@ -970,10 +968,8 @@ func (self *_parser) parseShiftExpression() ast.Expression {
 func (self *_parser) parseRelationalExpression() ast.Expression {
 	if self.scope.allowIn && self.token == token.PRIVATE_IDENTIFIER {
 		left := &ast.PrivateIdentifier{
-			Identifier: ast.Identifier{
-				Idx:  self.idx,
-				Name: self.parsedLiteral,
-			},
+			Idx:  self.idx,
+			Name: self.parsedLiteral,
 		}
 		self.next()
 		if self.token == token.IN {

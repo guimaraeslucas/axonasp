@@ -149,11 +149,11 @@ Nightly releases are made available thanks to [@jeffreyheping](https://github.co
 
 ## License 📝
 
-This project is licensed under the MPL 2.0 License - see the [LICENSE.txt](LICENSE.txt) file for details.
+This project is licensed under the MPL 2.0 License - see the [LICENSE.txt](LICENSE.txt) file for details. If you use this software in other projects, let us know, as it is good to improve the visibility of AxonASP in the community.
 
 ## Contributing to AxonASP 🤝
 
-While not mandatory, we warmly encourage you to contribute to the AxonASP project. If you develop new components or libraries, please consider sharing your implementation with the community; your contributions help maintain, improve, and expand our ecosystem.
+While not mandatory, we warmly encourage you to contribute to the AxonASP project. If you develop new components or libraries, *please consider sharing* your implementation with the community; your contributions help maintain, improve, and expand our ecosystem.
 
 If you find bugs, security vulnerabilities, or have suggestions for new features, **please report them** via GitHub Issues. We welcome your feedback and will do our best to address your concerns promptly.
 

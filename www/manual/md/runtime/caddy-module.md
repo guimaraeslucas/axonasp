@@ -33,7 +33,7 @@ Next, navigate to the `caddy` module directory within the AxonASP repository and
 
 ```bash
 cd ./caddy
-xcaddy build --with g3pix.com.br/axonasp/caddy=. --replace g3pix.com.br/axonasp=..
+xcaddy build --with g3pix.com.br/axonasp/v2/caddy=. --replace g3pix.com.br/axonasp=..
 ```
 
 On Windows, you can also use the included PowerShell build script:

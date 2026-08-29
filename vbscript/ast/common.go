@@ -217,11 +217,9 @@ func NewVariableDeclaration(id *Identifier, isDynamicArray bool) *VariableDeclar
 		panic("identifier cannot be nil")
 	}
 	return &VariableDeclaration{
-		BaseVariableDeclarationNode: BaseVariableDeclarationNode{
-			Identifier:     id,
-			IsDynamicArray: isDynamicArray,
-			ArrayDims:      []Expression{},
-		},
+		Identifier:     id,
+		IsDynamicArray: isDynamicArray,
+		ArrayDims:      []Expression{},
 	}
 }
 
@@ -236,10 +234,8 @@ func NewFieldDeclaration(id *Identifier, isDynamicArray bool) *FieldDeclaration 
 		panic("identifier cannot be nil")
 	}
 	return &FieldDeclaration{
-		BaseVariableDeclarationNode: BaseVariableDeclarationNode{
-			Identifier:     id,
-			IsDynamicArray: isDynamicArray,
-			ArrayDims:      []Expression{},
-		},
+		Identifier:     id,
+		IsDynamicArray: isDynamicArray,
+		ArrayDims:      []Expression{},
 	}
 }

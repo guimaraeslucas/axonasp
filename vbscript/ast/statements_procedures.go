@@ -78,12 +78,10 @@ func NewSubDeclaration(modifier MethodAccessModifier, id *Identifier, body State
 		panic("body cannot be nil")
 	}
 	return &SubDeclaration{
-		BaseProcedureDeclaration: BaseProcedureDeclaration{
-			AccessModifier: modifier,
-			Identifier:     id,
-			Parameters:     []*Parameter{},
-			Body:           body,
-		},
+		AccessModifier: modifier,
+		Identifier:     id,
+		Parameters:     []*Parameter{},
+		Body:           body,
 	}
 }
 
@@ -100,14 +98,10 @@ func NewInitializeSubDeclaration(modifier MethodAccessModifier, body Statement) 
 		panic("body cannot be nil")
 	}
 	return &InitializeSubDeclaration{
-		SubDeclaration: SubDeclaration{
-			BaseProcedureDeclaration: BaseProcedureDeclaration{
-				AccessModifier: modifier,
-				Identifier:     NewIdentifier(InitializeSubName),
-				Parameters:     []*Parameter{},
-				Body:           body,
-			},
-		},
+		AccessModifier: modifier,
+		Identifier:     NewIdentifier(InitializeSubName),
+		Parameters:     []*Parameter{},
+		Body:           body,
 	}
 }
 
@@ -124,14 +118,10 @@ func NewTerminateSubDeclaration(modifier MethodAccessModifier, body Statement) *
 		panic("body cannot be nil")
 	}
 	return &TerminateSubDeclaration{
-		SubDeclaration: SubDeclaration{
-			BaseProcedureDeclaration: BaseProcedureDeclaration{
-				AccessModifier: modifier,
-				Identifier:     NewIdentifier(TerminateSubName),
-				Parameters:     []*Parameter{},
-				Body:           body,
-			},
-		},
+		AccessModifier: modifier,
+		Identifier:     NewIdentifier(TerminateSubName),
+		Parameters:     []*Parameter{},
+		Body:           body,
 	}
 }
 
@@ -149,12 +139,10 @@ func NewFunctionDeclaration(modifier MethodAccessModifier, id *Identifier, body 
 		panic("body cannot be nil")
 	}
 	return &FunctionDeclaration{
-		BaseProcedureDeclaration: BaseProcedureDeclaration{
-			AccessModifier: modifier,
-			Identifier:     id,
-			Parameters:     []*Parameter{},
-			Body:           body,
-		},
+		AccessModifier: modifier,
+		Identifier:     id,
+		Parameters:     []*Parameter{},
+		Body:           body,
 	}
 }
 
@@ -186,12 +174,10 @@ func NewPropertyGetDeclaration(modifier MethodAccessModifier, id *Identifier) *P
 		panic("identifier cannot be nil")
 	}
 	return &PropertyGetDeclaration{
-		BasePropertyDeclaration: BasePropertyDeclaration{
-			AccessModifier: modifier,
-			Identifier:     id,
-			Parameters:     []*Parameter{},
-			Body:           []Statement{},
-		},
+		AccessModifier: modifier,
+		Identifier:     id,
+		Parameters:     []*Parameter{},
+		Body:           []Statement{},
 	}
 }
 
@@ -206,12 +192,10 @@ func NewPropertySetDeclaration(modifier MethodAccessModifier, id *Identifier) *P
 		panic("identifier cannot be nil")
 	}
 	return &PropertySetDeclaration{
-		BasePropertyDeclaration: BasePropertyDeclaration{
-			AccessModifier: modifier,
-			Identifier:     id,
-			Parameters:     []*Parameter{},
-			Body:           []Statement{},
-		},
+		AccessModifier: modifier,
+		Identifier:     id,
+		Parameters:     []*Parameter{},
+		Body:           []Statement{},
 	}
 }
 
@@ -226,12 +210,10 @@ func NewPropertyLetDeclaration(modifier MethodAccessModifier, id *Identifier) *P
 		panic("identifier cannot be nil")
 	}
 	return &PropertyLetDeclaration{
-		BasePropertyDeclaration: BasePropertyDeclaration{
-			AccessModifier: modifier,
-			Identifier:     id,
-			Parameters:     []*Parameter{},
-			Body:           []Statement{},
-		},
+		AccessModifier: modifier,
+		Identifier:     id,
+		Parameters:     []*Parameter{},
+		Body:           []Statement{},
 	}
 }
 
