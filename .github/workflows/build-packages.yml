@@ -140,8 +140,8 @@ jobs:
           pushd caddy
           rm -f caddy caddy.exe
           xcaddy build \
-            --with g3pix.com.br/axonasp/caddy=. \
-            --replace "g3pix.com.br/axonasp=${GITHUB_WORKSPACE}" \
+            --with g3pix.com.br/axonasp/v2/caddy=. \
+            --replace "g3pix.com.br/axonasp/v2=${GITHUB_WORKSPACE}" \
             --replace "github.com/google/cel-go=github.com/google/cel-go@v0.20.1"
           popd
 
