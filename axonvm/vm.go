@@ -48,7 +48,9 @@ import (
 )
 
 const StackSize = 4096
-const jsBackJumpLimit = 1000000
+
+// jsBackJumpLimit is the maximum number of bytecode instructions that can be executed in a loop before the VM raises a runtime error to prevent infinite loops.
+const jsBackJumpLimit = 10000000
 
 const staticObjectProgIDPrefix = "__AXON_STATIC_OBJECT_PROGID__:"
 
@@ -2734,7 +2736,8 @@ aspExecLoop:
 			vm.sp--
 
 		case OpMathSin:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			// Math intrinsics read by value; dereference any ByRef (VTArgRef) slot reference.
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2742,7 +2745,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Sin(input))
 
 		case OpMathCos:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2750,7 +2753,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Cos(input))
 
 		case OpMathTan:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2758,7 +2761,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Tan(input))
 
 		case OpMathAtn:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2766,7 +2769,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Atan(input))
 
 		case OpMathSqr:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2774,7 +2777,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Sqrt(input))
 
 		case OpMathAbs:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			if arg.Type == VTDouble {
 				vm.stack[vm.sp] = NewDouble(math.Abs(arg.Flt))
 			} else {
@@ -2786,7 +2789,7 @@ aspExecLoop:
 			}
 
 		case OpMathExp:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2794,7 +2797,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Exp(input))
 
 		case OpMathLog:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2802,7 +2805,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Log(input))
 
 		case OpMathRound:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2810,7 +2813,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.RoundToEven(input))
 
 		case OpMathInt:
-			arg := resolveCallable(vm, vm.stack[vm.sp])
+			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
