@@ -19,8 +19,8 @@ export GOARCH=amd64
 
 echo "Compiling Caddy binary: caddy-linux-amd64..."
 xcaddy build --output caddy-linux-amd64 \
-    --with g3pix.com.br/axonasp/caddy=. \
-    --replace "g3pix.com.br/axonasp=$PARENT_DIR" \
+    --with g3pix.com.br/axonasp/v2/caddy=. \
+    --replace "g3pix.com.br/axonasp/v2=$PARENT_DIR" \
     --replace "github.com/google/cel-go=github.com/google/cel-go@v0.20.1"
 
 if [ $? -eq 0 ]; then

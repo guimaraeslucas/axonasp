@@ -35,13 +35,13 @@ go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
 cd ./caddy
 
 # Build Caddy binary with AxonASP module
-xcaddy build --with g3pix.com.br/axonasp/caddy=. --replace g3pix.com.br/axonasp=.. --replace github.com/google/cel-go=github.com/google/cel-go@v0.20.1
+xcaddy build --with g3pix.com.br/axonasp/v2/caddy=. --replace g3pix.com.br/axonasp=.. --replace github.com/google/cel-go=github.com/google/cel-go@v0.20.1
 ```
 
 ### Compiling from a Go module path / remote repository
 
 ```bash
-xcaddy build --with g3pix.com.br/axonasp/caddy --replace github.com/google/cel-go=github.com/google/cel-go@v0.20.1
+xcaddy build --with g3pix.com.br/axonasp/v2/caddy --replace github.com/google/cel-go=github.com/google/cel-go@v0.20.1
 ```
 
 ### Running with PowerShell script (Windows)
