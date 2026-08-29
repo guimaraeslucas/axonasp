@@ -918,14 +918,17 @@ func foldVBSBinaryOp(a, b Value, op OpCode) (Value, bool) {
 			return NewInteger(a.Num / b.Num), true
 		}
 	case OpMod:
-		// Only fold positive integers to avoid sign-convention edge cases.
 		if a.Type == VTInteger && b.Type == VTInteger && b.Num > 0 && a.Num >= 0 {
 			return NewInteger(a.Num % b.Num), true
 		}
 		fa, oka := vbsConstantToFloat(a)
 		fb, okb := vbsConstantToFloat(b)
-		if oka && okb && fb != 0 {
-			return NewDouble(math.Mod(fa, fb)), true
+		if oka && okb {
+			div := int64(math.RoundToEven(fb))
+			if div != 0 {
+				num := int64(math.RoundToEven(fa))
+				return NewInteger(num % div), true
+			}
 		}
 	}
 	return Value{}, false

@@ -32,7 +32,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // G3ZLIB exposes compress/zlib as one VM native object.

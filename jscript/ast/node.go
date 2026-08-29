@@ -9,9 +9,9 @@ node types are concerned) and may change in the future.
 package ast
 
 import (
-	"g3pix.com.br/axonasp/jscript/file"
-	"g3pix.com.br/axonasp/jscript/token"
-	"g3pix.com.br/axonasp/jscript/unistring"
+	"g3pix.com.br/axonasp/v2/jscript/file"
+	"g3pix.com.br/axonasp/v2/jscript/token"
+	"g3pix.com.br/axonasp/v2/jscript/unistring"
 )
 
 type PropertyKind string

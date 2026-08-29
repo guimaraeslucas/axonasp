@@ -32,7 +32,7 @@ import (
 	"sync"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 // TestVMServerEncodingDispatch verifies native Server encoding method dispatch.

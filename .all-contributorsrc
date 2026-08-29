@@ -66,7 +66,16 @@
           "contributions": [
             "bug"
           ]
-        }
+        },
+                {
+                  "login": "saborrie",
+                  "name": "Steven Borrie",
+                  "avatar_url": "https://avatars.githubusercontent.com/u/4096734?v=4",
+                  "profile": "https://github.com/saborrie",
+                  "contributions": [
+                    "bug"
+                  ]
+                }
   ],
   "contributorsPerLine": 7,
   "skipCi": true,

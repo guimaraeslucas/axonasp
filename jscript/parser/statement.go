@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"g3pix.com.br/axonasp/jscript/ast"
-	"g3pix.com.br/axonasp/jscript/file"
-	"g3pix.com.br/axonasp/jscript/token"
+	"g3pix.com.br/axonasp/v2/jscript/ast"
+	"g3pix.com.br/axonasp/v2/jscript/file"
+	"g3pix.com.br/axonasp/v2/jscript/token"
 	"github.com/go-sourcemap/sourcemap"
 )
 

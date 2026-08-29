@@ -28,7 +28,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm"
+	"g3pix.com.br/axonasp/v2/axonvm"
 )
 
 // TestNormalizeAndAuthorizeG3ALSessionID verifies fetch payload session IDs are bound to ASPSESSIONID.

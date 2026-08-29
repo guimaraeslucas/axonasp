@@ -3,7 +3,7 @@ package vbscript
 import (
 	"testing"
 
-	"g3pix.com.br/axonasp/vbscript/ast"
+	"g3pix.com.br/axonasp/v2/vbscript/ast"
 )
 
 func TestParser_AllowsEmptyLiteralAsArgument(t *testing.T) {

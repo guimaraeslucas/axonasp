@@ -25,7 +25,7 @@ import (
 	"strings"
 	"testing"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // TestCompilerUnexpectedTokenUsesVBScriptMetadata verifies compiler failures expose VBScript-compatible metadata.

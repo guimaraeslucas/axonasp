@@ -33,8 +33,8 @@ import (
 	"strings"
 	"sync"
 
-	"g3pix.com.br/axonasp/axonvm"
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonvm"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 // sharedFastCGIApplication stores process-wide application state in FastCGI mode.

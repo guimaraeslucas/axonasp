@@ -35,7 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 	"github.com/fogleman/gg"
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/font"

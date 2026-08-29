@@ -38,8 +38,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"g3pix.com.br/axonasp/axonconfig"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/axonconfig"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // --- MSWC.AdRotator ---

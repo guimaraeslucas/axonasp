@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"testing"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // TestVMRequestMemberChainExpression verifies expression-chain behavior for Request collections.

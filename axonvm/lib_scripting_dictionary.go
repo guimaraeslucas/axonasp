@@ -25,7 +25,7 @@ package axonvm
 import (
 	"strings"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // scriptingDictionary is the runtime state for one Scripting.Dictionary instance.

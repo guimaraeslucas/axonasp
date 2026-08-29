@@ -26,7 +26,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"g3pix.com.br/axonasp/axonvm/asp"
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 func TestGlobalASAApplicationOnStart(t *testing.T) {

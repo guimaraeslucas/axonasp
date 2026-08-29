@@ -2,7 +2,7 @@
 Package parser implements a parser for JavaScript.
 
 	import (
-	    "g3pix.com.br/axonasp/jscript/parser"
+	    "g3pix.com.br/axonasp/v2/jscript/parser"
 	)
 
 Parse and return an AST
@@ -38,10 +38,10 @@ import (
 	"io"
 	"os"
 
-	"g3pix.com.br/axonasp/jscript/ast"
-	"g3pix.com.br/axonasp/jscript/file"
-	"g3pix.com.br/axonasp/jscript/token"
-	"g3pix.com.br/axonasp/jscript/unistring"
+	"g3pix.com.br/axonasp/v2/jscript/ast"
+	"g3pix.com.br/axonasp/v2/jscript/file"
+	"g3pix.com.br/axonasp/v2/jscript/token"
+	"g3pix.com.br/axonasp/v2/jscript/unistring"
 )
 
 // A Mode value is a set of flags (or 0). They control optional parser functionality.

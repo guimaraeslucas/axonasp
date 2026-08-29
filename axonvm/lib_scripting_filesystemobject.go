@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 	"github.com/shirou/gopsutil/v3/disk"
 )
 

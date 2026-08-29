@@ -30,8 +30,8 @@ import (
 	"testing"
 	"time"
 
-	"g3pix.com.br/axonasp/jscript"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/jscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 func runASPSourceForTest(t *testing.T, source string) string {
@@ -1787,8 +1787,8 @@ func BenchmarkJScriptTailCallDeepRecursion(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
 		host := NewMockHost()
 		var output bytes.Buffer

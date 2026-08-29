@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"testing"
 
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // TestVMDimInitializerRejected verifies direct Dim initialization is rejected for Classic ASP compatibility.

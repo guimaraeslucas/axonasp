@@ -34,8 +34,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"g3pix.com.br/axonasp/axonconfig"
-	"g3pix.com.br/axonasp/axonvm"
+	"g3pix.com.br/axonasp/v2/axonconfig"
+	"g3pix.com.br/axonasp/v2/axonvm"
 	"github.com/kardianos/service"
 )
 
