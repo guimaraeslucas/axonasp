@@ -6,7 +6,7 @@ go 1.26.5
 replace github.com/google/cel-go => github.com/google/cel-go v0.20.1
 
 require (
-	g3pix.com.br/axonasp/v2 v2.3.17
+	g3pix.com.br/axonasp/v2 v2.3.18
 	github.com/caddyserver/caddy/v2 v2.11.4
 	github.com/spf13/viper v1.21.0
 	go.uber.org/zap v1.28.0
