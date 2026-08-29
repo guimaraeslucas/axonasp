@@ -1787,7 +1787,7 @@ func BenchmarkJScriptTailCallDeepRecursion(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	
+
 	for b.Loop() {
 		vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
 		host := NewMockHost()

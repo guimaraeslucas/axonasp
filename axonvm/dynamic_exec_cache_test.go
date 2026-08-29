@@ -259,7 +259,7 @@ func BenchmarkDynamicExecuteHotPath(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	
+
 	for b.Loop() {
 		if _, err := vbsCompatExecute(vm, []Value{NewString("valueProbe = valueProbe + 1")}); err != nil {
 			b.Fatalf("execute failed: %v", err)
@@ -286,7 +286,7 @@ func BenchmarkDynamicExecuteColdCompilePath(b *testing.B) {
 	}
 
 	b.ReportAllocs()
-	
+
 	for i := 0; b.Loop(); i++ {
 		source := "valueProbe = valueProbe + 1 '" + strconv.Itoa(i)
 		if _, err := vbsCompatExecute(vm, []Value{NewString(source)}); err != nil {

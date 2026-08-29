@@ -56,13 +56,14 @@ func parseFixedZone(tz string) (*time.Location, bool) {
 	}
 
 	sign := 1
-	if offsetStr[0] == '+' {
+	switch offsetStr[0] {
+	case '+':
 		sign = 1
 		offsetStr = offsetStr[1:]
-	} else if offsetStr[0] == '-' {
+	case '-':
 		sign = -1
 		offsetStr = offsetStr[1:]
-	} else {
+	default:
 		return nil, false
 	}
 
