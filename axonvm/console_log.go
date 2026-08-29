@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -259,11 +260,11 @@ func consoleBuildJSTrace(vm *VM) string {
 	b.WriteString(strconv.Itoa(col))
 	b.WriteString(")")
 
-	for i := len(vm.jsCallStack) - 1; i >= 0; i-- {
+	for i, frame := range slices.Backward(vm.jsCallStack) {
 		if i == len(vm.jsCallStack)-1 {
 			continue
 		}
-		frame := vm.jsCallStack[i]
+
 		frameFile := frame.callFile
 		if strings.TrimSpace(frameFile) == "" {
 			frameFile = file

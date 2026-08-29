@@ -2521,14 +2521,14 @@ func (vm *VM) jsSetNameInEnv(envID int64, name string, val Value) {
 // jsGetBlockScopeValue reads from block scopes (innermost first). Returns the value and
 // whether it was found. Raises ReferenceError if the variable is in TDZ (const before init).
 func (vm *VM) jsGetBlockScopeValue(name string) (Value, bool) {
-	for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
-		if _, exists := vm.jsBlockScopes[i][name]; exists {
+	for i, v := range slices.Backward(vm.jsBlockScopes) {
+		if _, exists := v[name]; exists {
 			// Check TDZ for const variables (access before initialization).
 			if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
 				vm.jsThrowReferenceError(fmt.Sprintf("Cannot access '%s' before initialization", name))
 				return Value{Type: VTJSUndefined}, true
 			}
-			return vm.jsBlockScopes[i][name], true
+			return v[name], true
 		}
 	}
 	return Value{Type: VTJSUndefined}, false
@@ -2538,8 +2538,8 @@ func (vm *VM) jsGetBlockScopeValue(name string) (Value, bool) {
 // Returns true if found and set. Raises TypeError for const reassignment.
 // Raises ReferenceError if const is in TDZ (accessed before initialization).
 func (vm *VM) jsSetBlockScopeValue(name string, val Value) bool {
-	for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
-		if _, exists := vm.jsBlockScopes[i][name]; exists {
+	for i, v := range slices.Backward(vm.jsBlockScopes) {
+		if _, exists := v[name]; exists {
 			// Check TDZ for const before initialization.
 			if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
 				vm.jsThrowReferenceError(fmt.Sprintf("Cannot access '%s' before initialization", name))
@@ -2550,7 +2550,7 @@ func (vm *VM) jsSetBlockScopeValue(name string, val Value) bool {
 				vm.jsThrowTypeError(fmt.Sprintf("Assignment to constant variable '%s'", name))
 				return true
 			}
-			vm.jsBlockScopes[i][name] = val
+			v[name] = val
 			return true
 		}
 	}
@@ -2688,8 +2688,8 @@ func (vm *VM) jsResolveWithBinding(name string) (Value, bool) {
 	if len(vm.withStack) == 0 {
 		return Value{Type: VTJSUndefined}, false
 	}
-	for i := len(vm.withStack) - 1; i >= 0; i-- {
-		target := vm.withStack[i]
+	for _, target := range slices.Backward(vm.withStack) {
+
 		if !vm.jsHasProperty(target, name) {
 			continue
 		}
@@ -2709,8 +2709,8 @@ func (vm *VM) jsAssignWithBinding(name string, val Value) bool {
 	if len(vm.withStack) == 0 {
 		return false
 	}
-	for i := len(vm.withStack) - 1; i >= 0; i-- {
-		target := vm.withStack[i]
+	for _, target := range slices.Backward(vm.withStack) {
+
 		if !vm.jsHasProperty(target, name) {
 			continue
 		}
@@ -12055,8 +12055,8 @@ func (vm *VM) jsGetFunctionCaller(target Value) Value {
 		return NewNull()
 	}
 
-	for i := len(vm.jsCallStack) - 1; i >= 0; i-- {
-		frameFn := vm.jsCallStack[i].fn
+	for i, v := range slices.Backward(vm.jsCallStack) {
+		frameFn := v.fn
 		if frameFn.Type == target.Type && frameFn.Num == target.Num {
 			if i > 0 {
 				callerFn := vm.jsCallStack[i-1].fn

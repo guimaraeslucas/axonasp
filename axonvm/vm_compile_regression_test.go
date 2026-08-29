@@ -2669,8 +2669,7 @@ End Class
 		t.Fatalf("expected compile error for property signature mismatch")
 	}
 
-	var syntaxErr *vbscript.VBSyntaxError
-	if !errors.As(err, &syntaxErr) {
+	if _, ok := errors.AsType[*vbscript.VBSyntaxError](err); !ok {
 		t.Fatalf("expected VBSyntaxError, got %T", err)
 	}
 }
@@ -2690,8 +2689,7 @@ End Class
 		t.Fatalf("expected compile error for Property Let without value parameter")
 	}
 
-	var syntaxErr *vbscript.VBSyntaxError
-	if !errors.As(err, &syntaxErr) {
+	if _, ok := errors.AsType[*vbscript.VBSyntaxError](err); !ok {
 		t.Fatalf("expected VBSyntaxError, got %T", err)
 	}
 }

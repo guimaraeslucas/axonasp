@@ -2484,8 +2484,7 @@ func (c *Compiler) normalizeCompileError(err error) error {
 		return nil
 	}
 
-	var jsSyntaxErr *jscript.JSSyntaxError
-	if errors.As(err, &jsSyntaxErr) {
+	if jsSyntaxErr, ok := errors.AsType[*jscript.JSSyntaxError](err); ok {
 		mapped := false
 		if c != nil && jsSyntaxErr != nil {
 			if file, line, ok := c.mapMergedSourceLine(jsSyntaxErr.Line); ok {
@@ -2505,8 +2504,7 @@ func (c *Compiler) normalizeCompileError(err error) error {
 		return jsSyntaxErr
 	}
 
-	var syntaxErr *vbscript.VBSyntaxError
-	if errors.As(err, &syntaxErr) {
+	if syntaxErr, ok := errors.AsType[*vbscript.VBSyntaxError](err); ok {
 		if syntaxErr != nil && strings.TrimSpace(syntaxErr.File) != "" {
 			return syntaxErr
 		}
