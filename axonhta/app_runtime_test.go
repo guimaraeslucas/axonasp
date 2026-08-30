@@ -101,3 +101,53 @@ func TestBuildSourceContext_FileNotFound(t *testing.T) {
 		t.Error("expected empty string for nonexistent file")
 	}
 }
+
+func TestInjectAppScript_WithHTAHeadElements(t *testing.T) {
+	origConfig := htaConfig
+	defer func() { htaConfig = origConfig }()
+
+	htaConfig = &HtaConfig{
+		Icon:   "favicon.ico",
+		Border: "dialog",
+		Scroll: "no",
+	}
+
+	html := []byte(`<!DOCTYPE html><html><head><title>App</title></head><body><h1>Hello</h1></body></html>`)
+	result := string(injectAppScript(html))
+
+	if !strings.Contains(result, `<link rel="icon" href="favicon.ico">`) {
+		t.Error("expected icon tag to be injected into head")
+	}
+	if !strings.Contains(result, `<style>html, body { border: 3px outset #c0c0c0; box-sizing: border-box; } html, body { overflow: hidden !important; }</style>`) {
+		t.Error("expected HTA style block to be injected")
+	}
+	if !strings.Contains(result, `__heartbeat__`) {
+		t.Error("expected heartbeat script to still be injected")
+	}
+
+	// Verify icon and style are injected before </head>
+	headCloseIdx := strings.Index(result, "</head>")
+	iconIdx := strings.Index(result, `<link rel="icon"`)
+	styleIdx := strings.Index(result, `<style>`)
+
+	if iconIdx == -1 || iconIdx > headCloseIdx {
+		t.Error("expected icon to be inside <head>")
+	}
+	if styleIdx == -1 || styleIdx > headCloseIdx {
+		t.Error("expected style to be inside <head>")
+	}
+}
+
+func TestActiveRuntimeJS_Maximize(t *testing.T) {
+	origConfig := htaConfig
+	defer func() { htaConfig = origConfig }()
+
+	htaConfig = &HtaConfig{
+		WindowState: "maximize",
+	}
+
+	js := activeRuntimeJS()
+	if !strings.Contains(js, "window.resizeTo") || !strings.Contains(js, "screen.availWidth") {
+		t.Error("expected maximize script to be injected when windowstate=maximize")
+	}
+}

@@ -24,7 +24,7 @@ package axonvm
 
 import (
 	"fmt"
-	"g3pix.com.br/axonasp/vbscript"
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // G3MD é a estrutura para a versão desativada da library.

@@ -55,20 +55,88 @@ window.addEventListener('pagehide',function(){navigator.sendBeacon('/__heartbeat
 window.addEventListener('beforeunload',function(){navigator.sendBeacon('/__heartbeat__');});
 })();</script>`
 
-// activeRuntimeJS returns the appropriate runtime JS based on dev mode.
+// activeRuntimeJS returns the appropriate runtime JS based on dev mode,
+// including a window maximize script when windowstate="maximize" is configured.
 func activeRuntimeJS() string {
+	var maximizeScript string
+	if htaConfig != nil && strings.EqualFold(strings.TrimSpace(htaConfig.WindowState), "maximize") {
+		// Browser fallback for cross-platform window maximization:
+		// Attempt screen dimension resize/move upon document loading.
+		maximizeScript = `try{window.moveTo(0,0);window.resizeTo(screen.availWidth||screen.width,screen.availHeight||screen.height);}catch(e){}`
+	}
+
 	if devMode {
+		if maximizeScript != "" {
+			return `<script>(function(){` + maximizeScript + `;
+setInterval(function(){fetch('/__heartbeat__',{method:'HEAD',cache:'no-store'}).catch(function(){})},5000);
+window.addEventListener('pagehide',function(){navigator.sendBeacon('/__heartbeat__');});
+window.addEventListener('beforeunload',function(){navigator.sendBeacon('/__heartbeat__');});
+})();</script>`
+		}
 		return appRuntimeJSDev
 	}
+
+	if maximizeScript != "" {
+		return `<script>(function(){` + maximizeScript + `;
+document.addEventListener("contextmenu",function(e){e.preventDefault();return false;});
+document.addEventListener("dragstart",function(e){e.preventDefault();return false;});
+setInterval(function(){fetch('/__heartbeat__',{method:'HEAD',cache:'no-store'}).catch(function(){})},5000);
+window.addEventListener('pagehide',function(){navigator.sendBeacon('/__heartbeat__');});
+window.addEventListener('beforeunload',function(){navigator.sendBeacon('/__heartbeat__');});
+})();</script>`
+	}
+
 	return appRuntimeJSProd
 }
 
-// injectAppScript injects the runtime JS before </body>, </head>, or at the
-// end of the HTML content. The search is case-insensitive.
+// activeHTAHeadElements returns the generated <link rel="icon"> and <style>
+// tags from the parsed <hta:application> tag, if present.
+func activeHTAHeadElements() string {
+	if htaConfig != nil {
+		return htaConfig.BuildHTAHeadInjections()
+	}
+	return ""
+}
+
+// injectAppScript injects HTA head elements into <head> (or before </body> or at the end)
+// and injects the runtime JS before </body>, </head>, or at the end of the HTML content.
+// The search is case-insensitive.
 func injectAppScript(html []byte) []byte {
+	headElements := []byte(activeHTAHeadElements())
 	script := []byte(activeRuntimeJS())
 	lower := bytes.ToLower(html)
 
+	// Step 1: If we have HTA head elements (CSS style / icon), inject them into <head> or before </body>
+	if len(headElements) > 0 {
+		if headIdx := bytes.Index(lower, []byte("</head>")); headIdx >= 0 {
+			buf := make([]byte, 0, len(html)+len(headElements))
+			buf = append(buf, html[:headIdx]...)
+			buf = append(buf, headElements...)
+			buf = append(buf, html[headIdx:]...)
+			html = buf
+			lower = bytes.ToLower(html)
+		} else if bodyIdx := bytes.Index(lower, []byte("<body")); bodyIdx >= 0 {
+			// Find closing > of <body ...>
+			if gtIdx := bytes.IndexByte(lower[bodyIdx:], '>'); gtIdx >= 0 {
+				insertPos := bodyIdx + gtIdx + 1
+				buf := make([]byte, 0, len(html)+len(headElements))
+				buf = append(buf, html[:insertPos]...)
+				buf = append(buf, headElements...)
+				buf = append(buf, html[insertPos:]...)
+				html = buf
+				lower = bytes.ToLower(html)
+			}
+		} else {
+			// Fallback: prepend head elements to document
+			buf := make([]byte, 0, len(html)+len(headElements))
+			buf = append(buf, headElements...)
+			buf = append(buf, html...)
+			html = buf
+			lower = bytes.ToLower(html)
+		}
+	}
+
+	// Step 2: Inject runtime JS script
 	if idx := bytes.Index(lower, []byte("</body>")); idx >= 0 {
 		result := make([]byte, 0, len(html)+len(script))
 		result = append(result, html[:idx]...)

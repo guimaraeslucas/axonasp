@@ -195,9 +195,16 @@ func openAppWindow(browserPath, url string) {
 
 	// Apply HTA tag attributes if available.
 	if htaConfig != nil {
-		// windowstate="maximize" → start maximized
-		if htaConfig.WindowState == "maximize" {
+		ws := strings.ToLower(strings.TrimSpace(htaConfig.WindowState))
+		if ws == "maximize" || ws == "maximized" {
 			args = append(args, "--start-maximized")
+			if runtime.GOOS == "windows" {
+				args = append(args, "/max")
+			}
+		} else if ws == "minimize" || ws == "minimized" {
+			if runtime.GOOS == "windows" {
+				args = append(args, "/min")
+			}
 		}
 
 		// caption="no" → borderless window.
@@ -295,7 +302,17 @@ func openDefaultBrowser(url string) {
 	switch runtime.GOOS {
 	case "windows":
 		cmd = "cmd"
-		args = []string{"/c", "start", url}
+		args = []string{"/c", "start"}
+		if htaConfig != nil {
+			ws := strings.ToLower(strings.TrimSpace(htaConfig.WindowState))
+			switch ws {
+			case "maximize", "maximized":
+				args = append(args, "/max")
+			case "minimize", "minimized":
+				args = append(args, "/min")
+			}
+		}
+		args = append(args, url)
 	case "darwin":
 		cmd = "open"
 		args = []string{url}
