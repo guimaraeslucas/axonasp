@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -5624,7 +5625,7 @@ aspExecLoop:
 			nameIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			name := vm.constants[nameIdx].Str
-			for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
+			for i := range slices.Backward(vm.jsBlockScopes) {
 				if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
 					delete(vm.jsBlockScopeTDZ[i], name)
 					break
@@ -5638,14 +5639,14 @@ aspExecLoop:
 			name := vm.constants[nameIdx].Str
 			val := vm.pop()
 			// Find the innermost block scope that has this const name and is still in TDZ
-			for i := len(vm.jsBlockScopes) - 1; i >= 0; i-- {
+			for i, v := range slices.Backward(vm.jsBlockScopes) {
 				if _, inTDZ := vm.jsBlockScopeTDZ[i][name]; inTDZ {
-					vm.jsBlockScopes[i][name] = val
+					v[name] = val
 					delete(vm.jsBlockScopeTDZ[i], name)
 					break
 				}
-				if _, exists := vm.jsBlockScopes[i][name]; exists {
-					vm.jsBlockScopes[i][name] = val
+				if _, exists := v[name]; exists {
+					v[name] = val
 					break
 				}
 			}
@@ -8693,8 +8694,8 @@ func (vm *VM) errRaise(args []Value) Value {
 		return Value{Type: VTEmpty}
 	}
 
-	for i := len(vm.callStack) - 1; i >= 0; i-- {
-		frame := vm.callStack[i]
+	for i, frame := range slices.Backward(vm.callStack) {
+
 		if !frame.savedOnResumeNext {
 			continue
 		}
@@ -10285,8 +10286,8 @@ func (vm *VM) raiseVMError(vme *VMError) {
 	// statement following the call that raised the error. This mirrors classic
 	// VBScript behaviour: an unhandled error propagates up until it reaches a
 	// procedure scope that has On Error Resume Next active.
-	for i := len(vm.callStack) - 1; i >= 0; i-- {
-		frame := vm.callStack[i]
+	for i, frame := range slices.Backward(vm.callStack) {
+
 		if !frame.savedOnResumeNext {
 			continue
 		}

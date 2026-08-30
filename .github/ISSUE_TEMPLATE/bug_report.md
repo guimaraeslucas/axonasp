@@ -18,6 +18,9 @@ Steps to reproduce the behavior:
 **Expected behavior**
 A clear and concise description of what you expected to happen.
 
+**File example**
+The file that causes the bug. Please provide a minimal example if possible.
+
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 

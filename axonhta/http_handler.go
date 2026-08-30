@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Jeffrey He (@jeffreyheping)
+ * Developed by Jeffrey He (@jeffreyheping), Lucas Guimarães (@guimaraeslucas)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -37,7 +37,12 @@ import (
 )
 
 // defaultPages defines the lookup order for directory index files.
-var defaultPages = []string{"index.hta", "default.hta", "index.asp", "default.asp", "index.html", "default.html"}
+var defaultPages = []string{
+	"index.hta", "default.hta", "main.hta",
+	"index.asp", "default.asp", "main.asp",
+	"index.html", "default.html", "main.html",
+	"index.htm", "default.htm", "main.htm",
+}
 
 // handleRequest is the main HTTP handler that routes requests to static file
 // serving, HTA execution, or ASP execution based on the file extension.
@@ -218,7 +223,7 @@ func executeHTA(w http.ResponseWriter, r *http.Request, filePath string) {
 		return
 	}
 
-	cleaned := StripHTATag(string(data))
+	cleaned := ConvertVBScriptTagsToASP(StripHTATag(string(data)))
 
 	// Derive a deterministic path from the file's mtime + content hash.
 	// This ensures ScriptCache reuses the compiled bytecode on subsequent requests.

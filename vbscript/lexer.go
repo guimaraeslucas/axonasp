@@ -203,12 +203,10 @@ func (l *Lexer) NextToken() Token {
 
 	if l.isEof() {
 		return &EOFToken{
-			BaseToken: BaseToken{
-				Start:      l.Index,
-				End:        l.Index,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
+			Start:      l.Index,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
 		}
 	}
 
@@ -223,12 +221,10 @@ func (l *Lexer) NextToken() Token {
 			l.BlockType = BlockTypeNone
 			l.skipHTMLLeadingNL = true
 			return &ASPCodeEndToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
+				Start:      start,
+				End:        l.Index,
+				LineNumber: l.CurrentLine,
+				LineStart:  l.CurrentLineStart,
 			}
 		} else if l.BlockType == BlockTypeScript {
 			if length, ok := l.isScriptEnd(); ok {
@@ -238,12 +234,10 @@ func (l *Lexer) NextToken() Token {
 				l.BlockType = BlockTypeNone
 				l.skipHTMLLeadingNL = true
 				return &ASPCodeEndToken{
-					BaseToken: BaseToken{
-						Start:      start,
-						End:        l.Index,
-						LineNumber: l.CurrentLine,
-						LineStart:  l.CurrentLineStart,
-					},
+					Start:      start,
+					End:        l.Index,
+					LineNumber: l.CurrentLine,
+					LineStart:  l.CurrentLineStart,
 				}
 			}
 		}
@@ -472,13 +466,11 @@ func (l *Lexer) nextExtendedIdentifier() Token {
 	l.Index++
 
 	return &IdentifierToken{
-		BaseToken: BaseToken{
-			Start:      start,
-			End:        l.Index,
-			LineNumber: l.CurrentLine,
-			LineStart:  l.CurrentLineStart,
-		},
-		Name: name,
+		Start:      start,
+		End:        l.Index,
+		LineNumber: l.CurrentLine,
+		LineStart:  l.CurrentLineStart,
+		Name:       name,
 	}
 
 }
@@ -501,13 +493,11 @@ func (l *Lexer) nextDateLiteral() Token {
 		// Not a date literal, return PunctHash
 		l.Index = start + 1
 		return &PunctuationToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
-			Type: PunctHash,
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Type:       PunctHash,
 		}
 	}
 
@@ -524,15 +514,11 @@ func (l *Lexer) nextDateLiteral() Token {
 	l.Index++
 
 	return &DateLiteralToken{
-		LiteralToken: LiteralToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
-		},
-		Value: date,
+		Start:      start,
+		End:        l.Index,
+		LineNumber: l.CurrentLine,
+		LineStart:  l.CurrentLineStart,
+		Value:      date,
 	}
 }
 
@@ -545,92 +531,66 @@ func (l *Lexer) nextIdentifier() Token {
 	switch {
 	case CIEquals(id, "true"):
 		result = &TrueLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
 		}
 	case CIEquals(id, "null"):
 		result = &NullLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
 		}
 	case CIEquals(id, "false"):
 		result = &FalseLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
 		}
 	case CIEquals(id, "empty"):
 		result = &EmptyLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
 		}
 	case CIEquals(id, "nothing"):
 		result = &NothingLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
 		}
 	case IsKeyword(id):
 		kw, _ := GetKeyword(id)
 		result = &KeywordToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
-			Keyword: kw,
-			Name:    id,
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Keyword:    kw,
+			Name:       id,
 		}
 	case IsKeywordAsIdentifier(id):
 		kw, _ := GetKeywordAsIdentifier(id)
 		result = &KeywordOrIdentifierToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
-			Keyword: kw,
-			Name:    id,
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Keyword:    kw,
+			Name:       id,
 		}
 	default:
 		result = &IdentifierToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
-			Name: id,
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Name:       id,
 		}
 	}
 
@@ -672,15 +632,11 @@ func (l *Lexer) nextStringLiteral() Token {
 				value := strings.Clone(l.Code[contentStart:l.Index])
 				l.Index++ // advance past closing quote
 				return &StringLiteralToken{
-					LiteralToken: LiteralToken{
-						BaseToken: BaseToken{
-							Start:      start,
-							End:        l.Index - 1,
-							LineNumber: l.CurrentLine,
-							LineStart:  l.CurrentLineStart,
-						},
-					},
-					Value: value,
+					Start:      start,
+					End:        l.Index - 1,
+					LineNumber: l.CurrentLine,
+					LineStart:  l.CurrentLineStart,
+					Value:      value,
 				}
 			}
 			if b == '\r' || b == '\n' {
@@ -725,15 +681,11 @@ slowPath:
 	}
 
 	return &StringLiteralToken{
-		LiteralToken: LiteralToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index - 1,
-				LineNumber: l.CurrentLine,
-				LineStart:  l.CurrentLineStart,
-			},
-		},
-		Value: l.sb.String(),
+		Start:      start,
+		End:        l.Index - 1,
+		LineNumber: l.CurrentLine,
+		LineStart:  l.CurrentLineStart,
+		Value:      l.sb.String(),
 	}
 }
 
@@ -812,15 +764,11 @@ func (l *Lexer) nextNumericLiteral() Token {
 		}
 
 		return &FloatLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
-			Value: val,
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Value:      val,
 		}
 	}
 
@@ -864,14 +812,10 @@ func (l *Lexer) parseInteger(str string, base int) Token {
 		}
 
 		return &FloatLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
-			Value: floatVal,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Value:      floatVal,
 		}
 	}
 
@@ -879,40 +823,24 @@ func (l *Lexer) parseInteger(str string, base int) Token {
 	switch base {
 	case 8:
 		result = &OctIntegerLiteralToken{
-			DecIntegerLiteralToken: DecIntegerLiteralToken{
-				LiteralToken: LiteralToken{
-					BaseToken: BaseToken{
-						End:        l.Index,
-						LineNumber: l.CurrentLine,
-						LineStart:  l.CurrentLineStart,
-					},
-				},
-				Value: val,
-			},
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Value:      val,
 		}
 	case 10:
 		result = &DecIntegerLiteralToken{
-			LiteralToken: LiteralToken{
-				BaseToken: BaseToken{
-					End:        l.Index,
-					LineNumber: l.CurrentLine,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
-			Value: val,
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Value:      val,
 		}
 	case 16:
 		result = &HexIntegerLiteralToken{
-			DecIntegerLiteralToken: DecIntegerLiteralToken{
-				LiteralToken: LiteralToken{
-					BaseToken: BaseToken{
-						End:        l.Index,
-						LineNumber: l.CurrentLine,
-						LineStart:  l.CurrentLineStart,
-					},
-				},
-				Value: val,
-			},
+			End:        l.Index,
+			LineNumber: l.CurrentLine,
+			LineStart:  l.CurrentLineStart,
+			Value:      val,
 		}
 	}
 
@@ -1025,14 +953,12 @@ func (l *Lexer) nextCommentBody(offset int, isRem bool) Token {
 	}
 
 	return &CommentToken{
-		BaseToken: BaseToken{
-			Start:      start,
-			End:        l.Index,
-			LineNumber: l.CurrentLine,
-			LineStart:  l.CurrentLineStart,
-		},
-		Comment: l.sb.String(),
-		IsRem:   isRem,
+		Start:      start,
+		End:        l.Index,
+		LineNumber: l.CurrentLine,
+		LineStart:  l.CurrentLineStart,
+		Comment:    l.sb.String(),
+		IsRem:      isRem,
 	}
 }
 
@@ -1498,13 +1424,11 @@ func (l *Lexer) nextHTML() Token {
 					if l.preserveFormattingBeforeServerBlock {
 						l.preserveFormattingBeforeServerBlock = false
 						return &HTMLToken{
-							BaseToken: BaseToken{
-								Start:      start,
-								End:        l.Index,
-								LineNumber: line,
-								LineStart:  lineStart,
-							},
-							Content: l.sliceString(start, l.Index),
+							Start:      start,
+							End:        l.Index,
+							LineNumber: line,
+							LineStart:  lineStart,
+							Content:    l.sliceString(start, l.Index),
 						}
 					}
 					start = l.Index
@@ -1513,13 +1437,11 @@ func (l *Lexer) nextHTML() Token {
 				} else {
 					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
-						BaseToken: BaseToken{
-							Start:      start,
-							End:        l.Index,
-							LineNumber: line,
-							LineStart:  lineStart,
-						},
-						Content: l.sliceString(start, l.Index),
+						Start:      start,
+						End:        l.Index,
+						LineNumber: line,
+						LineStart:  lineStart,
+						Content:    l.sliceString(start, l.Index),
 					}
 				}
 			}
@@ -1563,24 +1485,20 @@ func (l *Lexer) nextHTML() Token {
 					l.advanceIndexWithLineTracking(blockEnd)
 					l.skipHTMLLeadingNL = true
 					return &ASPJScriptBlockToken{
-						BaseToken: BaseToken{
-							Start:      aspStart,
-							End:        l.Index,
-							LineNumber: aspLine,
-							LineStart:  aspLineStart,
-						},
+						Start:       aspStart,
+						End:         l.Index,
+						LineNumber:  aspLine,
+						LineStart:   aspLineStart,
 						Content:     content,
 						IsScriptTag: false,
 					}
 				}
 				l.Index = probe + 1
 				return &ASPExpressionStartToken{
-					BaseToken: BaseToken{
-						Start:      aspStart,
-						End:        l.Index,
-						LineNumber: aspLine,
-						LineStart:  aspLineStart,
-					},
+					Start:      aspStart,
+					End:        l.Index,
+					LineNumber: aspLine,
+					LineStart:  aspLineStart,
 				}
 			} else if next == '@' {
 				innerStart := probe + 1
@@ -1598,12 +1516,10 @@ func (l *Lexer) nextHTML() Token {
 				}
 				l.Index = probe + 1
 				return &ASPDirectiveStartToken{
-					BaseToken: BaseToken{
-						Start:      aspStart,
-						End:        l.Index,
-						LineNumber: aspLine,
-						LineStart:  aspLineStart,
-					},
+					Start:      aspStart,
+					End:        l.Index,
+					LineNumber: aspLine,
+					LineStart:  aspLineStart,
 				}
 			}
 
@@ -1620,24 +1536,20 @@ func (l *Lexer) nextHTML() Token {
 				l.advanceIndexWithLineTracking(blockEnd)
 				l.skipHTMLLeadingNL = true
 				return &ASPJScriptBlockToken{
-					BaseToken: BaseToken{
-						Start:      aspStart,
-						End:        l.Index,
-						LineNumber: aspLine,
-						LineStart:  aspLineStart,
-					},
+					Start:       aspStart,
+					End:         l.Index,
+					LineNumber:  aspLine,
+					LineStart:   aspLineStart,
 					Content:     content,
 					IsScriptTag: false,
 				}
 			}
 
 			return &ASPCodeStartToken{
-				BaseToken: BaseToken{
-					Start:      aspStart,
-					End:        l.Index,
-					LineNumber: aspLine,
-					LineStart:  aspLineStart,
-				},
+				Start:      aspStart,
+				End:        l.Index,
+				LineNumber: aspLine,
+				LineStart:  aspLineStart,
 			}
 		}
 
@@ -1648,13 +1560,11 @@ func (l *Lexer) nextHTML() Token {
 					if l.preserveFormattingBeforeServerBlock {
 						l.preserveFormattingBeforeServerBlock = false
 						return &HTMLToken{
-							BaseToken: BaseToken{
-								Start:      start,
-								End:        l.Index,
-								LineNumber: line,
-								LineStart:  lineStart,
-							},
-							Content: l.sliceString(start, l.Index),
+							Start:      start,
+							End:        l.Index,
+							LineNumber: line,
+							LineStart:  lineStart,
+							Content:    l.sliceString(start, l.Index),
 						}
 					}
 					start = l.Index
@@ -1663,13 +1573,11 @@ func (l *Lexer) nextHTML() Token {
 				} else {
 					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
-						BaseToken: BaseToken{
-							Start:      start,
-							End:        l.Index,
-							LineNumber: line,
-							LineStart:  lineStart,
-						},
-						Content: l.sliceString(start, l.Index),
+						Start:      start,
+						End:        l.Index,
+						LineNumber: line,
+						LineStart:  lineStart,
+						Content:    l.sliceString(start, l.Index),
 					}
 				}
 			}
@@ -1688,12 +1596,10 @@ func (l *Lexer) nextHTML() Token {
 				l.advanceIndexWithLineTracking(blockEnd)
 				l.skipHTMLLeadingNL = true
 				return &ASPJScriptBlockToken{
-					BaseToken: BaseToken{
-						Start:      aspStart,
-						End:        l.Index,
-						LineNumber: aspLine,
-						LineStart:  aspLineStart,
-					},
+					Start:       aspStart,
+					End:         l.Index,
+					LineNumber:  aspLine,
+					LineStart:   aspLineStart,
 					Content:     content,
 					IsScriptTag: true,
 				}
@@ -1702,13 +1608,11 @@ func (l *Lexer) nextHTML() Token {
 			l.InASPBlock = true
 			l.BlockType = BlockTypeScript
 			return &ASPCodeStartToken{
-				BaseToken: BaseToken{
-					Start:      aspStart,
-					End:        l.Index,
-					LineNumber: aspLine,
-					LineStart:  aspLineStart,
-				},
-				Language: language,
+				Start:      aspStart,
+				End:        l.Index,
+				LineNumber: aspLine,
+				LineStart:  aspLineStart,
+				Language:   language,
 			}
 		}
 
@@ -1719,13 +1623,11 @@ func (l *Lexer) nextHTML() Token {
 					if l.preserveFormattingBeforeServerBlock {
 						l.preserveFormattingBeforeServerBlock = false
 						return &HTMLToken{
-							BaseToken: BaseToken{
-								Start:      start,
-								End:        l.Index,
-								LineNumber: line,
-								LineStart:  lineStart,
-							},
-							Content: l.sliceString(start, l.Index),
+							Start:      start,
+							End:        l.Index,
+							LineNumber: line,
+							LineStart:  lineStart,
+							Content:    l.sliceString(start, l.Index),
 						}
 					}
 					start = l.Index
@@ -1734,13 +1636,11 @@ func (l *Lexer) nextHTML() Token {
 				} else {
 					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
-						BaseToken: BaseToken{
-							Start:      start,
-							End:        l.Index,
-							LineNumber: line,
-							LineStart:  lineStart,
-						},
-						Content: l.sliceString(start, l.Index),
+						Start:      start,
+						End:        l.Index,
+						LineNumber: line,
+						LineStart:  lineStart,
+						Content:    l.sliceString(start, l.Index),
 					}
 				}
 			}
@@ -1751,14 +1651,12 @@ func (l *Lexer) nextHTML() Token {
 			l.Index += length
 			l.skipHTMLLeadingNL = true
 			return &ASPIncludeToken{
-				BaseToken: BaseToken{
-					Start:      aspStart,
-					End:        l.Index,
-					LineNumber: aspLine,
-					LineStart:  aspLineStart,
-				},
-				Path:    path,
-				Virtual: virtual,
+				Start:      aspStart,
+				End:        l.Index,
+				LineNumber: aspLine,
+				LineStart:  aspLineStart,
+				Path:       path,
+				Virtual:    virtual,
 			}
 		}
 
@@ -1769,13 +1667,11 @@ func (l *Lexer) nextHTML() Token {
 					if l.preserveFormattingBeforeServerBlock {
 						l.preserveFormattingBeforeServerBlock = false
 						return &HTMLToken{
-							BaseToken: BaseToken{
-								Start:      start,
-								End:        l.Index,
-								LineNumber: line,
-								LineStart:  lineStart,
-							},
-							Content: l.sliceString(start, l.Index),
+							Start:      start,
+							End:        l.Index,
+							LineNumber: line,
+							LineStart:  lineStart,
+							Content:    l.sliceString(start, l.Index),
 						}
 					}
 					start = l.Index
@@ -1784,13 +1680,11 @@ func (l *Lexer) nextHTML() Token {
 				} else {
 					l.preserveFormattingBeforeServerBlock = false
 					return &HTMLToken{
-						BaseToken: BaseToken{
-							Start:      start,
-							End:        l.Index,
-							LineNumber: line,
-							LineStart:  lineStart,
-						},
-						Content: l.sliceString(start, l.Index),
+						Start:      start,
+						End:        l.Index,
+						LineNumber: line,
+						LineStart:  lineStart,
+						Content:    l.sliceString(start, l.Index),
 					}
 				}
 			}
@@ -1801,16 +1695,14 @@ func (l *Lexer) nextHTML() Token {
 			l.Index += length
 			l.preserveFormattingBeforeServerBlock = true
 			return &ASPObjectToken{
-				BaseToken: BaseToken{
-					Start:      aspStart,
-					End:        l.Index,
-					LineNumber: aspLine,
-					LineStart:  aspLineStart,
-				},
-				Scope:   attrs["scope"],
-				ID:      attrs["id"],
-				ProgID:  attrs["progid"],
-				ClassID: attrs["classid"],
+				Start:      aspStart,
+				End:        l.Index,
+				LineNumber: aspLine,
+				LineStart:  aspLineStart,
+				Scope:      attrs["scope"],
+				ID:         attrs["id"],
+				ProgID:     attrs["progid"],
+				ClassID:    attrs["classid"],
 			}
 		}
 
@@ -1828,23 +1720,19 @@ func (l *Lexer) nextHTML() Token {
 
 	if l.Index > start {
 		return &HTMLToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: line,
-				LineStart:  lineStart,
-			},
-			Content: l.sliceString(start, l.Index),
+			Start:      start,
+			End:        l.Index,
+			LineNumber: line,
+			LineStart:  lineStart,
+			Content:    l.sliceString(start, l.Index),
 		}
 	}
 
 	return &EOFToken{
-		BaseToken: BaseToken{
-			Start:      l.Index,
-			End:        l.Index,
-			LineNumber: l.CurrentLine,
-			LineStart:  l.CurrentLineStart,
-		},
+		Start:      l.Index,
+		End:        l.Index,
+		LineNumber: l.CurrentLine,
+		LineStart:  l.CurrentLineStart,
 	}
 }
 
@@ -1877,23 +1765,17 @@ func (l *Lexer) nextLineTermination() Token {
 	var token Token
 	if isColon {
 		token = &ColonLineTerminationToken{
-			LineTerminationToken: LineTerminationToken{
-				BaseToken: BaseToken{
-					Start:      start,
-					End:        l.Index,
-					LineNumber: line,
-					LineStart:  l.CurrentLineStart,
-				},
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: line,
+			LineStart:  l.CurrentLineStart,
 		}
 	} else {
 		token = &LineTerminationToken{
-			BaseToken: BaseToken{
-				Start:      start,
-				End:        l.Index,
-				LineNumber: l.CurrentLine - 1,
-				LineStart:  l.CurrentLineStart,
-			},
+			Start:      start,
+			End:        l.Index,
+			LineNumber: l.CurrentLine - 1,
+			LineStart:  l.CurrentLineStart,
 		}
 	}
 
@@ -2055,13 +1937,11 @@ func (l *Lexer) nextPunctuation() Token {
 	l.Index++
 
 	return &PunctuationToken{
-		BaseToken: BaseToken{
-			Start:      start,
-			End:        l.Index,
-			LineNumber: l.CurrentLine,
-			LineStart:  l.CurrentLineStart,
-		},
-		Type: *punctType,
+		Start:      start,
+		End:        l.Index,
+		LineNumber: l.CurrentLine,
+		LineStart:  l.CurrentLineStart,
+		Type:       *punctType,
 	}
 }
 

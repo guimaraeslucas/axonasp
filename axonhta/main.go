@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Jeffrey He (@jeffreyheping)
+ * Developed by Jeffrey He (@jeffreyheping), Lucas Guimarães (@guimaraeslucas)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -100,7 +100,13 @@ func waitForServer(url string) {
 // configuration, starts an embedded HTTP server, and opens a Chromium app
 // window (or system browser) pointing at the server.
 func main() {
-	flag.StringVar(&appDir, "app", "./", "Application directory containing ASP/HTML/HTA files")
+	// resolveHTAArg must run before flag.Parse so that drag-and-drop or
+	// positional-argument .hta paths can seed appDir. The -app flag retains
+	// priority: if the user explicitly passes -app=..., the default "./"
+	// sentinel is replaced and appDir will be overwritten below by Abs().
+	resolveHTAArg()
+
+	flag.StringVar(&appDir, "app", appDir, "Application directory containing ASP/HTML/HTA files")
 	flag.StringVar(&title, "title", "AxonHTA", "Window title")
 	flag.IntVar(&width, "width", 1024, "Window width")
 	flag.IntVar(&height, "height", 768, "Window height")
@@ -115,12 +121,23 @@ func main() {
 	}
 	appDir = absAppDir
 
+	// Re-anchor htaFileOverride to the (now-absolute) appDir so that if the
+	// user also passed -app=..., we point at the right directory.
+	if htaFileOverride != "" {
+		htaFileOverride, _ = filepath.Abs(htaFileOverride)
+	}
+
 	// Set up log file (data/axonhta.log) alongside stdout.
 	setupLogFile(filepath.Join(appDir, "data", "axonhta.log"))
 
-	// Try to find and parse an HTA entry file for window configuration.
-	// Command-line flags take priority over HTA tag attributes.
-	if entryPath := FindEntryFile(appDir); entryPath != "" {
+	// Determine the HTA entry file for window configuration. Prefer the
+	// explicitly supplied override (drag-and-drop / CLI argument) over the
+	// default filesystem search so that title/size come from the right file.
+	entryPath := htaFileOverride
+	if entryPath == "" {
+		entryPath = FindEntryFile(appDir)
+	}
+	if entryPath != "" {
 		if cfg := ParseHTATag(entryPath); cfg != nil {
 			htaConfig = cfg
 			if cfg.ApplicationName != "" && title == "AxonHTA" {
@@ -152,7 +169,20 @@ func main() {
 	}
 
 	actualPort := listener.Addr().(*net.TCPAddr).Port
-	url := fmt.Sprintf("http://127.0.0.1:%d/", actualPort)
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d/", actualPort)
+
+	// When the user supplied a specific .hta file (drag-and-drop or CLI),
+	// open the browser directly at that file's URL path so it doesn't
+	// depend on defaultPages discovery.
+	url := baseURL
+	if htaFileOverride != "" {
+		rel, err := filepath.Rel(appDir, htaFileOverride)
+		if err == nil {
+			// Convert OS path separators to forward slashes for the URL.
+			urlPath := filepath.ToSlash(rel)
+			url = baseURL + urlPath
+		}
+	}
 
 	log.Printf("AxonHTA %s starting...", Version)
 	log.Printf("App directory: %s", appDir)
@@ -169,7 +199,7 @@ func main() {
 		}
 	}()
 
-	waitForServer(url)
+	waitForServer(baseURL)
 
 	openWindow(url)
 }

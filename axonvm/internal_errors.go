@@ -93,8 +93,7 @@ func AsAxonASPError(err error) (*AxonASPError, bool) {
 		return nil, false
 	}
 
-	var axErr *AxonASPError
-	if errors.As(err, &axErr) {
+	if axErr, ok := errors.AsType[*AxonASPError](err); ok {
 		return axErr, true
 	}
 

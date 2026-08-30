@@ -1,6 +1,6 @@
 module g3pix.com.br/axonasp/v2/caddy
 
-go 1.26.5
+go 1.27
 
 
 replace github.com/google/cel-go => github.com/google/cel-go v0.20.1

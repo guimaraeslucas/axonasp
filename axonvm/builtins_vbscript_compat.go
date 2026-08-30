@@ -1352,8 +1352,7 @@ func vbsCompatExecuteGlobal(vm *VM, args []Value) (Value, error) {
 
 	compiled, err := vm.getOrCompileDynamicProgram(code, Value{}, dynamicExecKindExecuteGlobal)
 	if err != nil {
-		var syntaxErr *vbscript.VBSyntaxError
-		if errors.As(err, &syntaxErr) {
+		if syntaxErr, ok := errors.AsType[*vbscript.VBSyntaxError](err); ok {
 			vm.raiseFromSyntaxError(syntaxErr)
 			return NewEmpty(), nil
 		}
@@ -1416,8 +1415,7 @@ func vbsCompatExecute(vm *VM, args []Value) (Value, error) {
 
 	compiled, err := vm.getOrCompileDynamicProgram(code, localSub, dynamicExecKindExecute)
 	if err != nil {
-		var syntaxErr *vbscript.VBSyntaxError
-		if errors.As(err, &syntaxErr) {
+		if syntaxErr, ok := errors.AsType[*vbscript.VBSyntaxError](err); ok {
 			vm.raiseFromSyntaxError(syntaxErr)
 			return NewEmpty(), nil
 		}
@@ -1660,8 +1658,7 @@ func vbsCompatEval(vm *VM, args []Value) (Value, error) {
 
 	compiled, err := vm.getOrCompileEvalProgram(expr, localSub)
 	if err != nil {
-		var syntaxErr *vbscript.VBSyntaxError
-		if errors.As(err, &syntaxErr) {
+		if syntaxErr, ok := errors.AsType[*vbscript.VBSyntaxError](err); ok {
 			vm.raiseFromSyntaxError(syntaxErr)
 			return NewEmpty(), nil
 		}

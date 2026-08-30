@@ -27,6 +27,7 @@ import (
 	"math"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -68,8 +69,8 @@ func (c *Compiler) mapJScriptParseLineToMerged(line int) int {
 	if c == nil || line <= 0 || len(c.jsCompileLineAnchors) == 0 {
 		return line
 	}
-	for i := len(c.jsCompileLineAnchors) - 1; i >= 0; i-- {
-		anchor := c.jsCompileLineAnchors[i]
+	for _, anchor := range slices.Backward(c.jsCompileLineAnchors) {
+
 		if line < anchor.GeneratedLineStart {
 			continue
 		}
@@ -407,8 +408,8 @@ func (c *Compiler) jsSetLocalType(name string, t jsType) {
 	if !c.jsLocalEnabled {
 		return
 	}
-	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
-		scope := c.jsLocalScopeStack[i]
+	for _, scope := range slices.Backward(c.jsLocalScopeStack) {
+
 		if _, exists := scope.entries[name]; exists {
 			scope.types[name] = t
 			return
@@ -420,8 +421,8 @@ func (c *Compiler) jsGetLocalType(name string) jsType {
 	if !c.jsLocalEnabled {
 		return jsTypeUnknown
 	}
-	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
-		scope := c.jsLocalScopeStack[i]
+	for _, scope := range slices.Backward(c.jsLocalScopeStack) {
+
 		if t, exists := scope.types[name]; exists {
 			return t
 		}
@@ -487,8 +488,8 @@ func (c *Compiler) jsDeclareCurrentLocal(name string) int {
 }
 
 func (c *Compiler) jsHasFunctionLocalScope() bool {
-	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
-		if c.jsLocalScopeStack[i].isFunction {
+	for _, v := range slices.Backward(c.jsLocalScopeStack) {
+		if v.isFunction {
 			return true
 		}
 	}
@@ -499,8 +500,8 @@ func (c *Compiler) jsResolveLocalSlot(name string) (int, bool) {
 	if !c.jsLocalEnabled {
 		return 0, false
 	}
-	for i := len(c.jsLocalScopeStack) - 1; i >= 0; i-- {
-		scope := c.jsLocalScopeStack[i]
+	for _, scope := range slices.Backward(c.jsLocalScopeStack) {
+
 		if slot, exists := scope.entries[name]; exists {
 			if slot < 0 {
 				return 0, false
@@ -785,9 +786,9 @@ func jsStatementHasUsingDeclaration(stmts []jsast.Statement) bool {
 }
 
 func (c *Compiler) emitJScriptDisposeBindings(bindings []jsUsingBinding) {
-	for i := len(bindings) - 1; i >= 0; i-- {
-		nameIdx := c.addConstant(NewString(bindings[i].name))
-		symbolKey := jsSymbolPropertyPrefix + strconv.FormatInt(bindings[i].symbolID, 10)
+	for _, binding := range slices.Backward(bindings) {
+		nameIdx := c.addConstant(NewString(binding.name))
+		symbolKey := jsSymbolPropertyPrefix + strconv.FormatInt(binding.symbolID, 10)
 		symbolKeyIdx := c.addConstant(NewString(symbolKey))
 		c.emit(OpJSGetName, nameIdx)
 		c.emit(OpConstant, symbolKeyIdx)

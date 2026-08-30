@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+<hta:application
+  applicationname="Axon"
+  border="dialog"
+  caption="yes"
+  maximizebutton="yes"
+  minimizebutton="yes"
+  showintaskbar="yes"
+  singleinstance="yes"
+  windowstate="normal"
+  scroll="no"
+  contextmenu="no"
+  selection="yes"
+  sysmenu="yes"
+  icon="icon_hta.ico"
+/>
+    <meta charset="utf-8">
+    <title>AxonHTA Interactive Application</title>
+    <link rel="stylesheet" href="./www/css/axonasp.css">
+    <script language="vbscript">
+        Dim userName
+        userName = InputBox("Please enter your name:", "User Registration", "Developer")
+        If userName <> "" Then
+            MsgBox "Welcome to AxonHTA, " & userName & "!", vbInformation, "AxonHTA Dialog"
+        End If
+    </script>
+</head>
+<body style="padding: 20px;">
+    <%
+    Dim axon
+    Set axon = Server.CreateObject("G3AXON.FUNCTIONS")
+    
+    Dim sysInfo, osName
+    sysInfo = axon.Axsysteminfo()
+    osName = axon.Axgetenv("OS")
+    %>
+    <div class="card">
+        <h3>AxonHTA Application Environment</h3>
+        <p><strong>Operating System:</strong> <%= osName %></p>
+        <p><strong>System Info:</strong> <%= sysInfo %></p>
+    </div>
+    <%
+    Set axon = Nothing
+    %>
+</body>
+</html>

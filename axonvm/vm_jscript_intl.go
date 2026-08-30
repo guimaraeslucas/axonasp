@@ -476,7 +476,7 @@ func (vm *VM) jsIntlPerformRelativeTimeFormat(value float64, unit, localeTag, nu
 
 // jsIntlDecomposeRelativeTime breaks down a relative time into segments.
 func (vm *VM) jsIntlDecomposeRelativeTime(value float64, unit, localeTag, numeric, style string) []jsIntlPart {
-	lang := strings.Split(localeTag, "-")[0]
+	lang, _, _ := strings.Cut(localeTag, "-")
 	isFuture := value >= 0
 	absVal := math.Abs(value)
 	unit = strings.TrimSuffix(unit, "s") // normalize to singular
@@ -593,7 +593,7 @@ func (vm *VM) jsIntlPluralRulesSelect(callee Value, thisVal Value, args []Value)
 
 // jsIntlPerformPluralSelect determines the plural category using CLDR-like rules.
 func (vm *VM) jsIntlPerformPluralSelect(n float64, localeTag, style string) string {
-	lang := strings.Split(localeTag, "-")[0]
+	lang, _, _ := strings.Cut(localeTag, "-")
 
 	if style == "ordinal" {
 		switch lang {

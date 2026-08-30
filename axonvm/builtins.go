@@ -635,14 +635,31 @@ func writeRuneSlice(builder *strings.Builder, runes []rune) {
 	}
 }
 
-// vbsMsgBox always raises one runtime error in ASP because interactive desktop UI is unsupported.
+// DialogMsgBoxProvider is an optional runtime hook for MsgBox. When non-nil,
+// vbsMsgBox delegates to it instead of raising error 4009. Desktop runtimes
+// (e.g., axonhta) set this in their init() to supply OS-native dialog support.
+// Written once before main() runs; safe to read concurrently from HTTP handlers.
+var DialogMsgBoxProvider func(args []Value) (Value, error)
+
+// DialogInputBoxProvider is the equivalent hook for InputBox.
+var DialogInputBoxProvider func(args []Value) (Value, error)
+
+// vbsMsgBox delegates to DialogMsgBoxProvider when set, otherwise raises error
+// 4009 (interactive UI not supported in ASP server-side execution).
 func vbsMsgBox(args []Value) (Value, error) {
+	if DialogMsgBoxProvider != nil {
+		return DialogMsgBoxProvider(args)
+	}
 	_ = args
 	return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, fmt.Sprintf("%d: %s (MsgBox)", ErrInteractiveFunctionNotSupportedInASP, ErrInteractiveFunctionNotSupportedInASP.String()))
 }
 
-// vbsInputBox always raises one runtime error in ASP because interactive desktop UI is unsupported.
+// vbsInputBox delegates to DialogInputBoxProvider when set, otherwise raises
+// error 4009 (interactive UI not supported in ASP server-side execution).
 func vbsInputBox(args []Value) (Value, error) {
+	if DialogInputBoxProvider != nil {
+		return DialogInputBoxProvider(args)
+	}
 	_ = args
 	return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, fmt.Sprintf("%d: %s (InputBox)", ErrInteractiveFunctionNotSupportedInASP, ErrInteractiveFunctionNotSupportedInASP.String()))
 }
