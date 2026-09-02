@@ -52,9 +52,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-const jsMaxStringBytes = 8 * 1024 * 1024
-const jsMaxStringWorkBytes = 2 * 1024 * 1024
-const jsMaxCallStackDepth = 10100
+// JavaScript engine limits - these are used to prevent excessive resource usage and potential denial-of-service attacks.
+const jsMaxStringBytes = 16 * 1024 * 1024      //16 MB
+const jsMaxStringWorkBytes = 512 * 1024 * 1024 //512 MB
+const jsMaxCallStackDepth = 1000000
 const jsInternalPropPrefix = "__js_"
 const jsAccessorGetterPrefix = "__js_getter__"
 const jsAccessorSetterPrefix = "__js_setter__"
@@ -3222,7 +3223,7 @@ func (vm *VM) jsEnsureStringSize(size int) bool {
 	if size <= jsMaxStringBytes {
 		return true
 	}
-	vm.raise(vbscript.OutOfStringSpace, fmt.Sprintf("JScript string size exceeded %d bytes", jsMaxStringBytes))
+	vm.jsRaiseRuntimeError(jscript.OutOfStringSpace, fmt.Sprintf("JScript string size exceeded %d bytes", jsMaxStringBytes))
 	return false
 }
 
@@ -3235,7 +3236,7 @@ func (vm *VM) jsChargeStringWork(size int) bool {
 	if vm.jsStringWorkBytes <= jsMaxStringWorkBytes {
 		return true
 	}
-	vm.raise(vbscript.OutOfStringSpace, fmt.Sprintf("JScript cumulative string work exceeded %d bytes", jsMaxStringWorkBytes))
+	vm.jsRaiseRuntimeError(jscript.OutOfStringSpace, fmt.Sprintf("JScript cumulative string work exceeded %d bytes", jsMaxStringWorkBytes))
 	return false
 }
 
@@ -10197,7 +10198,9 @@ func (vm *VM) jsThrow(v Value) {
 	vm.ip = target
 }
 
-// jsRaiseRuntimeError raises an uncaught JScript runtime error in ASP-compatible shape.
+// jsRaiseRuntimeError raises an uncaught runtime error exclusively for the JScript / JavaScript runtime.
+// It formats the error with Category "JScript runtime" and Source "JScript runtime error".
+// For VBScript runtime errors, DO NOT use this method; use vm.raise instead.
 func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 	description := strings.TrimSpace(msg)
 	if description == "" {
@@ -10214,7 +10217,7 @@ func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 		Msg:            description,
 		ASPCode:        int(code),
 		ASPDescription: description,
-		Category:       "JScript runtime error",
+		Category:       "JScript runtime",
 		Description:    description,
 		Number:         jscript.HRESULTFromJScriptCode(code),
 		Source:         "JScript runtime error",
@@ -10282,7 +10285,7 @@ func (vm *VM) jsHandleNativeError(hresult int, errMsg string, vme *VMError) {
 		Msg:            description,
 		ASPCode:        int(code),
 		ASPDescription: description,
-		Category:       "JScript runtime error",
+		Category:       "JScript runtime",
 		Description:    description,
 		Number:         hresult,
 		Source:         "JScript runtime error",

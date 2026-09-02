@@ -79,6 +79,9 @@ All work occurs within the `axonasp2` directory structure:
 * **Error Propagation:** Ensure that all errors propagate correctly through the VM and are accessible via `ASPError` intrinsic object properties.
 * **ALWAYS** implement comprehensive error handling for all edge cases, including type mismatches, argument count errors, and runtime exceptions.
 * **Library Error Discipline:** Native libraries and custom objects must not silently return `Empty` for operational failures (I/O, provider/database failures, invalid object state, buffer/stream misuse, timeout/resource guard hits). Raise an explicit VBScript/JScript/ASP or AxonASP error instead, and only return `Empty` for documented compatibility cases where Classic ASP truly does so.
+* **JScript vs. VBScript Runtime Error Routing:**
+    * **VBScript Execution:** MUST raise errors through `vm.raise(code, msg)` using error codes from `vbscript/vberrorcodes.go`. This automatically formats the error with `Category: "VBScript runtime"` and `Source: "VBScript runtime error"`.
+    * **JScript Execution:** NEVER invoke `vm.raise()` in JScript code, runtime helpers, memory/string work limit guards, or JScript intrinsics. ALWAYS route uncaught JScript runtime errors through `vm.jsRaiseRuntimeError(code, msg)` or JScript throw mechanisms (`vm.jsThrowJSError`, `vm.jsThrowTypeError`, etc.) using error codes from `jscript/jscripterrorcodes.go`. This ensures the error is correctly categorized with `Category: "JScript runtime"` and `Source: "JScript runtime error"` and allows active JScript `try/catch` handlers (`vm.jsTryStack`) to intercept catchable exceptions before panicking.
 
 ### 4. Testing & Compilation
 * **Testing Priority:** Write tests in GoLang first. If necessary, write ASP tests in `www/tests/` (e.g., `test_basics.asp` via `http://localhost:8801/`).

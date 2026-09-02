@@ -10244,6 +10244,9 @@ func parseFloat64(s string) (float64, error) {
 	return strconv.ParseFloat(s, 64)
 }
 
+// raise raises a runtime error exclusively for the VBScript runtime.
+// It formats the error with Category "VBScript runtime" and Source "VBScript runtime error".
+// For JScript runtime errors, DO NOT use this method; use vm.jsRaiseRuntimeError instead.
 func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 	description := strings.TrimSpace(msg)
 	if description == "" {

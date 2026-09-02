@@ -31,7 +31,7 @@ The injected script also disables the browser context menu (right-click) and dra
 ### Prerequisites
 
 - Clone the AxonASP source code locally.
-- Go 1.22+.
+- Go 1.25+.
 - A Chromium-based browser installed (Chrome, Edge, Chromium, Brave, etc.).
 
 ### Build
@@ -180,16 +180,16 @@ A music player built with **HTMX + Alpine.js** on top of AxonHTA.
 
 ## Limitations
 
-- Each interaction without HTMX is a full page refresh (same as classic ASP); partial AJAX updates require HTMX or minimal custom JS.
+- Each interaction without HTMX is a full page refresh (same as classic ASP); partial AJAX updates require HTMX or minimal custom JS. You can also use the AxonLive library for more advanced SPA-like behavior.
 - The desktop window has no native menu bar / toolbar (must be simulated with HTML).
-- `caption="no"` (borderless window) and per-app `icon` from the HTA tag are not supported in app mode.
+- `caption="no"` (borderless window) from the HTA tag are not supported in app mode.
 - Requires a Chromium-based browser to be installed on the system.
 
 ## Credits
 
 **AxonHTA** was developed by [Jeffrey He](https://github.com/jeffreyheping) (@jeffreyheping) using the [AxonASP](https://github.com/guimaraeslucas/axonasp) platform.
 
-The application lives inside the `axonhta/` package of the AxonASP repository, but all credit for its design and implementation goes to Jeffrey He.
+The application lives inside the `axonhta/` package of the AxonASP repository, but most credit for its design and implementation goes to Jeffrey He. 
 
 ## License
 
