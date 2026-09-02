@@ -26,8 +26,8 @@ function benchMath() {
 function benchStrings() {
     var str = "";
     var iterations = BASE_ITERATIONS / 20; // 50k iterations to avoid exponential GC locks in older engines
-    
-    // Concatenation stress
+
+   // Concatenation stress
     for (var i = 0; i < iterations; i++) {
         str += "a";
     }

@@ -2360,7 +2360,6 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 			}
 			c.emit(OpJSDup)
 			c.emit(OpJSSetLocal, localSlot)
-			c.emit(OpJSLoadUndefined)
 			return
 		}
 		c.compileJScriptExpression(node.Right)
@@ -2377,22 +2376,16 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 			c.emit(OpJSModuloAssign, nameIdx)
 		case jstoken.EXPONENT_ASSIGN, jstoken.EXPONENT:
 			c.emit(OpJSExponentAssign, nameIdx)
-			return
 		case jstoken.LOGICAL_AND_ASSIGN, jstoken.LOGICAL_AND:
 			c.emit(OpJSLogicalAndAssign, nameIdx)
-			return
 		case jstoken.LOGICAL_OR_ASSIGN, jstoken.LOGICAL_OR:
 			c.emit(OpJSLogicalOrAssign, nameIdx)
-			return
 		case jstoken.COALESCE_ASSIGN, jstoken.COALESCE:
 			c.emit(OpJSCoalesceAssign, nameIdx)
-			return
 		default:
 			c.emit(OpJSSetName, nameIdx)
 		}
-		// Compound assignments in AxonASP currently don't return the value on stack after OpJSXXXAssign?
-		// Let's check OpJSAddAssign etc.
-		c.emit(OpJSLoadUndefined)
+		return
 	case *jsast.ObjectPattern, *jsast.ArrayPattern:
 		if node.Operator != jstoken.ASSIGN {
 			jsErr := jscript.NewJSSyntaxError(jscript.IllegalAssignment, 0, 0)
@@ -2408,7 +2401,6 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(node.Right)
 		c.emitJSMemberSet(c.addConstant(NewString("\x00__priv_" + left.Identifier.Name.String())))
-		c.emit(OpJSLoadUndefined)
 	case *jsast.DotExpression:
 		if _, ok := left.Left.(*jsast.SuperExpression); ok {
 			c.compileJScriptExpression(node.Right)
@@ -2418,7 +2410,6 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(node.Right)
 		c.emitJSMemberSet(c.addConstant(NewString(left.Identifier.Name.String())))
-		c.emit(OpJSLoadUndefined)
 	case *jsast.BracketExpression:
 		if _, ok := left.Left.(*jsast.SuperExpression); ok {
 			c.compileJScriptExpression(node.Right)
@@ -2430,7 +2421,6 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(left.Member)
 		c.emit(OpJSIndexSet)
-		c.emit(OpJSLoadUndefined)
 	case *jsast.CallExpression:
 		switch callee := left.Callee.(type) {
 		case *jsast.Identifier:
@@ -2818,6 +2808,13 @@ func (c *Compiler) compileJScriptCall(node *jsast.CallExpression) {
 					} else {
 						c.emitExt(ExtOpJSMathMax)
 					}
+					return
+				}
+			case "pow":
+				if len(node.ArgumentList) == 2 {
+					c.compileJScriptExpression(node.ArgumentList[0])
+					c.compileJScriptExpression(node.ArgumentList[1])
+					c.emitExt(ExtOpJSMathPow)
 					return
 				}
 			}

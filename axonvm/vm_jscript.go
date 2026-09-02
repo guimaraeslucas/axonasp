@@ -53,9 +53,9 @@ import (
 )
 
 // JavaScript engine limits - these are used to prevent excessive resource usage and potential denial-of-service attacks.
-const jsMaxStringBytes = 16 * 1024 * 1024      //16 MB
+const jsMaxStringBytes = 8 * 1024 * 1024       //8 MB
 const jsMaxStringWorkBytes = 512 * 1024 * 1024 //512 MB
-const jsMaxCallStackDepth = 1000000
+const jsMaxCallStackDepth = 100000
 const jsInternalPropPrefix = "__js_"
 const jsAccessorGetterPrefix = "__js_getter__"
 const jsAccessorSetterPrefix = "__js_setter__"
@@ -3022,7 +3022,17 @@ func (vm *VM) jsAddValues(a Value, b Value) Value {
 		sa := vm.jsConcatString(a)
 		sb := vm.jsConcatString(b)
 		total := len(sa) + len(sb)
-		if !vm.jsEnsureStringSize(total) || !vm.jsChargeStringWork(total) {
+		if !vm.jsEnsureStringSize(total) {
+			return Value{Type: VTJSUndefined}
+		}
+		// In progressive string accumulation (e.g., str += "a"), charging O(len(sa) + len(sb))
+		// charges O(N^2) work for creating an N-byte string. Charge the net growth (min(len(sa), len(sb)))
+		// or at least 1 byte so that long concatenations stay well within budget while stopping exponential explosions.
+		work := min(len(sb), len(sa))
+		if work == 0 {
+			work = 1
+		}
+		if !vm.jsChargeStringWork(work) {
 			return Value{Type: VTJSUndefined}
 		}
 		return NewString(sa + sb)
@@ -3046,7 +3056,14 @@ func (vm *VM) jsAddValues(a Value, b Value) Value {
 		sa := vm.jsConcatString(aPrim)
 		sb := vm.jsConcatString(bPrim)
 		total := len(sa) + len(sb)
-		if !vm.jsEnsureStringSize(total) || !vm.jsChargeStringWork(total) {
+		if !vm.jsEnsureStringSize(total) {
+			return Value{Type: VTJSUndefined}
+		}
+		work := min(len(sb), len(sa))
+		if work == 0 {
+			work = 1
+		}
+		if !vm.jsChargeStringWork(work) {
 			return Value{Type: VTJSUndefined}
 		}
 		return NewString(sa + sb)

@@ -48,6 +48,7 @@ import (
 	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
+// StackSize is the maximum number of stack slots available for the VM. 4096 VBScript default size.
 const StackSize = 4096
 
 // jsBackJumpLimit is the maximum number of bytecode instructions that can be executed in a loop before the VM raises a runtime error to prevent infinite loops.
@@ -1173,7 +1174,7 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 			return 3
 		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight:
 			return 1
-		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
+		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax, ExtOpJSMathPow:
 			return 1
 		default:
 			return 3
@@ -1244,7 +1245,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			switch ext {
 			case ExtOpInitRecord, ExtOpGetRecordMember, ExtOpSetRecordMember:
 				ip += 2
-			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax,
+			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax, ExtOpJSMathPow,
 				ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile,
 				ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight:
 				// No operands to remap or skip
@@ -3899,6 +3900,11 @@ aspExecLoop:
 				b := vm.jsToNumber(vm.pop()).Flt
 				a := vm.jsToNumber(vm.pop()).Flt
 				vm.push(NewDouble(math.Max(a, b)))
+
+			case ExtOpJSMathPow:
+				exp := vm.jsToNumber(vm.pop()).Flt
+				base := vm.jsToNumber(vm.pop()).Flt
+				vm.push(NewDouble(math.Pow(base, exp)))
 
 			case ExtOpCloneRecord:
 				val := vm.pop()

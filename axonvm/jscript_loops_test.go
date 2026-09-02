@@ -600,6 +600,42 @@ func TestJScriptNumericComparisonFastPaths(t *testing.T) {
 	}
 }
 
+// TestJScriptCompoundAssignmentStackBalance verifies that large iteration loops
+// performing compound assignments (+=, -=, *=, etc.) do not leak stack slots.
+func TestJScriptCompoundAssignmentStackBalance(t *testing.T) {
+	source := jscriptSrc(
+		`var str = "";` +
+			`for (var i = 0; i < 50000; i++) { str += "a"; }` +
+			`Response.Write(str.length);`,
+	)
+	out, err := runJScript2(t, source)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "50000" {
+		t.Fatalf("unexpected output: got %q want 50000", out)
+	}
+}
+
+// TestJScriptMathBenchmarkOptimization verifies that Math operations (sin, cos, sqrt, pow)
+// execute correctly with specialized opcodes and compound expressions.
+func TestJScriptMathBenchmarkOptimization(t *testing.T) {
+	source := jscriptSrc(
+		`var result = 0;` +
+			`for (var i = 0; i < 1000; i++) {` +
+			`  result = (Math.sin(i) * Math.cos(i)) + Math.sqrt(i) + Math.pow(i, 2);` +
+			`}` +
+			`Response.Write(result > 0 ? "ok" : "err");`,
+	)
+	out, err := runJScript2(t, source)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "ok" {
+		t.Fatalf("unexpected output: got %q want ok", out)
+	}
+}
+
 // BenchmarkJScriptVarLessEqual1M benchmarks the common ASP pattern:
 // for (var i = 1; i <= 1000000; i++) — the exact loop from test.asp.
 func BenchmarkJScriptVarLessEqual1M(b *testing.B) {
