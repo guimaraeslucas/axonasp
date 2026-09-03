@@ -2963,6 +2963,109 @@ func (c *Compiler) isLineEndAfterThen() bool {
 	return false
 }
 
+// consumeTagBoundaryKeyword checks if c.next starts an ASP block boundary (%> followed by <%)
+// that leads to targetKw (and optionally secondKw, e.g. End If). If so, it consumes all tokens
+// up to targetKw and returns true, leaving targetKw as c.next.
+func (c *Compiler) consumeTagBoundaryKeyword(targetKw vbscript.Keyword, secondKw vbscript.Keyword) bool {
+	if c.next == nil || c.lexer == nil {
+		return false
+	}
+	if _, ok := c.next.(*vbscript.ASPCodeEndToken); !ok {
+		return false
+	}
+
+	lCopy := *c.lexer
+	tokensToConsume := 1
+
+	sawCodeStart := false
+	for {
+		tok := lCopy.NextToken()
+		if tok == nil {
+			return false
+		}
+		switch t := tok.(type) {
+		case *vbscript.EOFToken:
+			return false
+		case *vbscript.ASPCodeStartToken:
+			sawCodeStart = true
+			tokensToConsume++
+		case *vbscript.HTMLToken:
+			if strings.TrimSpace(t.Content) == "" {
+				tokensToConsume++
+				continue
+			}
+			return false
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+			tokensToConsume++
+			continue
+		default:
+			return false
+		}
+		if sawCodeStart {
+			break
+		}
+	}
+
+	if !sawCodeStart {
+		return false
+	}
+
+	var targetToken vbscript.Token
+	for {
+		tok := lCopy.NextToken()
+		if tok == nil {
+			return false
+		}
+		switch tok.(type) {
+		case *vbscript.EOFToken:
+			return false
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+			tokensToConsume++
+			continue
+		default:
+			targetToken = tok
+		}
+		break
+	}
+
+	if targetToken == nil {
+		return false
+	}
+
+	matchesTarget := false
+	switch tk := targetToken.(type) {
+	case *vbscript.KeywordToken:
+		matchesTarget = tk.Keyword == targetKw
+	case *vbscript.KeywordOrIdentifierToken:
+		matchesTarget = tk.Keyword == targetKw || strings.EqualFold(tk.Name, targetKw.String())
+	}
+	if !matchesTarget {
+		return false
+	}
+
+	if secondKw != 0 {
+		secondTok := lCopy.NextToken()
+		if secondTok == nil {
+			return false
+		}
+		matchesSecond := false
+		switch tk := secondTok.(type) {
+		case *vbscript.KeywordToken:
+			matchesSecond = tk.Keyword == secondKw
+		case *vbscript.KeywordOrIdentifierToken:
+			matchesSecond = tk.Keyword == secondKw || strings.EqualFold(tk.Name, secondKw.String())
+		}
+		if !matchesSecond {
+			return false
+		}
+	}
+
+	for i := 0; i < tokensToConsume; i++ {
+		c.move()
+	}
+	return true
+}
+
 func (c *Compiler) parseIfStatement() {
 	c.expectKeyword(vbscript.KeywordIf)
 	c.parseExpression(PrecNone)
@@ -2973,7 +3076,7 @@ func (c *Compiler) parseIfStatement() {
 		jumpFalseOffset := c.emitJump(OpJumpIfFalse)
 		c.parseInlineIfBranchStatements()
 
-		for c.checkKeyword(vbscript.KeywordElseIf) {
+		for c.checkKeyword(vbscript.KeywordElseIf) || c.consumeTagBoundaryKeyword(vbscript.KeywordElseIf, 0) {
 			jumpEndOffsets = append(jumpEndOffsets, c.emitJump(OpJump))
 			c.patchJump(jumpFalseOffset)
 
@@ -2985,7 +3088,7 @@ func (c *Compiler) parseIfStatement() {
 			c.parseInlineIfBranchStatements()
 		}
 
-		if c.checkKeyword(vbscript.KeywordElse) {
+		if c.checkKeyword(vbscript.KeywordElse) || c.consumeTagBoundaryKeyword(vbscript.KeywordElse, 0) {
 			c.move()
 			jumpEndOffsets = append(jumpEndOffsets, c.emitJump(OpJump))
 			c.patchJump(jumpFalseOffset)
@@ -2999,9 +3102,19 @@ func (c *Compiler) parseIfStatement() {
 		}
 
 		// Microsoft VBScript compatibility: in single-line If forms, an explicit
-		// trailing "End If" is accepted on the same logical line (e.g. "If x Then y=1 : End If").
+		// trailing "End If" is accepted on the same logical line (e.g. "If x Then y=1 : End If")
+		// or across an ASP tag boundary (e.g. "If x Then y=1 %><% End If").
 		// Line terminators are NOT consumed here — consuming them would incorrectly
 		// eat the "End" from "End Function", "End Sub", etc. on the following line.
+		for {
+			switch c.next.(type) {
+			case *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+				c.move()
+				continue
+			}
+			break
+		}
+		c.consumeTagBoundaryKeyword(vbscript.KeywordEnd, vbscript.KeywordIf)
 		for {
 			switch c.next.(type) {
 			case *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
@@ -3070,10 +3183,22 @@ func (c *Compiler) parseSelectCaseStatement() {
 
 	for !c.matchEof() {
 		for {
-			switch c.next.(type) {
-			case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+			switch t := c.next.(type) {
+			case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken,
+				*vbscript.ASPCodeEndToken, *vbscript.ASPCodeStartToken:
 				c.move()
 				continue
+			case *vbscript.HTMLToken:
+				c.move()
+				continue
+			case *vbscript.EmptyLiteralToken:
+				c.move()
+				continue
+			case *vbscript.StringLiteralToken:
+				if strings.TrimSpace(t.Value) == "" {
+					c.move()
+					continue
+				}
 			}
 			break
 		}
@@ -3171,7 +3296,28 @@ func (c *Compiler) parseSelectCaseStatement() {
 		}
 	}
 
+	for {
+		switch c.next.(type) {
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken,
+			*vbscript.ASPCodeEndToken, *vbscript.ASPCodeStartToken:
+			c.move()
+			continue
+		case *vbscript.HTMLToken:
+			c.move()
+			continue
+		}
+		break
+	}
+
 	c.expectKeyword(vbscript.KeywordEnd)
+	for {
+		switch c.next.(type) {
+		case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken:
+			c.move()
+			continue
+		}
+		break
+	}
 	c.expectKeyword(vbscript.KeywordSelect)
 
 	for _, jumpOffset := range jumpEndOffsets {

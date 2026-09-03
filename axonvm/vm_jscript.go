@@ -52,10 +52,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// JavaScript engine limits - these are used to prevent excessive resource usage and potential denial-of-service attacks.
-const jsMaxStringBytes = 8 * 1024 * 1024       //8 MB
-const jsMaxStringWorkBytes = 512 * 1024 * 1024 //512 MB
-const jsMaxCallStackDepth = 100000
+// JavaScript engine limits - these are used to prevent excessive resource usage and potential denial-of-service attacks. If Go GC is set to a value lower than 1GB, these limits may cause issues if the script tries to allocate more memory than allowed. AxonASP default memory usage is 256MB as most JScript applications don't require large amounts of memory. If you really need to work with huge strings, you can adjust the limits in the source code and recompile the VM. However, be aware that this may lead to increased memory usage and potential instability if scripts are not well-behaved.
+const jsMaxStringBytes = 512 * 1024 * 1024      //512 MB - usually this must be enought for most use cases
+const jsMaxStringWorkBytes = 1024 * 1024 * 1024 //1 GB - same as V8 limit
+const jsMaxCallStackDepth = 50000
 const jsInternalPropPrefix = "__js_"
 const jsAccessorGetterPrefix = "__js_getter__"
 const jsAccessorSetterPrefix = "__js_setter__"
