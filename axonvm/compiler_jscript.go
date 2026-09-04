@@ -3120,13 +3120,17 @@ func (c *Compiler) compileJScriptUpdateExpression(node *jsast.UnaryExpression) b
 			if isLocal {
 				if node.Postfix {
 					if !c.jsInGeneratorFunction {
+						// Postfix c++ evaluates to the OLD value: push it, then bump the slot.
+						// The pushed old value is the expression result consumed by the caller
+						// (an enclosing OpJSPop for expression statements). Do NOT pop it here.
 						c.emit(OpJSGetLocal, slot)
 						c.emit(OpJSIncLocal, slot)
-						c.emit(OpJSPop)
 						return true
 					}
 				} else {
+					// Prefix ++c evaluates to the NEW value: bump the slot, then push it.
 					c.emit(OpJSIncLocal, slot)
+					c.emit(OpJSGetLocal, slot)
 					return true
 				}
 			}
@@ -3140,12 +3144,14 @@ func (c *Compiler) compileJScriptUpdateExpression(node *jsast.UnaryExpression) b
 		case jstoken.DECREMENT:
 			if isLocal {
 				if node.Postfix {
+					// Postfix c-- evaluates to the OLD value: push it, then bump the slot.
 					c.emit(OpJSGetLocal, slot)
 					c.emit(OpJSDecLocal, slot)
-					c.emit(OpJSPop)
-				} else {
-					c.emit(OpJSDecLocal, slot)
+					return true
 				}
+				// Prefix --c evaluates to the NEW value: bump the slot, then push it.
+				c.emit(OpJSDecLocal, slot)
+				c.emit(OpJSGetLocal, slot)
 				return true
 			}
 			if node.Postfix {

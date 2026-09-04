@@ -53,8 +53,8 @@ import (
 )
 
 // JavaScript engine limits - these are used to prevent excessive resource usage and potential denial-of-service attacks. If Go GC is set to a value lower than 1GB, these limits may cause issues if the script tries to allocate more memory than allowed. AxonASP default memory usage is 256MB as most JScript applications don't require large amounts of memory. If you really need to work with huge strings, you can adjust the limits in the source code and recompile the VM. However, be aware that this may lead to increased memory usage and potential instability if scripts are not well-behaved.
-const jsMaxStringBytes = 512 * 1024 * 1024      //512 MB - usually this must be enought for most use cases
-const jsMaxStringWorkBytes = 1024 * 1024 * 1024 //1 GB - same as V8 limit
+const jsMaxStringBytes = 512 * 1024 * 1024     //512 MB - usually this must be enought for most use cases
+const jsMaxStringWorkBytes = 256 * 1024 * 1024 //256 MB cumulative string work budget; catches self-expanding rescans fast while leaving generous room for legitimate pages
 const jsMaxCallStackDepth = 50000
 const jsInternalPropPrefix = "__js_"
 const jsAccessorGetterPrefix = "__js_getter__"
@@ -963,12 +963,25 @@ func (vm *VM) jsTrackObjectKey(objID int64, key string) {
 	if strings.HasPrefix(key, jsInternalPropPrefix) {
 		return
 	}
-	order := vm.jsObjectKeyOrder[objID]
-	// Check if already exists to maintain insertion order (only add if new)
-	if slices.Contains(order, key) {
+	if vm.jsObjectKeySet == nil {
+		vm.jsObjectKeySet = make(map[int64]map[string]struct{})
+	}
+	// O(1) membership test preserves insertion order without rescanning the
+	// whole key-order slice on every new property (avoids O(N^2) growth when a
+	// single object accumulates many distinct keys).
+	seen := vm.jsObjectKeySet[objID]
+	if seen == nil {
+		seen = make(map[string]struct{}, len(vm.jsObjectKeyOrder[objID])+4)
+		for _, k := range vm.jsObjectKeyOrder[objID] {
+			seen[k] = struct{}{}
+		}
+		vm.jsObjectKeySet[objID] = seen
+	}
+	if _, ok := seen[key]; ok {
 		return
 	}
-	vm.jsObjectKeyOrder[objID] = append(order, key)
+	seen[key] = struct{}{}
+	vm.jsObjectKeyOrder[objID] = append(vm.jsObjectKeyOrder[objID], key)
 }
 
 func (vm *VM) jsUntrackObjectKey(objID int64, key string) {
@@ -979,6 +992,9 @@ func (vm *VM) jsUntrackObjectKey(objID int64, key string) {
 	for i, k := range order {
 		if k == key {
 			vm.jsObjectKeyOrder[objID] = append(order[:i], order[i+1:]...)
+			if seen, ok := vm.jsObjectKeySet[objID]; ok {
+				delete(seen, key)
+			}
 			return
 		}
 	}
@@ -6301,6 +6317,13 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if len(args) == 0 || args[0].Type == VTJSUndefined {
 				return ValueFromVBArray(NewVBArrayFromValues(0, []Value{NewString(text)})), true
 			}
+			// Splitting walks the entire source string. Charge the scan against the
+			// cumulative string-work budget so a loop that repeatedly rescans a
+			// growing string (self-expanding split/join) is caught quickly instead of
+			// spinning until the script timeout.
+			if !vm.jsChargeStringWork(len(text)) {
+				return Value{Type: VTJSUndefined}, true
+			}
 			sepVal := args[0]
 			limit := -1
 			if len(args) > 1 && args[1].Type != VTJSUndefined {
@@ -8148,7 +8171,14 @@ func (vm *VM) jsApplyMSJScriptErrorProps(errObj Value, args []Value) {
 		items["number"] = args[0]
 		items["description"] = NewString(desc)
 		items["message"] = NewString(desc)
+		return
 	}
+	// Single-argument / no-argument form keeps standard ES semantics: the MS
+	// extension properties stay undefined (jsCreateErrorObject seeds a
+	// description mirroring the message; remove it here so err.description and
+	// err.number are undefined, matching classic IIS JScript).
+	delete(items, "description")
+	delete(items, "number")
 }
 
 // jsNumberToString formats a numeric primitive using JScript-compatible defaults.

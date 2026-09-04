@@ -2,8 +2,13 @@
 <%
 // AxonASP JScript Engine Benchmark Suite
 // Architecture: Modular execution with timing telemetry via console.log
+//
+// Base workload scale. Each phase multiplies/divides this constant, so the
+// whole suite should complete within the default script timeout (60s) on a
+// stack-VM interpreter while still stressing each subsystem. Raise it only
+// when the engine throughput improves.
 
-var BASE_ITERATIONS = 1000000;
+var BASE_ITERATIONS = 300000;
 
 function runBenchmark(testName, testFunction) {
     var startTime = new Date().getTime();

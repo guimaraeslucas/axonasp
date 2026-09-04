@@ -120,9 +120,16 @@ func (s *MsXML2ServerXMLHTTP) newCOMError(hresult int, description string) *VMEr
 }
 
 // raiseCOMError notifies the active VM of a COM error or returns the error.
+//
+// When the object is invoked from inside a live script run (vm.runDepth > 0)
+// the error is raised through the VM so On Error Resume Next / try-catch and
+// the ASP error machinery can observe it. When invoked directly via the legacy
+// object API outside a running script (unit tests, Go-side callers), the error
+// is returned to the caller instead of being raised (which would otherwise
+// panic with no active execution frame).
 func (s *MsXML2ServerXMLHTTP) raiseCOMError(hresult int, description string) *VMError {
 	vme := s.newCOMError(hresult, description)
-	if s.ctx != nil {
+	if s.ctx != nil && s.ctx.runDepth > 0 {
 		s.ctx.raiseVMError(vme)
 	}
 	return vme
@@ -160,7 +167,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	case "responsetext":
 		if s.sendFailed {
 			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if s.ctx == nil {
+			if s.ctx == nil || s.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return ""
@@ -169,7 +176,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	case "responsexml":
 		if s.sendFailed {
 			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if s.ctx == nil {
+			if s.ctx == nil || s.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return ""
@@ -181,7 +188,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	case "responsebody":
 		if s.sendFailed {
 			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if s.ctx == nil {
+			if s.ctx == nil || s.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return []byte{}
@@ -193,7 +200,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	case "status":
 		if s.sendFailed || s.status == 0 {
 			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if s.ctx == nil {
+			if s.ctx == nil || s.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return nil
@@ -202,7 +209,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	case "statustext":
 		if s.sendFailed || s.status == 0 {
 			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if s.ctx == nil {
+			if s.ctx == nil || s.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return ""
@@ -340,7 +347,7 @@ func (s *MsXML2ServerXMLHTTP) send(args []any) (any, error) {
 
 	// Provide default headers using chrome for safety
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0 AxonASPServer/1.0")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/600.36 (KHTML, like Gecko) Chrome/160.0.0.0 Safari/537.36 Edg/160.0.0.0 AxonASP/2.0")
 	}
 	if req.Header.Get("Accept") == "" {
 		req.Header.Set("Accept", "*/*")
@@ -2488,7 +2495,7 @@ func (x *MsXML2ServerXMLHTTP) DispatchPropertyGet(name string) Value {
 	if strings.EqualFold(name, "status") {
 		if x.sendFailed || x.status == 0 {
 			err := x.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if x.ctx == nil {
+			if x.ctx == nil || x.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return Value{Type: VTEmpty}
@@ -2497,7 +2504,7 @@ func (x *MsXML2ServerXMLHTTP) DispatchPropertyGet(name string) Value {
 	if strings.EqualFold(name, "statustext") {
 		if x.sendFailed || x.status == 0 {
 			err := x.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-			if x.ctx == nil {
+			if x.ctx == nil || x.ctx.runDepth == 0 {
 				panic(err)
 			}
 			return Value{Type: VTEmpty}
@@ -2505,7 +2512,7 @@ func (x *MsXML2ServerXMLHTTP) DispatchPropertyGet(name string) Value {
 	}
 	if (strings.EqualFold(name, "responsetext") || strings.EqualFold(name, "responsexml") || strings.EqualFold(name, "responsebody")) && x.sendFailed {
 		err := x.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
-		if x.ctx == nil {
+		if x.ctx == nil || x.ctx.runDepth == 0 {
 			panic(err)
 		}
 		return Value{Type: VTEmpty}
