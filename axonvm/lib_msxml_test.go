@@ -22,7 +22,14 @@ package axonvm
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -321,3 +328,298 @@ func TestMSXMLSaveLoadRoundTripKeepsTextSingle(t *testing.T) {
 		t.Fatalf("expected single text after roundtrip, got %q (file %s)", got, filepath.Join(rootDir, "roundtrip.xml"))
 	}
 }
+
+type mockRoundTripper struct {
+	roundTripFunc func(req *http.Request) (*http.Response, error)
+}
+
+func (m *mockRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return m.roundTripFunc(req)
+}
+
+// TestMSXMLServerXMLHTTPOpenRejectsRelativeAndUnrecognizedScheme verifies that Open with relative
+// or unrecognized protocol schemes raises COM error 0x80072EE6 (-2147012890).
+func TestMSXMLServerXMLHTTPOpenRejectsRelativeAndUnrecognizedScheme(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+	vm.host = &MockHost{}
+
+	testCases := []string{
+		"/relative/path.asp",
+		"relative/path.asp",
+		"ftp://example.com/file.txt",
+		"file:///C:/test.txt",
+		"ccte://custom/protocol",
+		"",
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc, func(t *testing.T) {
+			httpLib := NewMsXML2ServerXMLHTTP(vm)
+			_, err := httpLib.legacyCallMethod("open", "GET", tc)
+			if err == nil {
+				t.Fatalf("expected open to fail for url %q", tc)
+			}
+			vme, ok := err.(*VMError)
+			if !ok {
+				t.Fatalf("expected *VMError, got %T: %v", err, err)
+			}
+			if vme.Number != HResultServerXMLHTTPUnrecognizedScheme {
+				t.Fatalf("expected HResult 0x80072EE6 (%d), got %d (0x%08X)",
+					HResultServerXMLHTTPUnrecognizedScheme, vme.Number, uint32(vme.Number))
+			}
+			if !strings.Contains(vme.Description, "The URL does not use a recognized protocol") {
+				t.Fatalf("unexpected description: %q", vme.Description)
+			}
+		})
+	}
+
+	// Test from ASP with On Error Resume Next
+	aspSource := `<%
+On Error Resume Next
+Dim http
+Set http = CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "GET", "/relative/url.asp", False
+Response.Write Hex(Err.Number) & "|" & Err.Description
+%>`
+	output := runASPSource(t, aspSource, nil)
+	expectedPrefix := "80072EE6|The URL does not use a recognized protocol"
+	if !strings.HasPrefix(output, expectedPrefix) {
+		t.Fatalf("expected %q, got %q", expectedPrefix, output)
+	}
+
+	// Test from ASP without On Error Resume Next (should fail execution)
+	aspFailSource := `<%
+Dim http
+Set http = CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "GET", "/relative/url.asp", False
+Response.Write "SHOULD_NOT_REACH"
+%>`
+	compiler := NewASPCompiler(aspFailSource)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	failVM := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	failHost := NewMockHost()
+	var out bytes.Buffer
+	failHost.SetOutput(&out)
+	failVM.SetHost(failHost)
+	err := failVM.Run()
+	if err == nil {
+		t.Fatalf("expected VM run error, but it succeeded: %s", out.String())
+	}
+	vme, ok := err.(*VMError)
+	if !ok || vme.Number != HResultServerXMLHTTPUnrecognizedScheme {
+		t.Fatalf("expected unhandled error 0x80072EE6, got: %v", err)
+	}
+}
+
+// TestMSXMLServerXMLHTTPSendAfterInvalidOpen verifies that executing Send after an invalid Open raises 0x80004005.
+func TestMSXMLServerXMLHTTPSendAfterInvalidOpen(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+	vm.host = &MockHost{}
+
+	// Direct call test
+	httpLib := NewMsXML2ServerXMLHTTP(vm)
+	_, _ = httpLib.legacyCallMethod("open", "GET", "/invalid/relative")
+	_, err := httpLib.legacyCallMethod("send")
+	if err == nil {
+		t.Fatal("expected send to fail after invalid open")
+	}
+	vme, ok := err.(*VMError)
+	if !ok {
+		t.Fatalf("expected *VMError, got %T: %v", err, err)
+	}
+	if vme.Number != HResultServerXMLHTTPUnspecifiedError {
+		t.Fatalf("expected HResult 0x80004005 (%d), got %d (0x%08X)",
+			HResultServerXMLHTTPUnspecifiedError, vme.Number, uint32(vme.Number))
+	}
+
+	// ASP test with On Error Resume Next
+	aspSource := `<%
+On Error Resume Next
+Dim http
+Set http = CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "GET", "/invalid/relative", False
+Err.Clear
+http.Send
+Response.Write Hex(Err.Number) & "|" & Err.Description
+%>`
+	output := runASPSource(t, aspSource, nil)
+	expectedPrefix := "80004005|Unspecified error"
+	if !strings.HasPrefix(output, expectedPrefix) {
+		t.Fatalf("expected %q, got %q", expectedPrefix, output)
+	}
+}
+
+// TestMSXMLServerXMLHTTPSendNetworkFailures verifies that connection refused, DNS failure, and timeouts
+// raise COM HRESULT 0x80072EFD and sanitize statusText.
+func TestMSXMLServerXMLHTTPSendNetworkFailures(t *testing.T) {
+	networkErrors := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "connection_refused",
+			err:  syscall.ECONNREFUSED,
+		},
+		{
+			name: "dns_error",
+			err:  &net.DNSError{Err: "no such host", Name: "nonexistent.example.invalid"},
+		},
+		{
+			name: "timeout_error",
+			err:  &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("i/o timeout")},
+		},
+	}
+
+	for _, tc := range networkErrors {
+		t.Run(tc.name, func(t *testing.T) {
+			vm := NewVM(nil, nil, 0)
+			vm.host = &MockHost{}
+			httpLib := NewMsXML2ServerXMLHTTP(vm)
+			httpLib.SetTransport(&mockRoundTripper{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return nil, tc.err
+				},
+			})
+
+			_, err := httpLib.legacyCallMethod("open", "GET", "http://example.com/test")
+			if err != nil {
+				t.Fatalf("open failed: %v", err)
+			}
+
+			_, sendErr := httpLib.legacyCallMethod("send")
+			if sendErr == nil {
+				t.Fatal("expected send to fail on network error")
+			}
+			vme, ok := sendErr.(*VMError)
+			if !ok {
+				t.Fatalf("expected *VMError, got %T: %v", sendErr, sendErr)
+			}
+			if vme.Number != HResultServerXMLHTTPCannotConnect {
+				t.Fatalf("expected HResult 0x80072EFD (%d), got %d (0x%08X)",
+					HResultServerXMLHTTPCannotConnect, vme.Number, uint32(vme.Number))
+			}
+			if !strings.Contains(vme.Description, "A connection with the server could not be established") {
+				t.Fatalf("unexpected description: %q", vme.Description)
+			}
+
+			// Verify statusText does not leak Go error string
+			if httpLib.statusText != "" {
+				t.Fatalf("expected empty statusText on failure, got %q", httpLib.statusText)
+			}
+		})
+	}
+
+	// Real OS network failure test (closed port on 127.0.0.1)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on local port: %v", err)
+	}
+	closedAddr := ln.Addr().String()
+	_ = ln.Close()
+
+	aspSource := fmt.Sprintf(`<%s
+On Error Resume Next
+Dim http
+Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "GET", "http://%s/test", False
+http.Send
+Response.Write Hex(Err.Number) & "|" & Err.Description
+%%>`, "", closedAddr)
+
+	output := runASPSource(t, aspSource, nil)
+	expectedPrefix := "80072EFD|A connection with the server could not be established"
+	if !strings.HasPrefix(output, expectedPrefix) {
+		t.Fatalf("expected %q, got %q", expectedPrefix, output)
+	}
+}
+
+// TestMSXMLServerXMLHTTPStatusGetterAfterFailedSend verifies that reading .status after a failed send
+// raises an exception and does not return 0.
+func TestMSXMLServerXMLHTTPStatusGetterAfterFailedSend(t *testing.T) {
+	vm := NewVM(nil, nil, 0)
+	vm.host = &MockHost{}
+
+	httpLib := NewMsXML2ServerXMLHTTP(vm)
+	httpLib.SetTransport(&mockRoundTripper{
+		roundTripFunc: func(req *http.Request) (*http.Response, error) {
+			return nil, syscall.ECONNREFUSED
+		},
+	})
+
+	_, _ = httpLib.legacyCallMethod("open", "GET", "http://example.com/test")
+	_, _ = httpLib.legacyCallMethod("send")
+
+	// Verify reading .status triggers an exception
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected reading status after failed send to raise an exception / panic")
+		}
+		vme, ok := r.(*VMError)
+		if !ok {
+			t.Fatalf("expected *VMError, got %T: %v", r, r)
+		}
+		if vme.Number != HResultServerXMLHTTPDataNotAvailable {
+			t.Fatalf("expected HResult 0x8000000A (%d), got %d (0x%08X)",
+				HResultServerXMLHTTPDataNotAvailable, vme.Number, uint32(vme.Number))
+		}
+	}()
+
+	// This should panic / raise exception because ctx has no On Error Resume Next
+	_ = httpLib.DispatchPropertyGet("status")
+}
+
+// TestMSXMLServerXMLHTTPStatusGetterInASP verifies ASP On Error Resume Next captures the .status getter exception.
+func TestMSXMLServerXMLHTTPStatusGetterInASP(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen on local port: %v", err)
+	}
+	closedAddr := ln.Addr().String()
+	_ = ln.Close()
+
+	aspSource := fmt.Sprintf(`<%s
+On Error Resume Next
+Dim http, st
+Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "GET", "http://%s/test", False
+http.Send
+Err.Clear
+st = http.Status
+Response.Write Hex(Err.Number) & "|" & Err.Description
+%%>`, "", closedAddr)
+
+	output := runASPSource(t, aspSource, nil)
+	expectedPrefix := "8000000A|The data necessary to complete this operation is not yet available"
+	if !strings.HasPrefix(output, expectedPrefix) {
+		t.Fatalf("expected %q, got %q", expectedPrefix, output)
+	}
+}
+
+// TestMSXMLServerXMLHTTPSuccess verifies happy path execution and properties.
+func TestMSXMLServerXMLHTTPSuccess(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("X-Custom-Header", "AxonTest")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("response payload"))
+	}))
+	defer ts.Close()
+
+	aspSource := fmt.Sprintf(`<%s
+Dim http
+Set http = Server.CreateObject("MSXML2.ServerXMLHTTP")
+http.Open "GET", "%s", False
+http.Send
+Response.Write http.Status & "|" & http.StatusText & "|" & http.ResponseText & "|" & http.GetResponseHeader("X-Custom-Header")
+%%>`, "", ts.URL)
+
+	output := runASPSource(t, aspSource, nil)
+	expected := "200|200 OK|response payload|AxonTest"
+	if output != expected {
+		t.Fatalf("expected %q, got %q", expected, output)
+	}
+}
+

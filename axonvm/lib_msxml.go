@@ -25,16 +25,31 @@ package axonvm
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/net/html/charset"
+)
+
+const (
+	// HResultServerXMLHTTPUnrecognizedScheme indicates an invalid or unrecognized URL protocol scheme (0x80072EE6).
+	HResultServerXMLHTTPUnrecognizedScheme = int(int32(0x80072EE6))
+	// HResultServerXMLHTTPUnspecifiedError indicates execution failure such as Send after invalid Open (0x80004005).
+	HResultServerXMLHTTPUnspecifiedError = int(int32(0x80004005))
+	// HResultServerXMLHTTPCannotConnect indicates transport or connection failure (0x80072EFD).
+	HResultServerXMLHTTPCannotConnect = int(int32(0x80072EFD))
+	// HResultServerXMLHTTPDataNotAvailable indicates accessing response properties before data is available (0x8000000A).
+	HResultServerXMLHTTPDataNotAvailable = int(int32(0x8000000A))
 )
 
 // MsXML2ServerXMLHTTP implements the MSXML2.ServerXMLHTTP object
@@ -55,6 +70,10 @@ type MsXML2ServerXMLHTTP struct {
 	timeout         time.Duration
 	async           bool
 	ctx             *VM
+	openFailed      bool
+	sendFailed      bool
+	lastErr         error
+	transport       http.RoundTripper
 }
 
 // NewMsXML2ServerXMLHTTP creates a new ServerXMLHTTP instance
@@ -69,23 +88,130 @@ func NewMsXML2ServerXMLHTTP(ctx *VM) *MsXML2ServerXMLHTTP {
 	}
 }
 
+// SetTransport sets a custom http.RoundTripper for testing or specialized proxy handling.
+func (s *MsXML2ServerXMLHTTP) SetTransport(transport http.RoundTripper) {
+	s.transport = transport
+}
+
+// newCOMError builds a structured VMError representing an MSXML COM HRESULT failure.
+func (s *MsXML2ServerXMLHTTP) newCOMError(hresult int, description string) *VMError {
+	desc := strings.TrimSpace(description)
+	if desc == "" {
+		desc = "Unspecified error"
+	}
+	var file string
+	var line, column int
+	if s.ctx != nil {
+		file, line, column = s.ctx.mapRuntimeLocation(s.ctx.lastLine, s.ctx.lastColumn)
+	}
+	return &VMError{
+		Code:           0,
+		Line:           line,
+		Column:         column,
+		File:           file,
+		Msg:            desc,
+		ASPCode:        hresult,
+		ASPDescription: desc,
+		Category:       "msxml3.dll",
+		Description:    desc,
+		Number:         hresult,
+		Source:         "msxml3.dll",
+	}
+}
+
+// raiseCOMError notifies the active VM of a COM error or returns the error.
+func (s *MsXML2ServerXMLHTTP) raiseCOMError(hresult int, description string) *VMError {
+	vme := s.newCOMError(hresult, description)
+	if s.ctx != nil {
+		s.ctx.raiseVMError(vme)
+	}
+	return vme
+}
+
+// isNetworkFailure determines if an error represents a network transport failure
+// (connection refused, DNS resolution failure, network timeout, TLS error, etc.).
+func isNetworkFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		return true
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		return true
+	}
+	var syscallErr *os.SyscallError
+	if errors.As(err, &syscallErr) {
+		return true
+	}
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return true
+	}
+	return true
+}
+
 func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 	switch strings.ToLower(name) {
 	case "responsetext":
+		if s.sendFailed {
+			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if s.ctx == nil {
+				panic(err)
+			}
+			return ""
+		}
 		return s.responseText
 	case "responsexml":
+		if s.sendFailed {
+			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if s.ctx == nil {
+				panic(err)
+			}
+			return ""
+		}
 		if s.responseXMLDoc != nil {
 			return s.responseXMLDoc
 		}
 		return s.responseXML
 	case "responsebody":
+		if s.sendFailed {
+			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if s.ctx == nil {
+				panic(err)
+			}
+			return []byte{}
+		}
 		if len(s.responseBody) == 0 {
 			return []byte{}
 		}
 		return s.responseBody
 	case "status":
+		if s.sendFailed || s.status == 0 {
+			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if s.ctx == nil {
+				panic(err)
+			}
+			return nil
+		}
 		return s.status
 	case "statustext":
+		if s.sendFailed || s.status == 0 {
+			err := s.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if s.ctx == nil {
+				panic(err)
+			}
+			return ""
+		}
 		return s.statusText
 	case "readystate":
 		return s.readyState
@@ -106,11 +232,11 @@ func (s *MsXML2ServerXMLHTTP) legacySetProperty(name string, value any) error {
 func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...any) (any, error) {
 	switch strings.ToLower(name) {
 	case "open":
-		return s.open(args), nil
+		return s.open(args)
 	case "setrequestheader":
 		return s.setRequestHeader(args), nil
 	case "send":
-		return s.send(args), nil
+		return s.send(args)
 	case "abort":
 		s.readyState = 4
 		return nil, nil
@@ -124,22 +250,44 @@ func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...any) (any, e
 
 // open initializes the HTTP request
 // Syntax: Open(method, url, [async], [user], [password])
-func (s *MsXML2ServerXMLHTTP) open(args []any) any {
+func (s *MsXML2ServerXMLHTTP) open(args []any) (any, error) {
 	if len(args) < 2 {
-		return nil
+		s.openFailed = true
+		s.url = ""
+		s.readyState = 0
+		err := s.raiseCOMError(HResultServerXMLHTTPUnspecifiedError, "Wrong number of parameters or invalid property assignment")
+		return nil, err
 	}
 
+	rawURL := strings.TrimSpace(fmt.Sprintf("%v", args[1]))
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || (!strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https")) {
+		s.openFailed = true
+		s.url = ""
+		s.readyState = 0
+		s.lastErr = err
+		errObj := s.raiseCOMError(HResultServerXMLHTTPUnrecognizedScheme, "The URL does not use a recognized protocol")
+		return nil, errObj
+	}
+
+	s.openFailed = false
+	s.sendFailed = false
+	s.lastErr = nil
 	s.method = strings.ToUpper(fmt.Sprintf("%v", args[0]))
-	s.url = fmt.Sprintf("%v", args[1])
+	s.url = rawURL
 
 	if len(args) > 2 {
 		if async, ok := args[2].(bool); ok {
 			s.async = async
+		} else if asyncInt, ok := args[2].(int); ok {
+			s.async = asyncInt != 0
+		} else if asyncInt64, ok := args[2].(int64); ok {
+			s.async = asyncInt64 != 0
 		}
 	}
 
 	s.readyState = 1
-	return nil
+	return nil, nil
 }
 
 // setRequestHeader adds a custom header to the request
@@ -157,18 +305,18 @@ func (s *MsXML2ServerXMLHTTP) setRequestHeader(args []any) any {
 
 // send executes the HTTP request
 // Syntax: Send([body])
-func (s *MsXML2ServerXMLHTTP) send(args []any) any {
-	if s.url == "" {
-		s.status = 0
-		s.statusText = "URL not set"
-		s.readyState = 4
-		return nil
+func (s *MsXML2ServerXMLHTTP) send(args []any) (any, error) {
+	if s.openFailed || s.url == "" || s.readyState < 1 {
+		s.sendFailed = true
+		err := s.raiseCOMError(HResultServerXMLHTTPUnspecifiedError, "Unspecified error")
+		return nil, err
 	}
 
 	s.responseBody = nil
 	s.responseXMLDoc = nil
 	s.responseText = ""
 	s.responseXML = ""
+	s.statusText = ""
 
 	s.readyState = 2
 
@@ -182,10 +330,12 @@ func (s *MsXML2ServerXMLHTTP) send(args []any) any {
 
 	req, err := http.NewRequest(s.method, s.url, bodyReader)
 	if err != nil {
-		s.status = 0
-		s.statusText = err.Error()
+		s.sendFailed = true
+		s.lastErr = err
+		s.statusText = ""
 		s.readyState = 4
-		return nil
+		errObj := s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
+		return nil, errObj
 	}
 
 	// Add custom headers
@@ -215,25 +365,31 @@ func (s *MsXML2ServerXMLHTTP) send(args []any) any {
 
 	s.readyState = 3
 
-	client := &http.Client{Timeout: s.timeout}
+	client := &http.Client{Timeout: s.timeout, Transport: s.transport}
 	resp, err := client.Do(req)
 	if err != nil {
-		s.status = 0
-		s.statusText = err.Error()
+		s.sendFailed = true
+		s.lastErr = err
+		s.statusText = ""
 		s.readyState = 4
-		return nil
+		errObj := s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
+		return nil, errObj
 	}
 	defer resp.Body.Close()
 
 	// Read response body
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		s.status = resp.StatusCode
-		s.statusText = resp.Status
+		s.sendFailed = true
+		s.lastErr = err
+		s.statusText = ""
 		s.readyState = 4
-		return nil
+		errObj := s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
+		return nil, errObj
 	}
 
+	s.sendFailed = false
+	s.lastErr = nil
 	s.responseBody = data
 	contentType := resp.Header.Get("Content-Type")
 	s.responseText = decodeResponseText(data, contentType)
@@ -260,7 +416,7 @@ func (s *MsXML2ServerXMLHTTP) send(args []any) any {
 	}
 
 	s.readyState = 4
-	return nil
+	return nil, nil
 }
 
 // getResponseHeader retrieves a specific response header
@@ -2334,6 +2490,31 @@ func saveFileContent(path string, content string) error {
 // For a more complete regex implementation, you may need to improve parseXMLString
 
 func (x *MsXML2ServerXMLHTTP) DispatchPropertyGet(name string) Value {
+	if strings.EqualFold(name, "status") {
+		if x.sendFailed || x.status == 0 {
+			err := x.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if x.ctx == nil {
+				panic(err)
+			}
+			return Value{Type: VTEmpty}
+		}
+	}
+	if strings.EqualFold(name, "statustext") {
+		if x.sendFailed || x.status == 0 {
+			err := x.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+			if x.ctx == nil {
+				panic(err)
+			}
+			return Value{Type: VTEmpty}
+		}
+	}
+	if (strings.EqualFold(name, "responsetext") || strings.EqualFold(name, "responsexml") || strings.EqualFold(name, "responsebody")) && x.sendFailed {
+		err := x.raiseCOMError(HResultServerXMLHTTPDataNotAvailable, "The data necessary to complete this operation is not yet available")
+		if x.ctx == nil {
+			panic(err)
+		}
+		return Value{Type: VTEmpty}
+	}
 	return legacyInterfaceToValue(x.legacyGetProperty(name), x.ctx)
 }
 func (x *MsXML2ServerXMLHTTP) DispatchPropertySet(name string, args []Value) bool {
@@ -2349,7 +2530,10 @@ func (x *MsXML2ServerXMLHTTP) DispatchMethod(name string, args []Value) Value {
 	for _, a := range args {
 		iArgs = append(iArgs, legacyValueToInterface(a, x.ctx))
 	}
-	res, _ := x.legacyCallMethod(name, iArgs...)
+	res, err := x.legacyCallMethod(name, iArgs...)
+	if err != nil && x.ctx == nil {
+		panic(err)
+	}
 	return legacyInterfaceToValue(res, x.ctx)
 }
 
