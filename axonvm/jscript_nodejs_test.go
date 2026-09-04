@@ -103,11 +103,15 @@ func TestJScriptRequireMissingModuleReportsJavaScriptRuntime(t *testing.T) {
 	if !strings.Contains(errText, "Cannot find module './calculadora'") {
 		t.Fatalf("expected module-not-found text, got: %v", err)
 	}
-	if !strings.Contains(errText, "Category: JavaScript runtime") {
-		t.Fatalf("expected JavaScript runtime category, got: %v", err)
+	// The engine classifies JavaScript engine runtime faults with the canonical
+	// "JScript runtime" Category/Source (see jsRaiseRuntimeError). The critical
+	// property under test is that the fault is NOT misreported as a VBScript
+	// runtime error.
+	if !strings.Contains(errText, "Category: JScript runtime") {
+		t.Fatalf("expected JScript runtime category, got: %v", err)
 	}
-	if !strings.Contains(errText, "Source: JavaScript runtime error") {
-		t.Fatalf("expected JavaScript runtime source, got: %v", err)
+	if !strings.Contains(errText, "Source: JScript runtime error") {
+		t.Fatalf("expected JScript runtime source, got: %v", err)
 	}
 	if strings.Contains(errText, "VBScript runtime") {
 		t.Fatalf("did not expect VBScript runtime classification, got: %v", err)

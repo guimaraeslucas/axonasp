@@ -2,7 +2,8 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda,
+ * Code contribution on the lexer: Steven Borrie (https://github.com/saborrie)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -272,15 +273,13 @@ func (l *Lexer) NextToken() Token {
 	}
 
 	if c == '&' {
-		// Classic ASP allows optional whitespace between & and the hex/oct prefix:
-		// "& h22" is equivalent to "&h22". Peek past spaces to find h/o.
+		// A hex/oct literal requires the prefix immediately after &, with no space:
+		// "&h22" is a literal, "& h22" is concatenation with the identifier h22.
+		// IIS agrees: with `Dim hb`, `"[" & hb & "]"` yields "[<hb>]", not "[11]".
 		// Guard: only treat as a hex/oct literal if the prefix is NOT part of an identifier.
-		// Example: "& Hex(x)" must NOT be treated as "&He" hex literal — 'e' is a hex digit but
+		// Example: "&Hex(x)" must NOT be treated as "&He" hex literal — 'e' is a hex digit but
 		// 'x' is an identifier continuation, so "Hex" is an identifier, not a literal prefix.
 		peekIdx := l.Index + 1
-		for l.getChar(peekIdx) == ' ' || l.getChar(peekIdx) == '\t' {
-			peekIdx++
-		}
 		peeked := l.getChar(peekIdx)
 		if CharEquals(peeked, 'h') {
 			digitCh := l.getChar(peekIdx + 1)
@@ -699,12 +698,8 @@ func (l *Lexer) nextNumericLiteral() Token {
 
 	if c != '.' {
 		if c == '&' {
-			// Skip optional whitespace between & and hex/oct prefix (Classic ASP compat: "& h22").
-			nextNSIdx := l.Index + 1
-			for l.getChar(nextNSIdx) == ' ' || l.getChar(nextNSIdx) == '\t' {
-				nextNSIdx++
-			}
-			nextNS := l.getChar(nextNSIdx)
+			// The prefix must be adjacent to &; "& h22" is concatenation, not a literal.
+			nextNS := l.getChar(l.Index + 1)
 			if CharEquals(nextNS, 'h') {
 				return l.nextHexIntLiteral()
 			} else if CharEquals(nextNS, 'o') {
@@ -892,11 +887,7 @@ func (l *Lexer) nextOctIntLiteral() Token {
 func (l *Lexer) nextHexIntLiteral() Token {
 	start := l.Index
 	l.Index++ // skip '&'
-	// Skip optional whitespace between & and h (Classic ASP allows "& h22").
-	for l.getChar(l.Index) == ' ' || l.getChar(l.Index) == '\t' {
-		l.Index++
-	}
-	l.Index++ // skip 'h'
+	l.Index++ // skip 'h' — must be adjacent; see nextToken's & handling
 
 	str := l.getHexStr()
 	c := l.getChar(l.Index)

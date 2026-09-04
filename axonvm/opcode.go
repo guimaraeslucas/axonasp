@@ -547,6 +547,7 @@ const (
 	ExtOpJSMathSqrt
 	ExtOpJSMathMin
 	ExtOpJSMathMax
+	ExtOpJSMathPow
 
 	// Phase 4: Events
 	// ExtOpRegisterClassEvent registers one event name for a class.
@@ -1115,6 +1116,8 @@ func (op ExtOpCode) String() string {
 		return "ExtOpJSMathMin"
 	case ExtOpJSMathMax:
 		return "ExtOpJSMathMax"
+	case ExtOpJSMathPow:
+		return "ExtOpJSMathPow"
 	case ExtOpRegisterClassEvent:
 		return "ExtOpRegisterClassEvent"
 	case ExtOpRaiseEvent:

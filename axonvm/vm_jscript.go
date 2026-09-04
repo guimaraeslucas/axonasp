@@ -52,9 +52,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-const jsMaxStringBytes = 8 * 1024 * 1024
-const jsMaxStringWorkBytes = 2 * 1024 * 1024
-const jsMaxCallStackDepth = 10100
+// JavaScript engine limits - these are used to prevent excessive resource usage and potential denial-of-service attacks. If Go GC is set to a value lower than 1GB, these limits may cause issues if the script tries to allocate more memory than allowed. AxonASP default memory usage is 256MB as most JScript applications don't require large amounts of memory. If you really need to work with huge strings, you can adjust the limits in the source code and recompile the VM. However, be aware that this may lead to increased memory usage and potential instability if scripts are not well-behaved.
+const jsMaxStringBytes = 512 * 1024 * 1024     //512 MB - usually this must be enought for most use cases
+const jsMaxStringWorkBytes = 256 * 1024 * 1024 //256 MB cumulative string work budget; catches self-expanding rescans fast while leaving generous room for legitimate pages
+const jsMaxCallStackDepth = 50000
 const jsInternalPropPrefix = "__js_"
 const jsAccessorGetterPrefix = "__js_getter__"
 const jsAccessorSetterPrefix = "__js_setter__"
@@ -962,12 +963,25 @@ func (vm *VM) jsTrackObjectKey(objID int64, key string) {
 	if strings.HasPrefix(key, jsInternalPropPrefix) {
 		return
 	}
-	order := vm.jsObjectKeyOrder[objID]
-	// Check if already exists to maintain insertion order (only add if new)
-	if slices.Contains(order, key) {
+	if vm.jsObjectKeySet == nil {
+		vm.jsObjectKeySet = make(map[int64]map[string]struct{})
+	}
+	// O(1) membership test preserves insertion order without rescanning the
+	// whole key-order slice on every new property (avoids O(N^2) growth when a
+	// single object accumulates many distinct keys).
+	seen := vm.jsObjectKeySet[objID]
+	if seen == nil {
+		seen = make(map[string]struct{}, len(vm.jsObjectKeyOrder[objID])+4)
+		for _, k := range vm.jsObjectKeyOrder[objID] {
+			seen[k] = struct{}{}
+		}
+		vm.jsObjectKeySet[objID] = seen
+	}
+	if _, ok := seen[key]; ok {
 		return
 	}
-	vm.jsObjectKeyOrder[objID] = append(order, key)
+	seen[key] = struct{}{}
+	vm.jsObjectKeyOrder[objID] = append(vm.jsObjectKeyOrder[objID], key)
 }
 
 func (vm *VM) jsUntrackObjectKey(objID int64, key string) {
@@ -978,6 +992,9 @@ func (vm *VM) jsUntrackObjectKey(objID int64, key string) {
 	for i, k := range order {
 		if k == key {
 			vm.jsObjectKeyOrder[objID] = append(order[:i], order[i+1:]...)
+			if seen, ok := vm.jsObjectKeySet[objID]; ok {
+				delete(seen, key)
+			}
 			return
 		}
 	}
@@ -3021,7 +3038,17 @@ func (vm *VM) jsAddValues(a Value, b Value) Value {
 		sa := vm.jsConcatString(a)
 		sb := vm.jsConcatString(b)
 		total := len(sa) + len(sb)
-		if !vm.jsEnsureStringSize(total) || !vm.jsChargeStringWork(total) {
+		if !vm.jsEnsureStringSize(total) {
+			return Value{Type: VTJSUndefined}
+		}
+		// In progressive string accumulation (e.g., str += "a"), charging O(len(sa) + len(sb))
+		// charges O(N^2) work for creating an N-byte string. Charge the net growth (min(len(sa), len(sb)))
+		// or at least 1 byte so that long concatenations stay well within budget while stopping exponential explosions.
+		work := min(len(sb), len(sa))
+		if work == 0 {
+			work = 1
+		}
+		if !vm.jsChargeStringWork(work) {
 			return Value{Type: VTJSUndefined}
 		}
 		return NewString(sa + sb)
@@ -3045,7 +3072,14 @@ func (vm *VM) jsAddValues(a Value, b Value) Value {
 		sa := vm.jsConcatString(aPrim)
 		sb := vm.jsConcatString(bPrim)
 		total := len(sa) + len(sb)
-		if !vm.jsEnsureStringSize(total) || !vm.jsChargeStringWork(total) {
+		if !vm.jsEnsureStringSize(total) {
+			return Value{Type: VTJSUndefined}
+		}
+		work := min(len(sb), len(sa))
+		if work == 0 {
+			work = 1
+		}
+		if !vm.jsChargeStringWork(work) {
 			return Value{Type: VTJSUndefined}
 		}
 		return NewString(sa + sb)
@@ -3222,7 +3256,7 @@ func (vm *VM) jsEnsureStringSize(size int) bool {
 	if size <= jsMaxStringBytes {
 		return true
 	}
-	vm.raise(vbscript.OutOfStringSpace, fmt.Sprintf("JScript string size exceeded %d bytes", jsMaxStringBytes))
+	vm.jsRaiseRuntimeError(jscript.OutOfStringSpace, fmt.Sprintf("JScript string size exceeded %d bytes", jsMaxStringBytes))
 	return false
 }
 
@@ -3235,7 +3269,7 @@ func (vm *VM) jsChargeStringWork(size int) bool {
 	if vm.jsStringWorkBytes <= jsMaxStringWorkBytes {
 		return true
 	}
-	vm.raise(vbscript.OutOfStringSpace, fmt.Sprintf("JScript cumulative string work exceeded %d bytes", jsMaxStringWorkBytes))
+	vm.jsRaiseRuntimeError(jscript.OutOfStringSpace, fmt.Sprintf("JScript cumulative string work exceeded %d bytes", jsMaxStringWorkBytes))
 	return false
 }
 
@@ -6283,6 +6317,13 @@ func (vm *VM) jsCallMember(target Value, member string, args []Value) (Value, bo
 			if len(args) == 0 || args[0].Type == VTJSUndefined {
 				return ValueFromVBArray(NewVBArrayFromValues(0, []Value{NewString(text)})), true
 			}
+			// Splitting walks the entire source string. Charge the scan against the
+			// cumulative string-work budget so a loop that repeatedly rescans a
+			// growing string (self-expanding split/join) is caught quickly instead of
+			// spinning until the script timeout.
+			if !vm.jsChargeStringWork(len(text)) {
+				return Value{Type: VTJSUndefined}, true
+			}
 			sepVal := args[0]
 			limit := -1
 			if len(args) > 1 && args[1].Type != VTJSUndefined {
@@ -8130,7 +8171,14 @@ func (vm *VM) jsApplyMSJScriptErrorProps(errObj Value, args []Value) {
 		items["number"] = args[0]
 		items["description"] = NewString(desc)
 		items["message"] = NewString(desc)
+		return
 	}
+	// Single-argument / no-argument form keeps standard ES semantics: the MS
+	// extension properties stay undefined (jsCreateErrorObject seeds a
+	// description mirroring the message; remove it here so err.description and
+	// err.number are undefined, matching classic IIS JScript).
+	delete(items, "description")
+	delete(items, "number")
 }
 
 // jsNumberToString formats a numeric primitive using JScript-compatible defaults.
@@ -10197,7 +10245,9 @@ func (vm *VM) jsThrow(v Value) {
 	vm.ip = target
 }
 
-// jsRaiseRuntimeError raises an uncaught JScript runtime error in ASP-compatible shape.
+// jsRaiseRuntimeError raises an uncaught runtime error exclusively for the JScript / JavaScript runtime.
+// It formats the error with Category "JScript runtime" and Source "JScript runtime error".
+// For VBScript runtime errors, DO NOT use this method; use vm.raise instead.
 func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 	description := strings.TrimSpace(msg)
 	if description == "" {
@@ -10214,7 +10264,7 @@ func (vm *VM) jsRaiseRuntimeError(code jscript.JSSyntaxErrorCode, msg string) {
 		Msg:            description,
 		ASPCode:        int(code),
 		ASPDescription: description,
-		Category:       "JScript runtime error",
+		Category:       "JScript runtime",
 		Description:    description,
 		Number:         jscript.HRESULTFromJScriptCode(code),
 		Source:         "JScript runtime error",
@@ -10282,7 +10332,7 @@ func (vm *VM) jsHandleNativeError(hresult int, errMsg string, vme *VMError) {
 		Msg:            description,
 		ASPCode:        int(code),
 		ASPDescription: description,
-		Category:       "JScript runtime error",
+		Category:       "JScript runtime",
 		Description:    description,
 		Number:         hresult,
 		Source:         "JScript runtime error",

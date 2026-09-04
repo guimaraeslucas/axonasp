@@ -22,11 +22,10 @@ objHTTP.Open method, url [, async [, user [, password]]]
 
 Empty. This method does not return a value.
 
-## Remarks
-
 - Calling `Open` resets the object state: `ReadyState` is set to 1 and any previously stored response data is cleared.
 - All previously set request headers are preserved between `Open` calls.
 - Method names are case-insensitive.
+- Passing an unrecognized scheme (other than `http` or `https`) or a relative URL raises error `0x80072EE6` ("The URL does not use a recognized protocol").
 
 ## Code Example
 

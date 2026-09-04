@@ -10,11 +10,9 @@ Read-only.
 
 Integer.
 
-## Remarks
-
-- Available after `Send` completes (`ReadyState = 4`).
+- Available after `Send` completes successfully (`ReadyState = 4`).
 - Common values: 200 (OK), 404 (Not Found), 500 (Internal Server Error).
-- Returns 0 if no request has been sent or if the connection failed before any response was received.
+- Raises a runtime exception (`0x8000000A`) if read before `Send` has succeeded or after a failed connection attempt.
 
 ## Code Example
 

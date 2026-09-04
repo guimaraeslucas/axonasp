@@ -48,10 +48,11 @@ import (
 	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
+// StackSize is the maximum number of stack slots available for the VM. 4096 VBScript default size.
 const StackSize = 4096
 
-// jsBackJumpLimit is the maximum number of bytecode instructions that can be executed in a loop before the VM raises a runtime error to prevent infinite loops.
-const jsBackJumpLimit = 10000000
+// jsBackJumpLimit is the maximum number of bytecode back-jumps (loop iterations) that can be executed before the VM raises a runtime error to prevent runaway/infinite loops. It is deliberately generous so statically-bounded high-iteration loops and benchmarks (10M+ iteration loops) complete normally; pathological self-expanding loops are caught earlier by the cumulative string-work watchdog and by the script timeout.
+const jsBackJumpLimit = 100000000
 
 const staticObjectProgIDPrefix = "__AXON_STATIC_OBJECT_PROGID__:"
 
@@ -432,6 +433,7 @@ type VM struct {
 	nativeObjectProxies            map[int64]nativeObjectProxy
 	jsObjectItems                  map[int64]map[string]Value
 	jsObjectKeyOrder               map[int64][]string
+	jsObjectKeySet                 map[int64]map[string]struct{}
 	jsObjectSlots                  map[int64][]Value
 	jsObjectSlotIndex              map[int64]map[string]uint16
 	jsObjectShape                  map[int64]uint32
@@ -781,6 +783,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		nativeObjectProxies:            make(map[int64]nativeObjectProxy),
 		jsObjectItems:                  make(map[int64]map[string]Value),
 		jsObjectKeyOrder:               make(map[int64][]string),
+		jsObjectKeySet:                 make(map[int64]map[string]struct{}),
 		jsObjectSlots:                  make(map[int64][]Value),
 		jsObjectSlotIndex:              make(map[int64]map[string]uint16),
 		jsObjectShape:                  make(map[int64]uint32),
@@ -1173,7 +1176,7 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 			return 3
 		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight:
 			return 1
-		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax:
+		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax, ExtOpJSMathPow:
 			return 1
 		default:
 			return 3
@@ -1244,7 +1247,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			switch ext {
 			case ExtOpInitRecord, ExtOpGetRecordMember, ExtOpSetRecordMember:
 				ip += 2
-			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax,
+			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax, ExtOpJSMathPow,
 				ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile,
 				ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight:
 				// No operands to remap or skip
@@ -1789,6 +1792,7 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.nativeObjectProxies = child.nativeObjectProxies
 	vm.jsObjectItems = child.jsObjectItems
 	vm.jsObjectKeyOrder = child.jsObjectKeyOrder
+	vm.jsObjectKeySet = child.jsObjectKeySet
 	vm.jsObjectStateItems = child.jsObjectStateItems
 	vm.jsPropertyItems = child.jsPropertyItems
 	vm.jsFunctionItems = child.jsFunctionItems
@@ -3899,6 +3903,11 @@ aspExecLoop:
 				b := vm.jsToNumber(vm.pop()).Flt
 				a := vm.jsToNumber(vm.pop()).Flt
 				vm.push(NewDouble(math.Max(a, b)))
+
+			case ExtOpJSMathPow:
+				exp := vm.jsToNumber(vm.pop()).Flt
+				base := vm.jsToNumber(vm.pop()).Flt
+				vm.push(NewDouble(math.Pow(base, exp)))
 
 			case ExtOpCloneRecord:
 				val := vm.pop()
@@ -9966,6 +9975,16 @@ func (vm *VM) newRuntimeClassInstance(className string) Value {
 
 func (vm *VM) pop() Value {
 	if vm.sp < 0 {
+		// A shared dispatch loop executes both VBScript and JScript bytecode.
+		// When the underflow surfaces while JScript state is active, route it
+		// through the JScript runtime error path so the host reports
+		// "JScript runtime error" (Category/Source) instead of mislabeling the
+		// fault as a VBScript runtime error. See the JScript-vs-VBScript error
+		// routing directive.
+		if len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 || len(vm.jsTryStack) > 0 || len(vm.jsErrStack) > 0 || vm.engineMode == EngineModeJavaScript {
+			vm.jsRaiseRuntimeError(jscript.InternalError, "Stack underflow")
+			return Value{Type: VTEmpty}
+		}
 		vm.raise(vbscript.InternalError, "Stack underflow")
 		return Value{Type: VTEmpty}
 	}
@@ -10244,6 +10263,9 @@ func parseFloat64(s string) (float64, error) {
 	return strconv.ParseFloat(s, 64)
 }
 
+// raise raises a runtime error exclusively for the VBScript runtime.
+// It formats the error with Category "VBScript runtime" and Source "VBScript runtime error".
+// For JScript runtime errors, DO NOT use this method; use vm.jsRaiseRuntimeError instead.
 func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 	description := strings.TrimSpace(msg)
 	if description == "" {

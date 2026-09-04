@@ -26,6 +26,8 @@ Empty. This method does not return a value. Read `ResponseText`, `ResponseBody`,
 - The request timeout defaults to 30 seconds and can be changed via the `Timeout` property before calling `Send`.
 - On completion, `ReadyState` is set to 4.
 - Method names are case-insensitive.
+- Calling `Send` after an invalid or missing `Open` raises error `0x80004005` ("Unspecified error").
+- Network transport failures (such as connection refused, DNS resolution failure, or timeout) raise error `0x80072EFD` ("A connection with the server could not be established"). Internal transport error messages are sanitized and not leaked to `StatusText`.
 
 ## Code Example
 

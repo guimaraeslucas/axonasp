@@ -764,6 +764,9 @@ func (vm *VM) ensureDynamicMaps() {
 	if vm.jsObjectKeyOrder == nil {
 		vm.jsObjectKeyOrder = make(map[int64][]string)
 	}
+	if vm.jsObjectKeySet == nil {
+		vm.jsObjectKeySet = make(map[int64]map[string]struct{})
+	}
 	if vm.jsObjectSlots == nil {
 		vm.jsObjectSlots = make(map[int64][]Value)
 	}
@@ -969,6 +972,7 @@ func (vm *VM) resetDynamicMaps() {
 	clear(vm.nativeObjectProxies)
 	clear(vm.jsObjectItems)
 	clear(vm.jsObjectKeyOrder)
+	clear(vm.jsObjectKeySet)
 	clear(vm.jsObjectSlots)
 	clear(vm.jsObjectSlotIndex)
 	clear(vm.jsObjectShape)
