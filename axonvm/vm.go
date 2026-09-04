@@ -9972,6 +9972,16 @@ func (vm *VM) newRuntimeClassInstance(className string) Value {
 
 func (vm *VM) pop() Value {
 	if vm.sp < 0 {
+		// A shared dispatch loop executes both VBScript and JScript bytecode.
+		// When the underflow surfaces while JScript state is active, route it
+		// through the JScript runtime error path so the host reports
+		// "JScript runtime error" (Category/Source) instead of mislabeling the
+		// fault as a VBScript runtime error. See the JScript-vs-VBScript error
+		// routing directive.
+		if len(vm.jsCallStack) > 0 || vm.jsActiveEnvID != 0 || vm.jsRootEnvID != 0 || len(vm.jsTryStack) > 0 || len(vm.jsErrStack) > 0 || vm.engineMode == EngineModeJavaScript {
+			vm.jsRaiseRuntimeError(jscript.InternalError, "Stack underflow")
+			return Value{Type: VTEmpty}
+		}
 		vm.raise(vbscript.InternalError, "Stack underflow")
 		return Value{Type: VTEmpty}
 	}

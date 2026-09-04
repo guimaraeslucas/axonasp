@@ -1887,6 +1887,30 @@ func (c *Compiler) emitJSMemberSet(nameIdx int) {
 	c.emit(OpJSMemberSet, nameIdx, int(icID))
 }
 
+// emitJSMemberSetRetainValue performs one member assignment while leaving the
+// assigned (right-hand side) value on the stack, matching JavaScript
+// assignment-expression semantics: `obj.prop = value` evaluates to `value`.
+//
+// OpJSMemberSet pops both the target and the value and pushes nothing, so a
+// bare member-set used as an expression leaves no result. Identifier
+// assignments solve this with OpJSDup before the store; a member-set needs the
+// value duplicated below the target because the store consumes the top two
+// operands in [target, value] order.
+//
+// Stack before: [..., target, value]
+// Stack after:  [..., value]
+//
+// Sequence: value is duplicated (OpJSDup), then the top three entries are
+// rotated (OpJSRot 3) so one copy of value ends up under [target, value]; the
+// member-set then pops value + target and the retained copy is the expression
+// result. Without this, expression statements (which always emit OpJSPop)
+// underflow the operand stack at the root frame.
+func (c *Compiler) emitJSMemberSetRetainValue(nameIdx int) {
+	c.emit(OpJSDup)            // [..., target, value, value]
+	c.emit(OpJSRot, 3)         // [..., value, target, value]
+	c.emitJSMemberSet(nameIdx) // pops value + target, leaves [..., value]
+}
+
 func (c *Compiler) emitJSForIn(nameIdx int) int {
 	pos := len(c.bytecode)
 	c.bytecode = append(c.bytecode, byte(OpJSForIn), 0, 0, 0, 0, 0, 0)
@@ -2400,24 +2424,29 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 	case *jsast.PrivateDotExpression:
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(node.Right)
-		c.emitJSMemberSet(c.addConstant(NewString("\x00__priv_" + left.Identifier.Name.String())))
+		c.emitJSMemberSetRetainValue(c.addConstant(NewString("\x00__priv_" + left.Identifier.Name.String())))
 	case *jsast.DotExpression:
 		if _, ok := left.Left.(*jsast.SuperExpression); ok {
+			// OpJSSuperMemberSet already pushes the assigned value back.
 			c.compileJScriptExpression(node.Right)
 			c.emit(OpJSSuperMemberSet, c.addConstant(NewString(left.Identifier.Name.String())))
 			return
 		}
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(node.Right)
-		c.emitJSMemberSet(c.addConstant(NewString(left.Identifier.Name.String())))
+		c.emitJSMemberSetRetainValue(c.addConstant(NewString(left.Identifier.Name.String())))
 	case *jsast.BracketExpression:
 		if _, ok := left.Left.(*jsast.SuperExpression); ok {
+			// OpJSSuperIndexSet already pushes the assigned value back.
 			c.compileJScriptExpression(node.Right)
 			c.compileJScriptExpression(left.Member)
 			c.emit(OpJSSuperIndexSet)
 			return
 		}
+		// OpJSIndexSet pops key + target + value, so duplicate the value before
+		// the target/key are evaluated so one copy survives as the expression result.
 		c.compileJScriptExpression(node.Right)
+		c.emit(OpJSDup)
 		c.compileJScriptExpression(left.Left)
 		c.compileJScriptExpression(left.Member)
 		c.emit(OpJSIndexSet)

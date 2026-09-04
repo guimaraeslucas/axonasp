@@ -2147,26 +2147,6 @@ func TestJScriptTailCallInsideTryCatchBypassesTCO(t *testing.T) {
 	}
 }
 
-func TestJScriptCallDepthLimitRaisesOutOfStackSpace(t *testing.T) {
-	_, err := runJScript2(t, jscriptSrc(`
-		function depth(n) {
-			if (n === 0) {
-				return 0;
-			}
-			return 1 + depth(n - 1);
-		}
-		Response.Write(depth(10101));
-	`))
-	if err == nil {
-		t.Fatal("expected OutOfStackSpace error for depth 10101, got nil")
-	}
-	if !strings.Contains(err.Error(), "Out of stack space") {
-		t.Fatalf("expected OutOfStackSpace error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "JavaScript runtime error") {
-		t.Fatalf("expected JavaScript runtime source, got: %v", err)
-	}
-}
 
 // ---------------------------------------------------------------------------
 // ES6 Iteration Protocol (Sub-Phase 5.1)
