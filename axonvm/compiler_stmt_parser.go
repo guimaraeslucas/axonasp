@@ -421,6 +421,7 @@ func (c *Compiler) parseStatement() {
 					c.emit(OpMemberSet, midx)
 				} else if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
 					// Me.Method(args) or Me.Arr(index) or Me.Arr(index) = value
+					firstArgStartPos := len(c.bytecode)
 					argCount := c.parseParenArgumentList()
 					midx := c.addConstant(NewString(callMemberName))
 					if peq, ok2 := c.next.(*vbscript.PunctuationToken); ok2 && peq.Type == vbscript.PunctEqual {
@@ -436,6 +437,7 @@ func (c *Compiler) parseStatement() {
 						}
 						c.emit(OpPop)
 					} else {
+						argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 						c.emit(OpCallMember, midx, argCount)
 						c.emit(OpPop)
 					}
@@ -451,9 +453,15 @@ func (c *Compiler) parseStatement() {
 								emptyIdx := c.addConstant(NewEmpty())
 								c.emit(OpConstant, emptyIdx)
 							} else {
+								isParen := false
+								if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+									isParen = true
+								}
 								mscArgStartPos := len(c.bytecode)
 								c.parseExpression(PrecNone)
-								c.patchArgRefInBytecode(mscArgStartPos)
+								if !isParen {
+									c.patchArgRefInBytecode(mscArgStartPos)
+								}
 							}
 							argCount++
 							if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
@@ -626,6 +634,7 @@ func (c *Compiler) parseStatement() {
 				op, idx = c.resolveVar(name)
 				loadPos = c.emit(op, idx)
 			}
+			firstArgStartPos := len(c.bytecode)
 			argCount := c.parseParenArgumentList()
 
 			if peq, ok := c.next.(*vbscript.PunctuationToken); ok && peq.Type == vbscript.PunctEqual {
@@ -656,6 +665,7 @@ func (c *Compiler) parseStatement() {
 				midx := c.addConstant(NewString(""))
 				c.emit(OpArraySet, midx, argCount)
 			} else {
+				argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 				c.emit(OpCall, argCount)
 				if op == OpGetGlobal {
 					c.registerForwardCallPatch(name, loadPos)
@@ -739,6 +749,7 @@ func (c *Compiler) parseStatement() {
 				midx := c.addConstant(NewString(setMemberName))
 				c.emit(OpMemberSet, midx)
 			} else if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
+				firstArgStartPos := len(c.bytecode)
 				argCount := c.parseParenArgumentList()
 				midx := c.addConstant(NewString(callMemberName))
 				if peq, ok2 := c.next.(*vbscript.PunctuationToken); ok2 && peq.Type == vbscript.PunctEqual {
@@ -756,6 +767,7 @@ func (c *Compiler) parseStatement() {
 					}
 					c.emit(OpPop)
 				} else {
+					argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 					c.emit(OpCallMember, midx, argCount)
 					if c.parseStatementCallChain() {
 						return
@@ -796,9 +808,15 @@ func (c *Compiler) parseStatement() {
 							emptyIdx := c.addConstant(NewEmpty())
 							c.emit(OpConstant, emptyIdx)
 						} else {
+							isParen := false
+							if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+								isParen = true
+							}
 							mscArgStartPos := len(c.bytecode)
 							c.parseExpression(PrecNone)
-							c.patchArgRefInBytecode(mscArgStartPos)
+							if !isParen {
+								c.patchArgRefInBytecode(mscArgStartPos)
+							}
 						}
 						argCount++
 						if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
@@ -843,9 +861,15 @@ func (c *Compiler) parseStatement() {
 						emptyIdx := c.addConstant(NewEmpty())
 						c.emit(OpConstant, emptyIdx)
 					} else {
+						isParen := false
+						if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+							isParen = true
+						}
 						subNoParenStartPos := len(c.bytecode)
 						c.parseExpression(PrecNone)
-						c.patchArgRefInBytecode(subNoParenStartPos)
+						if !isParen {
+							c.patchArgRefInBytecode(subNoParenStartPos)
+						}
 					}
 					argCount++
 					if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
@@ -904,6 +928,7 @@ func (c *Compiler) parseStatementCallChain() bool {
 			midx := c.addConstant(NewString(memberName))
 
 			if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
+				firstArgStartPos := len(c.bytecode)
 				argCount := c.parseParenArgumentList()
 				if peq, ok := c.next.(*vbscript.PunctuationToken); ok && peq.Type == vbscript.PunctEqual {
 					c.move()
@@ -911,6 +936,7 @@ func (c *Compiler) parseStatementCallChain() bool {
 					c.emit(OpArraySet, midx, argCount)
 					return true
 				}
+				argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 				c.emit(OpCallMember, midx, argCount)
 				continue
 			}
@@ -940,9 +966,15 @@ func (c *Compiler) parseStatementCallChain() bool {
 						emptyIdx := c.addConstant(NewEmpty())
 						c.emit(OpConstant, emptyIdx)
 					} else {
+						isParen := false
+						if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+							isParen = true
+						}
 						mscArgStartPos := len(c.bytecode)
 						c.parseExpression(PrecNone)
-						c.patchArgRefInBytecode(mscArgStartPos)
+						if !isParen {
+							c.patchArgRefInBytecode(mscArgStartPos)
+						}
 					}
 					argCount++
 					if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
@@ -959,6 +991,7 @@ func (c *Compiler) parseStatementCallChain() bool {
 
 		if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
 			handled = true
+			firstArgStartPos := len(c.bytecode)
 			argCount := c.parseParenArgumentList()
 			if peq, ok := c.next.(*vbscript.PunctuationToken); ok && peq.Type == vbscript.PunctEqual {
 				c.move()
@@ -967,6 +1000,7 @@ func (c *Compiler) parseStatementCallChain() bool {
 				c.emit(OpArraySet, midx, argCount)
 				return true
 			}
+			argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 			c.emit(OpCall, argCount)
 			continue
 		}
@@ -985,9 +1019,15 @@ func (c *Compiler) parseStatementCallChain() bool {
 					emptyIdx := c.addConstant(NewEmpty())
 					c.emit(OpConstant, emptyIdx)
 				} else {
+					isParen := false
+					if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+						isParen = true
+					}
 					mscArgStartPos := len(c.bytecode)
 					c.parseExpression(PrecNone)
-					c.patchArgRefInBytecode(mscArgStartPos)
+					if !isParen {
+						c.patchArgRefInBytecode(mscArgStartPos)
+					}
 				}
 				argCount++
 				if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
@@ -1214,12 +1254,14 @@ func (c *Compiler) compileWithMemberStatement() {
 		c.emit(OpMemberSet, midx)
 	} else if lp, ok := c.next.(*vbscript.PunctuationToken); ok && lp.Type == vbscript.PunctLParen {
 		// .Method(args) or .Arr(idx) = value
+		firstArgStartPos := len(c.bytecode)
 		argCount := c.parseParenArgumentList()
 		if peq, ok2 := c.next.(*vbscript.PunctuationToken); ok2 && peq.Type == vbscript.PunctEqual {
 			c.move()
 			c.parseExpression(PrecNone)
 			c.emit(OpArraySet, midx, argCount)
 		} else {
+			argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 			c.emit(OpCallMember, midx, argCount)
 			c.emit(OpPop)
 		}
@@ -1235,9 +1277,15 @@ func (c *Compiler) compileWithMemberStatement() {
 					emptyIdx := c.addConstant(NewEmpty())
 					c.emit(OpConstant, emptyIdx)
 				} else {
+					isParen := false
+					if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+						isParen = true
+					}
 					argStartPos := len(c.bytecode)
 					c.parseExpression(PrecNone)
-					c.patchArgRefInBytecode(argStartPos)
+					if !isParen {
+						c.patchArgRefInBytecode(argStartPos)
+					}
 				}
 				argCount++
 				if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {
@@ -2311,9 +2359,15 @@ func (c *Compiler) parseParenArgumentList() int {
 				emptyIdx := c.addConstant(NewEmpty())
 				c.emit(OpConstant, emptyIdx)
 			} else {
+				isParen := false
+				if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+					isParen = true
+				}
 				pargStartPos := len(c.bytecode)
 				c.parseExpression(PrecNone)
-				c.patchArgRefInBytecode(pargStartPos)
+				if !isParen {
+					c.patchArgRefInBytecode(pargStartPos)
+				}
 			}
 			argCount++
 			if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
@@ -2329,6 +2383,60 @@ func (c *Compiler) parseParenArgumentList() int {
 		panic(c.vbCompileError(vbscript.ExpectedRParen, "Expected ')' after argument list"))
 	}
 	c.move() // Consume ')'
+	return argCount
+}
+
+// unpatchArgRefInBytecode reverts an argument opcode from OpArg*Ref back to OpGet*
+// when the argument was enclosed in parentheses, enforcing VBScript ByVal semantics.
+func (c *Compiler) unpatchArgRefInBytecode(startPos int) {
+	if startPos < 0 || startPos >= len(c.bytecode) {
+		return
+	}
+	switch OpCode(c.bytecode[startPos]) {
+	case OpArgGlobalRef:
+		c.bytecode[startPos] = byte(OpGetGlobal)
+	case OpArgLocalRef:
+		c.bytecode[startPos] = byte(OpGetLocal)
+	case OpArgClassMemberRef:
+		c.bytecode[startPos] = byte(OpGetClassMember)
+	}
+}
+
+// parseTrailingBareCallArguments continues argument collection for a bare procedure call
+// when the first argument was parenthesised. It unpatches the first argument if it was
+// marked as ByRef (since parenthesising an argument forces ByVal semantics in VBScript),
+// consumes subsequent comma-separated expressions, and respects parenthesis ByVal semantics.
+func (c *Compiler) parseTrailingBareCallArguments(firstArgStartPos, argCount int) int {
+	if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
+		c.unpatchArgRefInBytecode(firstArgStartPos)
+		for {
+			p, ok := c.next.(*vbscript.PunctuationToken)
+			if !ok || p.Type != vbscript.PunctComma {
+				break
+			}
+			c.move() // consume ','
+			if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
+				emptyIdx := c.addConstant(NewEmpty())
+				c.emit(OpConstant, emptyIdx)
+			} else if c.isStatementEnd() {
+				emptyIdx := c.addConstant(NewEmpty())
+				c.emit(OpConstant, emptyIdx)
+			} else {
+				isParen := false
+				if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+					isParen = true
+				}
+				argStartPos := len(c.bytecode)
+				c.parseExpression(PrecNone)
+				if !isParen {
+					c.patchArgRefInBytecode(argStartPos)
+				}
+			}
+			argCount++
+		}
+	} else if argCount == 1 {
+		c.unpatchArgRefInBytecode(firstArgStartPos)
+	}
 	return argCount
 }
 
@@ -2879,7 +2987,9 @@ func (c *Compiler) compileImplicitClassStatementCall(name string, hasParen bool)
 
 	c.emit(OpMe)
 	if hasParen {
+		firstArgStartPos := len(c.bytecode)
 		argCount := c.parseParenArgumentList()
+		argCount = c.parseTrailingBareCallArguments(firstArgStartPos, argCount)
 		midx := c.addConstant(NewString(trimmedName))
 		c.emit(OpCallMember, midx, argCount)
 		c.emit(OpPop)
@@ -2896,9 +3006,15 @@ func (c *Compiler) compileImplicitClassStatementCall(name string, hasParen bool)
 				emptyIdx := c.addConstant(NewEmpty())
 				c.emit(OpConstant, emptyIdx)
 			} else {
+				isParen := false
+				if pt, ok := c.next.(*vbscript.PunctuationToken); ok && pt.Type == vbscript.PunctLParen {
+					isParen = true
+				}
 				argStartPos := len(c.bytecode)
 				c.parseExpression(PrecNone)
-				c.patchArgRefInBytecode(argStartPos)
+				if !isParen {
+					c.patchArgRefInBytecode(argStartPos)
+				}
 			}
 			argCount++
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctComma {

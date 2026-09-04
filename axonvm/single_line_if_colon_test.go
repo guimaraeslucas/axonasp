@@ -291,4 +291,3 @@ Select Case x
 		t.Fatalf("unexpected output: got %q, want %q", out, expected)
 	}
 }
-

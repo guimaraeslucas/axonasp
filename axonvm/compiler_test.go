@@ -198,3 +198,278 @@ func TestVBScriptStaticObjectReference(t *testing.T) {
 		t.Fatalf("unexpected static object reference output: got %q, want %q", out, expected)
 	}
 }
+
+// TestBareSubCallArgumentParsing verifies that bare Sub calls with parenthesized
+// expressions in the argument list (including the first argument) correctly extract
+// and execute all arguments without truncation or stack corruption.
+func TestBareSubCallArgumentParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   string
+		expected string
+	}{
+		{
+			name: "DefectRepro_ParenthesisedFirstArgArithmetic",
+			source: `<%
+Sub miniAdd(a, b, c)
+	Response.Write "a=" & a & " b=" & b & " c=" & c
+End Sub
+miniAdd (5 * -1), (3 * -1), 7
+%>`,
+			expected: "a=-5 b=-3 c=7",
+		},
+		{
+			name: "Acceptance_MiniAdd_ParenA_B_C",
+			source: `<%
+Sub miniAdd(a, b, c)
+	Response.Write "a=" & a & " b=" & b & " c=" & c
+End Sub
+Dim a, b, c
+a = 10 : b = 20 : c = 30
+miniAdd (a), b, c
+%>`,
+			expected: "a=10 b=20 c=30",
+		},
+		{
+			name: "Acceptance_MiniAdd_ParenA_ParenB_ParenC",
+			source: `<%
+Sub miniAdd(a, b, c)
+	Response.Write "a=" & a & " b=" & b & " c=" & c
+End Sub
+Dim a, b, c
+a = 100 : b = 200 : c = 300
+miniAdd (a), (b), (c)
+%>`,
+			expected: "a=100 b=200 c=300",
+		},
+		{
+			name: "Acceptance_MiniAdd_DoubleParenA_B",
+			source: `<%
+Sub miniAdd(a, b)
+	Response.Write "a=" & a & " b=" & b
+End Sub
+Dim a, b
+a = 42 : b = 99
+miniAdd ((a)), b
+%>`,
+			expected: "a=42 b=99",
+		},
+		{
+			name: "DeeplyNestedParens",
+			source: `<%
+Sub checkVal(x, y)
+	Response.Write "x=" & x & " y=" & y
+End Sub
+Dim a, b
+a = 7 : b = 8
+checkVal (((a))), (b)
+%>`,
+			expected: "x=7 y=8",
+		},
+		{
+			name: "NestedComplexExpressionsInParens",
+			source: `<%
+Sub evalExpr(x, y)
+	Response.Write "x=" & x & " y=" & y
+End Sub
+Dim a, b, c, d
+a = 2 : b = 3 : c = 4 : d = 5
+evalExpr (a + (b * c)), d
+%>`,
+			expected: "x=14 y=5",
+		},
+		{
+			name: "SingleParenthesisedArgumentBareCall",
+			source: `<%
+Sub singleArg(x)
+	Response.Write "x=" & x
+End Sub
+Dim val
+val = 123
+singleArg (val)
+%>`,
+			expected: "x=123",
+		},
+		{
+			name: "OmittedArgumentWithParenthesisedFirstArg",
+			source: `<%
+Sub optArgs(a, b, c)
+	Response.Write "a=" & a & " b=" & b & " c=" & c
+End Sub
+Dim a, c
+a = 1 : c = 3
+optArgs (a), , c
+%>`,
+			expected: "a=1 b= c=3",
+		},
+		{
+			name: "CallKeywordParity_WithArithmeticExpressions",
+			source: `<%
+Sub miniAdd(a, b, c)
+	Response.Write "a=" & a & " b=" & b & " c=" & c
+End Sub
+Call miniAdd((5 * -1), (3 * -1), 7)
+%>`,
+			expected: "a=-5 b=-3 c=7",
+		},
+		{
+			name: "CallKeywordParity_WithParenthesisedFirstArg",
+			source: `<%
+Sub miniAdd(a, b, c)
+	Response.Write "a=" & a & " b=" & b & " c=" & c
+End Sub
+Dim a, b, c
+a = 10 : b = 20 : c = 30
+Call miniAdd((a), b, c)
+%>`,
+			expected: "a=10 b=20 c=30",
+		},
+		{
+			name: "MemberBareCall_ParenthesisedFirstArg",
+			source: `<%
+Class MathHelper
+	Public Sub Add(a, b, c)
+		Response.Write "a=" & a & " b=" & b & " c=" & c
+	End Sub
+End Class
+Dim h
+Set h = New MathHelper
+h.Add (5 * -1), (3 * -1), 7
+%>`,
+			expected: "a=-5 b=-3 c=7",
+		},
+		{
+			name: "WithBlockMemberBareCall_ParenthesisedFirstArg",
+			source: `<%
+Class MathHelper
+	Public Sub Add(a, b, c)
+		Response.Write "a=" & a & " b=" & b & " c=" & c
+	End Sub
+End Class
+Dim h
+Set h = New MathHelper
+With h
+	.Add (5 * -1), (3 * -1), 7
+End With
+%>`,
+			expected: "a=-5 b=-3 c=7",
+		},
+		{
+			name: "ClassInternalBareCall_ParenthesisedFirstArg",
+			source: `<%
+Class Runner
+	Public Sub Run()
+		InternalAdd (1 + 1), 3, 4
+	End Sub
+	Private Sub InternalAdd(a, b, c)
+		Response.Write "res=" & (a + b + c)
+	End Sub
+End Class
+Dim r
+Set r = New Runner
+r.Run
+%>`,
+			expected: "res=9",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out := runVBSAndGetOutput(t, tc.source)
+			if out != tc.expected {
+				t.Fatalf("test %q failed:\nexpected: %q\ngot:      %q", tc.name, tc.expected, out)
+			}
+		})
+	}
+}
+
+// TestBareSubCallByValByRefSemantics verifies that parenthesising an argument in a bare
+// call correctly forces ByVal semantics (preventing write-back to caller variables),
+// while unparenthesised arguments correctly maintain ByRef write-back.
+func TestBareSubCallByValByRefSemantics(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   string
+		expected string
+	}{
+		{
+			name: "ByValFirstArg_ByRefTrailingArgs",
+			source: `<%
+Sub mutate(x, y, z)
+	x = x + 100
+	y = y + 200
+	z = z + 300
+End Sub
+Dim a, b, c
+a = 1 : b = 2 : c = 3
+mutate (a), b, c
+Response.Write "a=" & a & " b=" & b & " c=" & c
+%>`,
+			expected: "a=1 b=202 c=303",
+		},
+		{
+			name: "AllArgsParenthesised_AllByVal",
+			source: `<%
+Sub mutate(x, y, z)
+	x = x + 100
+	y = y + 200
+	z = z + 300
+End Sub
+Dim a, b, c
+a = 1 : b = 2 : c = 3
+mutate (a), (b), (c)
+Response.Write "a=" & a & " b=" & b & " c=" & c
+%>`,
+			expected: "a=1 b=2 c=3",
+		},
+		{
+			name: "DoubleParenthesisedFirstArg_ByVal",
+			source: `<%
+Sub mutate(x, y)
+	x = x + 100
+	y = y + 200
+End Sub
+Dim a, b
+a = 10 : b = 20
+mutate ((a)), b
+Response.Write "a=" & a & " b=" & b
+%>`,
+			expected: "a=10 b=220",
+		},
+		{
+			name: "SingleArgParenthesised_ByVal",
+			source: `<%
+Sub mutate(x)
+	x = x + 100
+End Sub
+Dim a
+a = 50
+mutate (a)
+Response.Write "a=" & a
+%>`,
+			expected: "a=50",
+		},
+		{
+			name: "SingleArgUnparenthesised_ByRef",
+			source: `<%
+Sub mutate(x)
+	x = x + 100
+End Sub
+Dim a
+a = 50
+mutate a
+Response.Write "a=" & a
+%>`,
+			expected: "a=150",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			out := runVBSAndGetOutput(t, tc.source)
+			if out != tc.expected {
+				t.Fatalf("test %q failed:\nexpected: %q\ngot:      %q", tc.name, tc.expected, out)
+			}
+		})
+	}
+}
