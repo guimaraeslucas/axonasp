@@ -622,4 +622,3 @@ Response.Write http.Status & "|" & http.StatusText & "|" & http.ResponseText & "
 		t.Fatalf("expected %q, got %q", expected, output)
 	}
 }
-

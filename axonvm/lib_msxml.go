@@ -43,13 +43,13 @@ import (
 
 const (
 	// HResultServerXMLHTTPUnrecognizedScheme indicates an invalid or unrecognized URL protocol scheme (0x80072EE6).
-	HResultServerXMLHTTPUnrecognizedScheme = int(int32(0x80072EE6))
+	HResultServerXMLHTTPUnrecognizedScheme = -2147012890
 	// HResultServerXMLHTTPUnspecifiedError indicates execution failure such as Send after invalid Open (0x80004005).
-	HResultServerXMLHTTPUnspecifiedError = int(int32(0x80004005))
+	HResultServerXMLHTTPUnspecifiedError = -2147467259
 	// HResultServerXMLHTTPCannotConnect indicates transport or connection failure (0x80072EFD).
-	HResultServerXMLHTTPCannotConnect = int(int32(0x80072EFD))
+	HResultServerXMLHTTPCannotConnect = -2147012867
 	// HResultServerXMLHTTPDataNotAvailable indicates accessing response properties before data is available (0x8000000A).
-	HResultServerXMLHTTPDataNotAvailable = int(int32(0x8000000A))
+	HResultServerXMLHTTPDataNotAvailable = -2147483638
 )
 
 // MsXML2ServerXMLHTTP implements the MSXML2.ServerXMLHTTP object
@@ -137,24 +137,19 @@ func isNetworkFailure(err error) bool {
 	if errors.Is(err, syscall.ECONNREFUSED) {
 		return true
 	}
-	var dnsErr *net.DNSError
-	if errors.As(err, &dnsErr) {
+	if _, ok := errors.AsType[*net.DNSError](err); ok {
 		return true
 	}
-	var opErr *net.OpError
-	if errors.As(err, &opErr) {
+	if _, ok := errors.AsType[*net.OpError](err); ok {
 		return true
 	}
-	var netErr net.Error
-	if errors.As(err, &netErr) {
+	if _, ok := errors.AsType[net.Error](err); ok {
 		return true
 	}
-	var syscallErr *os.SyscallError
-	if errors.As(err, &syscallErr) {
+	if _, ok := errors.AsType[*os.SyscallError](err); ok {
 		return true
 	}
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	if _, ok := errors.AsType[*url.Error](err); ok {
 		return true
 	}
 	return true
