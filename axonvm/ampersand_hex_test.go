@@ -47,10 +47,31 @@ func TestAmpersandHexPrefixRequiresAdjacency(t *testing.T) {
 			want:   "[1]TAIL",
 		},
 
+		{
+			name:   "uppercase identifier after ampersand and space",
+			source: `<% Dim H1 : H1 = "UPPER" : Response.Write "[" & H1 & "]TAIL" %>`,
+			want:   "[UPPER]TAIL",
+		},
+		{
+			name:   "octal-like identifier after ampersand and space",
+			source: `<% Dim o7 : o7 = "OCT" : Response.Write "[" & o7 & "]TAIL" %>`,
+			want:   "[OCT]TAIL",
+		},
+		{
+			name:   "identifier near EOF without trailing newline",
+			source: `<% Dim h : h = "END" : Response.Write "a" & h %>`,
+			want:   "aEND",
+		},
+
 		// Literals must keep working: the prefix is adjacent to the ampersand.
 		{
 			name:   "adjacent hex literal",
 			source: `<% Response.Write CStr(&hB) %>`,
+			want:   "11",
+		},
+		{
+			name:   "adjacent uppercase hex literal",
+			source: `<% Response.Write CStr(&HB) %>`,
 			want:   "11",
 		},
 		{
@@ -59,8 +80,18 @@ func TestAmpersandHexPrefixRequiresAdjacency(t *testing.T) {
 			want:   "255,65280",
 		},
 		{
+			name:   "adjacent uppercase hex literal, multiple digits",
+			source: `<% Response.Write CStr(&HFF) & "," & CStr(&HFF00) %>`,
+			want:   "255,65280",
+		},
+		{
 			name:   "adjacent octal literal",
 			source: `<% Response.Write CStr(&o17) %>`,
+			want:   "15",
+		},
+		{
+			name:   "adjacent uppercase octal literal",
+			source: `<% Response.Write CStr(&O17) %>`,
 			want:   "15",
 		},
 		{
