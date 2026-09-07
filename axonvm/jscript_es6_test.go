@@ -2147,7 +2147,6 @@ func TestJScriptTailCallInsideTryCatchBypassesTCO(t *testing.T) {
 	}
 }
 
-
 // ---------------------------------------------------------------------------
 // ES6 Iteration Protocol (Sub-Phase 5.1)
 // ---------------------------------------------------------------------------

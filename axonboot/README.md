@@ -1,6 +1,6 @@
 # AxonBoot (`axonboot`)
 
-`axonboot` provides platform-specific early boot initialization logic for Windows environments, particularly when running under Microsoft IIS hosting scenarios (such as FastCGI or HttpPlatformHandler).
+`axonboot` provides platform-specific early boot initialization logic for Windows environments, particularly when running under Microsoft IIS hosting scenarios (such as HttpPlatformHandler).
 
 ## Key Responsibilities
 
