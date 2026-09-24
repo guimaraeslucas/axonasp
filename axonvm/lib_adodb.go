@@ -3601,9 +3601,238 @@ func (vm *VM) adodbFirstNonEmpty(values ...string) string {
 	return ""
 }
 
+// adodbIsQuery reports whether the SQL command text produces a result set, so
+// that ADODB.Connection.Execute and the Recordset source normalizer route it
+// through Query instead of Exec.
+// The classification is deliberately allocation-free: the input is only
+// whitespace-trimmed (no copy) and every keyword test is case-insensitive
+// through strings.EqualFold on a zero-copy slice, avoiding the heap string that
+// strings.ToLower would produce for every executed statement.
 func (vm *VM) adodbIsQuery(sql string) bool {
-	s := strings.ToLower(strings.TrimSpace(sql))
-	return strings.HasPrefix(s, "select") || strings.HasPrefix(s, "show") || strings.HasPrefix(s, "pragma")
+	trimmed := strings.TrimSpace(sql)
+	if trimmed == "" {
+		return false
+	}
+
+	// Skip leading comments and grouping parentheses so that wrapped statements
+	// such as "(SELECT 1)" or "/* hint */ WITH cte AS (...)" are still detected.
+	trimmed = trimmed[adodbSkipLeadingSQLNoise(trimmed):]
+	if trimmed == "" {
+		return false
+	}
+
+	// Row-returning statements.
+	if adodbHasSQLKeywordPrefix(trimmed, "select") ||
+		adodbHasSQLKeywordPrefix(trimmed, "show") ||
+		adodbHasSQLKeywordPrefix(trimmed, "pragma") ||
+		adodbHasSQLKeywordPrefix(trimmed, "with") {
+		return true
+	}
+
+	// DML statements only return a result set when they carry a RETURNING clause.
+	if adodbHasSQLKeywordPrefix(trimmed, "insert") ||
+		adodbHasSQLKeywordPrefix(trimmed, "update") ||
+		adodbHasSQLKeywordPrefix(trimmed, "delete") {
+		return adodbContainsReturningOutsideQuotes(trimmed)
+	}
+
+	return false
+}
+
+// adodbHasSQLKeywordPrefix reports whether sql starts with the given lowercase
+// SQL keyword followed by a valid token boundary. The comparison is
+// case-insensitive and allocation-free. The boundary check prevents bare table
+// identifiers that merely share a keyword prefix (for example "selection" or
+// "withholding") from being misclassified as queries.
+func adodbHasSQLKeywordPrefix(sql string, keyword string) bool {
+	if len(sql) < len(keyword) {
+		return false
+	}
+	if !strings.EqualFold(sql[:len(keyword)], keyword) {
+		return false
+	}
+	return adodbIsSQLWordBoundary(sql, len(keyword))
+}
+
+// adodbIsSQLWordBoundary reports whether the byte at idx terminates a SQL token.
+// An out-of-range index is treated as a boundary (start/end of statement).
+func adodbIsSQLWordBoundary(sql string, idx int) bool {
+	if idx < 0 || idx >= len(sql) {
+		return true
+	}
+	switch c := sql[idx]; {
+	case c == '_' || c == '$':
+		return false
+	case c >= 'a' && c <= 'z':
+		return false
+	case c >= 'A' && c <= 'Z':
+		return false
+	case c >= '0' && c <= '9':
+		return false
+	default:
+		return true
+	}
+}
+
+// adodbSkipLeadingSQLNoise returns the index of the first significant byte in
+// sql, skipping leading whitespace, SQL line comments (--), SQL block comments
+// (/* */) and grouping parentheses. It returns len(sql) when no significant
+// token follows. The scan is byte-oriented and performs no allocation.
+func adodbSkipLeadingSQLNoise(sql string) int {
+	i := 0
+	for i < len(sql) {
+		c := sql[i]
+		switch {
+		case c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v' || c == '(':
+			i++
+		case c == '-' && i+1 < len(sql) && sql[i+1] == '-':
+			i += 2
+			for i < len(sql) && sql[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(sql) && sql[i+1] == '*':
+			i += 2
+			for i < len(sql) {
+				if sql[i] == '*' && i+1 < len(sql) && sql[i+1] == '/' {
+					i += 2
+					break
+				}
+				i++
+			}
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+// adodbContainsReturningOutsideQuotes reports whether the SQL statement contains
+// the RETURNING keyword outside of string literals, quoted identifiers and
+// comments. The scanner is a single byte-oriented pass with no allocation and no
+// regex, and it understands the escapes used by the supported drivers:
+//   - single-quoted literals with ” escaping an embedded quote,
+//   - double-quoted identifiers with "" escaping an embedded quote,
+//   - backtick identifiers with “ escaping an embedded quote (MySQL),
+//   - bracket identifiers with ]] escaping an embedded bracket (SQL Server),
+//   - PostgreSQL dollar-quoted literals ($tag$ ... $tag$),
+//   - line comments (--) and block comments (/* */).
+//
+// The keyword itself must be a full token, so identifiers such as
+// "returning_code" do not trigger the detection.
+func adodbContainsReturningOutsideQuotes(sql string) bool {
+	const keyword = "returning"
+	const keywordLen = len(keyword)
+
+	i := 0
+	for i < len(sql) {
+		c := sql[i]
+
+		switch c {
+		case '\'':
+			i++
+			for i < len(sql) {
+				if sql[i] == '\'' {
+					if i+1 < len(sql) && sql[i+1] == '\'' {
+						i += 2
+						continue
+					}
+					i++
+					break
+				}
+				i++
+			}
+		case '"':
+			i++
+			for i < len(sql) {
+				if sql[i] == '"' {
+					if i+1 < len(sql) && sql[i+1] == '"' {
+						i += 2
+						continue
+					}
+					i++
+					break
+				}
+				i++
+			}
+		case '`':
+			i++
+			for i < len(sql) {
+				if sql[i] == '`' {
+					if i+1 < len(sql) && sql[i+1] == '`' {
+						i += 2
+						continue
+					}
+					i++
+					break
+				}
+				i++
+			}
+		case '[':
+			i++
+			for i < len(sql) {
+				if sql[i] == ']' {
+					if i+1 < len(sql) && sql[i+1] == ']' {
+						i += 2
+						continue
+					}
+					i++
+					break
+				}
+				i++
+			}
+		case '-':
+			if i+1 < len(sql) && sql[i+1] == '-' {
+				i += 2
+				for i < len(sql) && sql[i] != '\n' {
+					i++
+				}
+				continue
+			}
+			i++
+		case '/':
+			if i+1 < len(sql) && sql[i+1] == '*' {
+				i += 2
+				for i < len(sql) {
+					if sql[i] == '*' && i+1 < len(sql) && sql[i+1] == '/' {
+						i += 2
+						break
+					}
+					i++
+				}
+				continue
+			}
+			i++
+		case '$':
+			// PostgreSQL dollar-quoted literal: $tag$ content $tag$.
+			tagEnd := i + 1
+			for tagEnd < len(sql) && (sql[tagEnd] == '_' ||
+				sql[tagEnd] >= 'a' && sql[tagEnd] <= 'z' ||
+				sql[tagEnd] >= 'A' && sql[tagEnd] <= 'Z' ||
+				sql[tagEnd] >= '0' && sql[tagEnd] <= '9') {
+				tagEnd++
+			}
+			if tagEnd < len(sql) && sql[tagEnd] == '$' {
+				delim := sql[i : tagEnd+1]
+				if closeIdx := strings.Index(sql[tagEnd+1:], delim); closeIdx >= 0 {
+					i = tagEnd + 1 + closeIdx + len(delim)
+					continue
+				}
+			}
+			i++
+		case 'r', 'R':
+			if i+keywordLen <= len(sql) &&
+				strings.EqualFold(sql[i:i+keywordLen], keyword) &&
+				adodbIsSQLWordBoundary(sql, i-1) &&
+				adodbIsSQLWordBoundary(sql, i+keywordLen) {
+				return true
+			}
+			i++
+		default:
+			i++
+		}
+	}
+
+	return false
 }
 
 var adodbODBCProcedureCall = regexp.MustCompile(`(?is)^\s*\{\s*call\s+(.+?)\s*\}\s*$`)
