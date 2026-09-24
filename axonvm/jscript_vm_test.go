@@ -26,6 +26,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -310,13 +311,7 @@ func TestJScriptFunctionTemplateMetadataSurvivesPooledReset(t *testing.T) {
 
 	vm = AcquireVMFromCachedProgram(program)
 	defer vm.Release()
-	foundSame := false
-	for _, metadata := range vm.jsFunctionTemplateMetadataCache {
-		if metadata == cached {
-			foundSame = true
-			break
-		}
-	}
+	foundSame := slices.Contains(vm.jsFunctionTemplateMetadataCache, cached)
 	if !foundSame {
 		t.Fatal("pooled reset discarded immutable function template metadata")
 	}
