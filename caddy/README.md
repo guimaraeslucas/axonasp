@@ -84,6 +84,27 @@ cd ./caddy
 .\run_caddy.ps1
 ```
 
+### Dependency Pinning
+
+This module is a Caddy plugin, so its transitive dependencies are curated by the Caddy core release. Do **not** run `go get -u ./...` or any upgrade-style command inside `./caddy`; it raises the selected versions for the whole xcaddy build and breaks the Caddy core build.
+
+Known constraint for Caddy `v2.11.4` (current latest):
+
+- `github.com/KimMachineGun/automemlimit` **must stay at `v0.7.5`**. Version `v1.0.0` removed `memlimit.SetGoMemLimitWithOpts`, which the Caddy `cmd` package calls, producing `undefined: memlimit.SetGoMemLimitWithOpts` during compilation.
+- Keep the `cel.dev/expr` indirect pin and avoid duplicate module paths such as `cel.dev/cel-go`.
+
+If an upgrade was applied by mistake, restore the tracked lock files and rebuild:
+
+```powershell
+# From the repository root
+git checkout HEAD -- caddy/go.mod caddy/go.sum
+cd caddy
+go mod tidy
+.\build_caddy.ps1
+```
+
+To upgrade the module, bump `github.com/caddyserver/caddy/v2` first and let xcaddy resolve the version set it supports, instead of upgrading the leaf dependencies.
+
 ## Installation & Running the Server
 
 Once you have your compiled executable (`caddy` or `caddy.exe`), you can start the server simply by pointing it to your `Caddyfile`.

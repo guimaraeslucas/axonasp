@@ -65,7 +65,7 @@ func TestJScriptObjectShapeTransitionsSurvivePooledReset(t *testing.T) {
 
 func TestJScriptObjectShapeCacheIsBounded(t *testing.T) {
 	vm := NewVM(nil, nil, 0)
-	for i := 0; i < jsObjectShapeCacheLimit+1; i++ {
+	for i := range jsObjectShapeCacheLimit + 1 {
 		id := vm.allocJSID()
 		vm.jsObjectItems[id] = make(map[string]Value)
 		vm.jsObjectShape[id] = 0
