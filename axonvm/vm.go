@@ -4878,20 +4878,7 @@ aspExecLoop:
 		case OpJSIn:
 			right := vm.pop()
 			left := vm.pop()
-			switch right.Type {
-			case VTJSObject:
-				key := vm.valueToString(left)
-				if obj, ok := vm.jsObjectItems[right.Num]; ok {
-					_, exists := obj[key]
-					vm.push(NewBool(exists))
-				} else {
-					vm.push(NewBool(false))
-				}
-			case VTJSProxy:
-				vm.push(NewBool(vm.jsProxyHas(right, vm.valueToString(left))))
-			default:
-				vm.push(NewBool(false))
-			}
+			vm.push(NewBool(vm.jsHasProperty(right, vm.jsPropertyKeyFromValue(left))))
 
 		case OpJSDelete:
 			keyVal := vm.pop()

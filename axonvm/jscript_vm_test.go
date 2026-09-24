@@ -2090,6 +2090,34 @@ func TestJScriptArrayPrototypeOverrideTakesPrecedence(t *testing.T) {
 	}
 }
 
+func TestJScriptInOperatorRecognizesArrayIndexes(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`var values = ["first", "second"];` +
+		`Response.Write((0 in values) + "|" + (1 in values) + "|" + (2 in values) + "|" + ("length" in values));` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "true|true|false|true" {
+		t.Fatalf("array property membership mismatch: %q", out)
+	}
+}
+
+func TestJScriptOverriddenArrayFilterCanTestIndexes(t *testing.T) {
+	source := `<script runat="server" language="JScript">` +
+		`Array.prototype.filter = function(callback) {` +
+		`  var result = [];` +
+		`  for (var i = 0; i < this.length; i++) {` +
+		`    if (i in this && callback(this[i], i, this)) result.push(this[i]);` +
+		`  }` +
+		`  return result;` +
+		`};` +
+		`Response.Write([1,2,3].filter(function(value) { return value > 1; }).join(","));` +
+		`</script>`
+	out := runASPSourceForTest(t, source)
+	if out != "2,3" {
+		t.Fatalf("overridden array filter skipped populated indexes: %q", out)
+	}
+}
+
 func TestJScriptES5ArrayMethodsSurface(t *testing.T) {
 	source := `<script runat="server" language="JScript">` +
 		`var a = [1,2,3,4];` +
