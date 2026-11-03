@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -3081,7 +3081,7 @@ aspExecLoop:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
 			b, a := vm.pop(), vm.pop()
-			if isNull(a) || isNull(b) || !(vm.asFloat(a) < vm.asFloat(b)) {
+			if isNull(a) || isNull(b) || vm.compareValues(a, b) >= 0 {
 				vm.ip = target
 			}
 
@@ -3090,7 +3090,7 @@ aspExecLoop:
 			vm.ip += 4
 			b, a := vm.pop(), vm.pop()
 			// Fuses OpGt + OpJumpIfFalse -> Jump if !(a > b) -> Jump if a <= b
-			if isNull(a) || isNull(b) || (vm.asFloat(a) <= vm.asFloat(b)) {
+			if isNull(a) || isNull(b) || vm.compareValues(a, b) <= 0 {
 				vm.ip = target
 			}
 

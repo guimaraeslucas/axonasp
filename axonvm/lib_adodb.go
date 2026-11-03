@@ -3689,7 +3689,11 @@ func (vm *VM) adodbParseConnectionString(connStr string) (driver string, dsn str
 		if port == "" {
 			port = "5432"
 		}
-		dsn = fmt.Sprintf("user=%s password=%s host=%s port=%s dbname=%s sslmode=disable", uid, pwd, server, port, database)
+		sslmode := vm.adodbFirstNonEmpty(params["sslmode"], params["ssl mode"])
+		if sslmode == "" {
+			sslmode = "disable"
+		}
+		dsn = fmt.Sprintf("user=%s password=%s host=%s port=%s dbname=%s sslmode=%s", uid, pwd, server, port, database, sslmode)
 	} else if strings.Contains(driverStr, "sql server") || strings.Contains(driverStr, "mssql") || strings.Contains(providerStr, "sqloledb") {
 		driver = "mssql"
 		dsn = fmt.Sprintf("server=%s;user id=%s;password=%s;database=%s", server, uid, pwd, database)
