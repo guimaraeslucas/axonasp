@@ -255,7 +255,7 @@ func vbsLBound(args []Value) (Value, error) {
 
 	dimension := 1
 	if len(args) >= 2 {
-		dimension = int(args[1].Num)
+		dimension = vbsIntArg(args[1])
 	}
 
 	lower, _, ok := arrayBounds(args[0], dimension)
@@ -274,7 +274,7 @@ func vbsUBound(args []Value) (Value, error) {
 
 	dimension := 1
 	if len(args) >= 2 {
-		dimension = int(args[1].Num)
+		dimension = vbsIntArg(args[1])
 	}
 
 	_, upper, ok := arrayBounds(args[0], dimension)
@@ -295,7 +295,7 @@ func vbsLBoundVM(vm *VM, args []Value) (Value, error) {
 
 	dimension := 1
 	if len(args) >= 2 {
-		dimension = int(args[1].Num)
+		dimension = vbsIntArg(args[1])
 	}
 	if _, _, ok := arrayBounds(args[0], dimension); !ok {
 		vm.raise(vbscript.SubscriptOutOfRange, "Subscript out of range")
@@ -314,7 +314,7 @@ func vbsUBoundVM(vm *VM, args []Value) (Value, error) {
 
 	dimension := 1
 	if len(args) >= 2 {
-		dimension = int(args[1].Num)
+		dimension = vbsIntArg(args[1])
 	}
 	if _, _, ok := arrayBounds(args[0], dimension); !ok {
 		vm.raise(vbscript.SubscriptOutOfRange, "Subscript out of range")
@@ -365,7 +365,7 @@ func vbsMid(args []Value) (Value, error) {
 		return Value{Type: VTEmpty}, nil
 	}
 	runes := []rune(args[0].String())
-	start := int(args[1].Num) - 1
+	start := vbsIntArg(args[1]) - 1
 	if start < 0 {
 		start = 0
 	}
@@ -374,7 +374,7 @@ func vbsMid(args []Value) (Value, error) {
 	}
 
 	if len(args) >= 3 {
-		length := int(args[2].Num)
+		length := vbsIntArg(args[2])
 		if start+length > len(runes) {
 			length = len(runes) - start
 		}
@@ -388,7 +388,7 @@ func vbsLeft(args []Value) (Value, error) {
 		return Value{Type: VTEmpty}, nil
 	}
 	runes := []rune(args[0].String())
-	length := int(args[1].Num)
+	length := vbsIntArg(args[1])
 	if length <= 0 {
 		return NewString(""), nil
 	}
@@ -403,7 +403,7 @@ func vbsRight(args []Value) (Value, error) {
 		return Value{Type: VTEmpty}, nil
 	}
 	runes := []rune(args[0].String())
-	length := int(args[1].Num)
+	length := vbsIntArg(args[1])
 	if length <= 0 {
 		return NewString(""), nil
 	}
@@ -453,19 +453,19 @@ func vbsInStrVM(vm *VM, args []Value) (Value, error) {
 		s2 = args[1].String()
 	case 3:
 		if isNumericType(args[0]) {
-			start = int(args[0].Num)
+			start = vbsIntArg(args[0])
 			s1 = args[1].String()
 			s2 = args[2].String()
 		} else {
 			s1 = args[0].String()
 			s2 = args[1].String()
-			compare = int(args[2].Num)
+			compare = vbsIntArg(args[2])
 		}
 	default:
-		start = int(args[0].Num)
+		start = vbsIntArg(args[0])
 		s1 = args[1].String()
 		s2 = args[2].String()
-		compare = int(args[3].Num)
+		compare = vbsIntArg(args[3])
 	}
 
 	if start <= 0 {
@@ -515,7 +515,7 @@ func vbsReplaceVM(vm *VM, args []Value) (Value, error) {
 
 	start := 1
 	if len(args) >= 4 {
-		start = int(args[3].Num)
+		start = vbsIntArg(args[3])
 	}
 	if start <= 0 {
 		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
@@ -523,12 +523,12 @@ func vbsReplaceVM(vm *VM, args []Value) (Value, error) {
 
 	count := -1
 	if len(args) >= 5 {
-		count = int(args[4].Num)
+		count = vbsIntArg(args[4])
 	}
 
 	compare := -1
 	if len(args) >= 6 {
-		compare = int(args[5].Num)
+		compare = vbsIntArg(args[5])
 	}
 
 	runes := []rune(expression)
@@ -648,7 +648,7 @@ func vbsMsgBox(args []Value) (Value, error) {
 	prompt := args[0].String()
 	buttons := 0
 	if len(args) >= 2 {
-		buttons = int(args[1].Num)
+		buttons = vbsIntArg(args[1])
 	}
 
 	window := js.Global()
@@ -1556,7 +1556,7 @@ func vbsAxonEnumItem(args []Value) (Value, error) {
 		return NewEmpty(), nil
 	}
 
-	idx := int(args[1].Num)
+	idx := vbsIntArg(args[1])
 	if idx < 0 || idx >= len(args[0].Arr.Values) {
 		return NewEmpty(), nil
 	}
