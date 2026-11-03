@@ -53,7 +53,7 @@ func (d *scriptingDictionary) keyIndex(key string) int {
 	return -1
 }
 
-func (d *scriptingDictionary) itemGet(key Value) Value {
+func (d *scriptingDictionary) itemGet(vm *VM, key Value) Value {
 	if d == nil {
 		return Value{Type: VTEmpty}
 	}
@@ -64,7 +64,7 @@ func (d *scriptingDictionary) itemGet(key Value) Value {
 	return Value{Type: VTEmpty}
 }
 
-func (d *scriptingDictionary) itemSet(key Value, val Value) {
+func (d *scriptingDictionary) itemSet(vm *VM, key Value, val Value) {
 	if d == nil {
 		return
 	}
@@ -73,10 +73,10 @@ func (d *scriptingDictionary) itemSet(key Value, val Value) {
 		d.values[pos] = val
 		return
 	}
-	d.addEntry(key, val)
+	d.addEntry(vm, key, val)
 }
 
-func (d *scriptingDictionary) addEntry(key Value, val Value) {
+func (d *scriptingDictionary) addEntry(vm *VM, key Value, val Value) {
 	if d == nil {
 		return
 	}

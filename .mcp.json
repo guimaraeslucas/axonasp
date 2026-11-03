@@ -1,0 +1,12 @@
+{
+	"mcpServers": {
+		"AxonASP MCP": {
+			"type": "local",
+			"command": ".\\axonasp-mcp.exe",
+			"args": [],
+			"tools": [
+				"*"
+			]
+		}
+	}
+}

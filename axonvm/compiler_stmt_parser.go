@@ -227,12 +227,17 @@ func (c *Compiler) parseStatement() {
 			name := c.expectIdentifier()
 
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
-				op, idx := c.resolveVar(name)
-				c.emit(op, idx)
+				if strings.EqualFold(name, "Me") && c.currentClassName != "" {
+					c.emit(OpMe)
+				} else {
+					op, idx := c.resolveVar(name)
+					c.emit(op, idx)
+				}
 				argCount := c.parseParenArgumentList()
 				if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
 					c.move()
 					c.parseExpression(PrecNone)
+					c.undoTrailingCoerce()
 					midx := c.addConstant(NewString(""))
 					c.emit(OpArraySet, midx, argCount)
 					return
@@ -246,8 +251,12 @@ func (c *Compiler) parseStatement() {
 			}
 
 			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctDot {
-				op, idx := c.resolveVar(name)
-				c.emit(op, idx)
+				if strings.EqualFold(name, "Me") && c.currentClassName != "" {
+					c.emit(OpMe)
+				} else {
+					op, idx := c.resolveVar(name)
+					c.emit(op, idx)
+				}
 				c.parseSetMemberAssignmentChain()
 				return
 			}
@@ -1133,6 +1142,17 @@ func (c *Compiler) parseSetMemberAssignmentChain() {
 			continue
 		}
 
+		if hasCall {
+			if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
+				c.move()
+				c.parseExpression(PrecNone)
+				c.undoTrailingCoerce()
+				c.emit(OpArraySet, midx, argCount)
+				return
+			}
+			panic(c.vbCompileError(vbscript.SyntaxError, "Expected member name after indexed call target in Set assignment"))
+		}
+
 		if p, ok := c.next.(*vbscript.PunctuationToken); !ok || p.Type != vbscript.PunctEqual {
 			panic(c.vbCompileError(vbscript.ExpectedEqual, "Expected '=' in Set member assignment"))
 		}
@@ -1141,11 +1161,14 @@ func (c *Compiler) parseSetMemberAssignmentChain() {
 		c.parseExpression(PrecNone)
 		// Set member assignment must preserve raw object references.
 		c.undoTrailingCoerce()
-		if hasCall {
+    
+		//Dead code since #176 - Kept here just in case
+    //if hasCall {
 			// Obj.Item(k) = value: indexed property write, same lowering as the Let path.
-			c.emit(OpArraySet, midx, argCount)
-			return
-		}
+			//c.emit(OpArraySet, midx, argCount)
+			//return
+		//}
+    
 		c.emit(OpMemberSetSet, midx)
 		return
 	}

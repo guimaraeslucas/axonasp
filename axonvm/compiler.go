@@ -1080,37 +1080,13 @@ func preprocessASPIncludesWithDepsWithOptions(source string, sourceName string, 
 			upperComment := strings.ToUpper(comment)
 
 			if strings.Contains(upperComment, "#INCLUDE") {
-				// Parse directive
-				kindIdx := -1
-				if strings.Contains(upperComment, "VIRTUAL") {
-					kind = "virtual"
-					kindIdx = strings.Index(upperComment, "VIRTUAL")
-				} else if strings.Contains(upperComment, "FILE") {
+				if path, virtual, ok := vbscript.ParseASPIncludeComment(comment); ok {
 					kind = "file"
-					kindIdx = strings.Index(upperComment, "FILE")
-				}
-
-				if kindIdx != -1 {
-					valPart := comment[kindIdx+len(kind):]
-					eqIdx := strings.Index(valPart, "=")
-					if eqIdx != -1 {
-						valPart = valPart[eqIdx+1:]
-						valPart = strings.TrimSpace(valPart)
-						if len(valPart) > 0 {
-							quote := valPart[0]
-							if quote == '"' || quote == '\'' {
-								valPart = valPart[1:]
-								before, _, ok := strings.Cut(valPart, string(quote))
-								if ok {
-									pathVal = before
-									startIdx = absStart
-									endIdx = absEnd
-									directive = comment
-									break
-								}
-							}
-						}
+					if virtual {
+						kind = "virtual"
 					}
+					pathVal, startIdx, endIdx, directive = path, absStart, absEnd, comment
+					break
 				}
 				searchCursor = absStart + 4
 				continue

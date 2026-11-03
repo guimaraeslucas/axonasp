@@ -238,6 +238,18 @@ func vbsArray(args []Value) (Value, error) {
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
 }
 
+// vbsArrayVM creates a VBScript Variant array and increments object reference counts for VTObject elements.
+func vbsArrayVM(vm *VM, args []Value) (Value, error) {
+	values := make([]Value, len(args))
+	copy(values, args)
+	if vm != nil {
+		for _, v := range values {
+			vm.incrementObjectRefCount(v)
+		}
+	}
+	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
+}
+
 // vbsIsArray checks whether a value is an initialized VBScript array.
 func vbsIsArray(args []Value) (Value, error) {
 	if len(args) < 1 {
@@ -1654,7 +1666,7 @@ func init() {
 	RegisterBuiltin("IsObject", bindBuiltin(vbsIsObject))
 	RegisterBuiltin("Erl", vbsErlVM)
 	RegisterBuiltin("TypeName", vbsTypeNameVM)
-	RegisterBuiltin("Array", bindBuiltin(vbsArray))
+	RegisterBuiltin("Array", vbsArrayVM)
 	RegisterBuiltin("LBound", vbsLBoundVM)
 	RegisterBuiltin("UBound", vbsUBoundVM)
 

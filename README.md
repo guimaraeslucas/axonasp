@@ -180,6 +180,8 @@ Thanks goes to these wonderful people:
     </tr>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://github.com/schotime"><img src="https://avatars.githubusercontent.com/u/202923?v=4?s=100" width="100px;" alt="Adam Schroder"/><br /><sub><b>Adam Schroder</b></sub></a><br /><a href="https://github.com/guimaraeslucas/axonasp/issues?q=author%3Aschotime" title="Bug reports">🐛</a> <a href="https://github.com/guimaraeslucas/axonasp/commits?author=schotime" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/yeisman"><img src="https://avatars.githubusercontent.com/u/141411100?v=4?s=100" width="100px;" alt="Yuri Eisman"/><br /><sub><b>Yuri Eisman</b></sub></a><br /><a href="https://github.com/guimaraeslucas/axonasp/issues?q=author%3Ayeisman" title="Bug reports">🐛</a> <a href="https://github.com/guimaraeslucas/axonasp/commits?author=yeisman" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/alanupstone"><img src="https://avatars.githubusercontent.com/u/11076656?v=4?s=100" width="100px;" alt="Alan Upstone"/><br /><sub><b>Alan Upstone</b></sub></a><br /><a href="https://github.com/guimaraeslucas/axonasp/issues?q=author%3Aalanupstone" title="Bug reports">🐛</a></td>
     </tr>
   </tbody>
 </table>

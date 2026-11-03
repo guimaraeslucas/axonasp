@@ -62,6 +62,7 @@ func (vm *VM) dispatchCollectionMethod(objID int64, member string, args []Value)
 			return Value{Type: VTEmpty}, true
 		}
 		c.items = append(c.items, args[0])
+		vm.incrementObjectRefCount(args[0])
 		return Value{Type: VTEmpty}, true
 
 	case strings.EqualFold(member, "Remove"):
@@ -74,7 +75,9 @@ func (vm *VM) dispatchCollectionMethod(objID int64, member string, args []Value)
 			vm.raise(vbscript.SubscriptOutOfRange, "Subscript out of range")
 			return Value{Type: VTEmpty}, true
 		}
+		removed := c.items[idx-1]
 		c.items = append(c.items[:idx-1], c.items[idx:]...)
+		vm.decrementObjectRefCount(removed)
 		return Value{Type: VTEmpty}, true
 
 	case strings.EqualFold(member, "Count"):

@@ -499,15 +499,15 @@ func (g *G3DB) stats() Value {
 	s := db.Stats()
 	dictVal := g.vm.newDictionaryObject()
 	d := g.vm.dictionaryItems[dictVal.Num]
-	d.itemSet(NewString("MaxOpenConnections"), NewInteger(int64(s.MaxOpenConnections)))
-	d.itemSet(NewString("OpenConnections"), NewInteger(int64(s.OpenConnections)))
-	d.itemSet(NewString("InUse"), NewInteger(int64(s.InUse)))
-	d.itemSet(NewString("Idle"), NewInteger(int64(s.Idle)))
-	d.itemSet(NewString("WaitCount"), NewInteger(s.WaitCount))
-	d.itemSet(NewString("WaitDurationSeconds"), NewDouble(s.WaitDuration.Seconds()))
-	d.itemSet(NewString("MaxIdleClosed"), NewInteger(s.MaxIdleClosed))
-	d.itemSet(NewString("MaxIdleTimeClosed"), NewInteger(s.MaxIdleTimeClosed))
-	d.itemSet(NewString("MaxLifetimeClosed"), NewInteger(s.MaxLifetimeClosed))
+	d.itemSet(g.vm, NewString("MaxOpenConnections"), NewInteger(int64(s.MaxOpenConnections)))
+	d.itemSet(g.vm, NewString("OpenConnections"), NewInteger(int64(s.OpenConnections)))
+	d.itemSet(g.vm, NewString("InUse"), NewInteger(int64(s.InUse)))
+	d.itemSet(g.vm, NewString("Idle"), NewInteger(int64(s.Idle)))
+	d.itemSet(g.vm, NewString("WaitCount"), NewInteger(s.WaitCount))
+	d.itemSet(g.vm, NewString("WaitDurationSeconds"), NewDouble(s.WaitDuration.Seconds()))
+	d.itemSet(g.vm, NewString("MaxIdleClosed"), NewInteger(s.MaxIdleClosed))
+	d.itemSet(g.vm, NewString("MaxIdleTimeClosed"), NewInteger(s.MaxIdleTimeClosed))
+	d.itemSet(g.vm, NewString("MaxLifetimeClosed"), NewInteger(s.MaxLifetimeClosed))
 	return dictVal
 }
 
@@ -935,7 +935,7 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 		dictVal := r.vm.newDictionaryObject()
 		d := r.vm.dictionaryItems[dictVal.Num]
 		for i, arg := range args {
-			d.itemSet(NewString(arg.String()), g3dbRawToValue(dest[i]))
+			d.itemSet(r.vm, NewString(arg.String()), g3dbRawToValue(dest[i]))
 		}
 		return dictVal
 	}

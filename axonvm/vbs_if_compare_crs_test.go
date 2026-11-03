@@ -36,6 +36,46 @@ If s < 0 Then Response.Write "1" Else Response.Write "0"
 If 2.5 > 2 Then Response.Write "1" Else Response.Write "0"
 If 2 < 2.5 Then Response.Write "1" Else Response.Write "0"
 If "b" > "a" Then Response.Write "1" Else Response.Write "0"
+If s > 0 Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If g > 0 Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If s > y Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If 0 < s Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If s < 0 Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If 2.5 > 2 Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If 2 < 2.5 Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
+If "b" > "a" Then
+	Response.Write "1"
+Else
+	Response.Write "0"
+End If
 Response.Write "|" & (s > 0) & (s < 0)
 %>`
 	want := "11110111|TrueFalse"

@@ -983,13 +983,17 @@ func (c *ScriptCache) LoadOrCompileWithModeAndOptions(filePath string, mode Exec
 			return nil, compErr
 		}
 
-		program := buildCachedProgramFromCompiler(compiler)
+		program := canonicalizeCachedProgramPayload(buildCachedProgramFromCompiler(compiler))
 
 		if c.mode.HasDiskTier() {
 			if storeErr := c.storeDiskProgram(normalized, sourceInfo.ModTime(), program); storeErr != nil {
 				log.Printf("Warning: failed to persist bytecode cache to disk for %s: %v", normalized, storeErr)
 			}
 		}
+		// Freeze the payload before publishing it to the shared cache and handing it
+		// back to the caller. Both observe the same backing arrays, so every slice
+		// must be append-safe (cap == len) to stay read-only.
+		program = immutableCachedProgramViewNoClone(program)
 		if c.mode.HasMemoryTier() {
 			c.putByCacheKey(cacheKey, program, program.IncludeDependencies, estimateProgramSizeBytes(program))
 		}
@@ -1035,7 +1039,8 @@ func (c *ScriptCache) compileOnly(filePath string, options ScriptCompileOptions)
 		return CachedProgram{}, err
 	}
 
-	return buildCachedProgramFromCompiler(compiler), nil
+	program := canonicalizeCachedProgramPayload(buildCachedProgramFromCompiler(compiler))
+	return immutableCachedProgramViewNoClone(program), nil
 }
 
 // loadDiskProgram reads one cached payload from .aspb when source and cache are fresh.
@@ -1084,7 +1089,7 @@ func (c *ScriptCache) loadDiskProgram(filePath string, sourceInfo os.FileInfo) (
 		payload.Program.SourceName,
 		payload.Program.Constants,
 	)
-	return immutableCachedProgramViewNoClone(payload.Program), true
+	return immutableCachedProgramViewNoClone(canonicalizeCachedProgramPayload(payload.Program)), true
 }
 
 // storeDiskProgram persists one compiled program into its .aspb cache file.
@@ -1942,6 +1947,12 @@ func immutableCachedProgramView(program CachedProgram) CachedProgram {
 
 // immutableCachedProgramViewNoClone restricts slice capacity without copying.
 // It is used only for cache-owned payloads that callers treat as read-only.
+//
+// This function must stay free of side effects: every request calls it while
+// holding only a shared read of the cache entry, so writing elements of the
+// shared slices or entries of the shared maps would be a data race. Payload
+// slices are canonicalized once, before publication, by
+// canonicalizeCachedProgramPayload.
 func immutableCachedProgramViewNoClone(program CachedProgram) CachedProgram {
 	program.Bytecode = immutableBytecodeView(program.Bytecode)
 	program.Constants = immutableValueView(program.Constants)
@@ -1951,21 +1962,39 @@ func immutableCachedProgramViewNoClone(program CachedProgram) CachedProgram {
 	program.UserDeclaredGlobals = immutableStringView(program.UserDeclaredGlobals)
 	program.UserConstGlobals = immutableStringView(program.UserConstGlobals)
 	program.GlobalZeroArgFuncs = immutableStringView(program.GlobalZeroArgFuncs)
+	program.GlobalZeroArgSubs = immutableStringView(program.GlobalZeroArgSubs)
 	program.GlobalTypeNames = immutableStringView(program.GlobalTypeNames)
+	program.GlobalClassNames = immutableStringView(program.GlobalClassNames)
 	program.GlobalNames = immutableStringView(program.GlobalNames)
 	program.DeclaredGlobalNames = immutableStringView(program.DeclaredGlobalNames)
 	program.ConstGlobalNames = immutableStringView(program.ConstGlobalNames)
 	program.IncludeDependencies = immutableStringView(program.IncludeDependencies)
 	program.GlobalNamesLower = immutableStringView(program.GlobalNamesLower)
+	program.SourceMapEntries = immutableSourceMapView(program.SourceMapEntries)
 	program.RecordDecls = immutableRecordDeclView(program.RecordDecls)
 
+	return program
+}
+
+// canonicalizeCachedProgramPayload makes one freshly compiled payload safe to
+// publish as a shared, read-only cache entry. Nested slices and per-entry map
+// values receive cap == len so no consumer can append into memory that other
+// requests observe through the cache. The caller must own the payload
+// exclusively, because this function rewrites slice headers in place.
+func canonicalizeCachedProgramPayload(program CachedProgram) CachedProgram {
 	for i := range program.Constants {
-		program.Constants[i].Names = immutableStringView(program.Constants[i].Names)
+		if cap(program.Constants[i].Names) != len(program.Constants[i].Names) {
+			program.Constants[i].Names = immutableStringView(program.Constants[i].Names)
+		}
 	}
 	for key, values := range program.FuncParamDefaults {
-		program.FuncParamDefaults[key] = immutableIntView(values)
+		if cap(values) != len(values) {
+			program.FuncParamDefaults[key] = immutableIntView(values)
+		}
 	}
-
+	for i := range program.RecordDecls {
+		program.RecordDecls[i].Members = immutableRecordMemberView(program.RecordDecls[i].Members)
+	}
 	return program
 }
 
@@ -1997,15 +2026,21 @@ func immutableRecordDeclView(values []CompiledRecordDecl) []CompiledRecordDecl {
 	if len(values) == 0 {
 		return nil
 	}
-	// Clone to avoid mutating shared struct fields under concurrent access.
-	cloned := make([]CompiledRecordDecl, len(values))
-	copy(cloned, values)
-	for i := range cloned {
-		if len(cloned[i].Members) > 0 {
-			cloned[i].Members = cloned[i].Members[:len(cloned[i].Members):len(cloned[i].Members)]
-		}
+	return values[:len(values):len(values)]
+}
+
+func immutableRecordMemberView(values []CompiledRecordMemberDecl) []CompiledRecordMemberDecl {
+	if len(values) == 0 {
+		return nil
 	}
-	return cloned[:len(cloned):len(cloned)]
+	return values[:len(values):len(values)]
+}
+
+func immutableSourceMapView(values []SourceMapEntry) []SourceMapEntry {
+	if len(values) == 0 {
+		return nil
+	}
+	return values[:len(values):len(values)]
 }
 
 func immutableStringView(values []string) []string {

@@ -504,6 +504,11 @@ type VM struct {
 	terminateCursor     int
 	terminatePrepared   bool
 	suppressTerminate   bool
+	// pendingTerminateObjIDs holds instances whose reference count reached zero while
+	// the VM was not at an instruction boundary (inside a native call, a ByRef write-back,
+	// a frame restore or an error unwind). Class_Terminate is started only from
+	// flushPendingTerminates, because beginUserSubCall rewrites vm.ip, vm.fp and vm.sp.
+	pendingTerminateObjIDs []int64
 
 	stack []Value
 	sp    int
@@ -638,9 +643,11 @@ type VM struct {
 	// perf regression tests in clone-sensitive JScript paths.
 	cloneForExecuteLocalCount uint64
 
-	nextCallMemberICID uint32
-	callMemberIC       map[uint32]callMemberICEntry
-	icState            []InlineCacheSlot // VM-local inline cache state indexed by ICNodeID
+	// callMemberIC caches resolved member calls per VM, keyed by the bytecode
+	// offset of the OpCallMember operand slot. It must stay VM-local: writing
+	// this state into the shared compiled bytecode leaks it across requests.
+	callMemberIC map[int]callMemberICEntry
+	icState      []InlineCacheSlot // VM-local inline cache state indexed by ICNodeID
 }
 
 func (vm *VM) mapRuntimeLocation(line int, column int) (string, int, int) {
@@ -854,8 +861,7 @@ func NewVM(bytecode []byte, constants []Value, globalCount int) *VM {
 		consoleTimerItems:  make(map[string]time.Time),
 		terminateCursor:    -1,
 		jsDirectCallHaltIP: -1,
-		nextCallMemberICID: 1,
-		callMemberIC:       make(map[uint32]callMemberICEntry, 32),
+		callMemberIC:       make(map[int]callMemberICEntry, 32),
 	}
 
 	// 1. Inject ASP Native Objects (Indices 0-7)
@@ -1606,6 +1612,7 @@ func (vm *VM) cloneForExecuteGlobal(startIP int) *VM {
 	child.terminateCursor = -1
 	child.terminatePrepared = false
 	child.suppressTerminate = true
+	child.pendingTerminateObjIDs = nil
 	child.onResumeNext = vm.onResumeNext
 	child.executeGlobalResumeGuard = vm.onResumeNext
 	child.stmtSP = -1
@@ -1650,6 +1657,7 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	child.terminateCursor = -1
 	child.terminatePrepared = false
 	child.suppressTerminate = true
+	child.pendingTerminateObjIDs = nil
 	child.onResumeNext = vm.onResumeNext
 	child.skipToNextStmt = false
 	child.jsEnvItems = make(map[int64]*jsEnvFrame, len(vm.jsEnvItems))
@@ -1743,6 +1751,7 @@ func (vm *VM) cloneForExecuteLocalSharedRuntime(startIP int) *VM {
 	child.terminateCursor = -1
 	child.terminatePrepared = false
 	child.suppressTerminate = true
+	child.pendingTerminateObjIDs = nil
 	child.onResumeNext = vm.onResumeNext
 	child.skipToNextStmt = false
 	child.jsTryStack = make([]int, 0, 8)
@@ -1780,6 +1789,12 @@ func (vm *VM) syncExecuteGlobalState(child *VM) {
 	vm.runtimeClasses = child.runtimeClasses
 	vm.runtimeClassItems = child.runtimeClassItems
 	vm.classInstanceOrder = child.classInstanceOrder
+	// Forward Class_Terminate invocations that the child queued after its execution loop
+	// had already stopped, so the parent drains them at the next instruction boundary
+	// instead of leaving the instance terminated without its destructor body running.
+	for _, pendingObjID := range child.pendingTerminateObjIDs {
+		vm.enqueuePendingTerminate(pendingObjID)
+	}
 	vm.responseCookieItems = child.responseCookieItems
 	vm.requestCollectionValueItems = child.requestCollectionValueItems
 	vm.aspErrorItems = child.aspErrorItems
@@ -2078,6 +2093,13 @@ func (vm *VM) Run() (err error) {
 
 aspExecLoop:
 	for vm.ip < len(vm.bytecode) {
+		// Start any Class_Terminate queued by a reference-count drop during the previous
+		// instruction (native call, ByRef write-back, frame restore or error unwind).
+		// An instruction boundary is the only point where a new call frame can be pushed
+		// without corrupting vm.ip, vm.fp and vm.sp.
+		if len(vm.pendingTerminateObjIDs) > 0 {
+			vm.flushPendingTerminates()
+		}
 		operationCount++
 		if operationCount&63 == 0 {
 			vm.jsPumpNodeAsyncTasks(32)
@@ -2098,6 +2120,13 @@ aspExecLoop:
 
 		switch op {
 		case OpHalt:
+			// Program termination must leave vm.ip at the end of the active bytecode even
+			// when dynamic Eval/Execute fragments were appended after the main program's
+			// OpHalt. End-of-request cleanup (prepareClassTerminateCall and the pending
+			// terminate drain) captures vm.ip as the returnIP of the termination frames, so
+			// a stale ip < len(vm.bytecode) would resume execution inside an orphaned
+			// dynamic fragment with an empty call stack instead of exiting the loop.
+			vm.ip = len(vm.bytecode)
 			vm.jsDrainNodeAsyncOnExit()
 			break aspExecLoop
 
@@ -2220,13 +2249,12 @@ aspExecLoop:
 				}
 			}
 
-			// Decrement reference count of previous value in this member slot.
+			// Assign new value and increment its reference count before decrementing the previous value,
+			// preventing self-assignment premature termination and activeClassObjectID corruption if Class_Terminate runs.
 			prevVal := vm.getActiveClassMemberValue(memberName)
-			vm.decrementObjectRefCount(prevVal)
-			// Assign new value.
 			vm.setActiveClassMemberValue(memberName, newVal)
-			// Increment reference count of new value.
 			vm.incrementObjectRefCount(newVal)
+			vm.decrementObjectRefCount(prevVal)
 
 		case OpEraseClassMember:
 			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
@@ -2253,15 +2281,14 @@ aspExecLoop:
 			} else {
 				newVal.Interface = ""
 			}
-			// Decrement reference count only for object slots to avoid hot-path call overhead.
-			if vm.Globals[idx].Type == VTObject {
-				vm.decrementObjectRefCount(vm.Globals[idx])
-			}
-			// Assign new value.
+			prevVal := vm.Globals[idx]
 			vm.Globals[idx] = newVal
-			// Increment reference count only for object values to avoid hot-path call overhead.
+			// Increment/decrement reference count only for object values to avoid hot-path call overhead.
 			if newVal.Type == VTObject {
 				vm.incrementObjectRefCount(newVal)
+			}
+			if prevVal.Type == VTObject {
+				vm.decrementObjectRefCount(prevVal)
 			}
 
 		// OpLetLocal: plain VBScript "name = value" for a local variable.
@@ -2327,13 +2354,11 @@ aspExecLoop:
 					}
 				}
 			}
-			// Decrement reference count of previous value in this member slot.
+			// Assign new value and increment its reference count before decrementing the previous value.
 			prevVal := vm.getActiveClassMemberValue(memberName)
-			vm.decrementObjectRefCount(prevVal)
-			// Assign new value.
 			vm.setActiveClassMemberValue(memberName, val)
-			// Increment reference count of new value.
 			vm.incrementObjectRefCount(val)
+			vm.decrementObjectRefCount(prevVal)
 
 		// OpCoerceToValue: pops TOS; if it is a VTObject with a zero-arg default Property Get,
 		// starts the getter call so its return value is pushed by OpRet. For any other value
@@ -2415,15 +2440,14 @@ aspExecLoop:
 			} else {
 				newVal.Interface = ""
 			}
-			// Decrement reference count only for object slots to avoid hot-path call overhead.
-			if vm.stack[slot].Type == VTObject {
-				vm.decrementObjectRefCount(vm.stack[slot])
-			}
-			// Assign new value.
+			prevVal := vm.stack[slot]
 			vm.stack[slot] = newVal
-			// Increment reference count only for object values to avoid hot-path call overhead.
+			// Increment/decrement reference count only for object values to avoid hot-path call overhead.
 			if newVal.Type == VTObject {
 				vm.incrementObjectRefCount(newVal)
+			}
+			if prevVal.Type == VTObject {
+				vm.decrementObjectRefCount(prevVal)
 			}
 
 		case OpSet:
@@ -3280,8 +3304,11 @@ aspExecLoop:
 			vm.ip += 2
 			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
-			cacheOffset := vm.ip
-			cacheID := binary.BigEndian.Uint32(vm.bytecode[cacheOffset:])
+			// The four operand bytes are a compiler-reserved call-site slot. The
+			// resolved entry lives in the VM-local callMemberIC map: program
+			// bytecode is shared read-only by every request, so it must never be
+			// patched in place.
+			cacheSite := vm.ip
 			vm.ip += 4
 
 			memberArgs := vm.ensureArgBuffer(argCount)
@@ -3300,40 +3327,39 @@ aspExecLoop:
 			if target.Type == VTArgRef {
 				target = vm.unwrapArgRefValue(target)
 			}
-			if cacheID != 0 {
-				if cacheEntry, exists := vm.callMemberIC[cacheID]; exists && cacheEntry.expectedType == target.Type && cacheEntry.expectedNum == target.Num {
-					switch cacheEntry.kind {
-					case callMemberICClassMethod:
-						if cacheEntry.target.UserSubParamCount() != argCount {
-							vm.raise(vbscript.WrongNumberOfParameters, "Wrong number of parameters or invalid property assignment")
-						}
-						var memberByRefs []byRefWriteback
-						if hasArgRefMember {
-							memberByRefs = vm.collectByRefsAndUnwrap(memberArgs, cacheEntry.target.UserSubByRefMask())
-						}
-						if vm.beginUserSubCall(cacheEntry.target, memberArgs, false, target.Num, memberByRefs) {
-							continue
-						}
-					case callMemberICClassPropertyGet:
-						var propByRefs []byRefWriteback
-						if hasArgRefMember {
-							propByRefs = vm.collectByRefsAndUnwrap(memberArgs, cacheEntry.target.UserSubByRefMask())
-						}
-						if vm.beginUserSubCall(cacheEntry.target, memberArgs, false, target.Num, propByRefs) {
-							continue
-						}
-					case callMemberICNativeMember:
-						var nativeByRefs []byRefWriteback
-						if hasArgRefMember {
-							nativeByRefs = vm.collectByRefsAndUnwrap(memberArgs, vm.nativeByRefMask(target.Num, cacheEntry.nativeMember))
-						}
-						result := vm.dispatchNativeCall(target.Num, cacheEntry.nativeMember, memberArgs)
-						if len(nativeByRefs) > 0 {
-							vm.applyByRefWritebacksFromArgs(nativeByRefs, memberArgs)
-						}
-						vm.push(result)
+			cacheEntry, cacheHit := vm.callMemberIC[cacheSite]
+			if cacheHit && cacheEntry.expectedType == target.Type && cacheEntry.expectedNum == target.Num {
+				switch cacheEntry.kind {
+				case callMemberICClassMethod:
+					if cacheEntry.target.UserSubParamCount() != argCount {
+						vm.raise(vbscript.WrongNumberOfParameters, "Wrong number of parameters or invalid property assignment")
+					}
+					var memberByRefs []byRefWriteback
+					if hasArgRefMember {
+						memberByRefs = vm.collectByRefsAndUnwrap(memberArgs, cacheEntry.target.UserSubByRefMask())
+					}
+					if vm.beginUserSubCall(cacheEntry.target, memberArgs, false, target.Num, memberByRefs) {
 						continue
 					}
+				case callMemberICClassPropertyGet:
+					var propByRefs []byRefWriteback
+					if hasArgRefMember {
+						propByRefs = vm.collectByRefsAndUnwrap(memberArgs, cacheEntry.target.UserSubByRefMask())
+					}
+					if vm.beginUserSubCall(cacheEntry.target, memberArgs, false, target.Num, propByRefs) {
+						continue
+					}
+				case callMemberICNativeMember:
+					var nativeByRefs []byRefWriteback
+					if hasArgRefMember {
+						nativeByRefs = vm.collectByRefsAndUnwrap(memberArgs, vm.nativeByRefMask(target.Num, cacheEntry.nativeMember))
+					}
+					result := vm.dispatchNativeCall(target.Num, cacheEntry.nativeMember, memberArgs)
+					if len(nativeByRefs) > 0 {
+						vm.applyByRefWritebacksFromArgs(nativeByRefs, memberArgs)
+					}
+					vm.push(result)
+					continue
 				}
 			}
 			switch target.Type {
@@ -3358,14 +3384,13 @@ aspExecLoop:
 				}
 				methodTarget, ok := vm.resolveRuntimeClassMethod(target, methodName, requirePublic)
 				if ok {
-					if cacheID == 0 {
-						cacheID = vm.allocateCallMemberIC(callMemberICEntry{
+					if !cacheHit {
+						vm.setCallMemberIC(cacheSite, callMemberICEntry{
 							kind:         callMemberICClassMethod,
 							expectedType: target.Type,
 							expectedNum:  target.Num,
 							target:       methodTarget,
 						})
-						binary.BigEndian.PutUint32(vm.bytecode[cacheOffset:], cacheID)
 					}
 					if methodTarget.UserSubParamCount() != argCount {
 						vm.raise(vbscript.WrongNumberOfParameters, "Wrong number of parameters or invalid property assignment")
@@ -3384,14 +3409,13 @@ aspExecLoop:
 				}
 				propertyTarget, ok := vm.resolveRuntimeClassPropertyGet(target, propertyName, argCount, requirePublic)
 				if ok {
-					if cacheID == 0 {
-						cacheID = vm.allocateCallMemberIC(callMemberICEntry{
+					if !cacheHit {
+						vm.setCallMemberIC(cacheSite, callMemberICEntry{
 							kind:         callMemberICClassPropertyGet,
 							expectedType: target.Type,
 							expectedNum:  target.Num,
 							target:       propertyTarget,
 						})
-						binary.BigEndian.PutUint32(vm.bytecode[cacheOffset:], cacheID)
 					}
 					var propByRefs []byRefWriteback
 					if hasArgRefMember {
@@ -3432,14 +3456,13 @@ aspExecLoop:
 				vm.push(Value{Type: VTEmpty})
 			case VTNativeObject:
 				memberName := vm.constants[memberIdx].Str
-				if cacheID == 0 {
-					cacheID = vm.allocateCallMemberIC(callMemberICEntry{
+				if !cacheHit {
+					vm.setCallMemberIC(cacheSite, callMemberICEntry{
 						kind:         callMemberICNativeMember,
 						expectedType: target.Type,
 						expectedNum:  target.Num,
 						nativeMember: memberName,
 					})
-					binary.BigEndian.PutUint32(vm.bytecode[cacheOffset:], cacheID)
 				}
 				var nativeByRefs []byRefWriteback
 				if hasArgRefMember {
@@ -3685,7 +3708,10 @@ aspExecLoop:
 					vm.raise(vbscript.InternalError, "Invalid UDT member index")
 					continue
 				}
+				prevVal := recVal.Rec.Members[memberIdx]
 				recVal.Rec.Members[memberIdx] = rhs
+				vm.incrementObjectRefCount(rhs)
+				vm.decrementObjectRefCount(prevVal)
 
 			case ExtOpFileOpen:
 				vm.ensureCLIMode()
@@ -4066,7 +4092,10 @@ aspExecLoop:
 				found := false
 				for i, m := range def.Members {
 					if strings.EqualFold(m.Name, memberName) {
+						prevVal := target.Rec.Members[i]
 						target.Rec.Members[i] = value
+						vm.incrementObjectRefCount(value)
+						vm.decrementObjectRefCount(prevVal)
 						found = true
 						break
 					}
@@ -4243,7 +4272,10 @@ aspExecLoop:
 				letArgs := vm.ensureCombineBuffer(letArgCount)[:0]
 				letArgs = append(letArgs, indexes...)
 				letArgs = append(letArgs, value)
-				propertyTarget, ok := vm.resolveRuntimeClassPropertySet(target, memberName, letArgCount, false, false, requirePublic)
+				// Object references must reach Property Set; only primitive values may use
+				// Property Let, mirroring the classic "Set obj.Prop(i) = value" semantics.
+				preferSet := value.Type == VTObject || value.Type == VTNativeObject || value.Type == VTNothing
+				propertyTarget, ok := vm.resolveRuntimeClassPropertySet(target, memberName, letArgCount, preferSet, false, requirePublic)
 				if ok {
 					if vm.beginUserSubCall(propertyTarget, letArgs, true, target.Num) {
 						continue
@@ -5822,13 +5854,10 @@ aspExecLoop:
 			vm.callStack = vm.callStack[:len(vm.callStack)-1]
 
 			// If this call frame was for Class_Terminate, release member values now that Class_Terminate has finished.
+			// Nested instances are queued and started at the next instruction boundary.
 			if frame.terminateObjID != 0 {
 				if instance, ok := vm.runtimeClassItems[frame.terminateObjID]; ok && instance != nil {
-					members := instance.Members
-					instance.Members = nil
-					for _, val := range members {
-						vm.decrementObjectRefCount(val)
-					}
+					vm.releaseClassInstanceMembers(instance)
 				}
 			}
 
@@ -5842,12 +5871,20 @@ aspExecLoop:
 							vm.setClassMemberValueByObjectID(wb.callerBoundObj, wb.callerMember, writeVal)
 						} else if wb.isGlobal {
 							if wb.callerIdx >= 0 && wb.callerIdx < len(vm.Globals) {
+								// Write before releasing the previous reference so self-assignment
+								// cannot drive the refcount to zero prematurely.
+								prevVal := vm.Globals[wb.callerIdx]
 								vm.Globals[wb.callerIdx] = writeVal
+								vm.incrementObjectRefCount(writeVal)
+								vm.decrementObjectRefCount(prevVal)
 							}
 						} else {
 							callerSlot := frame.oldFP + wb.callerIdx
 							if callerSlot >= 0 && callerSlot < StackSize {
+								prevVal := vm.stack[callerSlot]
 								vm.stack[callerSlot] = writeVal
+								vm.incrementObjectRefCount(writeVal)
+								vm.decrementObjectRefCount(prevVal)
 							}
 						}
 					}
@@ -5901,6 +5938,21 @@ aspExecLoop:
 			// Unknown opcode: raise a runtime error instead of silently advancing past bytecode.
 			// This surfaces bugs in the compiler emitting opcodes the VM does not handle.
 			vm.raise(vbscript.InternalError, fmt.Sprintf("unknown opcode %d (%s) at ip=%d", byte(op), op.String(), vm.ip-1))
+		}
+	}
+
+	// Drain Class_Terminate invocations that are still queued from the final instruction so the
+	// objects go away in reference-count order instead of waiting for the end-of-page sweep.
+	if len(vm.pendingTerminateObjIDs) > 0 {
+		vm.flushPendingTerminates()
+		// End-of-request terminations must return past the end of bytecode: vm.ip is only
+		// meaningful while a script fragment is still executing, and appended dynamic
+		// Eval/Execute fragments make vm.ip < len(vm.bytecode) after the main program ends.
+		if len(vm.callStack) > 0 {
+			vm.callStack[len(vm.callStack)-1].returnIP = len(vm.bytecode)
+		}
+		if vm.ip < len(vm.bytecode) {
+			goto aspExecLoop
 		}
 	}
 
@@ -6011,11 +6063,21 @@ func (vm *VM) prepareClassTerminateCall() bool {
 			return false
 		}
 
+		// Mark the instance as terminated before entering Class_Terminate so re-entrant
+		// reference releases (e.g. "Set Me = Nothing" style member clears) cannot start a
+		// second termination pass for the same instance.
+		instance.terminated = true
 		if vm.beginUserSubCall(target, nil, true, instanceID) {
+			if len(vm.callStack) > 0 {
+				vm.callStack[len(vm.callStack)-1].terminateObjID = instanceID
+				// End-of-request cleanup runs after the main program already terminated, so
+				// the termination frame must return past the end of bytecode. Returning to
+				// the captured vm.ip would re-enter the appended dynamic Eval/Execute
+				// fragment that sits after the main program's OpHalt.
+				vm.callStack[len(vm.callStack)-1].returnIP = len(vm.bytecode)
+			}
 			return true
 		}
-
-		instance.terminated = true
 	}
 
 	vm.runtimeClassItems = make(map[int64]*RuntimeClassInstance)
@@ -9424,7 +9486,7 @@ func (vm *VM) setActiveClassMemberValue(memberName string, value Value) {
 		return
 	}
 	instance, exists := vm.runtimeClassItems[vm.activeClassObjectID]
-	if !exists || instance == nil {
+	if !exists || instance == nil || instance.Members == nil {
 		return
 	}
 	instance.Members[strings.ToLower(strings.TrimSpace(memberName))] = value
@@ -9436,19 +9498,30 @@ func (vm *VM) setClassMemberValueByObjectID(objectID int64, memberName string, v
 		return
 	}
 	instance, exists := vm.runtimeClassItems[objectID]
-	if !exists || instance == nil {
+	if !exists || instance == nil || instance.Members == nil {
+		// A released instance keeps no member storage: ignore writes through a dangling
+		// reference instead of crashing on a nil map.
 		return
 	}
-	instance.Members[strings.ToLower(strings.TrimSpace(memberName))] = value
+	fieldKey := strings.ToLower(strings.TrimSpace(memberName))
+	prevVal := instance.Members[fieldKey]
+	instance.Members[fieldKey] = value
+	// Write the new value before releasing the previous reference so self-assignment
+	// cannot drop the object to refCount zero and terminate it prematurely.
+	vm.incrementObjectRefCount(value)
+	vm.decrementObjectRefCount(prevVal)
 }
 
-// decrementObjectRefCount decrements the reference count of a VTObject and executes
-// Class_Terminate synchronously if refCount reaches zero.
+// decrementObjectRefCount decrements the reference count of a VTObject and queues
+// Class_Terminate at the next instruction boundary when refCount reaches zero.
 func (vm *VM) decrementObjectRefCount(obj Value) {
 	vm.decrementObjectRefCountEx(obj, false)
 }
 
 // decrementObjectRefCountEx decrements refCount and optionally protects active return values from premature termination.
+// Termination is never started here: it is queued and started by flushPendingTerminates at an instruction
+// boundary. Starting Class_Terminate rewrites vm.ip, vm.fp and vm.sp, so doing it inline would corrupt an
+// in-flight native call, a frame restore or an error unwind.
 func (vm *VM) decrementObjectRefCountEx(obj Value, isReturnValue bool) {
 	if vm == nil || obj.Type != VTObject || vm.runtimeClassItems == nil {
 		return
@@ -9461,39 +9534,110 @@ func (vm *VM) decrementObjectRefCountEx(obj Value, isReturnValue bool) {
 		return // Already terminated; skip.
 	}
 	instance.refCount--
-	if instance.refCount <= 0 {
-		instance.refCount = 0 // Ensure non-negative for safety.
-		if isReturnValue {
-			return // Do not terminate or nullify Members when this object is the active return value being passed to caller.
-		}
-		instance.terminated = true
+	if instance.refCount > 0 {
+		return
+	}
+	instance.refCount = 0 // Ensure non-negative for safety.
+	if isReturnValue {
+		return // Do not terminate or nullify Members when this object is the active return value being passed to caller.
+	}
+	if vm.suppressTerminate {
+		// Suppressed scopes (ExecuteGlobal/Eval children) still have to run the
+		// Class_Terminate body of an object that reaches reference count zero, otherwise
+		// the instance would be marked terminated without ever executing its destructor.
+		// Queue it like any other scope: the child executes the body at the next
+		// instruction boundary, where starting a call frame is safe.
+		vm.enqueuePendingTerminate(obj.Num)
+		return
+	}
+	vm.enqueuePendingTerminate(obj.Num)
+}
 
-		if !vm.suppressTerminate {
-			target, ok := vm.resolveRuntimeClassMethod(
-				Value{Type: VTObject, Num: obj.Num, Str: instance.ClassName},
-				"Class_Terminate",
-				false,
-			)
-			if ok {
-				if target.UserSubParamCount() != 0 {
-					vm.raise(vbscript.ClassInitializeOrTerminateDoNotHaveArguments, "Class_Terminate must not declare arguments")
-					return
-				}
-				if vm.beginUserSubCall(target, nil, true, obj.Num) {
-					if len(vm.callStack) > 0 {
-						vm.callStack[len(vm.callStack)-1].terminateObjID = obj.Num
-					}
-					return
-				}
+// enqueuePendingTerminate schedules one instance for Class_Terminate at the next instruction boundary.
+func (vm *VM) enqueuePendingTerminate(objID int64) {
+	if slices.Contains(vm.pendingTerminateObjIDs, objID) {
+		return // Already queued; a single termination pass is enough.
+	}
+	vm.pendingTerminateObjIDs = append(vm.pendingTerminateObjIDs, objID)
+}
+
+// terminateCallInProgress reports whether any frame on the call stack is executing a
+// Class_Terminate body. While one is active no further termination may start, otherwise a
+// queued instance would run its Class_Terminate before the active body ever executes.
+func (vm *VM) terminateCallInProgress() bool {
+	for _, v := range slices.Backward(vm.callStack) {
+		if v.terminateObjID != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// flushPendingTerminates starts at most one deferred Class_Terminate call per invocation and returns.
+// Call it only between instructions, because beginning Class_Terminate rebases vm.ip, vm.fp and vm.sp.
+// Instances that gained a new reference (or were already terminated) since being queued are skipped,
+// and the remaining ids stay queued for the next instruction boundary.
+func (vm *VM) flushPendingTerminates() {
+	if vm == nil || len(vm.pendingTerminateObjIDs) == 0 || vm.terminateCallInProgress() {
+		return
+	}
+	for len(vm.pendingTerminateObjIDs) > 0 {
+		objID := vm.pendingTerminateObjIDs[0]
+		vm.pendingTerminateObjIDs = vm.pendingTerminateObjIDs[1:]
+		instance, exists := vm.runtimeClassItems[objID]
+		if !exists || instance == nil || instance.terminated || instance.refCount > 0 {
+			continue
+		}
+		if vm.terminateObjectInstance(objID) {
+			// A Class_Terminate call is now running; the remaining ids must wait for the
+			// instruction boundary that follows the call.
+			return
+		}
+	}
+}
+
+// terminateObjectInstance runs Class_Terminate for an instance whose reference count reached zero and
+// then releases the members it was holding. It reports true when a Class_Terminate call frame was
+// started, meaning the VM must execute it before any further cleanup happens.
+func (vm *VM) terminateObjectInstance(objID int64) bool {
+	instance, exists := vm.runtimeClassItems[objID]
+	if !exists || instance == nil || instance.terminated {
+		return false
+	}
+	instance.terminated = true
+
+	target, ok := vm.resolveRuntimeClassMethod(
+		Value{Type: VTObject, Num: objID, Str: instance.ClassName},
+		"Class_Terminate",
+		false,
+	)
+	if ok {
+		if target.UserSubParamCount() != 0 {
+			vm.raise(vbscript.ClassInitializeOrTerminateDoNotHaveArguments, "Class_Terminate must not declare arguments")
+			return false
+		}
+		if vm.beginUserSubCall(target, nil, true, objID) {
+			if len(vm.callStack) > 0 {
+				vm.callStack[len(vm.callStack)-1].terminateObjID = objID
 			}
+			return true
 		}
+	}
 
-		// If no Class_Terminate or termination call not begun, release member values.
-		members := instance.Members
-		instance.Members = nil
-		for _, val := range members {
-			vm.decrementObjectRefCount(val)
-		}
+	vm.releaseClassInstanceMembers(instance)
+	return false
+}
+
+// releaseClassInstanceMembers drops every member of a terminating instance so the references
+// it was holding are released. Nested instances are queued rather than terminated inline.
+func (vm *VM) releaseClassInstanceMembers(instance *RuntimeClassInstance) {
+	if instance == nil || instance.Members == nil {
+		return
+	}
+	members := instance.Members
+	instance.Members = nil
+	for _, val := range members {
+		vm.decrementObjectRefCount(val)
 	}
 }
 
@@ -9558,7 +9702,18 @@ func (vm *VM) assignRuntimeClassField(target Value, fieldName string, assigned V
 	if requirePublic && !fieldDef.IsPublic {
 		return false
 	}
-	instance.Members[strings.ToLower(strings.TrimSpace(fieldName))] = assigned
+	if instance.Members == nil {
+		// The instance was already released; writes through a dangling reference are dropped
+		// rather than panicking on a nil member map.
+		return false
+	}
+	fieldKey := strings.ToLower(strings.TrimSpace(fieldName))
+	prevVal := instance.Members[fieldKey]
+	instance.Members[fieldKey] = assigned
+	// Track the reference transferred into the field so a container-side holder keeps
+	// the instance alive after the assigning scope exits.
+	vm.incrementObjectRefCount(assigned)
+	vm.decrementObjectRefCount(prevVal)
 	return true
 }
 
@@ -9781,35 +9936,35 @@ func (vm *VM) applyByRefWritebacksFromArgs(byRefs []byRefWriteback, args []Value
 		}
 		if wb.isGlobal {
 			if wb.callerIdx >= 0 && wb.callerIdx < len(vm.Globals) {
+				prevVal := vm.Globals[wb.callerIdx]
 				vm.Globals[wb.callerIdx] = writeVal
+				vm.incrementObjectRefCount(writeVal)
+				vm.decrementObjectRefCount(prevVal)
 			}
 			continue
 		}
 		callerSlot := vm.fp + wb.callerIdx
 		if callerSlot >= 0 && callerSlot < StackSize {
+			prevVal := vm.stack[callerSlot]
 			vm.stack[callerSlot] = writeVal
+			vm.incrementObjectRefCount(writeVal)
+			vm.decrementObjectRefCount(prevVal)
 		}
 	}
 }
 
-// allocateCallMemberIC stores one call-site cache entry and returns a stable 32-bit cache ID.
-func (vm *VM) allocateCallMemberIC(entry callMemberICEntry) uint32 {
+// setCallMemberIC stores the resolved member call for one bytecode call site.
+// The site key is the bytecode offset of the OpCallMember operand slot, which is
+// unique within the program the VM is executing. Keeping the entry VM-local
+// avoids writing runtime state into the shared, read-only program bytecode.
+func (vm *VM) setCallMemberIC(site int, entry callMemberICEntry) {
 	if vm == nil {
-		return 0
+		return
 	}
 	if vm.callMemberIC == nil {
-		vm.callMemberIC = make(map[uint32]callMemberICEntry, 32)
+		vm.callMemberIC = make(map[int]callMemberICEntry, 32)
 	}
-	id := vm.nextCallMemberICID
-	if id == 0 {
-		id = 1
-	}
-	vm.callMemberIC[id] = entry
-	vm.nextCallMemberICID = id + 1
-	if vm.nextCallMemberICID == 0 {
-		vm.nextCallMemberICID = 1
-	}
-	return id
+	vm.callMemberIC[site] = entry
 }
 
 // bytesToVBByteString converts raw bytes to a VB-compatible byte-string representation.
@@ -10707,7 +10862,12 @@ func (vm *VM) cloneValue(v Value) Value {
 		rec := vm.acquireRecord(len(v.Rec.Members))
 		rec.DefIdx = v.Rec.DefIdx
 		for i, m := range v.Rec.Members {
-			rec.Members[i] = vm.cloneValue(m)
+			clonedMember := vm.cloneValue(m)
+			rec.Members[i] = clonedMember
+			// The clone owns its own copy of every object reference it holds, so the
+			// reference count must reflect the extra holder. Balanced by the decrement
+			// performed when the member is later overwritten.
+			vm.incrementObjectRefCount(clonedMember)
 		}
 		return Value{Type: VTRecord, Rec: rec}
 	} else if v.Type == VTArray && v.Arr != nil {
@@ -10743,6 +10903,8 @@ func (vm *VM) cloneArray(arr *VBArray) *VBArray {
 	values := make([]Value, len(arr.Values))
 	for i := range arr.Values {
 		values[i] = vm.cloneValue(arr.Values[i])
+		// The cloned array element is an additional holder of any object reference.
+		vm.incrementObjectRefCount(values[i])
 	}
 	return NewVBArrayFromValues(arr.Lower, values)
 }

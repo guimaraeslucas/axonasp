@@ -1,11 +1,11 @@
 module g3pix.com.br/axonasp/caddy
 
-go 1.27
+go 1.27.2
 
 replace g3pix.com.br/axonasp/v2 => ../
 
 require (
-	g3pix.com.br/axonasp/v2 v2.3.20
+	g3pix.com.br/axonasp/v2 v2.3.29
 	github.com/caddyserver/caddy/v2 v2.11.4
 	github.com/spf13/viper v1.21.0
 	go.uber.org/zap v1.28.0

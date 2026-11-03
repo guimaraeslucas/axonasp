@@ -66,32 +66,41 @@ func (d *scriptingDictionary) keyIndex(key string) int {
 
 // itemGet returns the value for key. If the key does not exist, it is auto-created
 // with Empty value (classic VBScript Dictionary late-binding behavior).
-func (d *scriptingDictionary) itemGet(key Value) Value {
+func (d *scriptingDictionary) itemGet(vm *VM, key Value) Value {
 	pos := d.keyIndex(key.String())
 	if pos >= 0 {
 		return d.values[pos]
 	}
 	// Auto-create with Empty (VBScript behavior: reading an absent key creates it).
-	d.addEntry(key, Value{Type: VTEmpty})
+	d.addEntry(vm, key, Value{Type: VTEmpty})
 	return Value{Type: VTEmpty}
 }
 
 // itemSet assigns value to key, creating the entry if it does not exist.
-func (d *scriptingDictionary) itemSet(key Value, val Value) {
+func (d *scriptingDictionary) itemSet(vm *VM, key Value, val Value) {
 	pos := d.keyIndex(key.String())
 	if pos >= 0 {
+		prevVal := d.values[pos]
 		d.values[pos] = val
+		if vm != nil {
+			vm.incrementObjectRefCount(val)
+			vm.decrementObjectRefCount(prevVal)
+		}
 		return
 	}
-	d.addEntry(key, val)
+	d.addEntry(vm, key, val)
 }
 
 // addEntry appends a new key-value pair. Caller must ensure the key does not exist.
-func (d *scriptingDictionary) addEntry(key Value, val Value) {
+func (d *scriptingDictionary) addEntry(vm *VM, key Value, val Value) {
 	pos := len(d.keys)
 	d.keys = append(d.keys, key)
 	d.values = append(d.values, val)
 	d.index[d.normalizeKey(key.String())] = pos
+	if vm != nil {
+		vm.incrementObjectRefCount(key)
+		vm.incrementObjectRefCount(val)
+	}
 }
 
 // rebuildIndex reconstructs the index map from the current keys slice.
@@ -124,11 +133,11 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 	// OpArraySet passes args as [indexes..., value], so len==2 means set; len==1 means get.
 	if member == "" {
 		if len(args) == 1 {
-			return d.itemGet(args[0]), true
+			return d.itemGet(vm, args[0]), true
 		}
 		if len(args) >= 2 {
 			// Last arg is the value (OpArraySet convention); first arg is the key.
-			d.itemSet(args[0], args[len(args)-1])
+			d.itemSet(vm, args[0], args[len(args)-1])
 			return Value{Type: VTEmpty}, true
 		}
 		return Value{Type: VTEmpty}, true
@@ -145,7 +154,7 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			vm.raise(vbscript.ThisKeyAlreadyAssociatedWithAnElement, "This key is already associated with an element of this collection")
 			return Value{Type: VTEmpty}, true
 		}
-		d.addEntry(args[0], args[1])
+		d.addEntry(vm, args[0], args[1])
 		return Value{Type: VTEmpty}, true
 
 	// Exists(key) — returns True if key is present.
@@ -167,16 +176,30 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			vm.raise(vbscript.ElementWasNotFound, "The specified key was not found in the Dictionary")
 			return Value{Type: VTEmpty}, true
 		}
+		removedKey := d.keys[pos]
+		removedVal := d.values[pos]
 		d.keys = append(d.keys[:pos], d.keys[pos+1:]...)
 		d.values = append(d.values[:pos], d.values[pos+1:]...)
 		d.rebuildIndex()
+		vm.decrementObjectRefCount(removedKey)
+		vm.decrementObjectRefCount(removedVal)
 		return Value{Type: VTEmpty}, true
 
 	// RemoveAll() — clears all entries.
 	case strings.EqualFold(member, "RemoveAll"):
+		oldKeys := make([]Value, len(d.keys))
+		copy(oldKeys, d.keys)
+		oldValues := make([]Value, len(d.values))
+		copy(oldValues, d.values)
 		d.keys = d.keys[:0]
 		d.values = d.values[:0]
 		d.index = make(map[string]int, 8)
+		for _, k := range oldKeys {
+			vm.decrementObjectRefCount(k)
+		}
+		for _, v := range oldValues {
+			vm.decrementObjectRefCount(v)
+		}
 		return Value{Type: VTEmpty}, true
 
 	// Keys() — returns a zero-indexed Variant array of all keys.
@@ -202,11 +225,11 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			// However, in VBScript "dict.Item(key)" is usually a GET.
 			// If we want to support "dict.Item(key) = val", we need a proxy.
 			// Let's return the actual value for 1 arg, BUT for Key we definitely need a proxy if 1 arg.
-			return d.itemGet(args[0]), true
+			return d.itemGet(vm, args[0]), true
 		}
 		if len(args) >= 2 {
 			// OpArraySet convention: last arg is value, first arg is key.
-			d.itemSet(args[0], args[len(args)-1])
+			d.itemSet(vm, args[0], args[len(args)-1])
 			return Value{Type: VTEmpty}, true
 		}
 		vm.raise(vbscript.WrongNumberOfParameters, "Dictionary.Item requires 1 argument: key")
@@ -231,8 +254,11 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 				return Value{Type: VTEmpty}, true
 			}
 			// Update key while preserving value at the same position.
+			prevKey := d.keys[pos]
 			d.keys[pos] = args[1]
 			d.rebuildIndex()
+			vm.incrementObjectRefCount(args[1])
+			vm.decrementObjectRefCount(prevKey)
 			return Value{Type: VTEmpty}, true
 		}
 		vm.raise(vbscript.WrongNumberOfParameters, "Dictionary.Key requires 2 arguments: oldKey, newKey")
@@ -286,7 +312,7 @@ func (vm *VM) dispatchDictionaryPropertyGet(objID int64, member string) (Value, 
 
 	// Default: treat as Item(key) access — e.g. dict.Key reads Item(key).
 	// Per VBScript spec, any unknown member on a Dictionary is treated as Item.
-	return d.itemGet(NewString(member)), true
+	return d.itemGet(vm, NewString(member)), true
 }
 
 // dispatchDictionaryPropertySet handles property Let assignments (OpMemberSet) for Dictionary.
@@ -324,6 +350,6 @@ func (vm *VM) dispatchDictionaryPropertySet(objID int64, member string, val Valu
 	}
 
 	// Default: treat as Item(member) = val — dictionary member-name assignment.
-	d.itemSet(NewString(member), val)
+	d.itemSet(vm, NewString(member), val)
 	return true
 }

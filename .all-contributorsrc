@@ -86,7 +86,25 @@
         "bug",
         "code"
       ]
-    }
+    },
+        {
+          "login": "yeisman",
+          "name": "Yuri Eisman",
+          "avatar_url": "https://avatars.githubusercontent.com/u/141411100?v=4",
+          "profile": "https://github.com/yeisman",
+          "contributions": [
+            "bug",
+            "code"
+          ]
+        },
+                {
+                  "login": "alanupstone",
+                  "name": "Alan Upstone",
+                  "avatar_url": "https://avatars.githubusercontent.com/u/11076656?v=4",
+                  "profile": "https://github.com/alanupstone",
+                  "contributions": [
+                    "bug"                  ]
+                }
   ],
   "contributorsPerLine": 7,
   "skipCi": true,
