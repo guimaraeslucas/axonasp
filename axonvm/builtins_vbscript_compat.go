@@ -757,6 +757,22 @@ func vbsIntArg(v Value) int {
 	return int(math.RoundToEven(f))
 }
 
+// vbsNullIfArgNull makes a date builtin return Null when its date argument is Null,
+// as VBScript does (Month(Null) is Null, not 1).
+func vbsNullIfArgNull(idx int, fn func(*VM, []Value) (Value, error)) func(*VM, []Value) (Value, error) {
+	return func(vm *VM, args []Value) (Value, error) {
+		if idx < len(args) {
+			v := resolveCallable(vm, args[idx])
+			if v.Type == VTNull {
+				return NewNull(), nil
+			}
+			args = append([]Value(nil), args...)
+			args[idx] = v
+		}
+		return fn(vm, args)
+	}
+}
+
 // valueToTimeInLocale converts a value to time.Time using locale-aware parsing rules.
 func valueToTimeInLocale(vm *VM, v Value) time.Time {
 	loc := builtinCurrentLocation(vm)
@@ -1840,12 +1856,12 @@ func init() {
 	RegisterBuiltin("Now", vbsCompatNow)
 	RegisterBuiltin("Date", vbsCompatDate)
 	RegisterBuiltin("Time", vbsCompatTime)
-	RegisterBuiltin("Year", vbsCompatYear)
-	RegisterBuiltin("Month", vbsCompatMonth)
-	RegisterBuiltin("Day", vbsCompatDay)
-	RegisterBuiltin("Hour", vbsCompatHour)
-	RegisterBuiltin("Minute", vbsCompatMinute)
-	RegisterBuiltin("Second", vbsCompatSecond)
+	RegisterBuiltin("Year", vbsNullIfArgNull(0, vbsCompatYear))
+	RegisterBuiltin("Month", vbsNullIfArgNull(0, vbsCompatMonth))
+	RegisterBuiltin("Day", vbsNullIfArgNull(0, vbsCompatDay))
+	RegisterBuiltin("Hour", vbsNullIfArgNull(0, vbsCompatHour))
+	RegisterBuiltin("Minute", vbsNullIfArgNull(0, vbsCompatMinute))
+	RegisterBuiltin("Second", vbsNullIfArgNull(0, vbsCompatSecond))
 	RegisterBuiltin("GetLocale", vbsCompatGetLocale)
 	RegisterBuiltin("SetLocale", vbsCompatSetLocale)
 	RegisterBuiltin("MonthName", vbsCompatMonthName)
@@ -1864,10 +1880,10 @@ func init() {
 	RegisterBuiltin("TimeSerial", vbsCompatTimeSerial)
 	RegisterBuiltin("DateValue", vbsCompatDateValue)
 	RegisterBuiltin("TimeValue", vbsCompatTimeValue)
-	RegisterBuiltin("Weekday", vbsCompatWeekday)
-	RegisterBuiltin("DateAdd", vbsCompatDateAdd)
+	RegisterBuiltin("Weekday", vbsNullIfArgNull(0, vbsCompatWeekday))
+	RegisterBuiltin("DateAdd", vbsNullIfArgNull(2, vbsCompatDateAdd))
 	RegisterBuiltin("DateDiff", vbsCompatDateDiff)
-	RegisterBuiltin("DatePart", vbsCompatDatePart)
+	RegisterBuiltin("DatePart", vbsNullIfArgNull(1, vbsCompatDatePart))
 	RegisterBuiltin("CBool", vbsCompatCBool)
 	RegisterBuiltin("CLng", vbsCompatCLng)
 	RegisterBuiltin("CSng", vbsCompatCSng)
