@@ -217,7 +217,7 @@ func vbsCompatSpace(_ *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	n := max(int(args[0].Num), 0)
+	n := max(vbsIntArg(args[0]), 0)
 	return NewString(strings.Repeat(" ", n)), nil
 }
 
@@ -226,7 +226,7 @@ func vbsCompatString(_ *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return NewString(""), nil
 	}
-	n := int(args[0].Num)
+	n := vbsIntArg(args[0])
 	if n <= 0 {
 		return NewString(""), nil
 	}
@@ -258,7 +258,7 @@ func vbsCompatStrComp(vm *VM, args []Value) (Value, error) {
 	b := args[1].String()
 	compare := -1
 	if len(args) > 2 {
-		compare = int(args[2].Num)
+		compare = vbsIntArg(args[2])
 	}
 	if compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1) {
 		return NewInteger(int64(vm.textCompare(a, b))), nil
@@ -334,14 +334,14 @@ func vbsCompatMidB(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	bs := ansiBytes(args[0].String())
-	start := max(int(args[1].Num), 1)
+	start := max(vbsIntArg(args[1]), 1)
 	start--
 	if start >= len(bs) {
 		return NewString(""), nil
 	}
 	end := len(bs)
 	if len(args) > 2 {
-		n := max(int(args[2].Num), 0)
+		n := max(vbsIntArg(args[2]), 0)
 		end = min(start+n, len(bs))
 	}
 	return NewString(bytesToVBByteString(bs[start:end])), nil
@@ -353,7 +353,7 @@ func vbsCompatLeftB(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	bs := ansiBytes(args[0].String())
-	n := min(max(int(args[1].Num), 0), len(bs))
+	n := min(max(vbsIntArg(args[1]), 0), len(bs))
 	return NewString(bytesToVBByteString(bs[:n])), nil
 }
 
@@ -363,7 +363,7 @@ func vbsCompatRightB(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	bs := ansiBytes(args[0].String())
-	n := min(max(int(args[1].Num), 0), len(bs))
+	n := min(max(vbsIntArg(args[1]), 0), len(bs))
 	return NewString(bytesToVBByteString(bs[len(bs)-n:])), nil
 }
 
@@ -376,7 +376,7 @@ func vbsCompatInStrB(_ *VM, args []Value) (Value, error) {
 	s1Idx := 0
 	s2Idx := 1
 	if len(args) >= 3 {
-		start = int(args[0].Num)
+		start = vbsIntArg(args[0])
 		s1Idx = 1
 		s2Idx = 2
 	}
@@ -428,13 +428,13 @@ func vbsCompatInStrRev(vm *VM, args []Value) (Value, error) {
 	start := len(runes1)
 	compare := -1
 	if len(args) >= 3 {
-		v := int(args[2].Num)
+		v := vbsIntArg(args[2])
 		if v > 0 {
 			start = v
 		}
 	}
 	if len(args) >= 4 {
-		compare = int(args[3].Num)
+		compare = vbsIntArg(args[3])
 	}
 	if start > len(runes1) {
 		start = len(runes1)
@@ -477,7 +477,7 @@ func vbsCompatSplit(_ *VM, args []Value) (Value, error) {
 	}
 	limit := -1
 	if len(args) > 2 {
-		limit = int(args[2].Num)
+		limit = vbsIntArg(args[2])
 	}
 	parts := []string{}
 	if limit > 0 {
@@ -520,7 +520,7 @@ func vbsCompatFilter(vm *VM, args []Value) (Value, error) {
 	}
 	compare := -1
 	if len(args) > 3 {
-		compare = int(args[3].Num)
+		compare = vbsIntArg(args[3])
 	}
 	matches := make([]Value, 0, len(args[0].Arr.Values))
 	for i := 0; i < len(args[0].Arr.Values); i++ {
@@ -569,7 +569,7 @@ func vbsCompatRound(_ *VM, args []Value) (Value, error) {
 	}
 	digits := 0
 	if len(args) > 1 {
-		digits = int(args[1].Num)
+		digits = vbsIntArg(args[1])
 	}
 	factor := math.Pow(10, float64(digits))
 	if factor == 0 || math.IsInf(factor, 0) || math.IsNaN(factor) {
@@ -673,7 +673,7 @@ func vbsCompatSetLocale(vm *VM, args []Value) (Value, error) {
 		return NewInteger(int64(previous)), nil
 	}
 	if vm != nil && vm.host != nil && vm.host.SessionEnabled() {
-		vm.host.Session().SetLCID(int(args[0].Num))
+		vm.host.Session().SetLCID(vbsIntArg(args[0]))
 	}
 	return NewInteger(int64(previous)), nil
 }
@@ -683,7 +683,7 @@ func vbsCompatMonthName(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	month := int(args[0].Num)
+	month := vbsIntArg(args[0])
 	abbrev := len(args) > 1 && args[1].Num != 0
 	if month < 1 || month > 12 {
 		return NewString(""), nil
@@ -697,7 +697,7 @@ func vbsCompatWeekdayName(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	weekday := int(args[0].Num)
+	weekday := vbsIntArg(args[0])
 	abbrev := len(args) > 1 && args[1].Num != 0
 	if weekday < 1 || weekday > 7 {
 		return NewString(""), nil
@@ -747,6 +747,14 @@ func resolveCallable(vm *VM, v Value) Value {
 	return result
 }
 
+// vbsIntArg reads an integer argument the way VBScript does: Doubles and numeric
+// strings are accepted and rounded half-to-even (Left(s, 100/9) is Left(s, 11)).
+func vbsIntArg(v Value) int {
+	f, _, ok := vbsCoerceNumericValue(v)
+	if !ok {
+		return 0
+	}
+	return int(math.RoundToEven(f))
 // vbsNullIfArgNull makes a date builtin return Null when its date argument is Null,
 // as VBScript does (Month(Null) is Null, not 1).
 func vbsNullIfArgNull(idx int, fn func(*VM, []Value) (Value, error)) func(*VM, []Value) (Value, error) {
@@ -798,7 +806,7 @@ func vbsCompatFormatDateTime(vm *VM, args []Value) (Value, error) {
 	dateValue := valueToTimeInLocale(vm, resolveCallable(vm, args[0])).In(builtinCurrentLocation(vm))
 	formatType := 0
 	if len(args) > 1 {
-		formatType = int(args[1].Num)
+		formatType = vbsIntArg(args[1])
 	}
 	return NewString(localizedDateTimeText(dateValue, profile, formatType)), nil
 }
@@ -814,7 +822,7 @@ func vbsCompatFormatNumber(vm *VM, args []Value) (Value, error) {
 	}
 	digits := 2
 	if len(args) > 1 {
-		digits = int(args[1].Num)
+		digits = vbsIntArg(args[1])
 	}
 	useGrouping := true
 	if len(args) > 2 && args[2].Type == VTInteger && args[2].Num == 0 {
@@ -834,7 +842,7 @@ func vbsCompatFormatCurrency(vm *VM, args []Value) (Value, error) {
 	}
 	digits := 2
 	if len(args) > 1 {
-		digits = int(args[1].Num)
+		digits = vbsIntArg(args[1])
 	}
 	return NewString(localizedCurrencyString(value, digits, builtinLocaleProfileForVM(vm))), nil
 }
@@ -850,7 +858,7 @@ func vbsCompatFormatPercent(vm *VM, args []Value) (Value, error) {
 	}
 	digits := 2
 	if len(args) > 1 {
-		digits = int(args[1].Num)
+		digits = vbsIntArg(args[1])
 	}
 	formatted := localizedNumberString(value*100, digits, builtinLocaleProfileForVM(vm), false)
 	return NewString(formatted + "%"), nil
@@ -1084,7 +1092,7 @@ func vbsCompatDateAdd(vm *VM, args []Value) (Value, error) {
 		return NewDate(time.Time{}), nil
 	}
 	interval := strings.ToLower(args[0].String())
-	number := int(args[1].Num)
+	number := vbsIntArg(args[1])
 	value := valueToTimeInLocale(vm, resolveCallable(vm, args[2]))
 	switch interval {
 	case "yyyy":
@@ -1724,7 +1732,7 @@ func vbsCompatStrConv(_ *VM, args []Value) (Value, error) {
 		return NewString(""), nil
 	}
 	input := args[0].String()
-	mode := int(args[1].Num)
+	mode := vbsIntArg(args[1])
 	switch mode {
 	case 1:
 		return NewString(strings.ToUpper(input)), nil
