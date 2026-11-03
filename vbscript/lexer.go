@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda,
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Code contribution on the lexer: Steven Borrie (https://github.com/saborrie)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
@@ -908,6 +908,11 @@ func (l *Lexer) nextComment() Token {
 		if c == '\'' {
 			l.Index++
 			return l.nextCommentBody(1, false)
+		} else if c == '/' && l.getChar(l.Index+1) == '/' {
+			// "//" is never valid VBScript, but IIS tolerates it as a line comment
+			// (legacy pages ship `x = "..." //note`), so treat it like '.
+			l.Index += 2
+			return l.nextCommentBody(2, false)
 		} else if CharEquals(c, 'r') {
 			c2 := l.getChar(l.Index + 1)
 			c3 := l.getChar(l.Index + 2)

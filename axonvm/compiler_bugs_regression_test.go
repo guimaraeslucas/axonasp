@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -250,5 +250,56 @@ func TestLargeSubroutineCompilation(t *testing.T) {
 	}
 	if got := countBytecodeOp(compiler.Bytecode(), OpArraySet); got != 500 {
 		t.Fatalf("expected 500 OpArraySet writes, got %d", got)
+	}
+}
+
+// TestSetIndexedMemberCallAssignment covers `Set arr(i).Item(k) = obj` (aspJSON's loadJSON),
+// which used to fail with "Expected member name after indexed call target in Set assignment".
+func TestSetIndexedMemberCallAssignment(t *testing.T) {
+	got := runVBSAndGetOutput(t, `<%
+Dim level(2), d
+Set level(0) = CreateObject("Scripting.Dictionary")
+level(0).Add "k", ""
+Set level(0).Item("k") = CreateObject("Scripting.Dictionary")
+Set level(1) = level(0).Item("k")
+level(1).Item("x") = "ok"
+Response.Write TypeName(level(0).Item("k")) & ":" & level(0)("k")("x")
+Set d = CreateObject("Scripting.Dictionary")
+Set d.Item("a") = level(1)
+Response.Write ":" & d("a")("x")
+%>`)
+	if got != "Dictionary:ok:ok" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// TestDoubleSlashLineComment covers legacy pages with a trailing `//note` after a statement,
+// which IIS tolerates; it used to fail with "Unexpected token *vbscript.PunctuationToken".
+func TestDoubleSlashLineComment(t *testing.T) {
+	got := runVBSAndGetOutput(t, `<%
+s = "a//b"//479698000000206355
+Response.Write s & ":" & (6 / 3) //trailing
+%>`)
+	if got != "a//b:2" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// TestVersionedProgIDs covers versioned Windows ProgIDs (and WinHttp) that legacy pages create,
+// which used to fail with 800401F3 "Invalid class string".
+func TestVersionedProgIDs(t *testing.T) {
+	got := runVBSAndGetOutput(t, `<%
+For Each id In Array("WinHttp.WinHttpRequest.5.1", "MSXML2.ServerXMLHTTP.3.0", "MSXML2.ServerXMLHTTP.6.0", "MSXML2.XMLHTTP.3.0", "MSXML2.XMLHTTP.6.0", "MSXML2.DOMDocument.3.0", "MSXML2.DOMDocument.6.0")
+	Set o = Server.CreateObject(id)
+	Response.Write IsObject(o) & ","
+Next
+Set w = CreateObject("WinHttp.WinHttpRequest.5.1")
+w.SetTimeouts 1000, 1000, 1000, 1000
+w.Option(4) = &H3300
+w.SetProxy 2, "proxy:8080"
+Response.Write "ok"
+%>`)
+	if got != "True,True,True,True,True,True,True,ok" {
+		t.Fatalf("got %q", got)
 	}
 }

@@ -103,6 +103,26 @@ var ifBlockResolutionCases = []ifBlockResolutionCase{
 		wantOutput: "B",
 	},
 	{
+		name:       "same line else branch ends at line end",
+		source:     "<% Dim a : a = 1\nIf a = 1 Then a = 2 Else a = 3\nResponse.Write \"after\" %>",
+		wantOutput: "after",
+	},
+	{
+		name:       "same line elseif branch ends at line end",
+		source:     "<% Dim a : a = 2\nIf a = 1 Then a = 5 ElseIf a = 3 Then a = 6\nResponse.Write a %>",
+		wantOutput: "2",
+	},
+	{
+		name:       "same line else in block if does not claim outer else",
+		source:     "<% Dim x, a : x = 1 : a = 1\nIf x = 1 Then\nIf a = 1 Then a = 2 Else a = 3\nResponse.Write \"in\"\nElse\nResponse.Write \"out\"\nEnd If %>",
+		wantOutput: "in",
+	},
+	{
+		name:       "same line else ending at tag boundary does not claim outer else",
+		source:     "<% Dim x, a : x = 1 : a = 1 %><% If x = 1 Then %>[<% If a = 1 Then Response.Write \"y\" Else Response.Write \"n\" %>]<% Else %>out<% End If %>",
+		wantOutput: "[y]",
+	},
+	{
 		name: "inline if closer does not consume end sub",
 		source: `<%
 Dim r

@@ -4,7 +4,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -365,6 +365,9 @@ func (vm *VM) adodbSaveToFile(stream *adodbStreamNativeObject, args []Value) {
 	if stream.state != adodbStateOpen || len(args) < 1 {
 		return
 	}
+	// ADO moves Position back to the start after SaveToFile; legacy code relies on
+	// it to ReadText the whole buffer right after saving.
+	defer func() { stream.position = 0 }()
 
 	resolvedPath, ok := vm.fsoResolvePath(args[0].String())
 	if !ok {

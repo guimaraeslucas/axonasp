@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -1161,6 +1161,14 @@ func (c *Compiler) parseSetMemberAssignmentChain() {
 		c.parseExpression(PrecNone)
 		// Set member assignment must preserve raw object references.
 		c.undoTrailingCoerce()
+    
+		//Dead code since #176 - Kept here just in case
+    //if hasCall {
+			// Obj.Item(k) = value: indexed property write, same lowering as the Let path.
+			//c.emit(OpArraySet, midx, argCount)
+			//return
+		//}
+    
 		c.emit(OpMemberSetSet, midx)
 		return
 	}
@@ -3360,7 +3368,11 @@ func (c *Compiler) parseInlineIfStatement() {
 	jumpFalseOffset := c.emitJump(OpJumpIfFalse)
 	c.parseInlineIfBranchStatements()
 
-	for c.checkKeyword(vbscript.KeywordElseIf) || c.consumeTagBoundaryKeyword(vbscript.KeywordElseIf, 0) {
+	for {
+		sameLine := c.checkKeyword(vbscript.KeywordElseIf)
+		if !sameLine && !c.consumeTagBoundaryKeyword(vbscript.KeywordElseIf, 0) {
+			break
+		}
 		c.promoteInlineIfToBranchChain()
 
 		jumpEndOffsets = append(jumpEndOffsets, c.emitJump(OpJump))
@@ -3371,16 +3383,16 @@ func (c *Compiler) parseInlineIfStatement() {
 		c.expectKeyword(vbscript.KeywordThen)
 
 		jumpFalseOffset = c.emitJump(OpJumpIfFalse)
-		c.parseIfConditionalBlock()
+		c.parseInlineChainBranch(sameLine, c.parseIfConditionalBlock)
 	}
 
-	if c.checkKeyword(vbscript.KeywordElse) || c.consumeTagBoundaryKeyword(vbscript.KeywordElse, 0) {
+	if sameLine := c.checkKeyword(vbscript.KeywordElse); sameLine || c.consumeTagBoundaryKeyword(vbscript.KeywordElse, 0) {
 		c.promoteInlineIfToBranchChain()
 
 		c.move()
 		jumpEndOffsets = append(jumpEndOffsets, c.emitJump(OpJump))
 		c.patchJump(jumpFalseOffset)
-		c.parseIfElseBlock()
+		c.parseInlineChainBranch(sameLine, c.parseIfElseBlock)
 	} else {
 		c.patchJump(jumpFalseOffset)
 	}
@@ -3390,6 +3402,30 @@ func (c *Compiler) parseInlineIfStatement() {
 	}
 
 	c.consumeInlineIfEndIf()
+}
+
+// parseInlineChainBranch compiles an ElseIf/Else branch body of an inline If. A branch
+// keyword on the same line as the inline head keeps the single-line form, so its body ends
+// at the logical line end like "If c Then a Else b" in VBScript, and never runs on to claim
+// the Else or End If of an enclosing block. Only an ASP tag boundary keeps the chain open
+// as a block, with "End If" as its closer. A branch reached across a tag boundary is
+// always a block body.
+func (c *Compiler) parseInlineChainBranch(sameLine bool, parseBlock func()) {
+	if sameLine {
+		bodyStart := len(c.bytecode)
+		c.parseInlineIfBranchStatements()
+		if _, ok := c.next.(*vbscript.ASPCodeEndToken); !ok {
+			return
+		}
+		// "%>" ends the logical line like a newline: a non-empty branch is complete, and
+		// only an "End If" in the very next tag still closes it. An empty branch
+		// ("Else %>") continues as a block across the tag boundary.
+		if len(c.bytecode) > bodyStart {
+			c.consumeTagBoundaryKeyword(vbscript.KeywordEnd, vbscript.KeywordIf)
+			return
+		}
+	}
+	parseBlock()
 }
 
 // consumeInlineIfEndIf consumes the optional "End If" that closes an inline If statement.

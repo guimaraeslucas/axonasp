@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -123,7 +123,8 @@ func (v Value) String() string {
 		if v.Flt == 0 {
 			return "0"
 		}
-		return fmt.Sprintf("%g", v.Flt)
+		// VBScript and JScript Response.Write share the OLE VarBstrFromR8 rendering.
+		return formatMicrosoftJScriptResponseDouble(v.Flt)
 	case VTString:
 		return v.Str
 	case VTArray:

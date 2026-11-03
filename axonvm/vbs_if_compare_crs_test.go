@@ -28,6 +28,14 @@ import "testing"
 func TestVBSIfCompareStringToNumber(t *testing.T) {
 	src := `<%
 s = "3063" : g = FormatNumber(39815 / 13, 0) : y = 0
+If s > 0 Then Response.Write "1" Else Response.Write "0"
+If g > 0 Then Response.Write "1" Else Response.Write "0"
+If s > y Then Response.Write "1" Else Response.Write "0"
+If 0 < s Then Response.Write "1" Else Response.Write "0"
+If s < 0 Then Response.Write "1" Else Response.Write "0"
+If 2.5 > 2 Then Response.Write "1" Else Response.Write "0"
+If 2 < 2.5 Then Response.Write "1" Else Response.Write "0"
+If "b" > "a" Then Response.Write "1" Else Response.Write "0"
 If s > 0 Then
 	Response.Write "1"
 Else

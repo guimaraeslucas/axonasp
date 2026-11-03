@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -976,8 +976,7 @@ func vbsConstantToString(v Value) (string, bool) {
 	case VTInteger:
 		return strconv.FormatInt(v.Num, 10), true
 	case VTDouble:
-		// Use %g to match VBScript's default numeric-to-string format.
-		return strconv.FormatFloat(v.Flt, 'g', -1, 64), true
+		return v.String(), true
 	}
 	return "", false
 }
