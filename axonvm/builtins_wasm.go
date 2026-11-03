@@ -376,6 +376,9 @@ func vbsMid(args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{Type: VTEmpty}, nil
 	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
 	runes := []rune(args[0].String())
 	start := int(args[1].Num) - 1
 	if start < 0 {
@@ -399,6 +402,9 @@ func vbsLeft(args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{Type: VTEmpty}, nil
 	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
 	runes := []rune(args[0].String())
 	length := int(args[1].Num)
 	if length <= 0 {
@@ -413,6 +419,9 @@ func vbsLeft(args []Value) (Value, error) {
 func vbsRight(args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{Type: VTEmpty}, nil
+	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
 	}
 	runes := []rune(args[0].String())
 	length := int(args[1].Num)
