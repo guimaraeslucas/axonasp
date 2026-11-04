@@ -850,21 +850,31 @@ func (c *Compiler) parseStatement() {
 			if c.compileImplicitClassStatementCall(name, false) {
 				return
 			}
-			// Determine BEFORE resolveVar whether the name is a known variable,
-			// because resolveVar will add unknown names to implicitGlobals.
+			// Classify the identifier BEFORE resolveVar. resolveVar eagerly records any
+			// unresolved name in implicitGlobals (page scope) or in the procedure-local
+			// table (local scope), so after the first use the name would look like a known
+			// variable and a forward Sub/Function reference could no longer be detected.
 			lowerName := strings.ToLower(name)
 			isKnownZeroArgSub := c.globalZeroArgSubs[lowerName] || c.globalZeroArgFuncs[lowerName]
-			isKnownVariable := c.declaredGlobals[lowerName] || c.implicitGlobals[lowerName] || c.constGlobals[lowerName]
-			if !isKnownVariable && c.isLocal {
-				if _, lok := c.locals.Get(name); lok {
-					isKnownVariable = true
+			// Only names the user really declared count here: Dim, ReDim, Const, Static,
+			// procedure parameters and the Function return slot are all registered in
+			// declaredLocals/constLocals by their declaration paths, while compiler-created
+			// implicit slots are not.
+			isKnownDeclaredVariable := c.declaredGlobals[lowerName] || c.constGlobals[lowerName]
+			if !isKnownDeclaredVariable && c.isLocal {
+				if c.declaredLocals[lowerName] || c.constLocals[lowerName] {
+					isKnownDeclaredVariable = true
 				} else if _, sok := c.staticLocals[lowerName]; sok {
-					isKnownVariable = true
+					isKnownDeclaredVariable = true
 				}
 			}
 
 			op, idx := c.resolveVar(name)
 			loadPos := c.emit(op, idx)
+			// OpGetGlobal and OpGetLocal are both 3-byte loads, so on an unresolved
+			// identifier either one can be rewritten into an OpConstant user-sub
+			// reference by patchForwardCallSites without instruction-pointer drift.
+			isUnresolvedTargetLoad := op == OpGetGlobal || op == OpGetLocal
 
 			if !c.isStatementEnd() {
 				argCount := 0
@@ -894,10 +904,13 @@ func (c *Compiler) parseStatement() {
 					}
 				}
 				c.emit(OpCall, argCount)
-				if op == OpGetGlobal {
+				// "identifier expr [, expr...]" cannot be a variable reference in VBScript:
+				// a bare identifier followed by arguments is always a procedure call, so the
+				// patch is registered regardless of any implicit slot resolveVar just created.
+				if isUnresolvedTargetLoad {
 					c.registerForwardCallPatch(name, loadPos)
 				}
-			} else if isKnownZeroArgSub || (!isKnownVariable && op == OpGetGlobal) {
+			} else if isKnownZeroArgSub || (!isKnownDeclaredVariable && isUnresolvedTargetLoad) {
 				// Zero-argument bare Sub/Function call: the identifier is alone on the
 				// statement line with no "=", "(", or "." following it. In VBScript this
 				// invokes the Sub/Function, discarding any return value.
@@ -906,12 +919,13 @@ func (c *Compiler) parseStatement() {
 				//   1. Backward reference — the Sub/Function was declared above the call
 				//      site; its name is tracked in globalZeroArgSubs/globalZeroArgFuncs.
 				//   2. Forward reference — the Sub/Function is declared below the call
-				//      site and its name is not yet tracked. We emit OpCall(0)
-				//      optimistically; patchForwardCallSites will rewrite the load when the
-				//      declaration is parsed. If the target is never resolved as a
+				//      site and its name is not yet tracked. The load is emitted
+				//      optimistically as a call target (OpGetGlobal at page scope, an implicit
+				//      OpGetLocal slot inside a procedure); patchForwardCallSites rewrites it
+				//      when the declaration is parsed. If the target is never resolved as a
 				//      Sub/Function, the runtime pushes VTEmpty for non-callable values.
 				c.emit(OpCall, 0)
-				if op == OpGetGlobal {
+				if !isKnownDeclaredVariable && isUnresolvedTargetLoad {
 					c.registerForwardCallPatch(name, loadPos)
 				}
 			}

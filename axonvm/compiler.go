@@ -1419,7 +1419,14 @@ func (c *Compiler) registerForwardConstPatch(name string, emitPos int) {
 	c.forwardConstPatches[trimmed] = append(c.forwardConstPatches[trimmed], emitPos)
 }
 
-// patchForwardCallSites rewrites pending OpGetGlobal call-target loads to OpConstant user-sub references.
+// patchForwardCallSites rewrites pending call-target loads to OpConstant user-sub references.
+//
+// Both OpGetGlobal and OpGetLocal are accepted because a forward procedure call made inside a
+// procedure body resolves to an implicit OpGetLocal slot: resolveVar cannot know the name yet
+// and creates a procedure-local placeholder. All three opcodes share the same 3-byte layout
+// (1 opcode byte + one big-endian uint16 operand), so overwriting the opcode byte and the two
+// operand bytes keeps the instruction size identical: no bytecode shifting and no IP drift,
+// which is what the three-way contract (vm.Run, opcodeOperandSize, bytecode remap) requires.
 func (c *Compiler) patchForwardCallSites(name string, userSubConstIdx int) {
 	trimmed := strings.ToLower(strings.TrimSpace(name))
 	patches, ok := c.forwardCallPatches[trimmed]
@@ -1431,7 +1438,8 @@ func (c *Compiler) patchForwardCallSites(name string, userSubConstIdx int) {
 		if pos < 0 || pos+2 >= len(c.bytecode) {
 			continue
 		}
-		if OpCode(c.bytecode[pos]) != OpGetGlobal {
+		op := OpCode(c.bytecode[pos])
+		if op != OpGetGlobal && op != OpGetLocal {
 			continue
 		}
 		c.bytecode[pos] = byte(OpConstant)
