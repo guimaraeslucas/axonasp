@@ -28,7 +28,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -900,14 +899,59 @@ func resolvePathCaseInsensitive(path string) (string, error) {
 	return current, nil
 }
 
-func resolveExistingPath(candidate string, caseInsensitive bool) (string, error) {
-	if _, err := os.Stat(candidate); err == nil {
-		return filepath.Clean(candidate), nil
+// CanonicalizePhysicalPath resolves one path to its real physical form on disk.
+// It first fixes the casing of every existing path component (Windows and macOS
+// are case-insensitive, and Classic ASP references are case-insensitive on every
+// platform), then dereferences symbolic links and junctions. The result is
+// absolute and clean, so two case variants or link aliases of the same physical
+// file always converge to one canonical string.
+// Callers that only need best-effort canonicalization must keep their original
+// path when an error is returned; a missing target reports os.ErrNotExist.
+func CanonicalizePhysicalPath(rawPath string) (string, error) {
+	trimmed := strings.TrimSpace(rawPath)
+	if trimmed == "" {
+		return "", fmt.Errorf("empty path")
 	}
-	if !caseInsensitive || runtime.GOOS == "windows" {
+	absPath, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", err
+	}
+	cleaned := filepath.Clean(absPath)
+
+	// Step 1: recover the exact on-disk casing of each existing segment.
+	cased := cleaned
+	casedExists := false
+	if matched, matchErr := resolvePathCaseInsensitive(cleaned); matchErr == nil {
+		cased = filepath.Clean(matched)
+		casedExists = true
+	}
+
+	// Step 2: dereference symlinks and junctions on top of the cased path.
+	if resolved, symlinkErr := filepath.EvalSymlinks(cased); symlinkErr == nil && resolved != "" {
+		return filepath.Clean(resolved), nil
+	}
+	if casedExists {
+		return cased, nil
+	}
+	return "", os.ErrNotExist
+}
+
+// resolveExistingPath returns the canonical physical path of one existing candidate.
+// Existing candidates are always canonicalized so that the same include referenced
+// with a different casing resolves to a single dependency key; when caseInsensitive
+// is set, a component scan is used for candidates whose literal casing is missing.
+func resolveExistingPath(candidate string, caseInsensitive bool) (string, error) {
+	cleaned := filepath.Clean(candidate)
+	if _, err := os.Stat(cleaned); err == nil {
+		if canonical, canonicalErr := CanonicalizePhysicalPath(cleaned); canonicalErr == nil {
+			return canonical, nil
+		}
+		return cleaned, nil
+	}
+	if !caseInsensitive {
 		return "", os.ErrNotExist
 	}
-	matched, err := resolvePathCaseInsensitive(candidate)
+	matched, err := resolvePathCaseInsensitive(cleaned)
 	if err != nil {
 		return "", os.ErrNotExist
 	}
@@ -1375,7 +1419,14 @@ func (c *Compiler) registerForwardConstPatch(name string, emitPos int) {
 	c.forwardConstPatches[trimmed] = append(c.forwardConstPatches[trimmed], emitPos)
 }
 
-// patchForwardCallSites rewrites pending OpGetGlobal call-target loads to OpConstant user-sub references.
+// patchForwardCallSites rewrites pending call-target loads to OpConstant user-sub references.
+//
+// Both OpGetGlobal and OpGetLocal are accepted because a forward procedure call made inside a
+// procedure body resolves to an implicit OpGetLocal slot: resolveVar cannot know the name yet
+// and creates a procedure-local placeholder. All three opcodes share the same 3-byte layout
+// (1 opcode byte + one big-endian uint16 operand), so overwriting the opcode byte and the two
+// operand bytes keeps the instruction size identical: no bytecode shifting and no IP drift,
+// which is what the three-way contract (vm.Run, opcodeOperandSize, bytecode remap) requires.
 func (c *Compiler) patchForwardCallSites(name string, userSubConstIdx int) {
 	trimmed := strings.ToLower(strings.TrimSpace(name))
 	patches, ok := c.forwardCallPatches[trimmed]
@@ -1387,7 +1438,8 @@ func (c *Compiler) patchForwardCallSites(name string, userSubConstIdx int) {
 		if pos < 0 || pos+2 >= len(c.bytecode) {
 			continue
 		}
-		if OpCode(c.bytecode[pos]) != OpGetGlobal {
+		op := OpCode(c.bytecode[pos])
+		if op != OpGetGlobal && op != OpGetLocal {
 			continue
 		}
 		c.bytecode[pos] = byte(OpConstant)

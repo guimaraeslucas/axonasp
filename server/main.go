@@ -604,7 +604,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 				if isBlockedExtension(strings.ToLower(filepath.Ext(candidate))) || isBlockedFile(strings.ToLower(filepath.Base(candidate))) {
 					continue
 				}
-				fullPath = candidate
+				// Default pages are synthesized from a fixed lowercase list; resolve
+				// the real on-disk casing so implicit and explicit routes compile
+				// the same physical file with the same canonical source name.
+				if canonical, canonicalErr := axonvm.CanonicalizePhysicalPath(candidate); canonicalErr == nil {
+					fullPath = canonical
+				} else {
+					fullPath = candidate
+				}
 				foundDefault = true
 				break
 			}

@@ -30,7 +30,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -45,8 +44,10 @@ import (
 const (
 	scriptCacheDependencyMapLimit = 1000
 	scriptCacheMagicSize          = 6
-	scriptCacheBinaryVersion      = uint16(21)
-	scriptCacheDebounceWindow     = 1000 * time.Millisecond
+	// v22: cache keys are folded on every platform and SourceName keeps the
+	// canonical on-disk casing instead of the folded dictionary key.
+	scriptCacheBinaryVersion  = uint16(22)
+	scriptCacheDebounceWindow = 1000 * time.Millisecond
 )
 
 var scriptCacheMagic = [scriptCacheMagicSize]byte{'G', '3', 'A', 'X', 'O', 'N'}
@@ -766,7 +767,15 @@ func (c *ScriptCache) handleWatchEvent(watcher *fsnotify.Watcher, event fsnotify
 	if !c.shouldProcessWatchEvent(event.Name) {
 		return
 	}
-	c.Invalidate(event.Name)
+
+	// fsnotify reports the physical entry name. Normalize it once so aliases and
+	// casing never miss the key registered by the request path. Deleted targets
+	// cannot be canonicalized, so the raw path is the fallback.
+	eventPath := event.Name
+	if canonical, canonicalErr := CanonicalizePhysicalPath(eventPath); canonicalErr == nil {
+		eventPath = canonical
+	}
+	c.Invalidate(eventPath)
 }
 
 // StopInvalidator stops the active file watcher and goroutine.
@@ -846,6 +855,10 @@ func (c *ScriptCache) Put(filePath string, program CachedProgram, dependencies [
 }
 
 // Invalidate removes one script and all dependent scripts from memory cache.
+// Both the folded path key and the folded canonical physical key are processed:
+// watcher events and programmatic callers may report an alias (symlink or
+// junction) or a casing that differs from the key registered by the request
+// path, and both forms must purge the same entries.
 func (c *ScriptCache) Invalidate(filePath string) {
 	if c == nil || !c.mode.HasMemoryTier() {
 		return
@@ -855,16 +868,27 @@ func (c *ScriptCache) Invalidate(filePath string) {
 		return
 	}
 	cacheKey := normalizeScriptCacheKey(normalized)
+	keys := make([]string, 1, 2)
+	keys[0] = cacheKey
+	// Canonicalization touches the filesystem, so it stays outside the cache lock.
+	if canonical, canonicalErr := CanonicalizePhysicalPath(normalized); canonicalErr == nil {
+		if canonicalKey := normalizeScriptCacheKey(canonical); canonicalKey != cacheKey {
+			keys = append(keys, canonicalKey)
+		}
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	invalidateList := make([]string, 0, 16)
 	invalidateSet := make(map[string]struct{}, 16)
-	invalidateSet[cacheKey] = struct{}{}
-	invalidateList = append(invalidateList, cacheKey)
-	if dependents, exists := c.dependencyMap[cacheKey]; exists {
-		for _, dependent := range dependents {
+	for _, key := range keys {
+		if _, seen := invalidateSet[key]; seen {
+			continue
+		}
+		invalidateSet[key] = struct{}{}
+		invalidateList = append(invalidateList, key)
+		for _, dependent := range c.dependencyMap[key] {
 			if _, seen := invalidateSet[dependent]; seen {
 				continue
 			}
@@ -977,7 +1001,9 @@ func (c *ScriptCache) LoadOrCompileWithModeAndOptions(filePath string, mode Exec
 			compiler = NewASPCompiler(string(content))
 		}
 
-		compiler.SetSourceName(cacheKey)
+		// Keep the canonical absolute path (real casing) as the diagnostic source
+		// name; only the cache dictionary key is folded.
+		compiler.SetSourceName(normalized)
 		compiler.SetIncludeSiteRoot(options.IncludeSiteRoot)
 		if compErr := compiler.Compile(); compErr != nil {
 			return nil, compErr
@@ -1080,7 +1106,7 @@ func (c *ScriptCache) loadDiskProgram(filePath string, sourceInfo os.FileInfo) (
 	if !c.dependenciesFresh(payload.Program.IncludeDependencies, payload.ModTime) {
 		return CachedProgram{}, false
 	}
-	payload.Program.SourceName = normalizeScriptCacheKey(filePath)
+	payload.Program.SourceName = filePath
 	payload.Program.ProgramHash = computeProgramHash(
 		payload.Program.Bytecode,
 		payload.Program.GlobalCount,
@@ -1219,12 +1245,15 @@ func (c *ScriptCache) dependenciesFresh(dependencies []string, compiledUnix int6
 	return true
 }
 
+// normalizeScriptCacheKey folds one path into the deterministic dictionary key
+// shared by every cache structure (programs, programSizes, dependency maps and
+// disk cache filenames). Classic ASP virtual paths and #include references are
+// case-insensitive on every platform, so the fold is applied unconditionally:
+// case variants of one physical file must never create two cache entries.
+// The canonical on-disk casing is preserved separately in CachedProgram.SourceName
+// so diagnostics keep the real file name.
 func normalizeScriptCacheKey(filePath string) string {
-	normalized := filepath.Clean(strings.TrimSpace(filePath))
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(normalized)
-	}
-	return normalized
+	return strings.ToLower(filepath.Clean(strings.TrimSpace(filePath)))
 }
 
 func sourceHasIncludeDirective(filePath string) bool {
@@ -1274,7 +1303,9 @@ func (c *ScriptCache) registerDependenciesNoLock(scriptPath string, dependencies
 			c.dependencyMap[depPath] = make([]string, 0, 2)
 			c.dependencyOrder = append(c.dependencyOrder, depPath)
 		}
-		if !containsFold(c.dependencyMap[depPath], scriptPath) {
+		// Cache keys and dependency entries are pre-folded by the same generator,
+		// so an exact match is both correct and cheaper than a fold comparison.
+		if !slices.Contains(c.dependencyMap[depPath], scriptPath) {
 			c.dependencyMap[depPath] = append(c.dependencyMap[depPath], scriptPath)
 		}
 	}

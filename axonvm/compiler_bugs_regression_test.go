@@ -303,3 +303,138 @@ Response.Write "ok"
 		t.Fatalf("got %q", got)
 	}
 }
+
+// TestForwardBareSubCallWithArgsInsideProcedure verifies that "target 1, payload" inside a
+// Function body invokes a Sub declared further down the file. The call site used to resolve to
+// an implicit OpGetLocal slot instead of a forward-call patch, so the arguments were discarded
+// and the Sub never ran (no compile error, no runtime error, silent no-op).
+func TestForwardBareSubCallWithArgsInsideProcedure(t *testing.T) {
+	source := `<%
+Dim log
+log = ""
+
+Function caller()
+	target 1, "payload"
+	target 2, "second"
+	caller = "done"
+End Function
+
+Sub target(a, b)
+	log = log & a & ":" & b & ";"
+End Sub
+
+Response.Write caller()
+Response.Write "|" & log
+%>`
+
+	if got := runVBSAndGetOutput(t, source); got != "done|1:payload;2:second;" {
+		t.Fatalf("unexpected forward bare call output: got %q want %q", got, "done|1:payload;2:second;")
+	}
+}
+
+// TestForwardBareSubCallWithArgsInsideSubScope covers the same forward reference from a Sub
+// body, including a second call site that reuses the already-polluted implicit local slot.
+func TestForwardBareSubCallWithArgsInsideSubScope(t *testing.T) {
+	source := `<%
+Dim total
+total = 0
+
+Sub driver()
+	accumulate 1
+	accumulate 2
+	accumulate 3
+End Sub
+
+Sub accumulate(value)
+	total = total + value
+End Sub
+
+driver
+Response.Write total
+%>`
+
+	if got := runVBSAndGetOutput(t, source); got != "6" {
+		t.Fatalf("unexpected forward accumulate output: got %q want %q", got, "6")
+	}
+}
+
+// TestForwardZeroArgSubCallInsideProcedure verifies that a bare zero-argument statement inside
+// a procedure reaches a Sub declared later, and that repeated call sites are all patched.
+func TestForwardZeroArgSubCallInsideProcedure(t *testing.T) {
+	source := `<%
+Dim hits
+hits = 0
+
+Sub outer()
+	bump
+	bump
+End Sub
+
+Sub bump()
+	hits = hits + 1
+End Sub
+
+outer
+Response.Write hits
+%>`
+
+	if got := runVBSAndGetOutput(t, source); got != "2" {
+		t.Fatalf("unexpected forward zero-arg call output: got %q want %q", got, "2")
+	}
+}
+
+// TestForwardBareCallPatchKeepsDeclaredLocalIndexing verifies that the wider OpGetLocal patch
+// acceptance never rewrites a declared local array load used inside an expression, even when a
+// later Sub reuses the same name.
+func TestForwardBareCallPatchKeepsDeclaredLocalIndexing(t *testing.T) {
+	source := `<%
+Function sum()
+	Dim values(2)
+	values(0) = 1
+	values(1) = 2
+	sum = values(0) + values(1)
+End Function
+
+Sub values()
+End Sub
+
+Response.Write sum()
+%>`
+
+	if got := runVBSAndGetOutput(t, source); got != "3" {
+		t.Fatalf("unexpected local array output: got %q want %q", got, "3")
+	}
+}
+
+// TestForwardBareCallPatchSatisfiesOperandSizeContract verifies that a patched call site keeps
+// the 3-byte instruction width (opcode + uint16 operand) required by the IP stability contract.
+func TestForwardBareCallPatchSatisfiesOperandSizeContract(t *testing.T) {
+	source := `<%
+Function caller()
+	target 1
+	caller = "ok"
+End Function
+
+Sub target(a)
+End Sub
+
+Response.Write caller()
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	bytecode := compiler.Bytecode()
+	for pos := 0; pos < len(bytecode); {
+		op := OpCode(bytecode[pos])
+		size := opcodeOperandSize(op, bytecode, pos)
+		if op == OpConstant || op == OpGetGlobal || op == OpGetLocal {
+			if size != 2 {
+				t.Fatalf("opcode %v at %d has operand size %d, want 2", op, pos, size)
+			}
+		}
+		pos += 1 + size
+	}
+}

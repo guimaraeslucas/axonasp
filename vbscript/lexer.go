@@ -2,8 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
- * Code contribution on the lexer: Steven Borrie (https://github.com/saborrie)
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman), Steven Borrie (https://github.com/saborrie)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *

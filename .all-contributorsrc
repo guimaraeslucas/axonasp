@@ -104,7 +104,17 @@
                   "profile": "https://github.com/alanupstone",
                   "contributions": [
                     "bug"                  ]
-                }
+                },
+                                {
+                                  "login": "ernani",
+                                  "name": "Ernani Joppert Pontes Martins",
+                                  "avatar_url": "https://avatars.githubusercontent.com/u/114523?v=4",
+                                  "profile": "https://github.com/ernani",
+                                  "contributions": [
+                                    "bug",
+                                    "code"
+                                  ]
+                                }
   ],
   "contributorsPerLine": 7,
   "skipCi": true,
