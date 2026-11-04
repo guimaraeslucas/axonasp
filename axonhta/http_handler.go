@@ -109,7 +109,14 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		for _, page := range defaultPages {
 			candidate := filepath.Join(cleanPath, page)
 			if candidateInfo, err := os.Stat(candidate); err == nil && !candidateInfo.IsDir() {
-				fullPath = candidate
+				// Default pages are synthesized from a fixed lowercase list; resolve
+				// the real on-disk casing so implicit and explicit routes compile
+				// the same physical file with the same canonical source name.
+				if canonical, canonicalErr := axonvm.CanonicalizePhysicalPath(candidate); canonicalErr == nil {
+					fullPath = canonical
+				} else {
+					fullPath = candidate
+				}
 				break
 			}
 		}

@@ -755,7 +755,7 @@ func vbsIntArg(v Value) int {
 		return 0
 	}
 	return int(math.RoundToEven(f))
-  }
+}
 
 // vbsNullIfArgNull makes a date builtin return Null when its date argument is Null,
 // as VBScript does (Month(Null) is Null, not 1).

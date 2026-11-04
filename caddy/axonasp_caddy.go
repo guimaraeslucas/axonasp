@@ -576,7 +576,7 @@ func (a *AxonASP) matchASPRequest(webRoot, path string) (aspPath string, shouldE
 			if resolved, ok := resolveDefaultASPPath(webRoot, path+"/"); ok {
 				resolvedFilePath := filepath.Clean(filepath.Join(webRoot, filepath.FromSlash(strings.TrimPrefix(resolved, "/"))))
 				if infoRes, errRes := os.Stat(resolvedFilePath); errRes == nil && !infoRes.IsDir() {
-					return resolvedFilePath, true, true
+					return canonicalDefaultASPPath(resolvedFilePath), true, true
 				}
 			}
 		}
@@ -587,11 +587,22 @@ func (a *AxonASP) matchASPRequest(webRoot, path string) (aspPath string, shouldE
 	if resolved, ok := resolveDefaultASPPath(webRoot, path); ok {
 		resolvedFilePath := filepath.Clean(filepath.Join(webRoot, filepath.FromSlash(strings.TrimPrefix(resolved, "/"))))
 		if infoRes, errRes := os.Stat(resolvedFilePath); errRes == nil && !infoRes.IsDir() {
-			return resolvedFilePath, true, false
+			return canonicalDefaultASPPath(resolvedFilePath), true, false
 		}
 	}
 
 	return "", false, false
+}
+
+// canonicalDefaultASPPath resolves one default-document candidate to its real
+// physical form on disk. Default documents are synthesized from a fixed list, so
+// the on-disk casing must be recovered for implicit directory routes to compile
+// the exact same file as an explicit request.
+func canonicalDefaultASPPath(path string) string {
+	if canonical, err := axonvm.CanonicalizePhysicalPath(path); err == nil {
+		return canonical
+	}
+	return path
 }
 
 func (a *AxonASP) executeASPFile(w http.ResponseWriter, r *http.Request, webRoot string, cleanPath string) error {

@@ -1161,14 +1161,14 @@ func (c *Compiler) parseSetMemberAssignmentChain() {
 		c.parseExpression(PrecNone)
 		// Set member assignment must preserve raw object references.
 		c.undoTrailingCoerce()
-    
+
 		//Dead code since #176 - Kept here just in case
-    //if hasCall {
-			// Obj.Item(k) = value: indexed property write, same lowering as the Let path.
-			//c.emit(OpArraySet, midx, argCount)
-			//return
+		//if hasCall {
+		// Obj.Item(k) = value: indexed property write, same lowering as the Let path.
+		//c.emit(OpArraySet, midx, argCount)
+		//return
 		//}
-    
+
 		c.emit(OpMemberSetSet, midx)
 		return
 	}

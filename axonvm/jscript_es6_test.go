@@ -73,7 +73,7 @@ func TestJScriptModuleCache(t *testing.T) {
 	}
 
 	// 4. Verify it's a "module" by looking at the source name or just running it
-	if program.SourceName != normalizeScriptCacheKey(jsPath) {
+	if normalizeScriptCacheKey(program.SourceName) != normalizeScriptCacheKey(jsPath) {
 		t.Errorf("expected source name %q, got %q", jsPath, program.SourceName)
 	}
 

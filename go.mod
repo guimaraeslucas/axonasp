@@ -10,7 +10,7 @@ require (
 	github.com/dlclark/regexp2 v1.12.0
 	github.com/fogleman/gg v1.3.0
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/fxamacker/cbor/v2 v2.9.6
+	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/go-ole/go-ole v1.3.0
 	github.com/go-sourcemap/sourcemap v2.1.4+incompatible
@@ -23,7 +23,7 @@ require (
 	github.com/klauspost/compress v1.20.3
 	github.com/klauspost/reedsolomon v1.14.2
 	github.com/lib/pq v1.12.3
-	github.com/mark3labs/mcp-go v1.3.0
+	github.com/mark3labs/mcp-go v1.5.0
 	github.com/ncruces/zenity v0.10.15
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/rivo/tview v0.42.0
@@ -31,15 +31,15 @@ require (
 	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/spf13/pflag v1.0.10
 	github.com/spf13/viper v1.21.0
-	github.com/yuin/goldmark v1.8.6
+	github.com/yuin/goldmark v1.8.7
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
-	modernc.org/sqlite v1.60.1
+	modernc.org/sqlite v1.61.1
 )
 
 require (
@@ -47,12 +47,12 @@ require (
 	github.com/RoaringBitmap/roaring v1.9.4 // indirect
 	github.com/akavel/rsrc v0.10.2 // indirect
 	github.com/axiomhq/hyperloglog v0.3.0 // indirect
-	github.com/bits-and-blooms/bitset v1.26.0 // indirect
+	github.com/bits-and-blooms/bitset v1.29.0 // indirect
 	github.com/blevesearch/go-porterstemmer v1.0.3 // indirect
 	github.com/blevesearch/mmap-go v1.2.0 // indirect
 	github.com/blevesearch/segment v0.9.1 // indirect
 	github.com/blevesearch/snowballstem v0.9.0 // indirect
-	github.com/blevesearch/vellum v1.2.0 // indirect
+	github.com/blevesearch/vellum v1.2.1 // indirect
 	github.com/blugelabs/bluge_segment_api v0.2.0 // indirect
 	github.com/blugelabs/ice v1.0.0 // indirect
 	github.com/blugelabs/ice/v2 v2.0.1 // indirect
@@ -69,9 +69,9 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/josephspurrier/goversioninfo v1.7.0 // indirect
 	github.com/kamstrup/intmap v0.5.2 // indirect
-	github.com/klauspost/cpuid/v2 v2.4.1 // indirect
+	github.com/klauspost/cpuid/v2 v2.4.2 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
-	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect
+	github.com/lufia/plan9stats v0.0.0-20261101121723-be84dd9509a0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
@@ -90,10 +90,10 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
-	modernc.org/libc v1.79.0 // indirect
+	modernc.org/libc v1.80.0 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )

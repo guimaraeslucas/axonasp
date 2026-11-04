@@ -4,7 +4,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman), Ernani Joppert Pontes Martins (@ernani)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *

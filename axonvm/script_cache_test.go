@@ -22,6 +22,7 @@ package axonvm
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -460,16 +461,134 @@ func TestScriptCacheLoadOrCompileFallsBackToMemoryWhenDiskPersistFails(t *testin
 	}
 }
 
-func TestScriptCacheNormalizeScriptCacheKeyWindowsCompatibility(t *testing.T) {
+func TestScriptCacheNormalizeScriptCacheKeyFoldsCase(t *testing.T) {
 	mixed := filepath.Clean("C:/WWW/Index.ASP")
 	normalized := normalizeScriptCacheKey(mixed)
-	if runtime.GOOS == "windows" {
-		if normalized != strings.ToLower(mixed) {
-			t.Fatalf("expected lowercased windows cache key, got %q want %q", normalized, strings.ToLower(mixed))
-		}
-		return
+	if normalized != strings.ToLower(mixed) {
+		t.Fatalf("expected lowercased cache key on %s, got %q want %q", runtime.GOOS, normalized, strings.ToLower(mixed))
 	}
-	if normalized != mixed {
-		t.Fatalf("expected non-windows cache key to preserve case, got %q want %q", normalized, mixed)
+
+	implicit := filepath.Clean("/site/default.asp")
+	explicit := filepath.Clean("/site/Default.asp")
+	if normalizeScriptCacheKey(implicit) != normalizeScriptCacheKey(explicit) {
+		t.Fatalf("expected case variants to share one cache key, got %q and %q",
+			normalizeScriptCacheKey(implicit), normalizeScriptCacheKey(explicit))
+	}
+}
+
+// TestCanonicalizePhysicalPathResolvesOnDiskCasing verifies that case variants of
+// one physical file converge on the on-disk casing and that missing targets report
+// os.ErrNotExist instead of a fabricated path.
+func TestCanonicalizePhysicalPathResolvesOnDiskCasing(t *testing.T) {
+	dir := t.TempDir()
+	realPath := filepath.Join(dir, "MixedCase.asp")
+	if err := os.WriteFile(realPath, []byte("<% Response.Write 1 %>"), 0o644); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	canonical, err := CanonicalizePhysicalPath(filepath.Join(dir, "mixedcase.asp"))
+	if err != nil {
+		t.Fatalf("canonicalize case variant: %v", err)
+	}
+	if filepath.Base(canonical) != "MixedCase.asp" {
+		t.Fatalf("expected on-disk casing in canonical path, got %q", canonical)
+	}
+
+	canonicalInfo, err := os.Stat(canonical)
+	if err != nil {
+		t.Fatalf("stat canonical path: %v", err)
+	}
+	realInfo, err := os.Stat(realPath)
+	if err != nil {
+		t.Fatalf("stat physical path: %v", err)
+	}
+	if !os.SameFile(canonicalInfo, realInfo) {
+		t.Fatalf("canonical path %q does not resolve to physical file %q", canonical, realPath)
+	}
+
+	if _, err := CanonicalizePhysicalPath(filepath.Join(dir, "missing.asp")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected os.ErrNotExist for a missing target, got %v", err)
+	}
+}
+
+// TestScriptCacheImplicitVsExplicitRouteInvalidation guards Symptom A: an implicit
+// directory route (synthesized "default.asp") and an explicit request
+// ("Default.asp") must share one cache entry, and invalidating either spelling
+// must purge that entry.
+func TestScriptCacheImplicitVsExplicitRouteInvalidation(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	dir := t.TempDir()
+	implicitPath := filepath.Join(dir, "default.asp")
+	explicitPath := filepath.Join(dir, "Default.asp")
+
+	cache.Put(implicitPath, CachedProgram{Bytecode: []byte{1}, GlobalCount: 1}, nil)
+	cache.Put(explicitPath, CachedProgram{Bytecode: []byte{2}, GlobalCount: 1}, nil)
+
+	cache.mu.RLock()
+	entryCount := len(cache.programs)
+	cache.mu.RUnlock()
+	if entryCount != 1 {
+		t.Fatalf("expected one shared cache entry for both route spellings, got %d", entryCount)
+	}
+
+	cache.Invalidate(explicitPath)
+
+	if _, ok := cache.Get(implicitPath); ok {
+		t.Fatalf("expected implicit route entry to be purged")
+	}
+	if _, ok := cache.Get(explicitPath); ok {
+		t.Fatalf("expected explicit route entry to be purged")
+	}
+
+	cache.mu.RLock()
+	remaining := len(cache.programs)
+	cache.mu.RUnlock()
+	if remaining != 0 {
+		t.Fatalf("expected empty program cache, got %d entries", remaining)
+	}
+}
+
+// TestScriptCacheIncludeDependencyInvalidationMultiRoute guards Symptom B: a
+// dependency must stay registered once per cache key, so editing a shared include
+// evicts every dependent entry instead of leaving an orphan compiled copy.
+func TestScriptCacheIncludeDependencyInvalidationMultiRoute(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	dir := t.TempDir()
+	includePath := filepath.Join(dir, "part.inc")
+	if err := os.WriteFile(includePath, []byte("<% ' shared part %>"), 0o644); err != nil {
+		t.Fatalf("write include: %v", err)
+	}
+	implicitPath := filepath.Join(dir, "default.asp")
+	explicitPath := filepath.Join(dir, "Default.asp")
+
+	cache.Put(implicitPath, CachedProgram{Bytecode: []byte{1}, GlobalCount: 1}, []string{includePath})
+	cache.Put(explicitPath, CachedProgram{Bytecode: []byte{2}, GlobalCount: 1}, []string{includePath})
+
+	depKey := normalizeScriptCacheKey(includePath)
+	cache.mu.RLock()
+	dependentCount := len(cache.dependencyMap[depKey])
+	cache.mu.RUnlock()
+	if dependentCount != 1 {
+		t.Fatalf("expected one dependent registration for the shared include, got %d", dependentCount)
+	}
+
+	cache.Invalidate(includePath)
+
+	if _, ok := cache.Get(implicitPath); ok {
+		t.Fatalf("expected implicit route dependent to be evicted")
+	}
+	if _, ok := cache.Get(explicitPath); ok {
+		t.Fatalf("expected explicit route dependent to be evicted")
+	}
+
+	cache.mu.RLock()
+	_, depExists := cache.dependencyMap[depKey]
+	remaining := len(cache.programs)
+	cache.mu.RUnlock()
+	if depExists {
+		t.Fatalf("expected dependency entry to be removed")
+	}
+	if remaining != 0 {
+		t.Fatalf("expected empty program cache, got %d entries", remaining)
 	}
 }
