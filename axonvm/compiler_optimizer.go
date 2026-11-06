@@ -34,15 +34,28 @@ import (
 // All changes are made in-place on c.bytecode; redundant bytes are replaced
 // with OpNop so every absolute jump offset remains valid.
 func (c *Compiler) optimizePeephole() {
+	// Each pass is followed by an integrity check when AXONASP_VERIFY is set, so
+	// a pass that resizes an instruction and invalidates a jump target is named
+	// at the point it does it rather than thousands of instructions later, in a
+	// VM that has drifted out of step. See compiler_verify.go.
+	c.checkBytecode("before optimization")
 	for {
 		folded := c.optimizePeepholePass()
+		c.checkBytecode("peephole")
 		propagated := c.optimizeLocalCopyPropagationPass()
+		c.checkBytecode("local copy propagation")
 		intOptimized := c.optimizeIntegerArithmeticPass()
+		c.checkBytecode("integer arithmetic")
 		deadCode := c.optimizeDeadConditionalJumpPass()
+		c.checkBytecode("dead conditional jump")
 		fusedBranch := c.optimizeFusedBranchPass()
+		c.checkBytecode("fused branch")
 		loadBranch := c.optimizeFusedLoadBranchPass()
+		c.checkBytecode("fused load branch")
 		inPlaceMath := c.optimizeInPlaceMathPass()
+		c.checkBytecode("in-place math")
 		constPooling := c.optimizeConstantPoolingPass()
+		c.checkBytecode("constant pooling")
 		if !folded && !propagated && !intOptimized && !deadCode && !fusedBranch && !loadBranch && !inPlaceMath && !constPooling {
 			break
 		}
@@ -766,6 +779,16 @@ func (c *Compiler) optimizePeepholePass() bool {
 	changed := false
 
 	for i := 0; i < len(c.bytecode); {
+		// Every path out of this loop body advances by a whole instruction.
+		// Advancing by one byte from an OpConstant lands on its operand, and
+		// the next iteration then reads that operand byte as an opcode: if it
+		// happens to equal OpConstant, this pass folds two unrelated byte pairs
+		// into a "constant" and writes the result over real instructions. That
+		// corrupts the stream from there on, and the VM eventually executes a
+		// JavaScript opcode in a VBScript program and panics on a nonsense
+		// constant index. It needs a big page to happen - the byte has to
+		// collide and the fold has to succeed - which is why it showed up on a
+		// 1.4MB program and never in a test.
 		// First instruction must be OpConstant.
 		op := OpCode(c.bytecode[i])
 		if op != OpConstant {
@@ -782,7 +805,7 @@ func (c *Compiler) optimizePeepholePass() bool {
 			j++
 		}
 		if j+3 > len(c.bytecode) || OpCode(c.bytecode[j]) != OpConstant {
-			i++
+			i += 3 // past this OpConstant, not into its operand
 			continue
 		}
 
@@ -792,7 +815,7 @@ func (c *Compiler) optimizePeepholePass() bool {
 			k++
 		}
 		if k >= len(c.bytecode) || !isFoldableVBSBinaryOp(OpCode(c.bytecode[k])) {
-			i++
+			i += 3 // past this OpConstant, not into its operand
 			continue
 		}
 
@@ -800,7 +823,7 @@ func (c *Compiler) optimizePeepholePass() bool {
 		// A well-formed program never jumps to an operand byte, but j and k
 		// are opcode bytes that could legitimately be named targets.
 		if hasTargetInRange(targets, i+1, k) {
-			i++
+			i += 3 // past this OpConstant, not into its operand
 			continue
 		}
 
@@ -809,14 +832,14 @@ func (c *Compiler) optimizePeepholePass() bool {
 		idxB := int(binary.BigEndian.Uint16(c.bytecode[j+1:]))
 		binOp := OpCode(c.bytecode[k])
 		if idxA >= len(c.constants) || idxB >= len(c.constants) {
-			i++
+			i += 3 // past this OpConstant, not into its operand
 			continue
 		}
 
 		// Attempt compile-time evaluation.
 		result, ok := foldVBSBinaryOp(c.constants[idxA], c.constants[idxB], binOp)
 		if !ok {
-			i++
+			i += 3 // past this OpConstant, not into its operand
 			continue
 		}
 
