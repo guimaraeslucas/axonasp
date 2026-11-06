@@ -50,7 +50,9 @@ func TestVMCompileSupportsAllVBScriptLiterals(t *testing.T) {
 	if len(parts) != 8 {
 		t.Fatalf("unexpected literal output: %q", output.String())
 	}
-	if parts[0] != "True" || parts[1] != "False" || parts[2] != "Null" || parts[3] != "" || parts[4] != "" || parts[5] != "15" || parts[6] != "15" {
+	// <%= Null %> writes nothing on IIS, like Empty and Nothing.
+	// Measured: https://github.com/guimaraeslucas/axonasp/issues/188
+	if parts[0] != "True" || parts[1] != "False" || parts[2] != "" || parts[3] != "" || parts[4] != "" || parts[5] != "15" || parts[6] != "15" {
 		t.Fatalf("unexpected literal rendering: %q", output.String())
 	}
 	if !strings.Contains(parts[7], "2026-03-13") && !strings.Contains(parts[7], "3/13/2026") && !strings.Contains(parts[7], "13/03/2026") {
@@ -104,7 +106,9 @@ n = Null
 		t.Fatalf("vm run failed: %v", err)
 	}
 
-	expected := "1|True|True|False|14|21|True|True|Null"
+	// n >= 1 with n = Null yields Null, which renders as "" on IIS.
+	// Measured: https://github.com/guimaraeslucas/axonasp/issues/188
+	expected := "1|True|True|False|14|21|True|True|"
 	if output.String() != expected {
 		t.Fatalf("unexpected chained binary output:\nexpected: %q\nactual:   %q", expected, output.String())
 	}
@@ -154,7 +158,9 @@ func TestVMNullPropagationInArithmetic(t *testing.T) {
 		t.Fatalf("vm run failed: %v", err)
 	}
 
-	expected := "Null|Null|Null|Null|hi|Null|Null|Null"
+	// Each Null result renders as "" on IIS; the & case coerces to "hi".
+	// Measured: https://github.com/guimaraeslucas/axonasp/issues/188
+	expected := "||||hi|||"
 	if output.String() != expected {
 		t.Fatalf("unexpected null propagation output:\nexpected: %q\nactual:   %q", expected, output.String())
 	}
@@ -206,7 +212,9 @@ func TestVMNullLogicalShortCircuit(t *testing.T) {
 	// False And Null = False (short-circuit); Null And True = Null
 	// Null Or True = True (short-circuit); Null Or False = Null
 	// Null Xor True = Null; False Imp Null = True; Null Imp True = True
-	expected := "False|Null|True|Null|Null|True|True"
+	// The Null results render as "" on IIS; the short-circuit Booleans remain.
+	// Measured: https://github.com/guimaraeslucas/axonasp/issues/188
+	expected := "False||True|||True|True"
 	if output.String() != expected {
 		t.Fatalf("unexpected null logical short-circuit output:\nexpected: %q\nactual:   %q", expected, output.String())
 	}
@@ -235,7 +243,9 @@ n = Null
 		t.Fatalf("vm run failed: %v", err)
 	}
 
-	expected := "AlphaBeta|5|Text|7|Null"
+	// n + 1 stays Null, which renders as "" on IIS.
+	// Measured: https://github.com/guimaraeslucas/axonasp/issues/188
+	expected := "AlphaBeta|5|Text|7|"
 	if output.String() != expected {
 		t.Fatalf("unexpected plus operator output:\nexpected: %q\nactual:   %q", expected, output.String())
 	}
@@ -318,8 +328,10 @@ func TestVMLessThanOperatorSemantics(t *testing.T) {
 		script string
 		want   string
 	}{
-		// Null propagation: Null < anything → Null, anything < Null → Null
-		{`<% Dim x : x = Null %><%= x < 5 %>|<%= 5 < x %>|<%= x < x %>`, "Null|Null|Null"},
+		// Null propagation: Null < anything → Null, anything < Null → Null.
+		// A written Null renders as "" on IIS (measured,
+		// https://github.com/guimaraeslucas/axonasp/issues/188).
+		{`<% Dim x : x = Null %><%= x < 5 %>|<%= 5 < x %>|<%= x < x %>`, "||"},
 		// String comparison (binary mode): "b" < "a" → False
 		{`<%= "b" < "a" %>|<%= "a" < "b" %>`, "False|True"},
 		// Numeric comparison

@@ -8584,6 +8584,13 @@ func (vm *VM) valueToString(v Value) string {
 		v = vm.stack[int(v.Num)]
 	}
 	v = resolveCallable(vm, v)
+	if v.Type == VTNull {
+		// VBScript string coercion treats Null as a zero-length string:
+		// Response.Write Null writes nothing, and a Null part in an OpWriteN
+		// chain renders as "". JScript keeps its own "null" via jsToString.
+		// Measured on IIS: https://github.com/guimaraeslucas/axonasp/issues/188
+		return ""
+	}
 	if v.Type == VTJSObject || v.Type == VTJSFunction {
 		if vm.jsObjectStringProperty(v, "__js_type") == "Error" {
 			name := vm.jsObjectStringProperty(v, "name")
