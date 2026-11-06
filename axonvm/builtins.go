@@ -336,9 +336,18 @@ func vbsUBoundVM(vm *VM, args []Value) (Value, error) {
 
 // --- String and Binary Manipulation ---
 
+// VBScript's string functions propagate a Null string argument: Len(Null),
+// Trim(Null), UCase(Null), Left(Null, 1) and the rest all return Null rather
+// than operating on the word "Null". Replace is the measured exception - it
+// raises 94 (Invalid use of Null) for a Null in any of its string arguments.
+// Measured on IIS: https://github.com/guimaraeslucas/axonasp/issues/188
+
 func VbsLen(args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewInteger(0), nil
+	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
 	}
 	return NewInteger(int64(len([]rune(args[0].String())))), nil
 }
@@ -347,12 +356,18 @@ func vbsLenB(args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewInteger(0), nil
 	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
 	return NewInteger(int64(len(ansiBytes(args[0].String())))), nil
 }
 
 func VbsUCase(args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
+	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
 	}
 	return NewString(strings.ToUpper(args[0].String())), nil
 }
@@ -361,12 +376,18 @@ func vbsLCase(args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
 	return NewString(strings.ToLower(args[0].String())), nil
 }
 
 func vbsTrim(args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
+	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
 	}
 	return NewString(strings.TrimSpace(args[0].String())), nil
 }
@@ -464,21 +485,37 @@ func vbsInStrVM(vm *VM, args []Value) (Value, error) {
 		}
 	}
 
+	// A Null in either string argument makes InStr return Null (measured,
+	// see the comment above VbsLen). Only the string positions are guarded.
+	isNullArg := func(v Value) bool { return v.Type == VTNull }
+
 	switch len(args) {
 	case 2:
+		if isNullArg(args[0]) || isNullArg(args[1]) {
+			return NewNull(), nil
+		}
 		s1 = args[0].String()
 		s2 = args[1].String()
 	case 3:
 		if isNumericType(args[0]) {
+			if isNullArg(args[1]) || isNullArg(args[2]) {
+				return NewNull(), nil
+			}
 			start = vbsIntArg(args[0])
 			s1 = args[1].String()
 			s2 = args[2].String()
 		} else {
+			if isNullArg(args[0]) || isNullArg(args[1]) {
+				return NewNull(), nil
+			}
 			s1 = args[0].String()
 			s2 = args[1].String()
 			compare = vbsIntArg(args[2])
 		}
 	default:
+		if isNullArg(args[1]) || isNullArg(args[2]) {
+			return NewNull(), nil
+		}
 		start = vbsIntArg(args[0])
 		s1 = args[1].String()
 		s2 = args[2].String()
@@ -522,8 +559,11 @@ func vbsReplaceVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 3 {
 		return NewString(""), nil
 	}
-	if args[0].Type == VTNull {
-		return NewNull(), nil
+	// Unlike the other string functions, Replace raises 94 for a Null in any
+	// of its three string arguments rather than returning Null (measured, see
+	// the comment above VbsLen).
+	if args[0].Type == VTNull || args[1].Type == VTNull || args[2].Type == VTNull {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
 
 	expression := args[0].String()
@@ -921,6 +961,11 @@ func vbsCDblVM(vm *VM, args []Value) (Value, error) {
 func vbsCStrVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
+	}
+	// The explicit casts all raise 94 on Null, unlike & coercion, which
+	// treats a lone Null as "" (measured, see the comment above VbsLen).
+	if args[0].Type == VTNull {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
 	// Use vm.valueToString for proper locale-aware formatting
 	return NewString(vm.valueToString(args[0])), nil

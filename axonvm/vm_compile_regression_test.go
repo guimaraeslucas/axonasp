@@ -9373,7 +9373,9 @@ Response.Write TypeName(v5) & ":" & v5
 	}
 	host.Response().Flush()
 
-	expected := "Double:-5.5|Integer:-5|Integer:0|Integer:-1|Null:Null"
+	// Writing a Null renders nothing on IIS, so the negated Null shows as "".
+	// Measured: https://github.com/guimaraeslucas/axonasp/issues/188
+	expected := "Double:-5.5|Integer:-5|Integer:0|Integer:-1|Null:"
 	if got := output.String(); got != expected {
 		t.Fatalf("expected %q, got %q", expected, got)
 	}

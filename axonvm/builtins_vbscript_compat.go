@@ -201,6 +201,9 @@ func vbsCompatLTrim(_ *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
 	return NewString(strings.TrimLeft(args[0].String(), " \t")), nil
 }
 
@@ -208,6 +211,9 @@ func vbsCompatLTrim(_ *VM, args []Value) (Value, error) {
 func vbsCompatRTrim(_ *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
+	}
+	if args[0].Type == VTNull {
+		return NewNull(), nil
 	}
 	return NewString(strings.TrimRight(args[0].String(), " \t")), nil
 }
@@ -253,6 +259,11 @@ func vbsCompatStrReverse(_ *VM, args []Value) (Value, error) {
 func vbsCompatStrComp(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return NewInteger(0), nil
+	}
+	if args[0].Type == VTNull || args[1].Type == VTNull {
+		// StrComp propagates Null like the other string functions (measured,
+		// see the comment above VbsLen in builtins.go).
+		return NewNull(), nil
 	}
 	a := args[0].String()
 	b := args[1].String()
@@ -1176,6 +1187,11 @@ func vbsCompatCBool(_ *VM, args []Value) (Value, error) {
 		return NewBool(false), nil
 	}
 	v := args[0]
+	if v.Type == VTNull {
+		// The explicit casts raise 94 on Null (measured, see the comment
+		// above VbsLen in builtins.go).
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
+	}
 	switch v.Type {
 	case VTBool:
 		return v, nil
@@ -1229,6 +1245,11 @@ func vbsCompatCByte(vm *VM, args []Value) (Value, error) {
 func vbsCompatCDate(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewDate(time.Time{}), nil
+	}
+	if args[0].Type == VTNull {
+		// The explicit casts raise 94 on Null (measured, see the comment
+		// above VbsLen in builtins.go).
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
 	return NewDate(valueToTimeInLocale(vm, args[0])), nil
 }
