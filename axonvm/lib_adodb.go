@@ -1410,6 +1410,11 @@ func (vm *VM) adodbRecordsetOpen(rs *adodbRecordset, sqlText string, conn *adodb
 	}
 	if strings.TrimSpace(sqlText) != "" {
 		rs.source = sqlText
+	} else if strings.TrimSpace(rs.source) != "" {
+		// A no-argument Open() executes the recordset's Source property, as
+		// real ADO does. Without this, rs.Source = sql : rs.Open() sends an
+		// empty query and comes back EOF.
+		sqlText = rs.source
 	}
 	if conn == nil && strings.TrimSpace(sqlText) == "" && len(rs.columns) > 0 {
 		if rs.data == nil {
