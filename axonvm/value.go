@@ -181,6 +181,42 @@ func (v Value) String() string {
 	}
 }
 
+// CoerceBool converts a Value to a boolean following VBScript CBool/conditional rules.
+// Numeric strings ("0", "1", "-1", "0.0", "&h0"), "True" and "False" are accepted;
+// any other non-numeric string is rejected. Null yields False so that If/While tests
+// do not raise error 94 (the explicit CBool Null check stays in vbsCompatCBool).
+// Returns (result, ok); when ok is false the value cannot be coerced and the caller
+// must raise VBScript Type mismatch (error 13). No heap allocations are performed.
+func (v Value) CoerceBool() (bool, bool) {
+	switch v.Type {
+	case VTBool, VTInteger:
+		return v.Num != 0, true
+	case VTDouble:
+		return v.Flt != 0, true
+	case VTEmpty:
+		return false, true
+	case VTNull:
+		// In VBScript If/While conditions, Null evaluates to False.
+		return false, true
+	case VTDate:
+		return v.Num != 0, true
+	case VTString:
+		text := strings.TrimSpace(v.Str)
+		if len(text) == 5 && strings.EqualFold(text, "false") {
+			return false, true
+		}
+		if len(text) == 4 && strings.EqualFold(text, "true") {
+			return true, true
+		}
+		if num, _, ok := vbsParseNumericString(text); ok {
+			return num != 0, true
+		}
+		return false, false
+	default:
+		return false, false
+	}
+}
+
 func NewInteger(v int64) Value {
 	return Value{Type: VTInteger, Num: v}
 }

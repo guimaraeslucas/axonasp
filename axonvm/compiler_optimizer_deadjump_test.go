@@ -192,8 +192,15 @@ func deadJumpOracleCases() []deadJumpOracleCase {
 		},
 		{
 			name:       "compile time false condition variants",
-			source:     `<% If 0 Then Response.Write "int" %>|<% If "" Then Response.Write "str" %>|<% If Empty Then Response.Write "empty" Else Response.Write "live" %>`,
-			wantOutput: "||live",
+			source:     `<% If 0 Then Response.Write "int" %>|<% If Empty Then Response.Write "empty" Else Response.Write "live" %>`,
+			wantOutput: "|live",
+		},
+		{
+			// VBScript condition coercion rejects an empty string literal with error 13,
+			// so the dead-branch blanking must not change the failure behaviour.
+			name:        "empty string condition still raises type mismatch",
+			source:      `<% If "" Then Response.Write "str" %>`,
+			wantFailure: true,
 		},
 		{
 			name:       "nested dead branches collapse without touching live code",

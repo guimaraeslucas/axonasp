@@ -283,7 +283,7 @@ Dim sideEffect
 sideEffect = "RHS called"
 
 Function doSideEffect()
-    doSideEffect = sideEffect
+    doSideEffect = (Len(sideEffect) > 0)
 End Function
 
 Dim result
@@ -346,7 +346,7 @@ Dim sideEffect
 sideEffect = "RHS called"
 
 Function doSideEffect()
-    doSideEffect = sideEffect
+    doSideEffect = (Len(sideEffect) > 0)
 End Function
 
 Dim result

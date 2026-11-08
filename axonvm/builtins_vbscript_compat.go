@@ -1182,7 +1182,7 @@ func vbsCompatDatePart(vm *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatCBool converts a value to VBScript boolean semantics.
-func vbsCompatCBool(_ *VM, args []Value) (Value, error) {
+func vbsCompatCBool(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewBool(false), nil
 	}
@@ -1192,19 +1192,14 @@ func vbsCompatCBool(_ *VM, args []Value) (Value, error) {
 		// above VbsLen in builtins.go).
 		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
-	switch v.Type {
-	case VTBool:
-		return v, nil
-	case VTInteger:
-		return NewBool(v.Num != 0), nil
-	case VTDouble:
-		return NewBool(v.Flt != 0), nil
-	case VTString:
-		t := strings.TrimSpace(strings.ToLower(v.Str))
-		return NewBool(!(t == "" || t == "0" || t == "false")), nil
-	default:
-		return NewBool(false), nil
+	b, ok := v.CoerceBool()
+	if !ok {
+		if vm != nil {
+			vm.raise(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
 	}
+	return NewBool(b), nil
 }
 
 // vbsCompatCLng converts a value to 32-bit long with VBScript rounding and errors.

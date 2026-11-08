@@ -24,6 +24,7 @@ package axonvm
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10136,5 +10137,277 @@ c.Test()
 	got := output.String()
 	if got != "val=99" {
 		t.Fatalf("expected 'val=99', got %q", got)
+	}
+}
+
+// runVBStringCoercionScript compiles and runs one ASP snippet, returning the response
+// output and the runtime error (if any).
+func runVBStringCoercionScript(t *testing.T, source string) (string, error) {
+	t.Helper()
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm.SetHost(host)
+
+	err := vm.Run()
+	host.Response().Flush()
+	return output.String(), err
+}
+
+// TestVBConditionalStringCoercion locks VBScript implicit boolean coercion for If
+// conditions: "True"/"False" and numeric strings follow CBool rules and Null takes
+// the false branch without raising error 94.
+func TestVBConditionalStringCoercion(t *testing.T) {
+	cases := []struct {
+		name     string
+		cond     string
+		expected string
+	}{
+		{name: "lowercase false", cond: `"false"`, expected: "else"},
+		{name: "capitalized false", cond: `"False"`, expected: "else"},
+		{name: "uppercase false", cond: `"FALSE"`, expected: "else"},
+		{name: "lowercase true", cond: `"true"`, expected: "then"},
+		{name: "capitalized true", cond: `"True"`, expected: "then"},
+		{name: "padded false", cond: `"  false  "`, expected: "else"},
+		{name: "zero string", cond: `"0"`, expected: "else"},
+		{name: "zero double string", cond: `"0.0"`, expected: "else"},
+		{name: "negative zero string", cond: `"-0"`, expected: "else"},
+		{name: "hex zero string", cond: `"&h0"`, expected: "else"},
+		{name: "one string", cond: `"1"`, expected: "then"},
+		{name: "negative one string", cond: `"-1"`, expected: "then"},
+		{name: "positive number string", cond: `"42"`, expected: "then"},
+		{name: "null", cond: `Null`, expected: "else"},
+		{name: "empty", cond: `Empty`, expected: "else"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			source := "<%\nIf " + tc.cond + " Then\n\tResponse.Write \"then\"\nElse\n\tResponse.Write \"else\"\nEnd If\n%>"
+			output, err := runVBStringCoercionScript(t, source)
+			if err != nil {
+				t.Fatalf("unexpected runtime error for %s: %v", tc.cond, err)
+			}
+			if output != tc.expected {
+				t.Fatalf("condition %s: expected %q, got %q", tc.cond, tc.expected, output)
+			}
+		})
+	}
+}
+
+// TestVBConditionalStringCoercionRaisesTypeMismatch verifies that non-convertible
+// string conditions raise VBScript Type mismatch (error 13) like IIS VBScript.
+func TestVBConditionalStringCoercionRaisesTypeMismatch(t *testing.T) {
+	for _, cond := range []string{`"abc"`, `""`, `"   "`} {
+		source := "<%\nIf " + cond + " Then\n\tResponse.Write \"then\"\nEnd If\n%>"
+		_, err := runVBStringCoercionScript(t, source)
+		if err == nil {
+			t.Fatalf("condition %s: expected Type mismatch, got no error", cond)
+		}
+		var runtimeErr *VMError
+		if !errors.As(err, &runtimeErr) {
+			t.Fatalf("condition %s: expected VMError, got %T", cond, err)
+		}
+		if runtimeErr.Code != vbscript.TypeMismatch {
+			t.Fatalf("condition %s: expected TypeMismatch (%d), got %d", cond, vbscript.TypeMismatch, runtimeErr.Code)
+		}
+	}
+}
+
+// TestVBConditionalStringCoercionResumeNext verifies that a failed condition coercion
+// under On Error Resume Next is absorbed into Err and never runs the true branch.
+func TestVBConditionalStringCoercionResumeNext(t *testing.T) {
+	source := `<%
+On Error Resume Next
+Dim x
+x = 0
+If "abc" Then
+	x = 1
+Else
+	x = 2
+End If
+Response.Write "err=" & (Err.Number <> 0) & ";x=" & x
+%>`
+
+	output, err := runVBStringCoercionScript(t, source)
+	if err != nil {
+		t.Fatalf("unexpected runtime error: %v", err)
+	}
+	if output != "err=True;x=2" {
+		t.Fatalf("expected \"err=True;x=2\", got %q", output)
+	}
+}
+
+// buildFusedBranchBytecode builds a minimal program that stores cond into the condition
+// slot and selects between two integer assignments through the fused extended jump.
+// The current compiler always inserts OpCoerceToValue after a bare name load, which keeps
+// the load+branch fusion from firing, so this opcode shape is assembled by hand.
+//
+// Layout: push cond, store it, fused jump to the false branch, out = 1, jump end,
+// false branch: out = 2, halt.
+func buildFusedBranchBytecode(local bool, cond string, outIdx uint16) ([]byte, []Value) {
+	hi := byte(outIdx >> 8)
+	lo := byte(outIdx)
+	bc := make([]byte, 0, 32)
+
+	// OpConstant 0 (cond) then OpSetLocal/OpSetGlobal 0.
+	bc = append(bc, byte(OpConstant), 0, 0)
+	if local {
+		bc = append(bc, byte(OpSetLocal), 0, 0)
+	} else {
+		bc = append(bc, byte(OpSetGlobal), 0, 0)
+	}
+
+	// Fused branch: [OpExtPrefix][ExtOp][idx/offset:2][target:4].
+	fusedPos := len(bc)
+	extOp := byte(ExtOpJumpGlobalIfFalse)
+	if local {
+		extOp = byte(ExtOpJumpLocalIfFalse)
+	}
+	bc = append(bc, byte(OpExtPrefix), extOp, 0, 0, 0, 0, 0, 0)
+
+	// True branch: out = 1, then jump past the false branch.
+	bc = append(bc, byte(OpConstant), 0, 1)
+	bc = append(bc, byte(OpSetGlobal), hi, lo)
+	jumpPos := len(bc)
+	bc = append(bc, byte(OpJump), 0, 0, 0, 0)
+
+	falsePos := len(bc)
+	bc = append(bc, byte(OpConstant), 0, 2)
+	bc = append(bc, byte(OpSetGlobal), hi, lo)
+	endPos := len(bc)
+	bc = append(bc, byte(OpHalt))
+
+	binary.BigEndian.PutUint32(bc[fusedPos+4:], uint32(falsePos))
+	binary.BigEndian.PutUint32(bc[jumpPos+1:], uint32(endPos))
+
+	return bc, []Value{NewString(cond), NewInteger(1), NewInteger(2)}
+}
+
+// TestVBConditionalStringCoercionFusedJumps verifies that ExtOpJumpLocalIfFalse and
+// ExtOpJumpGlobalIfFalse apply the same string coercion as OpJumpIfFalse.
+func TestVBConditionalStringCoercionFusedJumps(t *testing.T) {
+	cases := []struct {
+		name     string
+		local    bool
+		cond     string
+		globals  int
+		outIdx   uint16
+		wantVal  int64
+		wantFail bool
+	}{
+		{name: "local false string", local: true, cond: "false", globals: 1, outIdx: 0, wantVal: 2},
+		{name: "local true string", local: true, cond: "true", globals: 1, outIdx: 0, wantVal: 1},
+		{name: "local zero string", local: true, cond: "0", globals: 1, outIdx: 0, wantVal: 2},
+		{name: "local non-numeric string", local: true, cond: "abc", globals: 1, outIdx: 0, wantFail: true},
+		{name: "global false string", local: false, cond: "false", globals: 2, outIdx: 1, wantVal: 2},
+		{name: "global true string", local: false, cond: "true", globals: 2, outIdx: 1, wantVal: 1},
+		{name: "global negative string", local: false, cond: "-1", globals: 2, outIdx: 1, wantVal: 1},
+		{name: "global non-numeric string", local: false, cond: "abc", globals: 2, outIdx: 1, wantFail: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bytecode, constants := buildFusedBranchBytecode(tc.local, tc.cond, tc.outIdx)
+			vm := NewVM(bytecode, constants, tc.globals)
+
+			err := vm.Run()
+			if tc.wantFail {
+				var runtimeErr *VMError
+				if !errors.As(err, &runtimeErr) {
+					t.Fatalf("expected Type mismatch VMError, got %v", err)
+				}
+				if runtimeErr.Code != vbscript.TypeMismatch {
+					t.Fatalf("expected TypeMismatch (%d), got %d", vbscript.TypeMismatch, runtimeErr.Code)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected runtime error: %v", err)
+			}
+			if got := vm.Globals[tc.outIdx]; got.Type != VTInteger || got.Num != tc.wantVal {
+				t.Fatalf("expected branch value %d, got %#v", tc.wantVal, got)
+			}
+		})
+	}
+}
+
+// TestVBConditionalStringCoercionLoops verifies While/Wend and Do While loops use the
+// unified coercion, so "false" ends the loop and "true" runs it.
+func TestVBConditionalStringCoercionLoops(t *testing.T) {
+	source := `<%
+Dim i
+i = 0
+While "false"
+	i = 100
+Wend
+Do While "0"
+	i = 200
+Loop
+Do While "1"
+	i = i + 1
+	If i >= 3 Then Exit Do
+Loop
+Response.Write i
+%>`
+
+	output, err := runVBStringCoercionScript(t, source)
+	if err != nil {
+		t.Fatalf("unexpected runtime error: %v", err)
+	}
+	if output != "3" {
+		t.Fatalf("expected 3, got %q", output)
+	}
+}
+
+// TestVBCBoolStringCoercion verifies CBool uses the shared coercion rules.
+func TestVBCBoolStringCoercion(t *testing.T) {
+	cases := []struct {
+		expr     string
+		expected string
+	}{
+		{expr: `CBool("false")`, expected: "False"},
+		{expr: `CBool("False")`, expected: "False"},
+		{expr: `CBool("true")`, expected: "True"},
+		{expr: `CBool("True")`, expected: "True"},
+		{expr: `CBool("0")`, expected: "False"},
+		{expr: `CBool("0.0")`, expected: "False"},
+		{expr: `CBool("1")`, expected: "True"},
+		{expr: `CBool("-1")`, expected: "True"},
+		{expr: `CBool(0)`, expected: "False"},
+		{expr: `CBool(2)`, expected: "True"},
+		{expr: `CBool(Empty)`, expected: "False"},
+	}
+
+	for _, tc := range cases {
+		source := "<%\nResponse.Write " + tc.expr + "\n%>"
+		output, err := runVBStringCoercionScript(t, source)
+		if err != nil {
+			t.Fatalf("%s: unexpected runtime error: %v", tc.expr, err)
+		}
+		if output != tc.expected {
+			t.Fatalf("%s: expected %q, got %q", tc.expr, tc.expected, output)
+		}
+	}
+}
+
+// TestVBCBoolInvalidStringRaisesTypeMismatch verifies CBool rejects non-numeric strings.
+func TestVBCBoolInvalidStringRaisesTypeMismatch(t *testing.T) {
+	for _, expr := range []string{`CBool("abc")`, `CBool("")`} {
+		source := "<%\nResponse.Write " + expr + "\n%>"
+		_, err := runVBStringCoercionScript(t, source)
+		var runtimeErr *VMError
+		if !errors.As(err, &runtimeErr) {
+			t.Fatalf("%s: expected VMError, got %v", expr, err)
+		}
+		if runtimeErr.Code != vbscript.TypeMismatch {
+			t.Fatalf("%s: expected TypeMismatch (%d), got %d", expr, vbscript.TypeMismatch, runtimeErr.Code)
+		}
 	}
 }
