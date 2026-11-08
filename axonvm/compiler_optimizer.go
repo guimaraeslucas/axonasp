@@ -242,7 +242,7 @@ func isFusedBranchJumpOp(op OpCode) bool {
 
 func getFusedBranchOp(op OpCode, jumpOp OpCode) OpCode {
 	switch jumpOp {
-case OpJumpIfFalse:
+	case OpJumpIfFalse:
 		switch op {
 		case OpEq:
 			return OpJumpIfNotEq

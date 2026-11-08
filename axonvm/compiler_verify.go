@@ -112,10 +112,7 @@ func (c *Compiler) checkBytecode(tag string) {
 	if len(problems) == 0 {
 		return
 	}
-	limit := len(problems)
-	if limit > 8 {
-		limit = 8
-	}
+	limit := min(len(problems), 8)
 	msg := strings.Join(problems[:limit], "\n  ")
 	if len(problems) > limit {
 		msg += fmt.Sprintf("\n  ... and %d more", len(problems)-limit)
