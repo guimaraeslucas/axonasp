@@ -400,6 +400,11 @@ func (vm *VM) logicalImp(a Value, b Value) Value {
 // appended without the hidden intermediate allocation that Go's '+' operator causes
 // when one operand is not yet a string (e.g. numbers, dates, native objects).
 func (vm *VM) concatValues(a Value, b Value) Value {
+	if isNull(a) && isNull(b) {
+		// Null & Null stays Null; only a lone Null operand coerces to "".
+		// Measured on IIS: https://github.com/guimaraeslucas/axonasp/issues/188
+		return NewNull()
+	}
 	if isNull(a) {
 		a = NewString("")
 	}

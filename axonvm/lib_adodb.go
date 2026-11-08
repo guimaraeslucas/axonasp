@@ -127,6 +127,7 @@ type adodbRecordset struct {
 	absolutePage        int
 	cacheSize           int
 	filter              string
+	unfiltered          []map[string]Value // full row set while a filter narrows rs.data
 	sort                string
 	dataMember          string
 	editMode            int
@@ -1887,6 +1888,7 @@ func (vm *VM) adodbRecordsetClose(rs *adodbRecordset) {
 	}
 	rs.state = adStateClosed
 	rs.data = nil
+	rs.unfiltered = nil
 	rs.columns = nil
 	vm.adodbRecordsetRebuildColumnIndex(rs)
 	rs.currentRow = -1
@@ -2119,7 +2121,17 @@ func (vm *VM) adodbRecordsetApplyFilterSort(rs *adodbRecordset) {
 	if rs == nil {
 		return
 	}
-	if rs.filter == "" && rs.sort == "" {
+	// A filter is a view over the retrieved rows, not a destructive operation:
+	// ADO restores the full set when Filter is assigned a zero-length string or
+	// adFilterNone (0), and every new criteria filters the FULL set, not the
+	// current subset. Measured on IIS/ADO:
+	// https://github.com/guimaraeslucas/axonasp/issues/189
+	filterCleared := rs.filter == "" || rs.filter == "0"
+	if filterCleared && rs.unfiltered != nil {
+		rs.data = rs.unfiltered
+		rs.unfiltered = nil
+	}
+	if filterCleared && rs.sort == "" {
 		rs.recordCount = len(rs.data)
 		if rs.recordCount == 0 {
 			rs.currentRow = -1
@@ -2133,18 +2145,26 @@ func (vm *VM) adodbRecordsetApplyFilterSort(rs *adodbRecordset) {
 		return
 	}
 
-	filtered := make([]map[string]Value, 0, len(rs.data))
+	source := rs.data
+	if !filterCleared {
+		if rs.unfiltered == nil {
+			rs.unfiltered = rs.data
+		}
+		source = rs.unfiltered
+	}
+
+	filtered := make([]map[string]Value, 0, len(source))
 	field := ""
 	expected := ""
 	hasFilter := false
-	if strings.TrimSpace(rs.filter) != "" {
+	if strings.TrimSpace(rs.filter) != "" && !filterCleared {
 		var ok bool
 		field, expected, ok = adodbParseFindCriteria(rs.filter)
 		hasFilter = ok
 	}
 
-	for i := 0; i < len(rs.data); i++ {
-		row := rs.data[i]
+	for i := 0; i < len(source); i++ {
+		row := source[i]
 		if row == nil {
 			continue
 		}

@@ -299,13 +299,16 @@ func TestBuiltinReplaceStartSemantics(t *testing.T) {
 	}
 }
 
-// TestBuiltinReplaceNullExpression verifies Null propagation for Replace(expression,...).
+// TestBuiltinReplaceNullExpression verifies Replace raises 94 for a Null
+// expression. Measured on IIS: Replace is the exception among the string
+// functions, which return Null for a Null argument
+// (https://github.com/guimaraeslucas/axonasp/issues/188).
 func TestBuiltinReplaceNullExpression(t *testing.T) {
 	vm := NewVM(nil, nil, 5)
 
-	result := callBuiltin(t, vm, "Replace", NewNull(), NewString("a"), NewString("b"))
-	if result.Type != VTNull {
-		t.Fatalf("expected VTNull for Replace(Null,...), got %#v", result)
+	_, err := callBuiltinWithError(t, vm, "Replace", NewNull(), NewString("a"), NewString("b"))
+	if err == nil || !strings.Contains(err.Error(), "Invalid use of Null") {
+		t.Fatalf("expected Invalid use of Null from Replace(Null,...), got %v", err)
 	}
 }
 
