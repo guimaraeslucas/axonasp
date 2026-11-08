@@ -10175,8 +10175,8 @@ func TestVBConditionalStringCoercion(t *testing.T) {
 		{name: "uppercase false", cond: `"FALSE"`, expected: "else"},
 		{name: "lowercase true", cond: `"true"`, expected: "then"},
 		{name: "capitalized true", cond: `"True"`, expected: "then"},
-		{name: "padded false", cond: `"  false  "`, expected: "else"},
 		{name: "zero string", cond: `"0"`, expected: "else"},
+		{name: "padded numeric string", cond: `" 2 "`, expected: "then"},
 		{name: "zero double string", cond: `"0.0"`, expected: "else"},
 		{name: "negative zero string", cond: `"-0"`, expected: "else"},
 		{name: "hex zero string", cond: `"&h0"`, expected: "else"},
@@ -10203,8 +10203,12 @@ func TestVBConditionalStringCoercion(t *testing.T) {
 
 // TestVBConditionalStringCoercionRaisesTypeMismatch verifies that non-convertible
 // string conditions raise VBScript Type mismatch (error 13) like IIS VBScript.
+// Padded word booleans belong here: IIS forgives surrounding whitespace on numeric
+// strings but not on "true"/"false". Measured:
+// https://github.com/saborrie/iis-oracle/actions/runs/42511937887 (If condition)
+// https://github.com/saborrie/iis-oracle/actions/runs/42522425088 (CBool)
 func TestVBConditionalStringCoercionRaisesTypeMismatch(t *testing.T) {
-	for _, cond := range []string{`"abc"`, `""`, `"   "`} {
+	for _, cond := range []string{`"abc"`, `""`, `"   "`, `" true "`, `"  false  "`} {
 		source := "<%\nIf " + cond + " Then\n\tResponse.Write \"then\"\nEnd If\n%>"
 		_, err := runVBStringCoercionScript(t, source)
 		if err == nil {
