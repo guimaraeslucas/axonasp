@@ -131,6 +131,7 @@ result = expression1 AndAlso expression2
 ### Remarks
 - Unlike the standard `And` operator, `AndAlso` guarantees that the RHS is not evaluated when the LHS is **False**. This prevents side effects and runtime errors from the RHS when the LHS already determines the result.
 - The standard `And` operator always evaluates both sides and performs bitwise AND on numeric operands. `AndAlso` is purely logical and always returns a **Boolean**.
+- Operands are converted with the same rules as `If` conditions and `CBool`: `"True"`/`"False"`, numeric strings such as `"0"` and `"1"`, numbers, `Empty`, and `Null` are accepted. Any other string raises runtime error 13 (Type mismatch).
 - Multiple `AndAlso` operators can be chained: `a AndAlso b AndAlso c`.
 
 ### Code Example
@@ -186,6 +187,7 @@ result = expression1 OrElse expression2
 ### Remarks
 - Unlike the standard `Or` operator, `OrElse` guarantees that the RHS is not evaluated when the LHS is **True**. This prevents unnecessary computation and avoids runtime errors from the RHS when the LHS already determines the result.
 - The standard `Or` operator always evaluates both sides and performs bitwise OR on numeric operands. `OrElse` is purely logical and always returns a **Boolean**.
+- Operands are converted with the same rules as `If` conditions and `CBool`: `"True"`/`"False"`, numeric strings such as `"0"` and `"1"`, numbers, `Empty`, and `Null` are accepted. Any other string raises runtime error 13 (Type mismatch).
 - Multiple `OrElse` operators can be chained: `a OrElse b OrElse c`.
 
 ### Code Example
@@ -193,28 +195,24 @@ result = expression1 OrElse expression2
 ```asp
 <%
 Function TryGetFromCache(key)
-    ' Returns the value if found, otherwise Empty
+    ' Returns True when the key exists in the cache
     Dim cache
     Set cache = Server.CreateObject("Scripting.Dictionary")
     cache.Add "name", "Alice"
-    
-    If cache.Exists(key) Then
-        TryGetFromCache = cache(key)
-    Else
-        TryGetFromCache = Empty
-    End If
+
+    TryGetFromCache = cache.Exists(key)
 End Function
 
 Function GetFromDatabase(key)
-    ' Expensive database lookup
+    ' Expensive database lookup that returns True when a value exists
     Dim dbValue
-    dbValue = "Alice" ' Simulated DB result
+    dbValue = True ' Simulated DB lookup result
     GetFromDatabase = dbValue
 End Function
 
 Dim result
 
-' Short-circuit: if value is found in cache, database is never queried
+' Short-circuit: if the cache already has the key, the database is never queried
 result = TryGetFromCache("name") OrElse GetFromDatabase("name")
 Response.Write "Result: " & result & "<br>"
 %>

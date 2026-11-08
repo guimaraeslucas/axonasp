@@ -3041,7 +3041,7 @@ aspExecLoop:
 		case OpJumpIfTrue:
 			target := binary.BigEndian.Uint32(vm.bytecode[vm.ip:])
 			vm.ip += 4
-			if vm.isTruthy(vm.pop()) {
+			if vm.evalVBCondition(vm.pop()) {
 				vm.ip = int(target)
 			}
 
@@ -3121,7 +3121,7 @@ aspExecLoop:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
 			b, a := vm.pop(), vm.pop()
-			if !vm.isTruthy(vm.jsLooseEqual(a, b)) {
+			if !vm.jsTruthy(vm.jsLooseEqual(a, b)) {
 				vm.ip = target
 			}
 
@@ -3129,7 +3129,7 @@ aspExecLoop:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
 			b, a := vm.pop(), vm.pop()
-			if !vm.isTruthy(vm.jsLooseNotEqual(a, b)) {
+			if !vm.jsTruthy(vm.jsLooseNotEqual(a, b)) {
 				vm.ip = target
 			}
 
@@ -3153,7 +3153,7 @@ aspExecLoop:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
 			b, a := vm.pop(), vm.pop()
-			if !vm.isTruthy(vm.jsLess(a, b)) {
+			if !vm.jsTruthy(vm.jsLess(a, b)) {
 				vm.ip = target
 			}
 
@@ -3161,7 +3161,7 @@ aspExecLoop:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
 			b, a := vm.pop(), vm.pop()
-			if !vm.isTruthy(vm.jsGreater(a, b)) {
+			if !vm.jsTruthy(vm.jsGreater(a, b)) {
 				vm.ip = target
 			}
 
@@ -3592,7 +3592,7 @@ aspExecLoop:
 				offset := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip+2:]))
 				vm.ip += 6
-				if !vm.isTruthy(vm.stack[vm.fp+offset]) {
+				if !vm.evalVBCondition(vm.stack[vm.fp+offset]) {
 					vm.ip = target
 				}
 
@@ -3600,7 +3600,7 @@ aspExecLoop:
 				idx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip+2:]))
 				vm.ip += 6
-				if !vm.isTruthy(vm.Globals[idx]) {
+				if !vm.evalVBCondition(vm.Globals[idx]) {
 					vm.ip = target
 				}
 
@@ -4137,7 +4137,7 @@ aspExecLoop:
 		case OpJumpIfFalse:
 			target := binary.BigEndian.Uint32(vm.bytecode[vm.ip:])
 			vm.ip += 4
-			if !vm.isTruthy(vm.pop()) {
+			if !vm.evalVBCondition(vm.pop()) {
 				vm.ip = int(target)
 			}
 
@@ -10795,16 +10795,21 @@ func (vm *VM) asBool(v Value) bool {
 	}
 }
 
-func (vm *VM) isTruthy(v Value) bool {
-	switch v.Type {
-	case VTBool, VTInteger:
-		return v.Num != 0
-	case VTDouble:
-		return v.Flt != 0
-	case VTString:
-		return v.Str != "" && v.Str != "0"
+// evalVBCondition evaluates one VBScript conditional value (If/While/Do/ElseIf) as a
+// boolean using the same coercion rules as CBool: numeric strings and "True"/"False"
+// are accepted, Null yields False, and any other non-convertible string raises
+// VBScript Type mismatch (error 13). Bare names that resolve to zero-argument builtins
+// are auto-called first, matching VBScript value-context semantics. On coercion failure
+// the error is raised and false is returned, so execution takes the false branch when
+// On Error Resume Next is active.
+func (vm *VM) evalVBCondition(cond Value) bool {
+	cond = resolveCallable(vm, cond)
+	b, ok := cond.CoerceBool()
+	if !ok {
+		vm.raise(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		return false
 	}
-	return false
+	return b
 }
 
 func (vm *VM) StackTop() Value {
