@@ -20,7 +20,11 @@
  */
 package axonvm
 
-import "testing"
+import (
+	"testing"
+
+	"g3pix.com.br/axonasp/v2/vbscript"
+)
 
 // TestSingleLineIfColonReproduction validates the reproduction case where a colon
 // follows 'Then' in a single-line If statement without requiring End If.
@@ -128,19 +132,15 @@ If x = 1 Then Response.Write "one" %>
 <% End If %>`)
 }
 
-// TestSingleLineIfTagBoundaryWithElse verifies Else branches across ASP tag boundaries.
-func TestSingleLineIfTagBoundaryWithElse(t *testing.T) {
+// TestSingleLineIfTagBoundaryRejectsDetachedElse pins that an Else in the next script
+// block never attaches to a completed single-line If. Measured on IIS: 800A03EA at the
+// Else, with HTML between the tags and across an empty boundary alike
+// (https://github.com/saborrie/iis-oracle/actions/runs/42512053123,
+// https://github.com/saborrie/iis-oracle/actions/runs/42512101127). When an enclosing
+// block If is open the Else binds to it instead; see inline_if_else_binding_test.go.
+func TestSingleLineIfTagBoundaryRejectsDetachedElse(t *testing.T) {
 	source := `<% Dim x : x = 2 : If x = 1 Then Response.Write "one" %><% Else %><% Response.Write "two" %><% End If %>`
-	compiler := NewASPCompiler(source)
-	if err := compiler.Compile(); err != nil {
-		t.Fatalf("compile failed: %v", err)
-	}
-
-	out := runVBSAndGetOutput(t, source)
-	expected := "two"
-	if out != expected {
-		t.Fatalf("unexpected output: got %q, want %q", out, expected)
-	}
+	requireCompileError(t, source, vbscript.SyntaxError)
 }
 
 // TestSingleLineIfWithoutEndIfPreserved verifies that a standard single-line If statement without End If
