@@ -141,7 +141,18 @@ func (c *Compiler) emitIdentifierValue(name string) {
 
 resolveIdentifierNormally:
 
+	_, hadLocal := c.locals.Get(trimmedName)
 	op, idx := c.resolveVar(trimmedName)
+	if c.isLocal && !hadLocal && c.currentClassName == "" && c.globalProcedureNames[strings.ToLower(trimmedName)] &&
+		(op == OpGetLocal || op == OpGetGlobal) && !strings.EqualFold(trimmedName, c.currentFunctionName) {
+		// Forward reference to a page-scope procedure declared later: resolveVar created an
+		// implicit local slot, so rebind the load to the global procedure slot. The trailing
+		// OpCoerceToValue then auto-invokes zero-argument Functions.
+		_, isStatic := c.staticLocals[strings.ToLower(trimmedName)]
+		if !isStatic && !c.declaredLocals[strings.ToLower(trimmedName)] && !c.constLocals[strings.ToLower(trimmedName)] {
+			op, idx = OpGetGlobal, c.Globals.Add(trimmedName)
+		}
+	}
 	pos := c.emit(op, idx)
 	c.markLastCallTarget(trimmedName, op, pos)
 	if op == OpGetGlobal {

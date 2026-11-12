@@ -241,14 +241,18 @@ type Compiler struct {
 	tempCounter         int
 	globalZeroArgFuncs  map[string]bool
 	globalZeroArgSubs   map[string]bool
-	classDecls          []CompiledClassDecl
-	classDeclLookup     map[string]int
-	recordDecls         []CompiledRecordDecl
-	recordDeclLookup    map[string]int
-	enumTypeLookup      map[string]map[string]Value // Enum type name -> member name -> constant value
-	ObjectDeclarations  []*vbscript.ASPObjectToken
-	currentClassName    string
-	currentFunctionName string
+	// globalProcedureNames holds every page-scope Sub/Function name (lowercase), registered
+	// by the top-level prebind scan before any procedure body is compiled so forward
+	// references resolve like backward references.
+	globalProcedureNames map[string]bool
+	classDecls           []CompiledClassDecl
+	classDeclLookup      map[string]int
+	recordDecls          []CompiledRecordDecl
+	recordDeclLookup     map[string]int
+	enumTypeLookup       map[string]map[string]Value // Enum type name -> member name -> constant value
+	ObjectDeclarations   []*vbscript.ASPObjectToken
+	currentClassName     string
+	currentFunctionName  string
 	// dynamicMemberResolution enables implicit class-member lookup for dynamic
 	// code compiled by Eval/Execute/ExecuteGlobal while keeping global assignment semantics.
 	dynamicMemberResolution bool
@@ -756,6 +760,7 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		tempCounter:            0,
 		globalZeroArgFuncs:     make(map[string]bool),
 		globalZeroArgSubs:      make(map[string]bool),
+		globalProcedureNames:   make(map[string]bool),
 		classDecls:             make([]CompiledClassDecl, 0),
 		classDeclLookup:        make(map[string]int),
 		recordDecls:            make([]CompiledRecordDecl, 0),
@@ -1983,11 +1988,13 @@ func (c *Compiler) prebindTopLevelDimDeclarations() {
 			continue
 		}
 		if c.checkKeyword(vbscript.KeywordSub) {
+			c.prescanProcedureName()
 			c.skipTopLevelDefinitionBlock(vbscript.KeywordSub)
 			atStmtStart = true
 			continue
 		}
 		if c.checkKeyword(vbscript.KeywordFunction) {
+			c.prescanProcedureName()
 			c.skipTopLevelDefinitionBlock(vbscript.KeywordFunction)
 			atStmtStart = true
 			continue
@@ -1995,6 +2002,11 @@ func (c *Compiler) prebindTopLevelDimDeclarations() {
 		if c.checkKeyword(vbscript.KeywordProperty) {
 			c.skipTopLevelDefinitionBlock(vbscript.KeywordProperty)
 			atStmtStart = true
+			continue
+		}
+		if c.checkKeyword(vbscript.KeywordConst) {
+			c.prescanConstDeclaration()
+			atStmtStart = false
 			continue
 		}
 		if c.checkKeyword(vbscript.KeywordEnum) {
@@ -2011,13 +2023,20 @@ func (c *Compiler) prebindTopLevelDimDeclarations() {
 				continue
 			}
 			if c.checkKeyword(vbscript.KeywordSub) {
+				c.prescanProcedureName()
 				c.skipTopLevelDefinitionBlock(vbscript.KeywordSub)
 				atStmtStart = true
 				continue
 			}
 			if c.checkKeyword(vbscript.KeywordFunction) {
+				c.prescanProcedureName()
 				c.skipTopLevelDefinitionBlock(vbscript.KeywordFunction)
 				atStmtStart = true
+				continue
+			}
+			if c.checkKeyword(vbscript.KeywordConst) {
+				c.prescanConstDeclaration()
+				atStmtStart = false
 				continue
 			}
 			if c.checkKeyword(vbscript.KeywordProperty) {
@@ -2202,6 +2221,81 @@ func (c *Compiler) prebindTopLevelDimDeclarations() {
 			atStmtStart = false
 		}
 		c.move()
+	}
+}
+
+// prescanProcedureName registers the name of the Sub/Function whose keyword is the
+// current token, without consuming any token. It lets procedure bodies compiled earlier
+// in the source resolve bare references to procedures declared later.
+func (c *Compiler) prescanProcedureName() {
+	name, ok := isIdentifierLikeTokenForPrescan(c.peekToken())
+	if !ok || name == "" {
+		return
+	}
+	c.globalProcedureNames[strings.ToLower(name)] = true
+}
+
+// prescanConstDeclaration registers page-scope Const names before any procedure body is
+// compiled. The current token must be the Const keyword. Literal initializers are captured
+// as compile-time constants so procedures compiled earlier fold them to OpConstant;
+// non-literal initializers are only declared as globals so they never fall back to an
+// uninitialized procedure-local slot.
+func (c *Compiler) prescanConstDeclaration() {
+	c.move() // consume 'Const'
+	for {
+		name, ok := isIdentifierLikeTokenForPrescan(c.next)
+		if !ok || name == "" {
+			return
+		}
+		c.move()
+		if p, isP := c.next.(*vbscript.PunctuationToken); !isP || p.Type != vbscript.PunctEqual {
+			return
+		}
+		c.move()
+
+		var value Value
+		isLiteral := true
+		switch t := c.next.(type) {
+		case *vbscript.StringLiteralToken:
+			value = NewString(t.Value)
+		case *vbscript.DecIntegerLiteralToken:
+			value = NewInteger(t.Value)
+		case *vbscript.HexIntegerLiteralToken:
+			value = NewInteger(t.Value)
+		case *vbscript.FloatLiteralToken:
+			value = NewDouble(t.Value)
+		case *vbscript.TrueLiteralToken:
+			value = NewBool(true)
+		case *vbscript.FalseLiteralToken:
+			value = NewBool(false)
+		default:
+			isLiteral = false
+		}
+
+		lower := strings.ToLower(name)
+		if isLiteral {
+			// The literal must be the whole initializer (e.g. not "1 + 2").
+			switch c.peekToken().(type) {
+			case *vbscript.LineTerminationToken, *vbscript.ColonLineTerminationToken, *vbscript.CommentToken, *vbscript.ASPCodeEndToken, *vbscript.EOFToken, *vbscript.PunctuationToken:
+				if p, isP := c.peekToken().(*vbscript.PunctuationToken); isP && p.Type != vbscript.PunctComma {
+					isLiteral = false
+				}
+			default:
+				isLiteral = false
+			}
+		}
+		c.declareConst(name)
+		if isLiteral {
+			c.constLiteralGlobals[lower] = value
+			c.move() // consume literal
+		} else {
+			return
+		}
+		if p, isP := c.next.(*vbscript.PunctuationToken); isP && p.Type == vbscript.PunctComma {
+			c.move()
+			continue
+		}
+		return
 	}
 }
 
