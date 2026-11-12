@@ -137,6 +137,50 @@ func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
 	}
 }
 
+// isVBScriptIntegerString reports whether a trimmed numeric string uses integer syntax
+// (no decimal point or scientific exponent outside &H/&O literals).
+func isVBScriptIntegerString(trimmed string) bool {
+	s := trimmed
+	if strings.HasPrefix(s, "+") || strings.HasPrefix(s, "-") {
+		s = strings.TrimSpace(s[1:])
+	}
+	if len(s) >= 2 && s[0] == '&' && (s[1] == 'h' || s[1] == 'H' || s[1] == 'o' || s[1] == 'O') {
+		return true
+	}
+	return !strings.ContainsAny(s, ".eE")
+}
+
+// coerceNumericValue converts a VBScript value to a numeric subtype (VTInteger, VTDouble,
+// or VTDate) for numeric contexts such as For...Next loop bounds.
+func (vm *VM) coerceNumericValue(v Value) (Value, vbscript.VBSyntaxErrorCode, bool) {
+	v = resolveCallable(vm, v)
+	switch v.Type {
+	case VTInteger, VTDouble, VTDate:
+		return v, 0, true
+	case VTEmpty:
+		return NewInteger(0), 0, true
+	case VTBool:
+		return NewInteger(v.Num), 0, true
+	case VTNull:
+		return NewEmpty(), vbscript.InvalidUseOfNull, false
+	case VTString:
+		trimmed := strings.TrimSpace(v.Str)
+		if n, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+			return NewInteger(n), 0, true
+		}
+		parsed, code, ok := vbsParseNumericString(trimmed)
+		if !ok {
+			return NewEmpty(), code, false
+		}
+		if isVBScriptIntegerString(trimmed) && parsed >= -9223372036854775808.0 && parsed < 9223372036854775808.0 {
+			return NewInteger(int64(parsed)), 0, true
+		}
+		return NewDouble(parsed), 0, true
+	default:
+		return NewEmpty(), vbscript.TypeMismatch, false
+	}
+}
+
 // addValues performs numeric addition with integer and floating-point coercion.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 // Classic VBScript semantics:

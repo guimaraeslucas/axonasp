@@ -139,6 +139,7 @@ func TestOpcodeOperandSizeWellFormedWidths(t *testing.T) {
 		{name: "object_rest_two_static_keys", bytecode: []byte{byte(OpJSObjectRest), 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, want: 8},
 		{name: "ext_op_zero_operand", bytecode: []byte{byte(OpExtPrefix), byte(ExtOpFileOpen)}, want: 1},
 		{name: "ext_op_zero_operand_js_write", bytecode: []byte{byte(OpExtPrefix), byte(ExtOpJSWrite)}, want: 1},
+		{name: "ext_op_zero_operand_coerce_numeric", bytecode: []byte{byte(OpExtPrefix), byte(ExtOpCoerceToNumeric)}, want: 1},
 		{name: "ext_op_arg_count", bytecode: []byte{byte(OpExtPrefix), byte(ExtOpFilePrint), 0x00, 0x00}, want: 3},
 		{name: "ext_op_class_event", bytecode: []byte{byte(OpExtPrefix), byte(ExtOpRegisterClassEvent), 0x00, 0x00, 0x00, 0x00}, want: 5},
 		{name: "ext_op_constant2", bytecode: []byte{byte(OpExtPrefix), byte(ExtOpConstant2), 0x00, 0x00, 0x00, 0x00}, want: 5},

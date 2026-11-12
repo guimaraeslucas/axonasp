@@ -1214,7 +1214,7 @@ func opcodeOperandSize(op OpCode, bytecode []byte, ip int) int {
 			size = 9
 		case ExtOpFilePrint, ExtOpFileWrite:
 			size = 3
-		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight, ExtOpJSWrite:
+		case ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile, ExtOpAxonASP, ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight, ExtOpJSWrite, ExtOpCoerceToNumeric:
 			size = 1
 		case ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax, ExtOpJSMathPow:
 			size = 1
@@ -1295,7 +1295,7 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 				ip += 2
 			case ExtOpAxonASP, ExtOpJSMathSin, ExtOpJSMathCos, ExtOpJSMathTan, ExtOpJSMathAbs, ExtOpJSMathFloor, ExtOpJSMathCeil, ExtOpJSMathRound, ExtOpJSMathSqrt, ExtOpJSMathMin, ExtOpJSMathMax, ExtOpJSMathPow,
 				ExtOpFileOpen, ExtOpFileClose, ExtOpFileLineInput, ExtOpFilePut, ExtOpFileGet, ExtOpFileFreeFile,
-				ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight, ExtOpJSWrite:
+				ExtOpJSReThrow, ExtOpCloneRecord, ExtOpShiftLeft, ExtOpShiftRight, ExtOpJSWrite, ExtOpCoerceToNumeric:
 				// No operands to remap or skip
 			case ExtOpFilePrint, ExtOpFileWrite:
 				ip += 2
@@ -1457,21 +1457,10 @@ func remapExecuteGlobalBytecode(bytecode []byte, constBase int, bytecodeBase int
 			ip += 6
 		case OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal, OpLabel, OpArgGlobalRef, OpArgLocalRef, OpLetGlobal, OpLetLocal, OpCall, OpIncLocalInt, OpDecLocalInt, OpIncGlobalInt, OpDecGlobalInt, OpWriteN, OpJSGetLocal, OpJSSetLocal, OpJSIncLocal, OpJSDecLocal, OpJSRootFrameEnter, OpJSRootFrameLeave:
 			ip += 2
-		case OpForNextFastInt:
-			// varLocalIdx(2) + endLocalIdx(2) + stepSign(1): local indices, no remapping needed.
+		case OpForNextFastInt, OpForNextFastGlobalInt:
+			// varIdx(2) + endIdx(2) + stepSign(1): local/global slot indices, no const remapping.
 			// bodyTarget(4): absolute bytecode offset that must be rebased.
 			ip += 5
-			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
-			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
-			ip += 4
-		case OpForNextFastGlobalInt:
-			// varGlobalIdx(2) + endGlobalIdx(2) + stepSign(1): global slots that must be rebased.
-			globalIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
-			binary.BigEndian.PutUint16(bytecode[ip:], uint16(globalIdx))
-			ip += 2
-			endIdx := int(binary.BigEndian.Uint16(bytecode[ip:])) + constBase
-			binary.BigEndian.PutUint16(bytecode[ip:], uint16(endIdx))
-			ip += 3
 			target := int(binary.BigEndian.Uint32(bytecode[ip:])) + bytecodeBase
 			binary.BigEndian.PutUint32(bytecode[ip:], uint32(target))
 			ip += 4
@@ -4047,6 +4036,15 @@ aspExecLoop:
 				if vm.output != nil {
 					_, _ = io.WriteString(vm.output, vm.valueToResponseString(value))
 				}
+
+			case ExtOpCoerceToNumeric:
+				coerced, code, ok := vm.coerceNumericValue(vm.stack[vm.sp])
+				if !ok {
+					vm.stack[vm.sp] = NewInteger(0)
+					vm.raise(code, code.String())
+					continue
+				}
+				vm.stack[vm.sp] = coerced
 
 			default:
 				vm.raise(vbscript.InternalError, "Unsupported extended opcode")

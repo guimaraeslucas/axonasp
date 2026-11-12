@@ -1,21 +1,5 @@
 # Architectural Plan: Compatibility & Engine Patches
 
-## 1. VBScript For Loop Numeric Coercion
-- **Affected Files:**
-  - `axonvm/compiler_stmt_parser.go` (`parseForToStatement`)
-  - `axonvm/vm.go` (`OpForNextFastInt`, `OpForNextFastGlobalInt`, comparison operators)
-  - `axonvm/opcode.go` (`OpCoerceToNumeric` or boundary initialization)
-- **Defect:**
-  In VBScript, `For` loop boundaries provided as strings (e.g. `limit = "5"` or `For i = 1 To "5"`) must be coerced to numeric subtypes (`VTInteger` / `VTDouble`) before loop evaluation. Currently, non-coerced boundaries cause string lexicographical comparisons in `OpLte`/`OpGte` or bypass the fast integer loop paths.
-- **Implementation Strategy:**
-  1. Introduce opcode `OpCoerceToNumeric` or enforce numeric conversion right after evaluating the `start`, `limit`, and `step` expressions in `parseForToStatement`.
-  2. Emit numeric coercion after evaluating `initExpr`, `limitExpr`, and `stepExpr` before assigning them to their respective storage slots (`loopVarName`, `endName`, `stepName`).
-  3. In `axonvm/vm.go`, implement `OpCoerceToNumeric` (or within boundary setup):
-     - If TOS is `VTInteger` or `VTDouble`, keep as-is.
-     - If TOS is `VTString`, parse via `parseVBScriptNumber` / `vm.asFloat` / `strconv.ParseInt`. If integer, push `VTInteger`; if floating point, push `VTDouble`. If unparseable, raise `vbscript.TypeMismatch`.
-     - If TOS is `VTNull`, raise `vbscript.TypeMismatch` or propagate according to VBScript semantics.
-  4. Ensure `OpForNextFastInt` and `OpForNextFastGlobalInt` fast paths are taken when coerced values are integer, preventing unnecessary float or string fallbacks.
-
 ## 2. FormatCurrency Type Handling
 - **Affected Files:**
   - `axonvm/builtins_vbscript_compat.go` (`vbsCompatFormatCurrency`, `vbsCompatFormatPercent`)
@@ -29,42 +13,7 @@
      - `VTNull`: Return `NewNull()` (matching Microsoft VBScript `FormatCurrency(Null)` behavior).
      - `VTEmpty`: Value evaluates to `0.0`.
   2. Apply the identical type coercion pipeline to `vbsCompatFormatPercent` and `vbsCompatFormatNumber`.
-
-## 3 & 4. Forward References & Hoisting in Single-Pass Compiler - Done
-- **Affected Files:**
-  - `axonvm/compiler.go` (`Compiler`, `patchForwardConstSites`, `registerForwardConstPatch`)
-  - `axonvm/compiler_expr.go` (`parseIdentifierOrCallExpr`)
-  - `axonvm/compiler_stmt_parser.go` (`parseProcedureParameterNames`, `parseSubFunction`, `parseConstStatement`)
-  - `axonvm/opcode.go` (`OpResolveDynamic`)
-  - `axonvm/vm.go` (`OpResolveDynamic` execution, `opcodeOperandSize`, `remapExecuteGlobalBytecode`)
-- **Defect:**
-  1. Constants declared after procedure definitions resolve to uninitialized local frame slots (`OpGetLocal`) inside procedures because `patchForwardConstSites` only tracks `OpGetGlobal`.
-  2. Bare parameterless function calls placed before the `Function` declaration (e.g. `x = myFunc + 1`) are emitted as variable reads (`OpGetLocal` or `OpGetGlobal`) and evaluate to `Empty`.
-- **Implementation Strategy:**
-  1. Single-Pass Constraint: Strictly single-pass (no AST allowed for VBScript). Late-binding resolution is required for unknown identifiers.
-  2. Opcode Addition:
-     - Register `OpResolveDynamic` (primary opcode or extended opcode `ExtOpResolveDynamic` depending on opcode availability).
-     - Operand: 2 bytes `[uint16 constNameIdx]` referencing the identifier string constant.
-     - Synchronize the Three-Way Contract:
-       - Execution loop in `axonvm/vm.go`
-       - `opcodeOperandSize` in `axonvm/vm.go`
-       - `remapExecuteGlobalBytecode` in `axonvm/vm.go`
-       - `OpCode.String()` in `axonvm/opcode.go`
-  3. Compiler Emission:
-     - When encountering an unresolved identifier in expression contexts (where it is neither a known local, declared global, constant, nor registered procedure):
-       - If `Option Explicit` is off, or if within a procedure where it could refer to a forward-declared global constant or procedure:
-         - Emit `OpResolveDynamic [nameIdx]`.
-  4. VM Execution (`OpResolveDynamic`):
-     - Lookup hierarchy at runtime:
-       1. Global constants (`vm.globalConstants` / `vm.constants`).
-       2. Global variable table (`vm.Globals`).
-       3. Function/Procedure registry (`vm.functions` / `UserSub`).
-     - If resolved target is a `VTUserSub`:
-       - If `UserSubIsFunc()` and `UserSubParamCount() == 0`:
-         - Automatically invoke function call via `vm.beginUserSubCall(target, nil, false, 0)`.
-       - Else, push the `VTUserSub` value.
-     - If resolved to variable or constant, push its value.
-     - If not found: push `NewEmpty()` (or raise `vbscript.VariableUndefined` if `Option Explicit` is active).
+  3. You **must ensure** that the formatting functions respect locale settings (e.g., currency symbol, decimal separator) and handle edge cases like negative zero, scientific notation, and rounding according to **Microsoft VBScript** rules.
 
 ## 5. ADODB Identity Retrieval
 - **Affected Files:**

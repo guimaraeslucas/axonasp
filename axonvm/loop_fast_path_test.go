@@ -33,7 +33,10 @@ package axonvm
 
 import (
 	"bytes"
+	"errors"
 	"testing"
+
+	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
 // ---- VBScript OpForNextFastInt ----
@@ -502,6 +505,157 @@ for (i = 0; i < 5; i++) {}
 Response.Write(i);
 %>`
 	runVBAndExpect(t, src, "5")
+}
+
+// TestForLoopNumericCoercion verifies that VBScript For...Next coerces string, Empty,
+// and floating-point bounds/steps to numeric subtypes before loop evaluation and fast-path
+// dispatch.
+func TestForLoopNumericCoercion(t *testing.T) {
+	t.Run("local_string_bounds_ascending", func(t *testing.T) {
+		src := `<%
+Sub RunLoop()
+	Dim i, limit, out
+	limit = "10"
+	out = ""
+	For i = "2" To limit
+		out = out & i & ","
+	Next
+	Response.Write out & TypeName(i) & "|" & i
+End Sub
+Call RunLoop()
+%>`
+		runVBAndExpect(t, src, "2,3,4,5,6,7,8,9,10,Integer|11")
+	})
+
+	t.Run("global_string_bounds_ascending_fast_path", func(t *testing.T) {
+		src := `<%
+Dim i, limit, sum
+limit = "10"
+sum = 0
+For i = 1 To limit
+	sum = sum + i
+Next
+Response.Write sum & "|" & TypeName(i) & "|" & i
+%>`
+		comp := NewASPCompiler(src)
+		if err := comp.Compile(); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		hasFastGlobal := false
+		for _, b := range comp.Bytecode() {
+			if OpCode(b) == OpForNextFastGlobalInt {
+				hasFastGlobal = true
+				break
+			}
+		}
+		if !hasFastGlobal {
+			t.Fatal("expected OpForNextFastGlobalInt for global For loop with string limit")
+		}
+		runVBAndExpect(t, src, "55|Integer|11")
+	})
+
+	t.Run("local_string_bounds_descending_and_whitespace", func(t *testing.T) {
+		src := `<%
+Sub RunLoop()
+	Dim i, out
+	out = ""
+	For i = " 5 " To " 1 " Step -1
+		out = out & i & ","
+	Next
+	Response.Write out & i
+End Sub
+Call RunLoop()
+%>`
+		runVBAndExpect(t, src, "5,4,3,2,1,0")
+	})
+
+	t.Run("string_step_and_float_bounds", func(t *testing.T) {
+		src := `<%
+Dim i, out
+out = ""
+For i = "1.5" To "3.5" Step "0.5"
+	out = out & i & ","
+Next
+Response.Write out & "|"
+out = ""
+For i = 1 To "5" Step "2"
+	out = out & i & ","
+Next
+Response.Write out & "|"
+out = ""
+For i = Empty To "2"
+	out = out & i & ","
+Next
+Response.Write out
+%>`
+		runVBAndExpect(t, src, "1.5,2,2.5,3,3.5,|1,3,5,|0,1,2,")
+	})
+
+	t.Run("hex_and_grouped_numeric_strings", func(t *testing.T) {
+		src := `<%
+Dim i, count
+count = 0
+For i = "&H08" To "&H0A"
+	count = count + i
+Next
+Response.Write count
+%>`
+		runVBAndExpect(t, src, "27")
+	})
+
+	t.Run("execute_global_remaps_coercion_opcode", func(t *testing.T) {
+		src := `<%
+ExecuteGlobal "Dim i, s : s = """" : For i = 2 To ""10"" : s = s & i & "","" : Next : Response.Write s"
+%>`
+		runVBAndExpect(t, src, "2,3,4,5,6,7,8,9,10,")
+	})
+
+	t.Run("invalid_string_raises_type_mismatch", func(t *testing.T) {
+		cases := []string{
+			`<% Dim i : For i = "abc" To 5 : Next %>`,
+			`<% Dim i : For i = 1 To "abc" : Next %>`,
+			`<% Dim i : For i = 1 To 5 Step "abc" : Next %>`,
+			`<% Dim i : For i = 1 To "" : Next %>`,
+		}
+		for _, src := range cases {
+			runVBExpectRuntimeError(t, src, vbscript.TypeMismatch)
+		}
+	})
+
+	t.Run("null_bound_raises_invalid_use_of_null", func(t *testing.T) {
+		cases := []string{
+			`<% Dim i : For i = Null To 5 : Next %>`,
+			`<% Dim i : For i = 1 To Null : Next %>`,
+			`<% Dim i : For i = 1 To 5 Step Null : Next %>`,
+		}
+		for _, src := range cases {
+			runVBExpectRuntimeError(t, src, vbscript.InvalidUseOfNull)
+		}
+	})
+}
+
+func runVBExpectRuntimeError(t *testing.T, src string, wantCode vbscript.VBSyntaxErrorCode) {
+	t.Helper()
+	comp := NewASPCompiler(src)
+	if err := comp.Compile(); err != nil {
+		t.Fatalf("compile failed for %q: %v", src, err)
+	}
+	vm := NewVM(comp.Bytecode(), comp.Constants(), comp.GlobalsCount())
+	host := NewMockHost()
+	var out bytes.Buffer
+	host.SetOutput(&out)
+	vm.SetHost(host)
+	err := vm.Run()
+	if err == nil {
+		t.Fatalf("expected runtime error %v for %q, got nil", wantCode, src)
+	}
+	var vme *VMError
+	if !errors.As(err, &vme) {
+		t.Fatalf("expected *VMError for %q, got %T (%v)", src, err, err)
+	}
+	if vme.Code != wantCode {
+		t.Fatalf("expected error code %v (%d) for %q, got %v (%d)", wantCode, wantCode, src, vme.Code, vme.Code)
+	}
 }
 
 // ---- Shared helpers ----

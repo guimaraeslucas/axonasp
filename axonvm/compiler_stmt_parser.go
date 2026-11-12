@@ -4094,6 +4094,10 @@ func (c *Compiler) parseForToStatement() {
 	initExprStart := len(c.bytecode)
 	c.parseExpression(PrecNone)
 	initExprEnd := len(c.bytecode)
+	initConst, initIsConst := c.inspectConstantIntEmission(initExprStart, initExprEnd)
+	if !initIsConst {
+		c.emitExt(ExtOpCoerceToNumeric)
+	}
 	c.emitSetForName(loopVarName)
 
 	c.expectKeyword(vbscript.KeywordTo)
@@ -4107,6 +4111,10 @@ func (c *Compiler) parseForToStatement() {
 	limitExprStart := len(c.bytecode)
 	c.parseExpression(PrecNone)
 	limitExprEnd := len(c.bytecode)
+	limitConst, limitIsConst := c.inspectConstantIntEmission(limitExprStart, limitExprEnd)
+	if !limitIsConst {
+		c.emitExt(ExtOpCoerceToNumeric)
+	}
 	c.emitSetForName(endName)
 	hasUnitStep := false
 	unitStep := int64(0)
@@ -4116,6 +4124,9 @@ func (c *Compiler) parseForToStatement() {
 		stepExprStart := len(c.bytecode)
 		c.parseExpression(PrecNone)
 		hasUnitStep, unitStep = c.detectUnitStepLiteralFromEmission(stepExprStart)
+		if !hasUnitStep {
+			c.emitExt(ExtOpCoerceToNumeric)
+		}
 	} else {
 		oneIdx := c.addConstant(NewInteger(1))
 		c.emit(OpConstant, oneIdx)
@@ -4132,8 +4143,6 @@ func (c *Compiler) parseForToStatement() {
 	// Emits a simplified single-direction pre-loop check and a fused OpForNextFastInt
 	// tail that eliminates the per-iteration direction test and multi-opcode condition.
 	if hasUnitStep && opLoopGet == OpGetLocal && opEndGet == OpGetLocal {
-		initConst, initIsConst := c.inspectConstantIntEmission(initExprStart, initExprEnd)
-		limitConst, limitIsConst := c.inspectConstantIntEmission(limitExprStart, limitExprEnd)
 		c.parseForToStatementFastPath(
 			loopVarName, idxLoopGet, idxEndGet, unitStep,
 			initConst, initIsConst, limitConst, limitIsConst,
@@ -4141,8 +4150,6 @@ func (c *Compiler) parseForToStatement() {
 		return
 	}
 	if hasUnitStep && opLoopGet == OpGetGlobal && opEndGet == OpGetGlobal {
-		initConst, initIsConst := c.inspectConstantIntEmission(initExprStart, initExprEnd)
-		limitConst, limitIsConst := c.inspectConstantIntEmission(limitExprStart, limitExprEnd)
 		c.parseForToStatementFastPathGlobal(
 			loopVarName, idxLoopGet, idxEndGet, unitStep,
 			initConst, initIsConst, limitConst, limitIsConst,

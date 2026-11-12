@@ -591,6 +591,14 @@ func (c *Compiler) optimizeIntegerArithmeticPass() bool {
 				_ = popIntStack(&stack)
 			}
 
+		case OpExtPrefix:
+			if ip+1 < len(c.bytecode) && ExtOpCode(c.bytecode[ip+1]) == ExtOpCoerceToNumeric {
+				a := popIntStack(&stack)
+				pushIntStack(&stack, intStackValue{isInt: a.isInt, producerIP: ip})
+			} else {
+				clearIntInference(knownIntLocals, knownIntGlobals, &stack)
+			}
+
 		case OpCall, OpCallMember, OpCallBuiltin, OpArraySet, OpMemberGet, OpMemberSet, OpMemberSetSet,
 			OpJump, OpJumpIfFalse, OpJumpIfTrue, OpGotoLabel,
 			OpJSJump, OpJSJumpIfFalse, OpJSJumpIfTrue, OpJSTryEnter,
