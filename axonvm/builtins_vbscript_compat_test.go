@@ -21,6 +21,9 @@
 package axonvm
 
 import (
+	"bytes"
+	"math"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -566,6 +569,263 @@ func TestBuiltinFormatPercentFR(t *testing.T) {
 	result := callBuiltin(t, vm, "FormatPercent", NewDouble(0.5), NewInteger(0))
 	if result.Type != VTString || result.Str != "50%" {
 		t.Fatalf("expected French FormatPercent(0.5,0)='50%%', got %q", result.Str)
+	}
+}
+
+func assertFormatBuiltinRuntimeErr(t *testing.T, vm *VM, fnName string, expectedCode vbscript.VBSyntaxErrorCode, args ...Value) {
+	t.Helper()
+	_, err := callBuiltinWithError(t, vm, fnName, args...)
+	if err == nil {
+		t.Fatalf("%s(%v): expected error %v, got nil", fnName, args, expectedCode)
+	}
+	vbErr, ok := err.(builtinVBRuntimeError)
+	if !ok {
+		t.Fatalf("%s(%v): expected builtinVBRuntimeError, got %T (%v)", fnName, args, err, err)
+	}
+	if vbErr.code != expectedCode {
+		t.Fatalf("%s(%v): expected error code %d (%v), got %d (%v)", fnName, args, expectedCode, expectedCode, vbErr.code, vbErr.code)
+	}
+}
+
+func TestBuiltinFormatTypeHandlingAndParsing(t *testing.T) {
+	host := NewMockHost()
+	host.Session().SetLCID(1033)
+	vm := NewVM(nil, nil, 0)
+	vm.SetHost(host)
+
+	// VTInteger, VTDouble, VTEmpty, VTBool, and trimmed/scientific/grouped VTString inputs.
+	cases := []struct {
+		fn       string
+		args     []Value
+		expected string
+	}{
+		{"FormatCurrency", []Value{NewInteger(1234)}, "$1,234.00"},
+		{"FormatCurrency", []Value{NewDouble(1234.5)}, "$1,234.50"},
+		{"FormatCurrency", []Value{NewEmpty()}, "$0.00"},
+		{"FormatCurrency", []Value{NewString("1234.50")}, "$1,234.50"},
+		{"FormatCurrency", []Value{NewString("  1,234.50  ")}, "$1,234.50"},
+		{"FormatCurrency", []Value{NewString("-1234.5")}, "-$1,234.50"},
+		{"FormatCurrency", []Value{NewString("+42.5")}, "$42.50"},
+		{"FormatCurrency", []Value{NewString(".5")}, "$0.50"},
+		{"FormatCurrency", []Value{NewString("1.2345e2")}, "$123.45"},
+		{"FormatCurrency", []Value{NewString("1.2345D2")}, "$123.45"},
+		{"FormatCurrency", []Value{NewString("1.5d-1")}, "$0.15"},
+		{"FormatCurrency", []Value{NewString("&H10")}, "$16.00"},
+		{"FormatCurrency", []Value{NewString("&O10")}, "$8.00"},
+		{"FormatNumber", []Value{NewString("1,234.5")}, "1,234.50"},
+		{"FormatNumber", []Value{NewEmpty()}, "0.00"},
+		{"FormatNumber", []Value{NewBool(false)}, "0.00"},
+		{"FormatNumber", []Value{NewBool(true)}, "1.00"},
+		{"FormatNumber", []Value{NewString("1e10"), NewInteger(0)}, "10,000,000,000"},
+		{"FormatNumber", []Value{NewString("1e-5"), NewInteger(5)}, "0.00001"},
+		{"FormatNumber", []Value{NewString("1e20"), NewInteger(0)}, "100,000,000,000,000,000,000"},
+		{"FormatPercent", []Value{NewString("0.125")}, "12.50%"},
+		{"FormatPercent", []Value{NewString("1.25"), NewInteger(0)}, "125%"},
+		{"FormatPercent", []Value{NewEmpty()}, "0.00%"},
+		{"FormatPercent", []Value{NewString("0.5")}, "50.00%"},
+	}
+	for _, tc := range cases {
+		res := callBuiltin(t, vm, tc.fn, tc.args...)
+		if res.Type != VTString || res.Str != tc.expected {
+			t.Fatalf("%s(%v): expected %q, got Type=%v Str=%q", tc.fn, tc.args, tc.expected, res.Type, res.Str)
+		}
+	}
+
+	// VTNull returns Null for FormatCurrency, FormatNumber, and FormatPercent.
+	for _, fn := range []string{"FormatCurrency", "FormatNumber", "FormatPercent"} {
+		res := callBuiltin(t, vm, fn, NewNull())
+		if res.Type != VTNull {
+			t.Fatalf("%s(Null): expected VTNull, got %v (%q)", fn, res.Type, res.Str)
+		}
+	}
+
+	// Invalid strings and non-numeric types raise vbscript.TypeMismatch.
+	invalidArgs := []Value{
+		NewString(""),
+		NewString("   "),
+		NewString("abc"),
+		NewString("123abc"),
+		NewString("12.34.56"),
+		NewString("NaN"),
+		NewString("Inf"),
+		NewString("Infinity"),
+		NewString("1_000"),
+		NewString("0x10"),
+		NewString("0x1p2"),
+		NewString("+-1"),
+		NewString("12,34"),
+		NewString("&H"),
+		NewString("&O9"),
+		NewDouble(math.NaN()),
+		{Type: VTArray},
+		{Type: VTNothing},
+	}
+	for _, bad := range invalidArgs {
+		for _, fn := range []string{"FormatCurrency", "FormatNumber", "FormatPercent"} {
+			assertFormatBuiltinRuntimeErr(t, vm, fn, vbscript.TypeMismatch, bad)
+		}
+	}
+
+	// Infinity double or huge numeric string raises vbscript.Overflow.
+	for _, fn := range []string{"FormatCurrency", "FormatNumber", "FormatPercent"} {
+		assertFormatBuiltinRuntimeErr(t, vm, fn, vbscript.Overflow, NewDouble(math.Inf(1)))
+		assertFormatBuiltinRuntimeErr(t, vm, fn, vbscript.Overflow, NewDouble(math.Inf(-1)))
+		assertFormatBuiltinRuntimeErr(t, vm, fn, vbscript.Overflow, NewString("1e400"))
+	}
+}
+
+func TestBuiltinFormatNegativeZeroAndBankersRounding(t *testing.T) {
+	host := NewMockHost()
+	host.Session().SetLCID(1033)
+	vm := NewVM(nil, nil, 0)
+	vm.SetHost(host)
+
+	cases := []struct {
+		fn       string
+		args     []Value
+		expected string
+	}{
+		// Negative zero suppression (direct negative zero and values rounding to zero).
+		{"FormatNumber", []Value{NewDouble(math.Copysign(0, -1))}, "0.00"},
+		{"FormatNumber", []Value{NewString("-0")}, "0.00"},
+		{"FormatNumber", []Value{NewString("-0.00")}, "0.00"},
+		{"FormatNumber", []Value{NewDouble(-0.001), NewInteger(2)}, "0.00"},
+		{"FormatNumber", []Value{NewDouble(-0.4), NewInteger(0)}, "0"},
+		{"FormatCurrency", []Value{NewDouble(-0.001), NewInteger(2), NewInteger(-2), NewInteger(-1)}, "$0.00"},
+		{"FormatPercent", []Value{NewDouble(-0.00001), NewInteger(2), NewInteger(-2), NewInteger(-1)}, "0.00%"},
+
+		// Microsoft VBScript banker's rounding (round half to even).
+		{"FormatNumber", []Value{NewDouble(1.225), NewInteger(2)}, "1.22"},
+		{"FormatNumber", []Value{NewDouble(1.235), NewInteger(2)}, "1.24"},
+		{"FormatNumber", []Value{NewDouble(2.675), NewInteger(2)}, "2.68"},
+		{"FormatNumber", []Value{NewDouble(6.5), NewInteger(0)}, "6"},
+		{"FormatNumber", []Value{NewDouble(7.5), NewInteger(0)}, "8"},
+		{"FormatNumber", []Value{NewDouble(0.5), NewInteger(0)}, "0"},
+		{"FormatNumber", []Value{NewDouble(0.005), NewInteger(2)}, "0.00"},
+		{"FormatNumber", []Value{NewDouble(9.995), NewInteger(2)}, "10.00"},
+		{"FormatPercent", []Value{NewString("0.12345"), NewInteger(2)}, "12.34%"},
+		{"FormatPercent", []Value{NewString("0.12355"), NewInteger(2)}, "12.36%"},
+	}
+	for _, tc := range cases {
+		res := callBuiltin(t, vm, tc.fn, tc.args...)
+		if res.Type != VTString || res.Str != tc.expected {
+			t.Fatalf("%s(%v): expected %q, got %q", tc.fn, tc.args, tc.expected, res.Str)
+		}
+	}
+}
+
+func TestBuiltinFormatOptionalArgumentsAndLocales(t *testing.T) {
+	host := NewMockHost()
+	vm := NewVM(nil, nil, 0)
+	vm.SetHost(host)
+
+	// All 5 arguments in en-US (LCID 1033).
+	host.Session().SetLCID(1033)
+	optCases := []struct {
+		fn       string
+		args     []Value
+		expected string
+	}{
+		// NumDigitsAfterDecimal = -1 uses default (2).
+		{"FormatNumber", []Value{NewString("12.3"), NewInteger(-1)}, "12.30"},
+		// IncludeLeadingDigit = vbFalse (0) vs vbTrue (-1).
+		{"FormatNumber", []Value{NewString("0.5"), NewInteger(2), NewInteger(0)}, ".50"},
+		{"FormatNumber", []Value{NewString("-0.5"), NewInteger(2), NewInteger(0)}, "-.50"},
+		{"FormatNumber", []Value{NewString("-0.5"), NewInteger(2), NewInteger(0), NewInteger(-1)}, "(.50)"},
+		{"FormatCurrency", []Value{NewString("0.5"), NewInteger(2), NewInteger(0)}, "$.50"},
+		{"FormatPercent", []Value{NewString("0.005"), NewInteger(2), NewInteger(0)}, ".50%"},
+		// UseParensForNegativeNumbers = vbTrue (-1) vs vbFalse (0) vs vbUseDefault (-2).
+		{"FormatCurrency", []Value{NewString("-1234.5"), NewInteger(2), NewInteger(-2), NewInteger(-1)}, "($1,234.50)"},
+		{"FormatCurrency", []Value{NewString("-1234.5"), NewInteger(2), NewInteger(-2), NewInteger(0)}, "-$1,234.50"},
+		{"FormatCurrency", []Value{NewString("-1234.5"), NewInteger(2), NewInteger(-2), NewInteger(-2)}, "-$1,234.50"},
+		{"FormatNumber", []Value{NewString("-1234.5"), NewInteger(2), NewInteger(-2), NewInteger(-1)}, "(1,234.50)"},
+		{"FormatPercent", []Value{NewString("-0.125"), NewInteger(1), NewInteger(-2), NewInteger(-1)}, "(12.5%)"},
+		// GroupDigits = vbFalse (0) vs vbTrue (-1).
+		{"FormatNumber", []Value{NewString("1234.5"), NewInteger(2), NewInteger(-2), NewInteger(-2), NewInteger(0)}, "1234.50"},
+		{"FormatCurrency", []Value{NewString("1234.5"), NewInteger(2), NewInteger(-2), NewInteger(-2), NewInteger(0)}, "$1234.50"},
+		{"FormatPercent", []Value{NewString("12.345"), NewInteger(1), NewInteger(-2), NewInteger(-2), NewInteger(0)}, "1234.5%"},
+		{"FormatPercent", []Value{NewString("12.345"), NewInteger(1), NewInteger(-2), NewInteger(-2), NewInteger(-1)}, "1,234.5%"},
+	}
+	for _, tc := range optCases {
+		res := callBuiltin(t, vm, tc.fn, tc.args...)
+		if res.Type != VTString || res.Str != tc.expected {
+			t.Fatalf("%s(%v): expected %q, got %q", tc.fn, tc.args, tc.expected, res.Str)
+		}
+	}
+
+	// Optional parameter error conditions.
+	assertFormatBuiltinRuntimeErr(t, vm, "FormatNumber", vbscript.InvalidProcedureCallOrArgument, NewInteger(1), NewInteger(-2))
+	assertFormatBuiltinRuntimeErr(t, vm, "FormatNumber", vbscript.InvalidProcedureCallOrArgument, NewInteger(1), NewInteger(100))
+	assertFormatBuiltinRuntimeErr(t, vm, "FormatNumber", vbscript.InvalidUseOfNull, NewInteger(1), NewNull())
+	assertFormatBuiltinRuntimeErr(t, vm, "FormatCurrency", vbscript.InvalidUseOfNull, NewInteger(1), NewInteger(2), NewNull())
+	assertFormatBuiltinRuntimeErr(t, vm, "FormatPercent", vbscript.InvalidProcedureCallOrArgument, NewInteger(1), NewInteger(2), NewInteger(5))
+	assertFormatBuiltinRuntimeErr(t, vm, "FormatNumber", vbscript.InvalidProcedureCallOrArgument, NewInteger(1), NewInteger(2), NewInteger(-2), NewInteger(1))
+
+	// FormatCurrency("1234.50") matches FormatCurrency(1234.5) across en-US, pt-BR, de-DE, fr-FR.
+	localeTests := []struct {
+		lcid      int
+		localized string
+		invariant string
+	}{
+		{1033, "1,234.50", "1234.50"},
+		{1046, "1.234,50", "1234.50"},
+		{1031, "1.234,50", "1234.50"},
+		{1036, "1 234,50", "1234.50"},
+	}
+	for _, lt := range localeTests {
+		host.Session().SetLCID(lt.lcid)
+		expected := callBuiltin(t, vm, "FormatCurrency", NewDouble(1234.5))
+		gotLoc := callBuiltin(t, vm, "FormatCurrency", NewString(lt.localized))
+		gotInv := callBuiltin(t, vm, "FormatCurrency", NewString(lt.invariant))
+		if gotLoc.Type != VTString || gotLoc.Str != expected.Str {
+			t.Fatalf("LCID %d FormatCurrency(%q): expected %q, got %q", lt.lcid, lt.localized, expected.Str, gotLoc.Str)
+		}
+		if gotInv.Type != VTString || gotInv.Str != expected.Str {
+			t.Fatalf("LCID %d FormatCurrency(%q): expected %q, got %q", lt.lcid, lt.invariant, expected.Str, gotInv.Str)
+		}
+	}
+}
+
+func TestBuiltinFormatFullVMExecutionAndErrors(t *testing.T) {
+	script := `<%
+On Error Resume Next
+Session.LCID = 1033
+Dim a, b, c, d, e1, e2
+a = FormatCurrency("1234.50")
+b = IsNull(FormatCurrency(Null))
+c = FormatNumber("1.235e1", 1, , vbTrue, vbFalse)
+d = FormatPercent("-0.00001", 2)
+
+Err.Clear
+Dim bad1
+bad1 = FormatCurrency("not-a-number")
+e1 = Err.Number
+
+Err.Clear
+Dim bad2
+bad2 = FormatNumber(10, -2)
+e2 = Err.Number
+
+Response.Write a & "|" & CStr(b) & "|" & c & "|" & d & "|" & CStr(e1) & "|" & CStr(e2)
+%>`
+	compiler := NewASPCompiler(script)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+	host := NewMockHost()
+	var output bytes.Buffer
+	host.SetOutput(&output)
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	vm.SetHost(host)
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	got := output.String()
+	expected := "$1,234.50|True|12.4|0.00%|" +
+		strconv.Itoa(vbscript.HRESULTFromVBScriptCode(vbscript.TypeMismatch)) + "|" +
+		strconv.Itoa(vbscript.HRESULTFromVBScriptCode(vbscript.InvalidProcedureCallOrArgument))
+	if got != expected {
+		t.Fatalf("unexpected VM output: got %q, want %q", got, expected)
 	}
 }
 

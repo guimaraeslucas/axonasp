@@ -267,9 +267,9 @@ The following VBScript functions respect the current `Session.LCID`:
 
 ### Number Functions
 
-- `FormatNumber(expression, numDigits, useGrouping)` - Uses locale separators
-- `FormatPercent(expression, numDigits, useGrouping)` - Uses locale separators
-- `FormatCurrency(expression, numDigits, useGrouping)` - Uses locale symbol and separators
+- `FormatNumber(expression[, numDigitsAfterDecimal[, includeLeadingDigit[, useParensForNegativeNumbers[, groupDigits]]]])` - Formats a number using active locale decimal and grouping separators
+- `FormatPercent(expression[, numDigitsAfterDecimal[, includeLeadingDigit[, useParensForNegativeNumbers[, groupDigits]]]])` - Formats a percentage multiplied by 100 using active locale separators and a trailing `%` symbol
+- `FormatCurrency(expression[, numDigitsAfterDecimal[, includeLeadingDigit[, useParensForNegativeNumbers[, groupDigits]]]])` - Formats a currency value using the active locale symbol, spacing, and separators
 
 ### String Conversion
 

@@ -319,16 +319,196 @@ func groupedIntegerString(value string, separator string) string {
 
 // localizedCurrencyString renders a currency value using locale-specific separators and symbol placement.
 func localizedCurrencyString(value float64, digits int, profile builtinLocaleProfile) string {
+	return vbsFormatDecimalString(value, digits, 0, profile, true, false, true, profile.currencySymbol+profile.currencySpacing, "")
+}
+
+// vbsFormatDecimalString formats a finite floating-point number using VBScript 15-significant-digit
+// decimal banker's rounding, negative-zero suppression, locale separators, and sign/paren wrapping.
+func vbsFormatDecimalString(
+	value float64,
+	digits int,
+	scalePow10 int,
+	profile builtinLocaleProfile,
+	includeLeadingDigit bool,
+	useParensForNegative bool,
+	useGrouping bool,
+	prefix string,
+	suffix string,
+) string {
+	if digits < 0 {
+		digits = 2
+	}
 	negative := value < 0
 	if negative {
 		value = -value
 	}
-	formattedNumber := localizedNumberString(value, digits, profile, true)
-	result := profile.currencySymbol + profile.currencySpacing + formattedNumber
-	if negative {
-		return "-" + result
+
+	var intDigits string
+	var fracDigits string
+	isZero := value == 0
+
+	if isZero {
+		intDigits = "0"
+		if digits > 0 {
+			fracDigits = strings.Repeat("0", digits)
+		}
+	} else {
+		sci := strconv.FormatFloat(value, 'e', 14, 64)
+		eIdx := strings.IndexByte(sci, 'e')
+		exp, _ := strconv.Atoi(sci[eIdx+1:])
+		exp += scalePow10
+
+		var buf [17]byte
+		buf[0] = sci[0]
+		n := 1
+		if eIdx > 2 {
+			n += copy(buf[1:], sci[2:eIdx])
+		}
+		for n > 1 && buf[n-1] == '0' {
+			n--
+		}
+
+		intLen := exp + 1
+		keepCount := intLen + digits
+
+		if keepCount < 0 {
+			isZero = true
+			intDigits = "0"
+			if digits > 0 {
+				fracDigits = strings.Repeat("0", digits)
+			}
+		} else if keepCount == 0 {
+			roundUp := buf[0] > '5' || (buf[0] == '5' && n > 1)
+			if !roundUp {
+				isZero = true
+				intDigits = "0"
+				if digits > 0 {
+					fracDigits = strings.Repeat("0", digits)
+				}
+			} else if digits == 0 {
+				intDigits = "1"
+			} else {
+				intDigits = "0"
+				var fb strings.Builder
+				fb.Grow(digits)
+				for i := 0; i < digits-1; i++ {
+					fb.WriteByte('0')
+				}
+				fb.WriteByte('1')
+				fracDigits = fb.String()
+			}
+		} else {
+			keptLen := keepCount
+			if keptLen > n {
+				keptLen = n
+			} else if keepCount < n {
+				next := buf[keepCount]
+				roundUp := next > '5' || (next == '5' && (keepCount+1 < n || (buf[keepCount-1]-'0')%2 == 1))
+				if roundUp {
+					carry := true
+					for i := keepCount - 1; i >= 0; i-- {
+						if buf[i] < '9' {
+							buf[i]++
+							carry = false
+							break
+						}
+						buf[i] = '0'
+					}
+					if carry {
+						copy(buf[1:keepCount+1], buf[0:keepCount])
+						buf[0] = '1'
+						keptLen = keepCount + 1
+						intLen++
+					}
+				}
+			}
+
+			if intLen <= 0 {
+				intDigits = "0"
+				if digits > 0 {
+					leadingZeros := -intLen
+					var fb strings.Builder
+					fb.Grow(digits)
+					for i := 0; i < leadingZeros && fb.Len() < digits; i++ {
+						fb.WriteByte('0')
+					}
+					for i := 0; i < keptLen && fb.Len() < digits; i++ {
+						fb.WriteByte(buf[i])
+					}
+					for fb.Len() < digits {
+						fb.WriteByte('0')
+					}
+					fracDigits = fb.String()
+				}
+			} else {
+				if keptLen >= intLen {
+					intDigits = string(buf[:intLen])
+					if digits > 0 {
+						var fb strings.Builder
+						fb.Grow(digits)
+						for i := intLen; i < keptLen && fb.Len() < digits; i++ {
+							fb.WriteByte(buf[i])
+						}
+						for fb.Len() < digits {
+							fb.WriteByte('0')
+						}
+						fracDigits = fb.String()
+					}
+				} else {
+					var ib strings.Builder
+					ib.Grow(intLen)
+					ib.Write(buf[:keptLen])
+					for i := keptLen; i < intLen; i++ {
+						ib.WriteByte('0')
+					}
+					intDigits = ib.String()
+					if digits > 0 {
+						fracDigits = strings.Repeat("0", digits)
+					}
+				}
+			}
+		}
 	}
-	return result
+
+	if isZero {
+		negative = false
+	}
+
+	if intDigits == "0" && !includeLeadingDigit && digits > 0 {
+		intDigits = ""
+	} else if useGrouping {
+		intDigits = groupedIntegerString(intDigits, profile.thousandSeparator)
+	}
+
+	var body strings.Builder
+	extra := len(prefix) + len(intDigits) + len(suffix)
+	if digits > 0 {
+		extra += len(profile.decimalSeparator) + len(fracDigits)
+	}
+	if negative {
+		if useParensForNegative {
+			extra += 2
+		} else {
+			extra += 1
+		}
+	}
+	body.Grow(extra)
+	if negative && useParensForNegative {
+		body.WriteByte('(')
+	} else if negative {
+		body.WriteByte('-')
+	}
+	body.WriteString(prefix)
+	body.WriteString(intDigits)
+	if digits > 0 {
+		body.WriteString(profile.decimalSeparator)
+		body.WriteString(fracDigits)
+	}
+	body.WriteString(suffix)
+	if negative && useParensForNegative {
+		body.WriteByte(')')
+	}
+	return body.String()
 }
 
 // parseLocalizedTimeValue parses text using locale-priority date layouts and localized month/day names.
