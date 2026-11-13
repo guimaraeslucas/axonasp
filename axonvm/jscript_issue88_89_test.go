@@ -22,7 +22,9 @@ func TestJScriptActiveXObjectBinding(t *testing.T) {
 		`Response.Write("|");` +
 		`Response.Write(typeof fso2);` +
 		`</script>`
-	out := runASPSourceForTest(t, source)
+	host := NewMockHost()
+	host.Server().SetRootDir(t.TempDir())
+	out := runASPSourceForTestWithHost(t, source, host)
 	if out != "object|False|object|object|object" {
 		t.Fatalf("unexpected ActiveXObject output: %q", out)
 	}

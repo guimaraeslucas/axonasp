@@ -195,3 +195,42 @@ Response.Write(fl.Name);
 		t.Fatalf("expected file name %q, got %q", "renamed.txt", parts[4])
 	}
 }
+
+// TestFSOResolvePathVirtualAbsoluteAndSandbox verifies virtual root paths like "/sandbox/x",
+// already-mapped physical paths inside root, and traversal rejection across platforms.
+func TestFSOResolvePathVirtualAbsoluteAndSandbox(t *testing.T) {
+	rootDir := t.TempDir()
+	host := NewMockHost()
+	host.Server().SetRootDir(rootDir)
+	host.Server().SetRequestPath("/sub/page.asp")
+
+	vm := NewVM(nil, nil, 0)
+	vm.SetHost(host)
+
+	// Virtual absolute path must resolve under web root on both Windows and Unix.
+	resolvedVirtual, ok := vm.fsoResolvePath("/sandbox/x")
+	if !ok {
+		t.Fatalf("expected virtual absolute path /sandbox/x to resolve inside root %q", rootDir)
+	}
+	wantVirtual := filepath.Join(rootDir, "sandbox", "x")
+	if filepath.Clean(resolvedVirtual) != filepath.Clean(wantVirtual) {
+		t.Fatalf("virtual path mismatch: got %q, want %q", resolvedVirtual, wantVirtual)
+	}
+
+	// Already-mapped physical path under web root must not be prefixed twice.
+	resolvedMapped, ok := vm.fsoResolvePath(wantVirtual)
+	if !ok {
+		t.Fatalf("expected physical path %q inside root to resolve", wantVirtual)
+	}
+	if filepath.Clean(resolvedMapped) != filepath.Clean(wantVirtual) {
+		t.Fatalf("physical path inside root mismatch: got %q, want %q", resolvedMapped, wantVirtual)
+	}
+
+	// Traversal above web root must be refused for both virtual and physical paths.
+	if escaped, ok := vm.fsoResolvePath("/../outside.txt"); ok {
+		t.Fatalf("expected /../outside.txt to be refused, got %q", escaped)
+	}
+	if escaped, ok := vm.fsoResolvePath(filepath.Join(rootDir, "..", "outside.txt")); ok {
+		t.Fatalf("expected physical root traversal to be refused, got %q", escaped)
+	}
+}

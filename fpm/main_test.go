@@ -35,19 +35,31 @@ func TestSIGUSR2ReloadsOnlyModifiedPools(t *testing.T) {
 	var mu sync.Mutex
 	starts := make(map[string]int)
 	cancels := make(map[string]int)
+	started := make(chan string, 16)
 
 	launchPoolSupervisor = func(ctx context.Context, configPath string, done chan struct{}) {
 		mu.Lock()
 		starts[configPath]++
 		mu.Unlock()
+		started <- configPath
 
-		go func() {
-			<-ctx.Done()
-			mu.Lock()
-			cancels[configPath]++
-			mu.Unlock()
-			close(done)
-		}()
+		<-ctx.Done()
+		mu.Lock()
+		cancels[configPath]++
+		mu.Unlock()
+		close(done)
+	}
+
+	waitForStarts := func(expected int) {
+		t.Helper()
+		deadline := time.After(2 * time.Second)
+		for range expected {
+			select {
+			case <-started:
+			case <-deadline:
+				t.Fatalf("timed out waiting for %d pool supervisor start(s)", expected)
+			}
+		}
 	}
 
 	t.Cleanup(func() {
@@ -58,6 +70,7 @@ func TestSIGUSR2ReloadsOnlyModifiedPools(t *testing.T) {
 	})
 
 	scanAndLoadConfigs()
+	waitForStarts(2)
 
 	mu.Lock()
 	if starts[poolAPath] != 1 || starts[poolBPath] != 1 {
@@ -74,6 +87,7 @@ func TestSIGUSR2ReloadsOnlyModifiedPools(t *testing.T) {
 	if shouldStop := handleManagerSignal(syscall.SIGUSR2); shouldStop {
 		t.Fatal("SIGUSR2 should not request manager shutdown")
 	}
+	waitForStarts(1)
 
 	mu.Lock()
 	startsA := starts[poolAPath]
