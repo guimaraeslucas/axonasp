@@ -632,6 +632,10 @@ func (op OpCode) String() string {
 		return "OpGetGlobal"
 	case OpSetGlobal:
 		return "OpSetGlobal"
+	case OpGetLocal:
+		return "OpGetLocal"
+	case OpSetLocal:
+		return "OpSetLocal"
 	case OpGetClassMember:
 		return "OpGetClassMember"
 	case OpSetClassMember:

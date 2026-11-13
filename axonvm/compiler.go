@@ -230,17 +230,23 @@ type Compiler struct {
 
 	forwardCallPatches  map[string][]int
 	forwardConstPatches map[string][]int
-	lastCallTargetName  string
-	lastCallTargetPos   int
-	lastCallIsGlobal    bool
-	lastCoercePos       int
-	lastDebugLine       int
-	lastDebugColumn     int
-	prevToken           vbscript.Token
-	lastToken           vbscript.Token
-	tempCounter         int
-	globalZeroArgFuncs  map[string]bool
-	globalZeroArgSubs   map[string]bool
+	// staticObjectArgStart and staticObjectArgEnd bracket the bytecode of the most recent
+	// ASP StaticObjects fallback block. patchArgRefInBytecode uses them to turn the block's
+	// trailing slot load into a ByRef slot reference, so an implicitly declared page-scope
+	// variable read for the first time inside a call argument can still be written back.
+	staticObjectArgStart int
+	staticObjectArgEnd   int
+	lastCallTargetName   string
+	lastCallTargetPos    int
+	lastCallIsGlobal     bool
+	lastCoercePos        int
+	lastDebugLine        int
+	lastDebugColumn      int
+	prevToken            vbscript.Token
+	lastToken            vbscript.Token
+	tempCounter          int
+	globalZeroArgFuncs   map[string]bool
+	globalZeroArgSubs    map[string]bool
 	// globalProcedureNames holds every page-scope Sub/Function name (lowercase), registered
 	// by the top-level prebind scan before any procedure body is compiled so forward
 	// references resolve like backward references.
@@ -753,6 +759,8 @@ func createCompiler(code string, mode vbscript.LexerMode) *Compiler {
 		includeCaseInsensitive: true,
 		forwardCallPatches:     make(map[string][]int),
 		forwardConstPatches:    make(map[string][]int),
+		staticObjectArgStart:   -1,
+		staticObjectArgEnd:     -1,
 		lastCallTargetPos:      -1,
 		lastCoercePos:          -1,
 		lastDebugLine:          -1,

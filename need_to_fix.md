@@ -1,22 +1,5 @@
 # Architectural Plan: Compatibility & Engine Patches
 
-
-
-## 6. ADODB Single Column Updatability
-- **Affected Files:**
-  - `axonvm/lib_adodb.go` (`adodbResolveUpdatableSource`, `adodbSimpleSelectSourceRE`, `adodbPersistRecordsetUpdate`)
-- **Defect:**
-  Updating a recordset opened with a single-column projection (e.g. `SELECT Name FROM Customers WHERE ID = 1`) fails with:
-  `"ADODB.Recordset.Update: source is not one simple updatable single-table query"` because `adodbSimpleSelectSourceRE` strictly requires `SELECT * FROM`.
-- **Implementation Strategy:**
-  1. Replace `adodbSimpleSelectSourceRE` with a generalized regex:
-     - Pattern: `(?is)^\s*select\s+(.+?)\s+from\s+(.+?)(?:\s+where\s+(.+?))?(?:\s+order\s+by\s+.+)?\s*$`
-  2. Parse the table expression: ensure single base table without joins or subqueries.
-  3. Extract target table name and existing `WHERE` clause.
-  4. In `adodbPersistRecordsetUpdate`:
-     - Loosen key column requirement: if a `WHERE` clause was captured from the source SQL, utilize that `WHERE` clause for the `UPDATE` statement target.
-     - Build `SET` statement solely from mutated columns (`rs.pendingUpdateFields`), permitting updates even when the primary key column was excluded from the `SELECT` column list.
-
 ## 7. Implicit ByRef Variable Allocation
 - **Affected Files:**
   - `axonvm/compiler_expr.go` (`rewriteLastVarLoadToArgRef`)

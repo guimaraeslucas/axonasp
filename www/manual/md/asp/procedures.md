@@ -43,6 +43,7 @@ The AxonASP Virtual Machine executes procedures using a localized stack frame.
 
 ## Remarks
 - **Scope**: Procedures defined in the main page or its includes are globally accessible throughout that page's execution.
+- **Implicit Variables**: A page-scope variable that was never declared with `Dim` is still passed **ByRef** when it is used as a procedure argument. The procedure can therefore create an object, such as a `Recordset`, and return it to the caller through that argument.
 - **Parentheses Trap**: A common error is using parentheses when calling a Sub without the `Call` keyword (e.g., `MySub(x, y)`). This can cause VBScript to treat the arguments as an expression, leading to unexpected behavior or syntax errors.
 - **Case Insensitivity**: Procedure names are case-insensitive.
 

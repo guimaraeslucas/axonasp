@@ -335,6 +335,7 @@ func (c *Compiler) emitStaticObjectIdentifierFallback(name string) bool {
 		return false
 	}
 
+	blockStart := len(c.bytecode)
 	nameConstIdx := c.addConstant(NewString(name))
 	staticObjectsConstIdx := c.addConstant(NewString("StaticObjects"))
 	itemConstIdx := c.addConstant(NewString("Item"))
@@ -381,6 +382,8 @@ func (c *Compiler) emitStaticObjectIdentifierFallback(name string) bool {
 		c.patchJumpTo(useCurrentJump, len(c.bytecode))
 	}
 	c.emit(nameGetOp, nameIdx)
+	c.staticObjectArgStart = blockStart
+	c.staticObjectArgEnd = len(c.bytecode)
 	c.clearLastCallTarget()
 	return true
 }
@@ -457,8 +460,13 @@ func (c *Compiler) compileImplicitClassMemberCall(name string) bool {
 // patchArgRefInBytecode inspects the bytes emitted since startPos and replaces a simple
 // OpGetGlobal, OpGetLocal, or OpGetClassMember with the corresponding OpArg*Ref opcode.
 // This enables ByRef parameter write-back for simple variable arguments at call sites.
-// For global slots, only user-declared slots (idx >= c.userGlobalsStart) are patched.
+// For global slots, only mutable user variable slots (idx >= c.userGlobalsStart) are patched,
+// including implicitly declared variables that were never Dim'ed.
 func (c *Compiler) patchArgRefInBytecode(startPos int) {
+	if c.patchStaticObjectArgRef(startPos) {
+		return
+	}
+
 	emitted := len(c.bytecode) - startPos
 	if emitted < 3 {
 		return
@@ -475,22 +483,12 @@ func (c *Compiler) patchArgRefInBytecode(startPos int) {
 
 	switch op {
 	case OpGetGlobal:
-		// A bare zero-arg global Function name in argument position must remain
-		// a value expression so OpCoerceToValue can auto-invoke it (IIS/VBScript).
-		// Rewriting to OpArgGlobalRef would pass the function slot itself instead.
-		if c.isGlobalZeroArgFunctionSlot(idx) {
+		// When the load carries OpCoerceToValue the identifier may still be an unresolved
+		// page-scope name, so only slots the compiler itself created as variables qualify.
+		if !c.canPatchGlobalArgRef(idx, hasTrailingCoerce) {
 			return
 		}
-		if hasTrailingCoerce {
-			name := strings.ToLower(strings.TrimSpace(c.Globals.names[idx]))
-			if !c.declaredGlobals[name] {
-				return
-			}
-		}
-		// Only patch user-declared variable slots; intrinsics, builtins, and VBScript constants are read-only.
-		if idx >= c.userGlobalsStart {
-			c.bytecode[startPos] = byte(OpArgGlobalRef)
-		}
+		c.bytecode[startPos] = byte(OpArgGlobalRef)
 	case OpGetLocal:
 		// All local variables are user-declared and eligible for ByRef write-back.
 		c.bytecode[startPos] = byte(OpArgLocalRef)
@@ -506,6 +504,58 @@ func (c *Compiler) patchArgRefInBytecode(startPos int) {
 		copy(c.bytecode[startPos+3:], c.bytecode[startPos+4:])
 		c.bytecode = c.bytecode[:len(c.bytecode)-1]
 	}
+}
+
+// patchStaticObjectArgRef rewrites the trailing slot load of an ASP StaticObjects fallback
+// block into a ByRef slot reference when that block is the whole argument expression.
+// The block already resolved the object into the global slot, so passing the slot by
+// reference keeps VBScript ByRef semantics for implicitly declared page variables while
+// preserving the <object runat="server"> lookup. It reports whether it handled the patch.
+func (c *Compiler) patchStaticObjectArgRef(startPos int) bool {
+	if c.staticObjectArgEnd < 0 || c.staticObjectArgEnd != len(c.bytecode) || c.staticObjectArgStart != startPos {
+		return false
+	}
+	// The block always ends with a 3-byte OpGetGlobal load of the variable slot.
+	tailStart := c.staticObjectArgEnd - 3
+	if tailStart <= startPos || OpCode(c.bytecode[tailStart]) != OpGetGlobal {
+		c.staticObjectArgStart, c.staticObjectArgEnd = -1, -1
+		return false
+	}
+	idx := int(binary.BigEndian.Uint16(c.bytecode[tailStart+1:]))
+	c.staticObjectArgStart, c.staticObjectArgEnd = -1, -1
+	if !c.canPatchGlobalArgRef(idx, false) {
+		return false
+	}
+	c.bytecode[tailStart] = byte(OpArgGlobalRef)
+	return true
+}
+
+// canPatchGlobalArgRef reports whether one global slot may be passed ByRef. Intrinsics,
+// builtins, VBScript constants, page-scope procedures and constants are read-only slots:
+// a write-back would overwrite the intrinsic or the declaration itself. When requireDeclared
+// is set the slot must also be a variable the compiler already knows (Dim'ed or implicitly
+// created), because a load carrying OpCoerceToValue may still be an unresolved name that a
+// later declaration turns into a procedure reference.
+func (c *Compiler) canPatchGlobalArgRef(idx int, requireDeclared bool) bool {
+	if c == nil || c.Globals == nil || idx < c.userGlobalsStart || idx < 0 || idx >= len(c.Globals.names) {
+		return false
+	}
+	// A bare zero-arg global Function name in argument position must remain a value
+	// expression so OpCoerceToValue can auto-invoke it (IIS/VBScript). Rewriting it to
+	// OpArgGlobalRef would pass the function slot itself instead of its return value.
+	if c.isGlobalZeroArgFunctionSlot(idx) {
+		return false
+	}
+	name := strings.ToLower(strings.TrimSpace(c.Globals.names[idx]))
+	// The pre-binding pass registers page-scope procedures and constants before any
+	// statement is compiled, so forward declarations are already known here.
+	if c.globalProcedureNames[name] || c.constGlobals[name] {
+		return false
+	}
+	if requireDeclared && !c.declaredGlobals[name] && !c.implicitGlobals[name] {
+		return false
+	}
+	return true
 }
 
 // isGlobalZeroArgFunctionSlot reports whether one global slot name is a known
