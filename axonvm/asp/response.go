@@ -60,13 +60,35 @@ var responseBufferPool = sync.Pool{
 
 // ResponseCookie stores one response cookie and its optional properties.
 type ResponseCookie struct {
-	Name       string
-	Value      string
-	Domain     string
-	Path       string
-	ExpiresRaw string
-	Secure     bool
-	HTTPOnly   bool
+	Name             string
+	Value            string
+	SubKeys          map[string]string
+	subKeyOrder      []string
+	valueInitialized bool
+	Domain           string
+	Path             string
+	ExpiresRaw       string
+	Secure           bool
+	HTTPOnly         bool
+}
+
+// rebuildSubKeyValue serializes cookie sub-keys as key=value&key2=value2
+// in deterministic insertion order.
+func (c *ResponseCookie) rebuildSubKeyValue() {
+	if len(c.subKeyOrder) == 0 {
+		c.Value = ""
+		return
+	}
+	var sb strings.Builder
+	for i, k := range c.subKeyOrder {
+		if i > 0 {
+			sb.WriteByte('&')
+		}
+		sb.WriteString(k)
+		sb.WriteByte('=')
+		sb.WriteString(c.SubKeys[k])
+	}
+	c.Value = sb.String()
 }
 
 type responseSegment struct {
@@ -668,9 +690,17 @@ func (r *Response) SetCookieValue(name string, value string) {
 	key := strings.ToLower(name)
 	if cookie, exists := r.cookies[key]; exists {
 		cookie.Value = value
+		cookie.SubKeys = nil
+		cookie.subKeyOrder = nil
+		cookie.valueInitialized = true
 		return
 	}
-	r.cookies[key] = &ResponseCookie{Name: name, Value: value, Path: "/"}
+	r.cookies[key] = &ResponseCookie{
+		Name:             name,
+		Value:            value,
+		Path:             "/",
+		valueInitialized: true,
+	}
 	r.cookieOrder = append(r.cookieOrder, name)
 }
 
@@ -703,6 +733,9 @@ func (r *Response) SetCookieProperty(cookieName string, propertyName string, pro
 	switch strings.ToLower(propertyName) {
 	case "value":
 		cookie.Value = propertyValue
+		cookie.SubKeys = nil
+		cookie.subKeyOrder = nil
+		cookie.valueInitialized = true
 	case "domain":
 		cookie.Domain = propertyValue
 	case "path":
@@ -716,9 +749,77 @@ func (r *Response) SetCookieProperty(cookieName string, propertyName string, pro
 	}
 }
 
+// incomingRequestCookieValueLocked reads a raw incoming HTTP cookie value matching
+// cookieName case-insensitively while r.mu is held.
+func (r *Response) incomingRequestCookieValueLocked(cookieName string) (string, bool) {
+	if r.req == nil {
+		return "", false
+	}
+	if incomingCookie, err := r.req.Cookie(cookieName); err == nil && incomingCookie != nil {
+		return incomingCookie.Value, true
+	}
+	for _, incomingCookie := range r.req.Cookies() {
+		if incomingCookie != nil && strings.EqualFold(incomingCookie.Name, cookieName) {
+			return incomingCookie.Value, true
+		}
+	}
+	return "", false
+}
+
+// HasInitializedCookieValue reports whether a response cookie value or sub-key
+// has already been initialized in the current response.
+func (r *Response) HasInitializedCookieValue(cookieName string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cookie, exists := r.cookies[strings.ToLower(cookieName)]
+	return exists && cookie.valueInitialized
+}
+
+// HasCookieKeys reports whether a response cookie stores dictionary sub-keys.
+func (r *Response) HasCookieKeys(cookieName string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cookie, exists := r.cookies[strings.ToLower(cookieName)]
+	if !exists {
+		return false
+	}
+	if cookie.SubKeys != nil {
+		return len(cookie.SubKeys) > 0
+	}
+	order, _ := parseCookieSubKeysOrdered(cookie.Value)
+	return len(order) > 0
+}
+
+// GetCookieSubKeys returns the ordered sub-key names of a response dictionary cookie.
+func (r *Response) GetCookieSubKeys(cookieName string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cookie, exists := r.cookies[strings.ToLower(cookieName)]
+	if !exists {
+		return nil
+	}
+	if cookie.SubKeys != nil {
+		keys := make([]string, len(cookie.subKeyOrder))
+		copy(keys, cookie.subKeyOrder)
+		return keys
+	}
+	order, _ := parseCookieSubKeysOrdered(cookie.Value)
+	return order
+}
+
 // SetCookieSubKey appends or updates a sub-key value within the cookie value using
 // key=value&key=value encoding compatible with Classic ASP cookie sub-keys.
+// If the cookie value has not been initialized in this response, existing sub-keys
+// are loaded from the incoming HTTP request before merging.
 func (r *Response) SetCookieSubKey(cookieName string, subKey string, value string) {
+	r.SetCookieSubKeyWithFallback(cookieName, subKey, value, "", false)
+}
+
+// SetCookieSubKeyWithFallback appends or updates a sub-key value within the cookie value.
+// When the cookie value has not been initialized in this response, it loads existing
+// sub-keys from the incoming HTTP request, or from fallbackRaw when hasFallback is true
+// and no matching HTTP request cookie is present.
+func (r *Response) SetCookieSubKeyWithFallback(cookieName string, subKey string, value string, fallbackRaw string, hasFallback bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.flushed {
@@ -733,19 +834,27 @@ func (r *Response) SetCookieSubKey(cookieName string, subKey string, value strin
 		r.cookieOrder = append(r.cookieOrder, cookieName)
 	}
 
-	// Parse existing sub-keys from the current value.
-	subKeys := parseCookieSubKeys(cookie.Value)
-	if subKeys == nil {
-		subKeys = make(map[string]string)
+	if !cookie.valueInitialized {
+		if incomingVal, found := r.incomingRequestCookieValueLocked(cookieName); found {
+			cookie.Value = incomingVal
+		} else if hasFallback {
+			cookie.Value = fallbackRaw
+		}
+		cookie.SubKeys = nil
+		cookie.subKeyOrder = nil
 	}
-	subKeys[strings.ToLower(subKey)] = value
 
-	// Rebuild value as ordered key=value pairs separated by &.
-	var parts []string
-	for k, v := range subKeys {
-		parts = append(parts, k+"="+v)
+	if cookie.SubKeys == nil {
+		cookie.subKeyOrder, cookie.SubKeys = parseCookieSubKeysOrdered(cookie.Value)
 	}
-	cookie.Value = strings.Join(parts, "&")
+
+	normalizedSubKey := strings.ToLower(subKey)
+	if _, subExists := cookie.SubKeys[normalizedSubKey]; !subExists {
+		cookie.subKeyOrder = append(cookie.subKeyOrder, normalizedSubKey)
+	}
+	cookie.SubKeys[normalizedSubKey] = value
+	cookie.rebuildSubKeyValue()
+	cookie.valueInitialized = true
 }
 
 // GetCookieSubKey returns the sub-key value from a cookie value encoded as
@@ -759,6 +868,9 @@ func (r *Response) GetCookieSubKey(cookieName string, subKey string) string {
 		return ""
 	}
 
+	if cookie.SubKeys != nil {
+		return cookie.SubKeys[strings.ToLower(subKey)]
+	}
 	subKeys := parseCookieSubKeys(cookie.Value)
 	if subKeys == nil {
 		return ""
@@ -773,6 +885,9 @@ func (r *Response) GetCookieProperty(cookieName string, propertyName string) str
 
 	cookie, exists := r.cookies[strings.ToLower(cookieName)]
 	if !exists {
+		if strings.EqualFold(propertyName, "haskeys") {
+			return "False"
+		}
 		return ""
 	}
 
@@ -794,6 +909,18 @@ func (r *Response) GetCookieProperty(cookieName string, propertyName string) str
 		return "False"
 	case "httponly":
 		if cookie.HTTPOnly {
+			return "True"
+		}
+		return "False"
+	case "haskeys":
+		if cookie.SubKeys != nil {
+			if len(cookie.SubKeys) > 0 {
+				return "True"
+			}
+			return "False"
+		}
+		order, _ := parseCookieSubKeysOrdered(cookie.Value)
+		if len(order) > 0 {
 			return "True"
 		}
 		return "False"

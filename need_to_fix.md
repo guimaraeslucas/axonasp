@@ -1,20 +1,5 @@
 # Architectural Plan: Compatibility & Engine Patches
 
-## 2. FormatCurrency Type Handling
-- **Affected Files:**
-  - `axonvm/builtins_vbscript_compat.go` (`vbsCompatFormatCurrency`, `vbsCompatFormatPercent`)
-- **Defect:**
-  `vbsCompatFormatCurrency` extracts `value := float64(args[0].Num)`. When `args[0]` is a `VTString`, `args[0].Num` is `0`, causing numeric strings (e.g. `"1234.50"`) to format as zero (`$0.00`).
-- **Implementation Strategy:**
-  1. In `vbsCompatFormatCurrency`, inspect `args[0].Type`:
-     - `VTInteger`: `value = float64(args[0].Num)`
-     - `VTDouble`: `value = args[0].Flt`
-     - `VTString`: Convert string to float using `strconv.ParseFloat` after trimming whitespace. If invalid numeric format, raise `vbscript.TypeMismatch`.
-     - `VTNull`: Return `NewNull()` (matching Microsoft VBScript `FormatCurrency(Null)` behavior).
-     - `VTEmpty`: Value evaluates to `0.0`.
-  2. Apply the identical type coercion pipeline to `vbsCompatFormatPercent` and `vbsCompatFormatNumber`.
-  3. You **must ensure** that the formatting functions respect locale settings (e.g., currency symbol, decimal separator) and handle edge cases like negative zero, scientific notation, and rounding according to **Microsoft VBScript** rules.
-
 ## 5. ADODB Identity Retrieval
 - **Affected Files:**
   - `axonvm/lib_adodb.go` (`adodbExecWriteback`, `adodbPersistRecordsetInsert`, `adodbRecordsetAddNew`)
@@ -61,22 +46,6 @@
      - When callee updates a ByRef argument with a `VTNativeObject` (or `VTObject`), write the object value directly into the caller's target slot (`vm.Globals[wb.callerIdx]` or `vm.stack[callerSlot]`).
      - Correctly manage reference tracking: increment ref count on new assignment and decrement on overwritten slot without dropping native object pointer mappings.
 
-## 8. Dictionary Cookie Persistence
-- **Affected Files:**
-  - `axonvm/asp/response.go` (`SetCookieSubKey`, `ResponseCookie`)
-  - `axonvm/asp/request.go` (`parseCookieSubKeys`)
-  - `axonvm/vm.go` (`dispatchNativeCall` / `responseCookieItems`)
-- **Defect:**
-  Setting a dictionary cookie subkey (e.g. `Response.Cookies("MGSsession")("key2") = val`) overwrites existing subkeys previously received from the client in `Request.Cookies("MGSsession")`.
-- **Implementation Strategy:**
-  1. In `axonvm/asp/response.go` (`SetCookieSubKey`):
-     - When a cookie entry does not yet exist in `r.cookies` (or has an empty `Value`):
-       - Inspect the incoming HTTP request (`r.req`). If the cookie exists in incoming HTTP headers (`r.req.Cookie(cookieName)`):
-         - Load incoming raw cookie value.
-         - Parse existing subkeys using `parseCookieSubKeys`.
-  2. Merge the newly assigned subkey into the parsed dictionary: `subKeys[strings.ToLower(subKey)] = value`.
-  3. Rebuild and serialize into `cookie.Value = "key1=val1&key2=val2"` format.
-  4. Ensure subkey persistence across repeated assignments in the same request context.
 
 ---
 

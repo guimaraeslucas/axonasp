@@ -6262,24 +6262,35 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 	// Response cookie items: Response.Cookies(name)(subkey) = value (set) / get.
 	if cookieName, exists := vm.responseCookieItems[objID]; exists {
 		switch {
-		case member == "":
+		case member == "", strings.EqualFold(member, "Item"):
 			if len(args) >= 2 {
 				// Sub-key set: Response.Cookies(name)(subkey) = value
-				vm.host.Response().SetCookieSubKey(cookieName, args[0].String(), args[len(args)-1].String())
+				subKey := vm.valueToString(args[0])
+				subVal := vm.valueToString(args[len(args)-1])
+				resp := vm.host.Response()
+				if !resp.HasInitializedCookieValue(cookieName) && vm.host.Request() != nil && vm.host.Request().Cookies != nil {
+					if reqVal, ok := vm.host.Request().Cookies.GetValue(cookieName); ok {
+						resp.SetCookieSubKeyWithFallback(cookieName, subKey, subVal, reqVal.Joined(), true)
+						return Value{Type: VTEmpty}
+					}
+				}
+				resp.SetCookieSubKey(cookieName, subKey, subVal)
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
 				// Sub-key get: Response.Cookies(name)(subkey)
-				return NewString(vm.host.Response().GetCookieSubKey(cookieName, args[0].String()))
+				return NewString(vm.host.Response().GetCookieSubKey(cookieName, vm.valueToString(args[0])))
 			}
 			// Default get: Response.Cookies(name)
 			return NewString(vm.host.Response().GetCookieValue(cookieName))
+		case strings.EqualFold(member, "HasKeys"):
+			return NewBool(vm.host.Response().HasCookieKeys(cookieName))
 		case strings.EqualFold(member, "Domain"), strings.EqualFold(member, "Path"),
 			strings.EqualFold(member, "Expires"), strings.EqualFold(member, "Secure"),
 			strings.EqualFold(member, "HttpOnly"), strings.EqualFold(member, "Value"),
 			strings.EqualFold(member, "Name"):
 			if len(args) >= 1 {
-				vm.host.Response().SetCookieProperty(cookieName, member, args[len(args)-1].String())
+				vm.host.Response().SetCookieProperty(cookieName, member, vm.valueToString(args[len(args)-1]))
 				return Value{Type: VTEmpty}
 			}
 			return NewString(vm.host.Response().GetCookieProperty(cookieName, member))
@@ -6658,22 +6669,8 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		case strings.EqualFold(member, "IsClientConnected"):
 			return NewBool(response.IsClientConnected())
 		case strings.EqualFold(member, "Cookies"):
-			if len(args) == 1 {
-				return vm.newResponseCookieItem(args[0].String())
-			}
-			if len(args) == 2 {
-				propertyName := args[1].String()
-				switch {
-				case strings.EqualFold(propertyName, "Domain"), strings.EqualFold(propertyName, "Path"), strings.EqualFold(propertyName, "Expires"), strings.EqualFold(propertyName, "Secure"), strings.EqualFold(propertyName, "HttpOnly"), strings.EqualFold(propertyName, "Value"), strings.EqualFold(propertyName, "Name"):
-					return NewString(response.GetCookieProperty(args[0].String(), propertyName))
-				default:
-					response.SetCookieValue(args[0].String(), propertyName)
-					return Value{Type: VTEmpty}
-				}
-			}
-			if len(args) >= 3 {
-				response.SetCookieProperty(args[0].String(), args[1].String(), args[2].String())
-				return Value{Type: VTEmpty}
+			if len(args) >= 1 {
+				return vm.dispatchResponseCookiesArgs(response, args)
 			}
 			return Value{Type: VTNativeObject, Num: nativeResponseCookies}
 		case strings.EqualFold(member, "Cookies.Domain"):
@@ -6732,8 +6729,8 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			}
 			return Value{Type: VTNativeObject, Num: nativeResponseCookiesKeyMethod}
 		}
-		if member == "" && len(args) >= 1 {
-			return vm.newResponseCookieItem(args[0].String())
+		if (member == "" || strings.EqualFold(member, "Item")) && len(args) >= 1 {
+			return vm.dispatchResponseCookiesArgs(vm.host.Response(), args)
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesKeyMethod:
@@ -8237,6 +8234,8 @@ func (vm *VM) dispatchMemberGet(target Value, member string) Value {
 			return NewString(vm.host.Response().GetCookieProperty(cookieName, "Secure"))
 		case strings.EqualFold(member, "HttpOnly"):
 			return NewString(vm.host.Response().GetCookieProperty(cookieName, "HttpOnly"))
+		case strings.EqualFold(member, "HasKeys"):
+			return NewBool(vm.host.Response().HasCookieKeys(cookieName))
 		}
 	}
 
@@ -8291,7 +8290,7 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 
 	// Dynamic native objects: Response cookie items
 	if cookieName, exists := vm.responseCookieItems[objID]; exists {
-		vm.host.Response().SetCookieProperty(cookieName, member, val.String())
+		vm.host.Response().SetCookieProperty(cookieName, member, vm.valueToString(val))
 		return
 	}
 
@@ -8492,6 +8491,29 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 	}
 
 	// Unknown object ID or read-only property — silently ignore for VBScript compatibility.
+}
+
+// dispatchResponseCookiesArgs routes 1-, 2-, and 3-argument Response.Cookies calls
+// shared by Response.Cookies(...) and the nativeResponseCookies collection object.
+func (vm *VM) dispatchResponseCookiesArgs(response *asp.Response, args []Value) Value {
+	cookieName := vm.valueToString(args[0])
+	if len(args) == 1 {
+		return vm.newResponseCookieItem(cookieName)
+	}
+	propertyName := vm.valueToString(args[1])
+	if len(args) >= 3 {
+		response.SetCookieProperty(cookieName, propertyName, vm.valueToString(args[2]))
+		return Value{Type: VTEmpty}
+	}
+	switch {
+	case strings.EqualFold(propertyName, "HasKeys"):
+		return NewBool(response.HasCookieKeys(cookieName))
+	case strings.EqualFold(propertyName, "Domain"), strings.EqualFold(propertyName, "Path"), strings.EqualFold(propertyName, "Expires"), strings.EqualFold(propertyName, "Secure"), strings.EqualFold(propertyName, "HttpOnly"), strings.EqualFold(propertyName, "Value"), strings.EqualFold(propertyName, "Name"):
+		return NewString(response.GetCookieProperty(cookieName, propertyName))
+	default:
+		response.SetCookieValue(cookieName, propertyName)
+		return Value{Type: VTEmpty}
+	}
 }
 
 // newResponseCookieItem creates a native cookie item object used for chained cookie member access.

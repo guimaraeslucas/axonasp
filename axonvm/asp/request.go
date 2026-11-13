@@ -888,10 +888,12 @@ func (r *Request) GetCollection(name string) *RequestCollection {
 	}
 }
 
-// parseCookieSubKeys parses cookie subkey pairs in key=value&key2=value2 style.
-func parseCookieSubKeys(rawValue string) map[string]string {
+// parseCookieSubKeysOrdered parses cookie subkey pairs in key=value&key2=value2 style
+// and preserves deterministic first-appearance order for subkey names.
+func parseCookieSubKeysOrdered(rawValue string) ([]string, map[string]string) {
 	parts := strings.Split(rawValue, "&")
 	parsed := make(map[string]string)
+	var order []string
 	for _, part := range parts {
 		trimmedPart := strings.TrimSpace(part)
 		if trimmedPart == "" {
@@ -908,8 +910,17 @@ func parseCookieSubKeys(rawValue string) map[string]string {
 			continue
 		}
 		value := strings.TrimSpace(pair[1])
+		if _, exists := parsed[key]; !exists {
+			order = append(order, key)
+		}
 		parsed[key] = value
 	}
+	return order, parsed
+}
+
+// parseCookieSubKeys parses cookie subkey pairs in key=value&key2=value2 style.
+func parseCookieSubKeys(rawValue string) map[string]string {
+	_, parsed := parseCookieSubKeysOrdered(rawValue)
 	return parsed
 }
 
