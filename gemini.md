@@ -12,7 +12,7 @@
 4. **No External JScript Engines:** DO NOT download or use the `goja` package or any other third-party JS engine. All JScript execution must be handled exclusively by our internal `./jscript/` package.
 5. **No Interfaces/Reflection:** Avoid when possible Go `interface{}` and `reflect` to minimize heap overhead, but use them if necessary. Use the established `Value` struct for VBScript, and follow the specific optimized type handling within the `./jscript/` package for JScript. If the impact is minimal, you may use `interface{}`, `reflect`, `regexp`, or `unsafe`.
 6. **Clean Code & Best Practices:** Before every new function/method, follow best Go coding practices and add a comment explaining what it does. Emphasize simplicity, clarity, and consistency over cleverness. Make sure to create safe code to avoid exploits, memory leaks, and race conditions. Always consider the implications of your code on the VM's stack, memory management, and execution flow.
-7. **Go Vet, Tests & Lint:** Always run `go vet` and `golangci-lint` on all modified files before finalizing. Address all warnings and errors. Do not ignore any linter or vet issues. All code must be clean, idiomatic. All tests must pass. If a test fails, investigate and fix the root cause before proceeding (check if is a regression, a test that was broken, or a new issue). 
+7. **Go Vet, Go Fix & Tests:** Always run `go vet` and `go fix` on all modified files before finalizing. Address all warnings and errors. Do not ignore any linter or vet issues. All code must be clean, idiomatic. All tests must pass. If a test fails, investigate and fix the root cause before proceeding (check if is a regression, a test that was broken, or a new issue). 
 
 ---
 

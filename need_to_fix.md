@@ -1,21 +1,6 @@
 # Architectural Plan: Compatibility & Engine Patches
 
-## 5. ADODB Identity Retrieval
-- **Affected Files:**
-  - `axonvm/lib_adodb.go` (`adodbExecWriteback`, `adodbPersistRecordsetInsert`, `adodbRecordsetAddNew`)
-- **Defect:**
-  `Recordset.Update` after `AddNew` fails to populate auto-generated identity values on database drivers (notably SQL Server / `go-mssqldb` where `Result.LastInsertId()` is unsupported and returns an error).
-- **Implementation Strategy:**
-  1. In `adodbExecWriteback`:
-     - If `conn.db != nil` and `wantIdentity == true`:
-       - Check driver / provider type. If driver does not support `LastInsertId()` (or if `res.LastInsertId()` errors):
-         - Execute `SELECT SCOPE_IDENTITY() AS NewID` (or provider-specific identity query: `SELECT @@IDENTITY` for SQL Server, `SELECT LAST_INSERT_ID()` for MySQL, `SELECT last_insert_rowid()` for SQLite) on the identical connection/transaction context (`conn.tx` or `conn.dbConn`).
-         - Scan scalar identity integer into `insertID`.
-  2. In `adodbPersistRecordsetInsert`:
-     - Detect identity column from recordset fields (e.g. `ID`, `iid`, or columns marked as identity/auto-increment).
-     - If identity column is present in the table schema or recordset columns, capture `insertID`.
-     - Write the generated identity into `row[strings.ToLower(keyField)] = NewInteger(insertID)`.
-     - Update `rs.data[rs.currentRow]` and refresh field proxy cache so subsequent reads (`rs.Fields("id").Value`) immediately reflect the new identity.
+
 
 ## 6. ADODB Single Column Updatability
 - **Affected Files:**

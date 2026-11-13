@@ -3386,7 +3386,7 @@ func (vm *VM) dispatchADODBFieldPropertySet(objID int64, member string, val Valu
 	return ok
 }
 
-var adodbSimpleSelectSourceRE = regexp.MustCompile(`(?is)^\s*select\s+\*\s+from\s+(.+?)(?:\s+where\s+(.+?))?(?:\s+order\s+by\s+.+)?\s*$`)
+var adodbSimpleSelectSourceRE = regexp.MustCompile(`(?is)^\s*select\s+(.+?)\s+from\s+(.+?)(?:\s+where\s+(.+?))?(?:\s+order\s+by\s+.+)?\s*$`)
 
 // adodbPersistRecordsetUpdate writes the current row back to the backing table for simple single-table sources.
 // For disconnected (client-side) recordsets that have no active connection, the edit is already in-memory
@@ -3401,26 +3401,23 @@ func (vm *VM) adodbPersistRecordsetUpdate(rs *adodbRecordset) bool {
 		// Disconnected (client-side) recordset — the row is already updated in rs.data; nothing to persist.
 		return true
 	}
-	tableName, whereClause, keyField, ok := vm.adodbResolveUpdatableSource(rs.source)
+	tableName, whereClause, _, ok := vm.adodbResolveUpdatableSource(rs.source)
 	if !ok || strings.TrimSpace(whereClause) == "" || strings.EqualFold(strings.TrimSpace(whereClause), "1=2") {
 		vm.raise(vbscript.ObjectDoesntSupportThisPropertyOrMethod, "ADODB.Recordset.Update: source is not one simple updatable single-table query")
 		return false
 	}
+	if len(rs.pendingUpdateFields) == 0 {
+		return true
+	}
 	row := rs.data[rs.currentRow]
-	assignments := make([]string, 0, len(rs.columns))
-	usePending := len(rs.pendingUpdateFields) > 0
+	assignments := make([]string, 0, len(rs.pendingUpdateFields))
 	for i := 0; i < len(rs.columns); i++ {
 		column := rs.columns[i]
 		lowerColumn := strings.ToLower(strings.TrimSpace(column))
-		if usePending {
-			if _, changed := rs.pendingUpdateFields[lowerColumn]; !changed {
-				continue
-			}
-		}
-		if keyField != "" && strings.EqualFold(column, keyField) {
+		if _, changed := rs.pendingUpdateFields[lowerColumn]; !changed {
 			continue
 		}
-		literal, ok := vm.adodbSQLLiteral(conn, row[strings.ToLower(column)])
+		literal, ok := vm.adodbSQLLiteral(conn, row[lowerColumn])
 		if !ok {
 			vm.raise(vbscript.TypeMismatch, "ADODB.Recordset.Update: unsupported field value type")
 			return false
@@ -3671,7 +3668,41 @@ func (vm *VM) adodbRecordsetConnection(rs *adodbRecordset) *adodbConnection {
 	return vm.adodbConnectionItems[rs.activeConnection]
 }
 
-// adodbResolveUpdatableSource extracts the base table and where clause from a simple SELECT * FROM table [WHERE ...] source.
+// adodbIsSimpleTableExpr reports whether expr represents one single base table identifier
+// without joins, subqueries, aliases, or trailing SQL clauses.
+func adodbIsSimpleTableExpr(expr string) bool {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" || strings.ContainsAny(trimmed, ",();") {
+		return false
+	}
+	var quoteEnd byte
+	for i := 0; i < len(trimmed); i++ {
+		ch := trimmed[i]
+		if quoteEnd != 0 {
+			if ch == quoteEnd {
+				if i+1 < len(trimmed) && trimmed[i+1] == quoteEnd {
+					i++
+					continue
+				}
+				quoteEnd = 0
+			}
+			continue
+		}
+		switch ch {
+		case '[':
+			quoteEnd = ']'
+		case '`':
+			quoteEnd = '`'
+		case '"':
+			quoteEnd = '"'
+		case ' ', '\t', '\r', '\n':
+			return false
+		}
+	}
+	return quoteEnd == 0
+}
+
+// adodbResolveUpdatableSource extracts the base table, where clause, and inferred key field from a simple single-table SELECT source.
 func (vm *VM) adodbResolveUpdatableSource(source string) (string, string, string, bool) {
 	trimmed := strings.TrimSpace(source)
 	if trimmed == "" {
@@ -3681,12 +3712,20 @@ func (vm *VM) adodbResolveUpdatableSource(source string) (string, string, string
 		keyField := vm.adodbInferIdentityColumn([]string{trimmed})
 		return trimmed, "", keyField, true
 	}
+	trimmed = strings.TrimSpace(strings.TrimRight(trimmed, "; \t\r\n"))
 	matches := adodbSimpleSelectSourceRE.FindStringSubmatch(trimmed)
-	if len(matches) < 2 {
+	if len(matches) < 3 {
 		return "", "", "", false
 	}
-	tableExpr := strings.TrimSpace(matches[1])
-	if strings.ContainsAny(tableExpr, ",()") || strings.Contains(strings.ToLower(tableExpr), " join ") {
+	selectExpr := strings.TrimSpace(matches[1])
+	if selectExpr == "" || strings.ContainsAny(selectExpr, "();") {
+		return "", "", "", false
+	}
+	if selectFields := strings.Fields(strings.ToLower(selectExpr)); len(selectFields) > 0 && selectFields[0] == "distinct" {
+		return "", "", "", false
+	}
+	tableExpr := strings.TrimSpace(matches[2])
+	if !adodbIsSimpleTableExpr(tableExpr) || strings.Contains(strings.ToLower(tableExpr), " join ") {
 		return "", "", "", false
 	}
 	tableName := vm.adodbUnquoteIdentifier(tableExpr)
@@ -3694,8 +3733,8 @@ func (vm *VM) adodbResolveUpdatableSource(source string) (string, string, string
 		return "", "", "", false
 	}
 	whereClause := ""
-	if len(matches) > 2 {
-		whereClause = strings.TrimSpace(matches[2])
+	if len(matches) > 3 {
+		whereClause = strings.TrimSpace(matches[3])
 	}
 	keyField := vm.adodbInferKeyFieldFromWhere(whereClause)
 	return tableName, whereClause, keyField, true
