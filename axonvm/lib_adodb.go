@@ -85,6 +85,9 @@ const (
 	adEditInProgress = 1
 	adEditAdd        = 2
 
+	adFldRowID     = 256
+	adFldKeyColumn = 32768
+
 	adRecOK = 0
 )
 
@@ -2248,6 +2251,13 @@ func adodbParseSortClause(clause string) (string, bool) {
 }
 
 func (vm *VM) adodbRecordsetAddNew(rs *adodbRecordset, args []Value) {
+	if rs == nil {
+		return
+	}
+	if rs.state != adStateOpen {
+		vm.raise(vbscript.CannotPerformTheRequestedOperation, "Operation is not allowed when the object is closed")
+		return
+	}
 	vm.adodbRecordsetClearPendingUpdateFields(rs)
 	if vm.adodbRecordsetIsLiveOLE(rs) {
 		_, err := oleutil.CallMethod(rs.oleRecordset, "AddNew")
@@ -2265,14 +2275,17 @@ func (vm *VM) adodbRecordsetAddNew(rs *adodbRecordset, args []Value) {
 		return
 	}
 
-	// Simple in-memory AddNew for now
-	newRow := make(map[string]Value)
+	newRow := make(map[string]Value, len(rs.columns))
 	for _, col := range rs.columns {
-		newRow[strings.ToLower(col)] = Value{Type: VTEmpty}
+		key := strings.ToLower(strings.TrimSpace(col))
+		if key != "" {
+			newRow[key] = Value{Type: VTEmpty}
+		}
 	}
 	rs.data = append(rs.data, newRow)
 	rs.recordCount = len(rs.data)
 	rs.currentRow = rs.recordCount - 1
+	rs.bookmark = rs.currentRow + 1
 	rs.eof = false
 	rs.bof = false
 	rs.editMode = adEditAdd
@@ -3315,9 +3328,17 @@ func (vm *VM) dispatchADODBFieldPropertySet(objID int64, member string, val Valu
 		lowerName := field.cachedLowerName
 		if strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "" {
 			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-				field.rs.data[field.rs.currentRow][lowerName] = val
-				field.rs.pendingUpdateFields[lowerName] = struct{}{}
-				field.rs.editMode = adEditInProgress
+				row := field.rs.data[field.rs.currentRow]
+				if row == nil {
+					row = make(map[string]Value)
+					field.rs.data[field.rs.currentRow] = row
+				}
+				row[lowerName] = val
+				vm.adodbRecordsetMarkPendingUpdateField(field.rs, lowerName)
+				if field.rs.editMode != adEditAdd {
+					field.rs.editMode = adEditInProgress
+				}
+				vm.adodbFieldChunkOffsetSet(field, 0)
 			}
 			return true
 		}
@@ -3429,22 +3450,32 @@ func (vm *VM) adodbPersistRecordsetInsert(rs *adodbRecordset) bool {
 		// Disconnected (client-side) recordset — the new row is already appended to rs.data; nothing to persist.
 		return true
 	}
-	tableName, _, keyField, ok := vm.adodbResolveUpdatableSource(rs.source)
+	tableName, _, whereKeyField, ok := vm.adodbResolveUpdatableSource(rs.source)
 	if !ok {
 		vm.raise(vbscript.ObjectDoesntSupportThisPropertyOrMethod, "ADODB.Recordset.Update: source is not one simple updatable single-table query")
 		return false
 	}
+	keyField := vm.adodbResolveInsertIdentityColumn(rs, conn, tableName, whereKeyField)
 	row := rs.data[rs.currentRow]
+	if row == nil {
+		row = make(map[string]Value)
+		rs.data[rs.currentRow] = row
+	}
 	columns := make([]string, 0, len(rs.columns))
 	values := make([]string, 0, len(rs.columns))
+	identityProvided := false
 	for i := 0; i < len(rs.columns); i++ {
 		column := rs.columns[i]
-		value := row[strings.ToLower(column)]
+		lowerCol := strings.ToLower(strings.TrimSpace(column))
+		value := row[lowerCol]
 		if value.Type == VTEmpty {
 			continue
 		}
-		if keyField != "" && strings.EqualFold(column, keyField) && (value.Type == VTEmpty || value.Type == VTNull || (value.Type == VTInteger && value.Num == 0) || (value.Type == VTString && strings.TrimSpace(value.Str) == "")) {
+		if keyField != "" && strings.EqualFold(column, keyField) && (value.Type == VTNull || (value.Type == VTInteger && value.Num == 0) || (value.Type == VTString && strings.TrimSpace(value.Str) == "")) {
 			continue
+		}
+		if keyField != "" && strings.EqualFold(column, keyField) {
+			identityProvided = true
 		}
 		literal, ok := vm.adodbSQLLiteral(conn, value)
 		if !ok {
@@ -3459,15 +3490,177 @@ func (vm *VM) adodbPersistRecordsetInsert(rs *adodbRecordset) bool {
 		return false
 	}
 	sqlText := "INSERT INTO " + vm.adodbQuoteIdentifier(conn, tableName) + " (" + strings.Join(columns, ", ") + ") VALUES (" + strings.Join(values, ", ") + ")"
-	wantIdentity := keyField != ""
+	wantIdentity := keyField != "" && !identityProvided
 	insertID, ok := vm.adodbExecWriteback(conn, sqlText, "ADODB.Recordset.Update", wantIdentity)
 	if !ok {
 		return false
 	}
-	if keyField != "" && insertID != 0 {
-		row[strings.ToLower(keyField)] = NewInteger(insertID)
+	if wantIdentity && insertID != 0 {
+		vm.adodbApplyInsertedIdentity(rs, keyField, insertID)
 	}
 	return true
+}
+
+// adodbApplyInsertedIdentity writes the newly generated identity value into the active row
+// and refreshes any cached field proxies bound to the inserted identity column.
+func (vm *VM) adodbApplyInsertedIdentity(rs *adodbRecordset, keyField string, insertID int64) {
+	if rs == nil || rs.currentRow < 0 || rs.currentRow >= len(rs.data) {
+		return
+	}
+	lowerKey := strings.ToLower(strings.TrimSpace(keyField))
+	if lowerKey == "" {
+		return
+	}
+	row := rs.data[rs.currentRow]
+	if row == nil {
+		row = make(map[string]Value)
+		rs.data[rs.currentRow] = row
+	}
+	identityVal := NewInteger(insertID)
+	row[lowerKey] = identityVal
+	for i := 0; i < len(rs.columns); i++ {
+		if strings.EqualFold(strings.TrimSpace(rs.columns[i]), lowerKey) {
+			adodbStoreColumnValue(row, rs.columns, i, identityVal)
+		}
+	}
+	for _, field := range vm.adodbFieldItems {
+		if field == nil || field.rs != rs {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(field.name), lowerKey) || field.cachedLowerName == lowerKey {
+			if field.cachedLowerName == "" {
+				field.cachedLowerName = lowerKey
+			}
+			row[field.cachedLowerName] = identityVal
+			vm.adodbFieldChunkOffsetSet(field, 0)
+		}
+	}
+}
+
+// adodbResolveInsertIdentityColumn detects the auto-generated identity column from recordset
+// attributes, common identity field names, or the backing database table schema.
+func (vm *VM) adodbResolveInsertIdentityColumn(rs *adodbRecordset, conn *adodbConnection, tableName string, whereKeyField string) string {
+	if rs != nil {
+		for _, col := range rs.columns {
+			lowerCol := strings.ToLower(strings.TrimSpace(col))
+			if lowerCol == "" {
+				continue
+			}
+			attr := rs.columnAttrByName[lowerCol]
+			if (attr&(adFldRowID|adFldKeyColumn)) != 0 && adodbIsIntegerCompatibleADOType(rs.columnTypeByName[lowerCol]) {
+				return col
+			}
+		}
+		for _, col := range rs.columns {
+			if (strings.EqualFold(col, "id") || strings.EqualFold(col, "iid")) && adodbIsIntegerCompatibleADOType(rs.columnTypeByName[strings.ToLower(strings.TrimSpace(col))]) {
+				return col
+			}
+		}
+	}
+	if whereKeyField != "" && (strings.EqualFold(whereKeyField, "id") || strings.EqualFold(whereKeyField, "iid")) {
+		return whereKeyField
+	}
+	if conn != nil && conn.db != nil && tableName != "" {
+		if schemaCol := vm.adodbLookupTableIdentityColumn(conn, tableName); schemaCol != "" {
+			return schemaCol
+		}
+	}
+	return ""
+}
+
+// adodbIsIntegerCompatibleADOType reports whether an ADO DataTypeEnum value can store a scalar integer identity.
+func adodbIsIntegerCompatibleADOType(fieldType int) bool {
+	switch fieldType {
+	case 0, 2, 3, 17, 20, 131:
+		return true
+	default:
+		return false
+	}
+}
+
+// adodbLookupTableIdentityColumn queries the active database catalog for an auto-increment/identity column on tableName.
+func (vm *VM) adodbLookupTableIdentityColumn(conn *adodbConnection, tableName string) string {
+	if conn == nil || conn.db == nil || strings.TrimSpace(tableName) == "" {
+		return ""
+	}
+	driver := strings.ToLower(strings.TrimSpace(conn.dbDriver))
+	escaped := strings.ReplaceAll(tableName, "'", "''")
+	switch driver {
+	case "sqlite":
+		query := "PRAGMA table_info(" + vm.adodbQuoteIdentifier(conn, tableName) + ")"
+		rows, err := vm.adodbQueryContextOnConnection(conn, query)
+		if err != nil || rows == nil {
+			return ""
+		}
+		defer rows.Close()
+		candidate := ""
+		pkCount := 0
+		for rows.Next() {
+			var (
+				cid       int
+				name      string
+				colType   string
+				notNull   int
+				dfltValue any
+				pk        int
+			)
+			if scanErr := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); scanErr != nil {
+				continue
+			}
+			if pk > 0 {
+				pkCount++
+				if pk == 1 && strings.Contains(strings.ToUpper(colType), "INT") {
+					candidate = name
+				}
+			}
+		}
+		if pkCount == 1 {
+			return candidate
+		}
+		return ""
+	case "mssql":
+		query := "SELECT TOP 1 name FROM sys.identity_columns WHERE object_id = OBJECT_ID('" + escaped + "')"
+		return vm.adodbQueryScalarString(conn, query)
+	case "mysql":
+		query := "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '" + escaped + "' AND EXTRA LIKE '%auto_increment%' LIMIT 1"
+		return vm.adodbQueryScalarString(conn, query)
+	case "postgres":
+		query := "SELECT a.attname FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid WHERE c.relname = '" + escaped + "' AND a.attnum > 0 AND NOT a.attisdropped AND (a.attidentity IN ('a', 'd') OR pg_get_serial_sequence(c.relname, a.attname) IS NOT NULL) ORDER BY a.attnum LIMIT 1"
+		return vm.adodbQueryScalarString(conn, query)
+	default:
+		return ""
+	}
+}
+
+// adodbQueryContextOnConnection executes a query on the active transaction or pinned physical connection.
+func (vm *VM) adodbQueryContextOnConnection(conn *adodbConnection, query string) (*sql.Rows, error) {
+	if conn.tx != nil {
+		return conn.tx.QueryContext(context.Background(), query)
+	}
+	if conn.dbConn != nil {
+		return conn.dbConn.QueryContext(context.Background(), query)
+	}
+	return conn.db.QueryContext(context.Background(), query)
+}
+
+// adodbQueryRowContextOnConnection executes a single-row query on the active transaction or pinned physical connection.
+func (vm *VM) adodbQueryRowContextOnConnection(conn *adodbConnection, query string) *sql.Row {
+	if conn.tx != nil {
+		return conn.tx.QueryRowContext(context.Background(), query)
+	}
+	if conn.dbConn != nil {
+		return conn.dbConn.QueryRowContext(context.Background(), query)
+	}
+	return conn.db.QueryRowContext(context.Background(), query)
+}
+
+// adodbQueryScalarString reads one scalar string column on the active connection context.
+func (vm *VM) adodbQueryScalarString(conn *adodbConnection, query string) string {
+	var result sql.NullString
+	if err := vm.adodbQueryRowContextOnConnection(conn, query).Scan(&result); err != nil || !result.Valid {
+		return ""
+	}
+	return strings.TrimSpace(result.String)
 }
 
 // adodbRecordsetConnection resolves the active ADODB.Connection bound to one Recordset.
@@ -3519,7 +3712,10 @@ func (vm *VM) adodbInferKeyFieldFromWhere(whereClause string) string {
 		return ""
 	}
 	left := strings.TrimSpace(parts[0])
-	if strings.ContainsAny(strings.ToLower(left), " <>!()+-/*") {
+	if left == "" || strings.ContainsAny(strings.ToLower(left), " <>!()+-/*") {
+		return ""
+	}
+	if left[0] >= '0' && left[0] <= '9' {
 		return ""
 	}
 	return vm.adodbUnquoteIdentifier(left)
@@ -3670,15 +3866,27 @@ func (vm *VM) adodbExecWriteback(conn *adodbConnection, sqlText string, source s
 		)
 		if conn.tx != nil {
 			res, err = conn.tx.Exec(sqlText)
-		} else {
+		} else if conn.dbConn != nil {
 			res, err = conn.dbConn.ExecContext(context.Background(), sqlText)
+		} else {
+			res, err = conn.db.ExecContext(context.Background(), sqlText)
 		}
 		if err != nil {
 			vm.adodbConnectionRaiseProviderError(conn, source, err.Error(), "")
 			return 0, false
 		}
-		insertID, _ := res.LastInsertId()
-		return insertID, true
+		if !wantIdentity {
+			return 0, true
+		}
+		if res != nil {
+			if insertID, idErr := res.LastInsertId(); idErr == nil && insertID != 0 {
+				return insertID, true
+			}
+		}
+		if identity, ok := vm.adodbReadSQLIdentity(conn); ok {
+			return identity, true
+		}
+		return 0, true
 	}
 	if conn.oleConnection != nil {
 		res, err := oleutil.CallMethod(conn.oleConnection, "Execute", sqlText)
@@ -3698,6 +3906,114 @@ func (vm *VM) adodbExecWriteback(conn *adodbConnection, sqlText string, source s
 		return 0, true
 	}
 	vm.raise(vbscript.ObjectVariableNotSet, source+": no active connection")
+	return 0, false
+}
+
+// adodbReadSQLIdentity reads the last generated identity on the active database connection or transaction.
+func (vm *VM) adodbReadSQLIdentity(conn *adodbConnection) (int64, bool) {
+	query := vm.adodbIdentityQueryForDriver(conn)
+	if query == "" {
+		return 0, false
+	}
+	if id, ok := vm.adodbQueryScalarInt64(conn, query); ok {
+		return id, true
+	}
+	if strings.EqualFold(strings.TrimSpace(conn.dbDriver), "mssql") {
+		// Fallback when an INSTEAD OF INSERT trigger inserts the row outside the caller scope.
+		return vm.adodbQueryScalarInt64(conn, "SELECT @@IDENTITY AS NewID")
+	}
+	return 0, false
+}
+
+// adodbIdentityQueryForDriver selects the provider-specific scalar identity query for conn.
+func (vm *VM) adodbIdentityQueryForDriver(conn *adodbConnection) string {
+	if conn == nil {
+		return ""
+	}
+	driver := strings.ToLower(strings.TrimSpace(conn.dbDriver))
+	provider := strings.ToLower(strings.TrimSpace(conn.provider))
+	switch {
+	case driver == "mssql" || strings.Contains(provider, "sqloledb") || strings.Contains(provider, "sqlserver") || strings.Contains(provider, "mssql"):
+		return "SELECT SCOPE_IDENTITY() AS NewID"
+	case driver == "mysql" || strings.Contains(provider, "mysql"):
+		return "SELECT LAST_INSERT_ID() AS NewID"
+	case driver == "sqlite" || strings.Contains(provider, "sqlite"):
+		return "SELECT last_insert_rowid() AS NewID"
+	case driver == "postgres" || strings.Contains(provider, "postgres"):
+		return "SELECT LASTVAL() AS NewID"
+	case strings.Contains(provider, "ace") || strings.Contains(provider, "jet"):
+		return "SELECT @@IDENTITY AS NewID"
+	default:
+		return ""
+	}
+}
+
+// adodbQueryScalarInt64 executes query on the active transaction/connection context and scans one integer scalar.
+func (vm *VM) adodbQueryScalarInt64(conn *adodbConnection, query string) (int64, bool) {
+	if conn == nil || conn.db == nil || query == "" {
+		return 0, false
+	}
+	var raw any
+	if err := vm.adodbQueryRowContextOnConnection(conn, query).Scan(&raw); err != nil || raw == nil {
+		return 0, false
+	}
+	return adodbScalarToInt64(raw)
+}
+
+// adodbScalarToInt64 converts a database/sql scanned scalar value into int64.
+func adodbScalarToInt64(raw any) (int64, bool) {
+	switch v := raw.(type) {
+	case int64:
+		return v, true
+	case int32:
+		return int64(v), true
+	case int16:
+		return int64(v), true
+	case int8:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	case uint64:
+		if v <= math.MaxInt64 {
+			return int64(v), true
+		}
+		return 0, false
+	case uint32:
+		return int64(v), true
+	case uint16:
+		return int64(v), true
+	case uint8:
+		return int64(v), true
+	case uint:
+		if uint64(v) <= math.MaxInt64 {
+			return int64(v), true
+		}
+		return 0, false
+	case float64:
+		return int64(v), true
+	case float32:
+		return int64(v), true
+	case []byte:
+		return adodbParseIdentityString(string(v))
+	case string:
+		return adodbParseIdentityString(v)
+	default:
+		return 0, false
+	}
+}
+
+// adodbParseIdentityString parses an integer or zero-scale decimal string returned by drivers such as go-mssqldb.
+func adodbParseIdentityString(text string) (int64, bool) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return 0, false
+	}
+	if parsed, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+		return parsed, true
+	}
+	if parsedFloat, err := strconv.ParseFloat(trimmed, 64); err == nil {
+		return int64(parsedFloat), true
+	}
 	return 0, false
 }
 
