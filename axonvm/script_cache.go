@@ -489,7 +489,7 @@ type ScriptCache struct {
 	sg                  singleflight.Group
 	watcher             *fsnotify.Watcher
 	watchRoots          []string
-	watchedPaths        map[string]struct{}
+	watchedPaths        map[string]string
 	watchedExt          map[string]struct{}
 	watchDebounce       map[string]time.Time
 	watchDebounceWindow time.Duration
@@ -521,7 +521,7 @@ func NewScriptCache(mode BytecodeCacheMode, cacheDir string, maxSizeMB int) *Scr
 		dependencyMap:       make(map[string][]string),
 		scriptDependencies:  make(map[string][]string),
 		dependencyOrder:     make([]string, 0, 256),
-		watchedPaths:        make(map[string]struct{}),
+		watchedPaths:        make(map[string]string),
 		watchedExt:          defaultScriptWatchExtensions(),
 		watchDebounce:       make(map[string]time.Time, 128),
 		watchDebounceWindow: scriptCacheDebounceWindow,
@@ -677,7 +677,7 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 
 	c.mu.Lock()
 	if c.watchedPaths == nil {
-		c.watchedPaths = make(map[string]struct{}, 256)
+		c.watchedPaths = make(map[string]string, 256)
 	} else {
 		clear(c.watchedPaths)
 	}
@@ -1385,20 +1385,22 @@ func (c *ScriptCache) addWatchPathTracked(watcher *fsnotify.Watcher, path string
 	if c == nil || watcher == nil {
 		return nil
 	}
-	normalized, err := c.normalizeAbsolutePath(path)
+	realPath, err := c.normalizeAbsolutePath(path)
 	if err != nil {
 		return err
 	}
-	normalized = normalizeScriptCacheKey(normalized)
+	key := normalizeScriptCacheKey(realPath)
 
 	c.mu.RLock()
-	_, exists := c.watchedPaths[normalized]
+	_, exists := c.watchedPaths[key]
 	c.mu.RUnlock()
 	if exists {
 		return nil
 	}
 
-	if err := watcher.Add(normalized); err != nil {
+	// Pass the real filesystem casing to fsnotify because case-sensitive OSes
+	// (Linux/Unix) fail to watch lowercased paths when directories contain uppercase letters.
+	if err := watcher.Add(realPath); err != nil {
 		if !isAlreadyWatchedError(err) {
 			return err
 		}
@@ -1406,9 +1408,9 @@ func (c *ScriptCache) addWatchPathTracked(watcher *fsnotify.Watcher, path string
 
 	c.mu.Lock()
 	if c.watchedPaths == nil {
-		c.watchedPaths = make(map[string]struct{}, 256)
+		c.watchedPaths = make(map[string]string, 256)
 	}
-	c.watchedPaths[normalized] = struct{}{}
+	c.watchedPaths[key] = realPath
 	c.mu.Unlock()
 	return nil
 }
@@ -1417,25 +1419,29 @@ func (c *ScriptCache) removeWatchPathTracked(watcher *fsnotify.Watcher, path str
 	if c == nil || watcher == nil {
 		return
 	}
-	normalized, err := c.normalizeAbsolutePath(path)
+	realPath, err := c.normalizeAbsolutePath(path)
 	if err != nil {
 		return
 	}
-	normalized = normalizeScriptCacheKey(normalized)
+	targetKey := normalizeScriptCacheKey(realPath)
 
-	removals := make([]string, 0, 8)
+	type watchEntry struct {
+		key      string
+		realPath string
+	}
+	removals := make([]watchEntry, 0, 8)
 	c.mu.RLock()
-	for watchedPath := range c.watchedPaths {
-		if strings.EqualFold(watchedPath, normalized) || (includeChildren && pathHasPrefixFold(watchedPath, normalized)) {
-			removals = append(removals, watchedPath)
+	for key, watchedRealPath := range c.watchedPaths {
+		if strings.EqualFold(key, targetKey) || (includeChildren && pathHasPrefixFold(key, targetKey)) {
+			removals = append(removals, watchEntry{key: key, realPath: watchedRealPath})
 		}
 	}
 	c.mu.RUnlock()
 
-	for _, watchedPath := range removals {
-		_ = watcher.Remove(watchedPath)
+	for _, entry := range removals {
+		_ = watcher.Remove(entry.realPath)
 		c.mu.Lock()
-		delete(c.watchedPaths, watchedPath)
+		delete(c.watchedPaths, entry.key)
 		c.mu.Unlock()
 	}
 }
@@ -1444,20 +1450,24 @@ func (c *ScriptCache) pruneStaleWatches(watcher *fsnotify.Watcher) {
 	if c == nil || watcher == nil {
 		return
 	}
-	stale := make([]string, 0, 16)
+	type watchEntry struct {
+		key      string
+		realPath string
+	}
+	stale := make([]watchEntry, 0, 16)
 	c.mu.RLock()
-	for watchedPath := range c.watchedPaths {
-		_, err := os.Stat(watchedPath)
+	for key, realPath := range c.watchedPaths {
+		_, err := os.Stat(realPath)
 		if err != nil {
-			stale = append(stale, watchedPath)
+			stale = append(stale, watchEntry{key: key, realPath: realPath})
 		}
 	}
 	c.mu.RUnlock()
 
-	for _, watchedPath := range stale {
-		_ = watcher.Remove(watchedPath)
+	for _, entry := range stale {
+		_ = watcher.Remove(entry.realPath)
 		c.mu.Lock()
-		delete(c.watchedPaths, watchedPath)
+		delete(c.watchedPaths, entry.key)
 		c.mu.Unlock()
 	}
 }

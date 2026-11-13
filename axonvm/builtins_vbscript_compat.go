@@ -824,57 +824,475 @@ func vbsCompatFormatDateTime(vm *VM, args []Value) (Value, error) {
 	return NewString(localizedDateTimeText(dateValue, profile, formatType)), nil
 }
 
-// vbsCompatFormatNumber formats numeric values with fixed decimal places.
+// vbsFormatOptions holds resolved VBScript number, currency, and percent formatting options.
+type vbsFormatOptions struct {
+	digits               int
+	includeLeadingDigit  bool
+	useParensForNegative bool
+	useGrouping          bool
+}
+
+// vbsCompatFormatNumber formats numeric values using VBScript FormatNumber rules and active locale settings.
 func vbsCompatFormatNumber(vm *VM, args []Value) (Value, error) {
-	if len(args) < 1 {
-		return NewString("0"), nil
+	if len(args) < 1 || len(args) > 5 {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.WrongNumberOfParameters, vbscript.WrongNumberOfParameters.String())
 	}
-	value := float64(args[0].Num)
-	if args[0].Type == VTDouble {
-		value = args[0].Flt
+	profile := builtinLocaleProfileForVM(vm)
+	value, isNull, err := vbsParseFormatExpression(args[0], profile)
+	if err != nil {
+		return NewEmpty(), err
 	}
-	digits := 2
-	if len(args) > 1 {
-		digits = vbsIntArg(args[1])
+	if isNull {
+		return NewNull(), nil
 	}
-	useGrouping := true
-	if len(args) > 2 && args[2].Type == VTInteger && args[2].Num == 0 {
-		useGrouping = false
+	opts, err := vbsParseFormatOptions(args[1:], profile)
+	if err != nil {
+		return NewEmpty(), err
 	}
-	return NewString(localizedNumberString(value, digits, builtinLocaleProfileForVM(vm), useGrouping)), nil
+	return NewString(vbsFormatDecimalString(
+		value,
+		opts.digits,
+		0,
+		profile,
+		opts.includeLeadingDigit,
+		opts.useParensForNegative,
+		opts.useGrouping,
+		"",
+		"",
+	)), nil
 }
 
-// vbsCompatFormatCurrency formats currency values with locale-specific symbol fallback.
+// vbsCompatFormatCurrency formats currency values using VBScript FormatCurrency rules and active locale settings.
 func vbsCompatFormatCurrency(vm *VM, args []Value) (Value, error) {
-	if len(args) < 1 {
-		return NewString(localizedCurrencyString(0, 2, builtinLocaleProfileForVM(vm))), nil
+	if len(args) < 1 || len(args) > 5 {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.WrongNumberOfParameters, vbscript.WrongNumberOfParameters.String())
 	}
-	value := float64(args[0].Num)
-	if args[0].Type == VTDouble {
-		value = args[0].Flt
+	profile := builtinLocaleProfileForVM(vm)
+	value, isNull, err := vbsParseFormatExpression(args[0], profile)
+	if err != nil {
+		return NewEmpty(), err
 	}
-	digits := 2
-	if len(args) > 1 {
-		digits = vbsIntArg(args[1])
+	if isNull {
+		return NewNull(), nil
 	}
-	return NewString(localizedCurrencyString(value, digits, builtinLocaleProfileForVM(vm))), nil
+	opts, err := vbsParseFormatOptions(args[1:], profile)
+	if err != nil {
+		return NewEmpty(), err
+	}
+	return NewString(vbsFormatDecimalString(
+		value,
+		opts.digits,
+		0,
+		profile,
+		opts.includeLeadingDigit,
+		opts.useParensForNegative,
+		opts.useGrouping,
+		profile.currencySymbol+profile.currencySpacing,
+		"",
+	)), nil
 }
 
-// vbsCompatFormatPercent formats percentage values with optional decimal precision.
+// vbsCompatFormatPercent formats percentage values using VBScript FormatPercent rules and active locale settings.
 func vbsCompatFormatPercent(vm *VM, args []Value) (Value, error) {
-	if len(args) < 1 {
-		return NewString("0%"), nil
+	if len(args) < 1 || len(args) > 5 {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.WrongNumberOfParameters, vbscript.WrongNumberOfParameters.String())
 	}
-	value := float64(args[0].Num)
-	if args[0].Type == VTDouble {
-		value = args[0].Flt
+	profile := builtinLocaleProfileForVM(vm)
+	value, isNull, err := vbsParseFormatExpression(args[0], profile)
+	if err != nil {
+		return NewEmpty(), err
 	}
-	digits := 2
-	if len(args) > 1 {
-		digits = vbsIntArg(args[1])
+	if isNull {
+		return NewNull(), nil
 	}
-	formatted := localizedNumberString(value*100, digits, builtinLocaleProfileForVM(vm), false)
-	return NewString(formatted + "%"), nil
+	opts, err := vbsParseFormatOptions(args[1:], profile)
+	if err != nil {
+		return NewEmpty(), err
+	}
+	return NewString(vbsFormatDecimalString(
+		value,
+		opts.digits,
+		2,
+		profile,
+		opts.includeLeadingDigit,
+		opts.useParensForNegative,
+		opts.useGrouping,
+		"",
+		"%",
+	)), nil
+}
+
+// vbsParseFormatOptions parses optional FormatNumber, FormatCurrency, and FormatPercent parameters.
+func vbsParseFormatOptions(optArgs []Value, profile builtinLocaleProfile) (vbsFormatOptions, error) {
+	opts := vbsFormatOptions{
+		digits:               2,
+		includeLeadingDigit:  true,
+		useParensForNegative: false,
+		useGrouping:          true,
+	}
+	if len(optArgs) > 0 {
+		digits, err := vbsParseFormatDigits(optArgs[0], 2, profile)
+		if err != nil {
+			return opts, err
+		}
+		opts.digits = digits
+	}
+	if len(optArgs) > 1 {
+		v, err := vbsParseFormatTristate(optArgs[1], true, profile)
+		if err != nil {
+			return opts, err
+		}
+		opts.includeLeadingDigit = v
+	}
+	if len(optArgs) > 2 {
+		v, err := vbsParseFormatTristate(optArgs[2], false, profile)
+		if err != nil {
+			return opts, err
+		}
+		opts.useParensForNegative = v
+	}
+	if len(optArgs) > 3 {
+		v, err := vbsParseFormatTristate(optArgs[3], true, profile)
+		if err != nil {
+			return opts, err
+		}
+		opts.useGrouping = v
+	}
+	return opts, nil
+}
+
+// vbsParseFormatExpression coerces the first argument of FormatNumber/Currency/Percent into a float64 or Null sentinel.
+func vbsParseFormatExpression(arg Value, profile builtinLocaleProfile) (float64, bool, error) {
+	switch arg.Type {
+	case VTNull:
+		return 0, true, nil
+	case VTEmpty:
+		return 0, false, nil
+	case VTInteger:
+		return float64(arg.Num), false, nil
+	case VTBool:
+		return float64(arg.Num), false, nil
+	case VTDouble:
+		if math.IsNaN(arg.Flt) {
+			return 0, false, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+		if math.IsInf(arg.Flt, 0) {
+			return 0, false, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
+		return arg.Flt, false, nil
+	case VTString:
+		f, err := vbsParseFormatFloatString(arg.Str, profile)
+		return f, false, err
+	default:
+		return 0, false, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+}
+
+// vbsParseFormatFloatString parses a VBScript numeric string respecting locale separators, grouping, scientific notation, and &H/&O literals.
+func vbsParseFormatFloatString(raw string, profile builtinLocaleProfile) (float64, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+
+	// Support VBScript hexadecimal (&H) and octal (&O) string literals.
+	if len(s) >= 2 && s[0] == '&' && (s[1] == 'H' || s[1] == 'h' || s[1] == 'O' || s[1] == 'o') {
+		base := 8
+		if s[1] == 'H' || s[1] == 'h' {
+			base = 16
+		}
+		digits := s[2:]
+		if len(digits) > 1 && digits[len(digits)-1] == '&' {
+			digits = digits[:len(digits)-1]
+		}
+		if digits == "" {
+			return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+		for i := 0; i < len(digits); i++ {
+			c := digits[i]
+			if base == 8 {
+				if c < '0' || c > '7' {
+					return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+				}
+			} else {
+				isHex := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+				if !isHex {
+					return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+				}
+			}
+		}
+		parsed, err := strconv.ParseInt(digits, base, 64)
+		if err != nil {
+			if strings.Contains(err.Error(), "out of range") {
+				return 0, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+			}
+			return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+		return float64(parsed), nil
+	}
+
+	// Reject underscores, hex float markers (x/p), and non-finite literals (Inf/Infinity/NaN) that Go ParseFloat allows.
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '_', 'x', 'X', 'p', 'P', 'i', 'I', 'n', 'N':
+			return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+	}
+
+	sign := ""
+	if s[0] == '+' || s[0] == '-' {
+		sign = s[:1]
+		s = s[1:]
+	}
+	if s == "" || s[0] == '+' || s[0] == '-' {
+		return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+
+	mantissa, expSuffix, ok := normalizeVBSExponent(s)
+	if !ok {
+		return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+
+	decSep := profile.decimalSeparator
+	if decSep == "" {
+		decSep = "."
+	}
+	grpSep := profile.thousandSeparator
+	if grpSep == "" {
+		grpSep = ","
+	}
+
+	normMantissa, ok := normalizeLocaleNumericBody(mantissa, decSep, grpSep)
+	if !ok && decSep != "." {
+		normMantissa, ok = normalizeLocaleNumericBody(mantissa, ".", "")
+	}
+	if !ok {
+		return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+
+	canonical := sign + normMantissa + expSuffix
+	parsed, err := strconv.ParseFloat(canonical, 64)
+	if err != nil {
+		if math.IsInf(parsed, 0) {
+			return 0, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
+		if parsed == 0 && strings.Contains(err.Error(), "out of range") {
+			return 0, nil
+		}
+		return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+	if math.IsInf(parsed, 0) {
+		return 0, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+	}
+	return parsed, nil
+}
+
+// normalizeVBSExponent splits a numeric body into mantissa and canonical Go exponent suffix ("e..."), accepting e/E/d/D.
+func normalizeVBSExponent(s string) (string, string, bool) {
+	expIdx := -1
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case 'e', 'E', 'd', 'D':
+			if expIdx >= 0 {
+				return "", "", false
+			}
+			expIdx = i
+		}
+	}
+	if expIdx < 0 {
+		return s, "", true
+	}
+	mantissa := s[:expIdx]
+	expRaw := s[expIdx+1:]
+	if mantissa == "" || expRaw == "" {
+		return "", "", false
+	}
+	digitStart := 0
+	if expRaw[0] == '+' || expRaw[0] == '-' {
+		digitStart = 1
+	}
+	if digitStart >= len(expRaw) {
+		return "", "", false
+	}
+	for i := digitStart; i < len(expRaw); i++ {
+		if expRaw[i] < '0' || expRaw[i] > '9' {
+			return "", "", false
+		}
+	}
+	return mantissa, "e" + expRaw, true
+}
+
+// normalizeLocaleNumericBody validates locale decimal and grouping separators and returns an invariant dot-decimal string.
+func normalizeLocaleNumericBody(mantissa string, decSep string, grpSep string) (string, bool) {
+	if mantissa == "" {
+		return "", false
+	}
+	intPart := mantissa
+	fracPart := ""
+	hasDec := false
+	if before, after, ok0 := strings.Cut(mantissa, decSep); ok0 {
+		intPart = before
+		fracPart = after
+		hasDec = true
+		if strings.Contains(fracPart, decSep) {
+			return "", false
+		}
+		for i := 0; i < len(fracPart); i++ {
+			if fracPart[i] < '0' || fracPart[i] > '9' {
+				return "", false
+			}
+		}
+	}
+
+	normInt, ok := stripValidGrouping(intPart, grpSep)
+	if !ok {
+		return "", false
+	}
+	if len(normInt)+len(fracPart) == 0 {
+		return "", false
+	}
+	if hasDec {
+		return normInt + "." + fracPart, true
+	}
+	return normInt, true
+}
+
+// stripValidGrouping verifies integer digits and optional 3-digit locale grouping separators, returning ungrouped digits.
+func stripValidGrouping(intPart string, grpSep string) (string, bool) {
+	if intPart == "" {
+		return "", true
+	}
+	effective := intPart
+	sep := grpSep
+	if sep == " " || sep == "\u00a0" || sep == "\u202f" {
+		effective = strings.ReplaceAll(effective, "\u00a0", " ")
+		effective = strings.ReplaceAll(effective, "\u202f", " ")
+		sep = " "
+	}
+	if sep != "" && strings.Contains(effective, sep) {
+		groups := strings.Split(effective, sep)
+		if len(groups) < 2 {
+			return "", false
+		}
+		if len(groups[0]) < 1 || len(groups[0]) > 3 {
+			return "", false
+		}
+		for i := 0; i < len(groups[0]); i++ {
+			if groups[0][i] < '0' || groups[0][i] > '9' {
+				return "", false
+			}
+		}
+		var b strings.Builder
+		b.Grow(len(effective))
+		b.WriteString(groups[0])
+		for g := 1; g < len(groups); g++ {
+			if len(groups[g]) != 3 {
+				return "", false
+			}
+			for i := range 3 {
+				if groups[g][i] < '0' || groups[g][i] > '9' {
+					return "", false
+				}
+			}
+			b.WriteString(groups[g])
+		}
+		return b.String(), true
+	}
+	for i := 0; i < len(effective); i++ {
+		if effective[i] < '0' || effective[i] > '9' {
+			return "", false
+		}
+	}
+	return effective, true
+}
+
+// vbsParseFormatDigits resolves NumDigitsAfterDecimal (-1 uses defaultDigits; < -1 or > 99 raises error 5).
+func vbsParseFormatDigits(arg Value, defaultDigits int, profile builtinLocaleProfile) (int, error) {
+	var n int
+	switch arg.Type {
+	case VTEmpty:
+		return defaultDigits, nil
+	case VTNull:
+		return 0, newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
+	case VTInteger:
+		n = int(arg.Num)
+	case VTBool:
+		if arg.Num != 0 {
+			n = -1
+		}
+	case VTDouble:
+		if math.IsNaN(arg.Flt) {
+			return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+		if math.IsInf(arg.Flt, 0) || arg.Flt > float64(math.MaxInt32) || arg.Flt < float64(math.MinInt32) {
+			return 0, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
+		n = int(math.RoundToEven(arg.Flt))
+	case VTString:
+		f, err := vbsParseFormatFloatString(arg.Str, profile)
+		if err != nil {
+			return 0, err
+		}
+		if f > float64(math.MaxInt32) || f < float64(math.MinInt32) {
+			return 0, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
+		n = int(math.RoundToEven(f))
+	default:
+		return 0, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+
+	if n == -1 {
+		return defaultDigits, nil
+	}
+	if n < -1 || n > 99 {
+		return 0, newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
+	}
+	return n, nil
+}
+
+// vbsParseFormatTristate resolves a VBScript Tristate option (-2=default, -1=true, 0=false).
+func vbsParseFormatTristate(arg Value, defaultVal bool, profile builtinLocaleProfile) (bool, error) {
+	var n int64
+	switch arg.Type {
+	case VTEmpty:
+		return defaultVal, nil
+	case VTNull:
+		return false, newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
+	case VTBool:
+		return arg.Num != 0, nil
+	case VTInteger:
+		n = arg.Num
+	case VTDouble:
+		if math.IsNaN(arg.Flt) {
+			return false, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+		}
+		if math.IsInf(arg.Flt, 0) || arg.Flt > float64(math.MaxInt32) || arg.Flt < float64(math.MinInt32) {
+			return false, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
+		n = int64(math.RoundToEven(arg.Flt))
+	case VTString:
+		f, err := vbsParseFormatFloatString(arg.Str, profile)
+		if err != nil {
+			return false, err
+		}
+		if f > float64(math.MaxInt32) || f < float64(math.MinInt32) {
+			return false, newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
+		n = int64(math.RoundToEven(f))
+	default:
+		return false, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+
+	switch n {
+	case -2:
+		return defaultVal, nil
+	case -1:
+		return true, nil
+	case 0:
+		return false, nil
+	default:
+		return false, newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
+	}
 }
 
 // vbsCompatTimer returns the number of seconds elapsed since midnight.

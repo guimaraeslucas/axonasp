@@ -158,7 +158,7 @@ func TestCompilerCompilesFileIncludeFromScriptDirectory(t *testing.T) {
 }
 
 func TestCompilerCompilesRealPageFileIncludes(t *testing.T) {
-	pagePath := filepath.Join("..", "www", "tests", "tests2", "index.asp")
+	pagePath := filepath.Join("..", "www", "tests", "default.asp")
 	content, err := os.ReadFile(pagePath)
 	if err != nil {
 		t.Fatalf("read sample page failed: %v", err)

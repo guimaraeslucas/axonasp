@@ -1500,8 +1500,37 @@ func fsoGetShortName(path string, fallback string) string {
 	return shortName
 }
 
+// fsoPathHasRawRootPrefix reports whether rawPath already begins with cleanRoot
+// before cleaning, preserving traversal detection for physical paths under root.
+func fsoPathHasRawRootPrefix(rawPath, cleanRoot string) bool {
+	if cleanRoot == "" {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		if strings.EqualFold(filepath.Clean(rawPath), cleanRoot) {
+			return true
+		}
+		prefix := strings.ToLower(cleanRoot)
+		if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+			prefix += string(os.PathSeparator)
+		}
+		return strings.HasPrefix(strings.ToLower(rawPath), prefix)
+	}
+	if filepath.Clean(rawPath) == cleanRoot {
+		return true
+	}
+	prefix := cleanRoot
+	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+		prefix += string(os.PathSeparator)
+	}
+	return strings.HasPrefix(rawPath, prefix)
+}
+
 // fsoResolvePath resolves and validates paths inside the web root sandbox.
 func (vm *VM) fsoResolvePath(path string) (string, bool) {
+	if vm == nil || vm.host == nil || vm.host.Server() == nil {
+		return "", false
+	}
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" {
 		return "", false
@@ -1512,26 +1541,38 @@ func (vm *VM) fsoResolvePath(path string) (string, bool) {
 	trimmed = strings.ReplaceAll(trimmed, "\\", string(os.PathSeparator))
 
 	rootPath := vm.host.Server().MapPath("/")
-	currentDir := ""
-	if vm.host != nil {
-		currentDir = filepath.Dir(vm.host.Server().GetRequestPath())
-	}
+	currentDir := filepath.Dir(vm.host.Server().GetRequestPath())
+	unrestricted := vm.host.Server().UnrestrictedFS()
 
 	// Optimization: Memoize resolved paths to avoid expensive filepath.Abs and MapPath calls.
 	// Cache key includes rootPath and currentDir to ensure context-aware sandbox integrity.
 	cacheKey := rootPath + "|" + currentDir + "|" + trimmed
-	if val, ok := globalFSOCache.pathCache.Load(cacheKey); ok {
-		return val.(string), true
+	if !unrestricted {
+		if val, ok := globalFSOCache.pathCache.Load(cacheKey); ok {
+			return val.(string), true
+		}
 	}
+
+	absRoot, rootErr := filepath.Abs(rootPath)
+	if rootErr != nil {
+		return "", false
+	}
+	cleanRoot := filepath.Clean(absRoot)
 
 	resolvedPath := trimmed
 	if !filepath.IsAbs(trimmed) {
 		resolvedPath = vm.host.Server().MapPath(trimmed)
+	} else if !unrestricted && filepath.VolumeName(trimmed) == "" && !strings.HasPrefix(trimmed, "\\\\") {
+		// On Unix hosts, virtual absolute paths such as "/sandbox/x" satisfy filepath.IsAbs
+		// because Unix paths have no drive letter. Route them through MapPath unless they
+		// already sit under the physical web root, matching Windows virtual path behavior.
+		if !fsoPathHasRawRootPrefix(trimmed, cleanRoot) {
+			resolvedPath = vm.host.Server().MapPath(trimmed)
+		}
 	}
 
-	absRoot, rootErr := filepath.Abs(rootPath)
 	absResolved, resolvedErr := filepath.Abs(resolvedPath)
-	if rootErr != nil || resolvedErr != nil {
+	if resolvedErr != nil {
 		return "", false
 	}
 
@@ -1539,22 +1580,37 @@ func (vm *VM) fsoResolvePath(path string) (string, bool) {
 	// filesystem access to read files outside the web root (e.g., user-
 	// selected directories via path aliases). When unrestricted mode is
 	// enabled, skip the sandbox containment check.
-	if vm.host != nil && vm.host.Server().UnrestrictedFS() {
-		globalFSOCache.pathCache.Store(cacheKey, absResolved)
+	if unrestricted {
 		return absResolved, true
 	}
 
-	cleanRoot := strings.ToLower(filepath.Clean(absRoot))
-	cleanResolved := strings.ToLower(filepath.Clean(absResolved))
-
-	if cleanResolved == cleanRoot {
-		globalFSOCache.pathCache.Store(cacheKey, absResolved)
-		return absResolved, true
-	}
-
-	prefix := cleanRoot + string(os.PathSeparator)
-	if !strings.HasPrefix(cleanResolved, prefix) {
-		return "", false
+	cleanResolved := filepath.Clean(absResolved)
+	if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
+		cleanRootFold := strings.ToLower(cleanRoot)
+		cleanResolvedFold := strings.ToLower(cleanResolved)
+		if cleanResolvedFold == cleanRootFold {
+			globalFSOCache.pathCache.Store(cacheKey, absResolved)
+			return absResolved, true
+		}
+		prefix := cleanRootFold
+		if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+			prefix += string(os.PathSeparator)
+		}
+		if !strings.HasPrefix(cleanResolvedFold, prefix) {
+			return "", false
+		}
+	} else {
+		if cleanResolved == cleanRoot {
+			globalFSOCache.pathCache.Store(cacheKey, absResolved)
+			return absResolved, true
+		}
+		prefix := cleanRoot
+		if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+			prefix += string(os.PathSeparator)
+		}
+		if !strings.HasPrefix(cleanResolved, prefix) {
+			return "", false
+		}
 	}
 
 	globalFSOCache.pathCache.Store(cacheKey, absResolved)

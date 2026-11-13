@@ -1233,7 +1233,7 @@ func (f *G3FileUploader) generateUniqueFileName(ext string) string {
 
 func (f *G3FileUploader) SendBinary(path string, contentType string) error {
 	var physicalPath string
-	if filepath.IsAbs(path) {
+	if f.allowAbsolutePaths && (filepath.IsAbs(path) || strings.HasPrefix(path, "\\\\")) {
 		physicalPath = filepath.Clean(path)
 	} else {
 		physicalPath = f.vm.host.Server().MapPath(path)

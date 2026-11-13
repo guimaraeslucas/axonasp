@@ -38,9 +38,9 @@ func TestJScriptProxyOperations(t *testing.T) {
 				}
 			});
 			var arr = [];
-			if ('a' in p) arr.push('true'); else arr.push('false');
-			if ('b' in p) arr.push('true'); else arr.push('false');
-			if ('c' in p) arr.push('true'); else arr.push('false');
+			if (Reflect.has(p, 'a')) arr.push('true'); else arr.push('false');
+			if (Reflect.has(p, 'b')) arr.push('true'); else arr.push('false');
+			if (Reflect.has(p, 'c')) arr.push('true'); else arr.push('false');
 			return arr.join(",");
 		})()`, "true,true,false"},
 

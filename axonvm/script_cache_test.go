@@ -592,3 +592,42 @@ func TestScriptCacheIncludeDependencyInvalidationMultiRoute(t *testing.T) {
 		t.Fatalf("expected empty program cache, got %d entries", remaining)
 	}
 }
+
+// TestScriptCacheInvalidatesInMixedCaseDirectory verifies file watching works when
+// the watched site directory contains uppercase letters (critical on case-sensitive Unix).
+func TestScriptCacheInvalidatesInMixedCaseDirectory(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	siteRoot := filepath.Join(t.TempDir(), "MixedCaseSite", "SubDir")
+	if err := os.MkdirAll(siteRoot, 0o755); err != nil {
+		t.Fatalf("mkdir mixed-case site: %v", err)
+	}
+	aspFile := filepath.Join(siteRoot, "Default.asp")
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 1 %>"), 0o644); err != nil {
+		t.Fatalf("write asp file: %v", err)
+	}
+
+	if err := cache.StartInvalidator([]string{siteRoot}); err != nil {
+		t.Fatalf("start invalidator: %v", err)
+	}
+	defer cache.StopInvalidator()
+
+	normalized, err := cache.normalizeAbsolutePath(aspFile)
+	if err != nil {
+		t.Fatalf("normalize asp file: %v", err)
+	}
+	cache.Put(normalized, CachedProgram{Bytecode: []byte{1}}, nil)
+
+	time.Sleep(cache.watchDebounceWindow + 50*time.Millisecond)
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 2 %>"), 0o644); err != nil {
+		t.Fatalf("update asp file: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, found := cache.Get(normalized); !found {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expected cache invalidation in mixed-case directory %q", siteRoot)
+}

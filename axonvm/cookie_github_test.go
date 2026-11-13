@@ -119,8 +119,8 @@ if (cookieLang === "pt" || cookieLang === "en") {
 }
 
 // TestJScriptCookieLanguageFallback verifies that when no language cookie
-// is set, the JScript fallback path works correctly (empty cookie → domain
-// detection → default language).
+// is set, Request.Cookies("g3pix_lang") returns an empty collection item object
+// whose String() representation is "undefined".
 func TestJScriptCookieLanguageFallback(t *testing.T) {
 	source := `<%@Language="JavaScript"%>
 <%
@@ -156,7 +156,7 @@ Response.Write("cookieSet=" + (cookieLang.length === 0 ? "false" : "true"));
 	host.Response().Flush()
 
 	actual := output.String()
-	const want = "rawCookie=[]|empty=true|cookieSet=false"
+	const want = "rawCookie=[undefined]|empty=false|cookieSet=true"
 	if actual != want {
 		t.Fatalf("unexpected output:\n  got:  %q\n  want: %q", actual, want)
 	}

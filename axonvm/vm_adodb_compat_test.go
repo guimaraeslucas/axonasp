@@ -572,3 +572,165 @@ func TestVMADODBTypeNameCompatibility(t *testing.T) {
 		t.Errorf("TypeName(ADODB.Stream) = %q, want %q", name, "Stream")
 	}
 }
+
+// TestVMADODBRecordsetSingleColumnUpdate verifies single-column and key-excluded SELECT projections support Update.
+func TestVMADODBRecordsetSingleColumnUpdate(t *testing.T) {
+	vm := NewVM(nil, nil, 5)
+	host := NewMockHost()
+	rootDir := t.TempDir()
+	host.Server().SetRootDir(rootDir)
+	host.Server().SetRequestPath("/tests/test_adodb_single_column_update.asp")
+	vm.SetHost(host)
+
+	conn := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("ADODB.Connection")})
+	if conn.Type != VTNativeObject {
+		t.Fatalf("expected connection object, got %#v", conn)
+	}
+
+	dbPath := filepath.Join(rootDir, "single_col_update.db")
+	vm.dispatchMemberSet(conn.Num, "ConnectionString", NewString("sqlite:"+dbPath))
+	vm.dispatchNativeCall(conn.Num, "Open", nil)
+	defer vm.dispatchNativeCall(conn.Num, "Close", nil)
+
+	vm.dispatchNativeCall(conn.Num, "Execute", []Value{NewString("CREATE TABLE Customers (ID INTEGER PRIMARY KEY, Name TEXT NOT NULL, Email TEXT NOT NULL)")})
+	vm.dispatchNativeCall(conn.Num, "Execute", []Value{NewString("INSERT INTO Customers (ID, Name, Email) VALUES (1, 'Alice', 'alice@example.com')")})
+
+	// 1. Single-column projection without primary key in SELECT list.
+	rs1 := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("ADODB.Recordset")})
+	vm.dispatchMemberSet(rs1.Num, "ActiveConnection", conn)
+	vm.dispatchNativeCall(rs1.Num, "Open", []Value{NewString("SELECT Name FROM Customers WHERE ID = 1")})
+	vm.dispatchNativeCall(rs1.Num, "", []Value{NewString("Name"), NewString("Alice Updated")})
+	vm.dispatchNativeCall(rs1.Num, "Update", nil)
+	if vm.lastError != nil {
+		t.Fatalf("single-column recordset update failed: %v", vm.lastError)
+	}
+	vm.dispatchNativeCall(rs1.Num, "Close", nil)
+
+	verify1 := vm.dispatchNativeCall(conn.Num, "Execute", []Value{NewString("SELECT Name, Email FROM Customers WHERE ID = 1")})
+	if got := vm.dispatchMemberGet(verify1, "Name"); got.Type != VTString || got.Str != "Alice Updated" {
+		t.Fatalf("expected Name='Alice Updated', got %#v", got)
+	}
+	if got := vm.dispatchMemberGet(verify1, "Email"); got.Type != VTString || got.Str != "alice@example.com" {
+		t.Fatalf("expected Email unchanged, got %#v", got)
+	}
+
+	// 2. Multi-column projection without primary key and with ORDER BY; only dirty field is updated.
+	rs2 := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("ADODB.Recordset")})
+	vm.dispatchMemberSet(rs2.Num, "ActiveConnection", conn)
+	vm.dispatchNativeCall(rs2.Num, "Open", []Value{NewString("SELECT Name, Email FROM Customers WHERE ID = 1 ORDER BY Name")})
+	emailField := vm.dispatchNativeCall(rs2.Num, "Fields", []Value{NewString("Email")})
+	vm.dispatchMemberSet(emailField.Num, "Value", NewString("updated@example.com"))
+	vm.dispatchNativeCall(rs2.Num, "Update", nil)
+	if vm.lastError != nil {
+		t.Fatalf("multi-column projected update failed: %v", vm.lastError)
+	}
+	vm.dispatchNativeCall(rs2.Num, "Close", nil)
+
+	verify2 := vm.dispatchNativeCall(conn.Num, "Execute", []Value{NewString("SELECT Name, Email FROM Customers WHERE ID = 1")})
+	if got := vm.dispatchMemberGet(verify2, "Name"); got.Type != VTString || got.Str != "Alice Updated" {
+		t.Fatalf("expected Name unchanged, got %#v", got)
+	}
+	if got := vm.dispatchMemberGet(verify2, "Email"); got.Type != VTString || got.Str != "updated@example.com" {
+		t.Fatalf("expected Email='updated@example.com', got %#v", got)
+	}
+
+	// 3. Updating a single column that also appears in the WHERE predicate.
+	rs3 := vm.dispatchNativeCall(nativeObjectServer, "CreateObject", []Value{NewString("ADODB.Recordset")})
+	vm.dispatchMemberSet(rs3.Num, "ActiveConnection", conn)
+	vm.dispatchNativeCall(rs3.Num, "Open", []Value{NewString("SELECT Name FROM Customers WHERE Name = 'Alice Updated'")})
+	vm.dispatchNativeCall(rs3.Num, "", []Value{NewString("Name"), NewString("Bob")})
+	vm.dispatchNativeCall(rs3.Num, "Update", nil)
+	if vm.lastError != nil {
+		t.Fatalf("where-column update failed: %v", vm.lastError)
+	}
+	vm.dispatchNativeCall(rs3.Num, "Close", nil)
+
+	verify3 := vm.dispatchNativeCall(conn.Num, "Execute", []Value{NewString("SELECT Name FROM Customers WHERE ID = 1")})
+	if got := vm.dispatchMemberGet(verify3, "Name"); got.Type != VTString || got.Str != "Bob" {
+		t.Fatalf("expected Name='Bob', got %#v", got)
+	}
+}
+
+// TestADODBResolveUpdatableSource verifies single-table SELECT parsing and rejection of non-updatable shapes.
+func TestADODBResolveUpdatableSource(t *testing.T) {
+	vm := NewVM(nil, nil, 5)
+	cases := []struct {
+		name      string
+		source    string
+		wantTable string
+		wantWhere string
+		wantOK    bool
+	}{
+		{
+			name:      "single column with where",
+			source:    "SELECT Name FROM Customers WHERE ID = 1",
+			wantTable: "Customers",
+			wantWhere: "ID = 1",
+			wantOK:    true,
+		},
+		{
+			name:      "quoted table with space and order by",
+			source:    "SELECT [Name], [Email] FROM [Order Details] WHERE [ID] = 5 ORDER BY [Name] DESC",
+			wantTable: "Order Details",
+			wantWhere: "[ID] = 5",
+			wantOK:    true,
+		},
+		{
+			name:      "trailing semicolon",
+			source:    "SELECT Name FROM Customers WHERE ID = 1;",
+			wantTable: "Customers",
+			wantWhere: "ID = 1",
+			wantOK:    true,
+		},
+		{
+			name:   "join rejected",
+			source: "SELECT c.Name FROM Customers c JOIN Orders o ON c.ID = o.CustomerID WHERE c.ID = 1",
+			wantOK: false,
+		},
+		{
+			name:   "comma join rejected",
+			source: "SELECT Name FROM Customers, Orders WHERE Customers.ID = Orders.CustomerID",
+			wantOK: false,
+		},
+		{
+			name:   "from subquery rejected",
+			source: "SELECT Name FROM (SELECT Name FROM Customers) sub WHERE Name = 'Alice'",
+			wantOK: false,
+		},
+		{
+			name:   "select subquery with where rejected",
+			source: "SELECT (SELECT x FROM t2 WHERE t2.id = t1.id) FROM t1 WHERE t1.id = 1",
+			wantOK: false,
+		},
+		{
+			name:   "distinct rejected",
+			source: "SELECT DISTINCT Name FROM Customers WHERE ID = 1",
+			wantOK: false,
+		},
+		{
+			name:   "group by rejected",
+			source: "SELECT Name FROM Customers GROUP BY Name",
+			wantOK: false,
+		},
+		{
+			name:   "table alias rejected",
+			source: "SELECT Name FROM Customers c WHERE c.ID = 1",
+			wantOK: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			table, where, _, ok := vm.adodbResolveUpdatableSource(tc.source)
+			if ok != tc.wantOK {
+				t.Fatalf("adodbResolveUpdatableSource(%q) ok = %v, want %v (table=%q where=%q)", tc.source, ok, tc.wantOK, table, where)
+			}
+			if !tc.wantOK {
+				return
+			}
+			if table != tc.wantTable || where != tc.wantWhere {
+				t.Fatalf("adodbResolveUpdatableSource(%q) = (%q, %q), want (%q, %q)", tc.source, table, where, tc.wantTable, tc.wantWhere)
+			}
+		})
+	}
+}

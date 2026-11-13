@@ -1009,9 +1009,9 @@ func TestJScriptStringCoercionViaASP(t *testing.T) {
 	}
 }
 
-// TestJScriptRequestFormMissingField verifies that String(Request.Form("missing"))
-// returns "" (empty string), matching IIS Classic ASP JScript behavior where
-// missing form fields coerce to an empty string in string context.
+// TestJScriptRequestFormMissingField verifies that Request.Form("missing")
+// returns a RequestCollectionValueItem object (typeof === "object") whose
+// primitive String() coercion is "undefined".
 func TestJScriptRequestFormMissingField(t *testing.T) {
 	compiler := NewASPCompiler(jscriptSrc(`
 		var v = Request.Form("no_such_field");
@@ -1032,7 +1032,7 @@ func TestJScriptRequestFormMissingField(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expected := "T:string|S:"
+	expected := "T:object|S:undefined"
 	if output.String() != expected {
 		t.Errorf("expected %q, got %q", expected, output.String())
 	}

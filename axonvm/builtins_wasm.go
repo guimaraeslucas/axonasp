@@ -1411,6 +1411,23 @@ func vbsAxonEnumValues(vm *VM, args []Value) (Value, error) {
 		return ValueFromVBArray(NewVBArrayFromValues(0, []Value{NewString(collectionValue.Joined())})), nil
 	}
 
+	// ResponseCookieItem — enumerate sub-keys of a dictionary cookie or yield its value.
+	if cookieName, ok := vm.responseCookieItems[target.Num]; ok && vm.host != nil && vm.host.Response() != nil {
+		resp := vm.host.Response()
+		if resp.HasCookieKeys(cookieName) {
+			keys := resp.GetCookieSubKeys(cookieName)
+			values := make([]Value, len(keys))
+			for i, k := range keys {
+				values[i] = NewString(k)
+			}
+			return ValueFromVBArray(NewVBArrayFromValues(0, values)), nil
+		}
+		if val := resp.GetCookieValue(cookieName); val != "" {
+			return ValueFromVBArray(NewVBArrayFromValues(0, []Value{NewString(val)})), nil
+		}
+		return ValueFromVBArray(NewVBArrayFromValues(0, []Value{})), nil
+	}
+
 	// ASP intrinsic request/response collections: enumerate as string key arrays.
 	if vm.host != nil {
 		req := vm.host.Request()

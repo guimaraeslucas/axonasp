@@ -328,3 +328,34 @@ func TestG3FileUploader_MoveUploadedFile(t *testing.T) {
 		t.Errorf("copied content mismatch: got %q, want %q", got2, payload)
 	}
 }
+
+// TestG3FileUploader_SendBinaryVirtualPath verifies SendBinary resolves virtual absolute
+// paths inside the web root when AllowAbsolutePaths is disabled.
+func TestG3FileUploader_SendBinaryVirtualPath(t *testing.T) {
+	rootDir := t.TempDir()
+	targetDir := filepath.Join(rootDir, "uploads")
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		t.Fatalf("mkdir uploads: %v", err)
+	}
+	targetFile := filepath.Join(targetDir, "sample.txt")
+	if err := os.WriteFile(targetFile, []byte("hello-binary"), 0644); err != nil {
+		t.Fatalf("write sample file: %v", err)
+	}
+
+	vm := NewVM(nil, nil, 0)
+	host := NewMockHost()
+	var out bytes.Buffer
+	host.SetOutput(&out)
+	host.Response().SetBuffer(false)
+	host.Server().SetRootDir(rootDir)
+	vm.SetHost(host)
+
+	uploaderVal := vm.newG3FileUploaderObject()
+	uploader := vm.fileUploaderItems[uploaderVal.Num]
+	if err := uploader.SendBinary("/uploads/sample.txt", "text/plain"); err != nil {
+		t.Fatalf("SendBinary virtual path failed: %v", err)
+	}
+	if out.String() != "hello-binary" {
+		t.Fatalf("unexpected SendBinary output: got %q, want %q", out.String(), "hello-binary")
+	}
+}

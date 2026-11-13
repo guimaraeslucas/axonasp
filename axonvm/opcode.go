@@ -613,6 +613,11 @@ const (
 	// ExtOpJSWrite writes one stack value using Microsoft JScript
 	// Response.Write coercion without generic member dispatch.
 	ExtOpJSWrite
+
+	// ExtOpCoerceToNumeric coerces the top stack value in place to a numeric
+	// subtype (VTInteger, VTDouble, or VTDate) for VBScript For...Next bounds.
+	// [OpExtPrefix, ExtOpCoerceToNumeric] (0 operand bytes beyond ext opcode)
+	ExtOpCoerceToNumeric
 )
 
 func (op OpCode) String() string {
@@ -627,6 +632,10 @@ func (op OpCode) String() string {
 		return "OpGetGlobal"
 	case OpSetGlobal:
 		return "OpSetGlobal"
+	case OpGetLocal:
+		return "OpGetLocal"
+	case OpSetLocal:
+		return "OpSetLocal"
 	case OpGetClassMember:
 		return "OpGetClassMember"
 	case OpSetClassMember:
@@ -1174,6 +1183,8 @@ func (op ExtOpCode) String() string {
 		return "ExtOpShiftRight"
 	case ExtOpJSWrite:
 		return "ExtOpJSWrite"
+	case ExtOpCoerceToNumeric:
+		return "ExtOpCoerceToNumeric"
 	default:
 		return "ExtOpUnknown"
 	}

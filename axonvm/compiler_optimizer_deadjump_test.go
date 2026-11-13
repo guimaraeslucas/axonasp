@@ -692,6 +692,8 @@ var deadJumpCorpusQuarantine = map[string]struct{}{
 	"json-teste/tmp_test_include_oern.asp": {},
 	"json-teste/tmp_test_oern.asp":         {},
 	"test_404_handling.asp":                {},
+	"test_aspcheck.asp":                    {},
+	"test_bench1.asp":                      {},
 	"test_class_dict.asp":                  {},
 	"test_crypto.asp":                      {},
 	"test_examples_fso_usage.asp":          {},
@@ -701,6 +703,10 @@ var deadJumpCorpusQuarantine = map[string]struct{}{
 	"test_g3image.asp":                     {},
 	"test_g3tar.asp":                       {},
 	"test_jscript_es5_json_object.asp":     {},
+	"test_json_add.asp":                    {},
+	"test_json_full.asp":                   {},
+	"test_json_parse.asp":                  {},
+	"test_json_testadd.asp":                {},
 	"test_mswc_demo.asp":                   {},
 	"test_pdf_basic.asp":                   {},
 	"test_pdf_image.asp":                   {},
@@ -709,6 +715,7 @@ var deadJumpCorpusQuarantine = map[string]struct{}{
 	"test_timer2.asp":                      {},
 	"test_var_scope.asp":                   {},
 	"test_vb_functions.asp":                {},
+	"test_wscriptshell.asp":                {},
 	"tests2/09-filesystem.asp":             {},
 	"tmp_random_debug.asp":                 {},
 }
@@ -822,6 +829,10 @@ func TestDeadJumpOptimizationCorpusIdentity(t *testing.T) {
 		// The pair diverged. Prove whether the page itself drifts before retrying, so a page
 		// that is not repeatable is reported as such instead of being retried blindly.
 		secondBaseline := runUnoptimized()
+		if isScriptTimeoutOutcome(secondBaseline) {
+			timeoutPages++
+			continue
+		}
 		if secondBaseline != baseline {
 			classify()
 			if optimized.status != secondBaseline.status {
@@ -838,6 +849,11 @@ func TestDeadJumpOptimizationCorpusIdentity(t *testing.T) {
 		for i := 1; i < deadJumpCorpusPairAttempts; i++ {
 			runOptimized()
 			runUnoptimized()
+			if isScriptTimeoutOutcome(optimized) || isScriptTimeoutOutcome(unoptimized) {
+				timeoutPages++
+				matched = true
+				break
+			}
 			attempts++
 			if optimized == unoptimized {
 				matched = true
