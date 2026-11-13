@@ -177,7 +177,7 @@ trace = ""
 Class Node
 	Public SelfRef
 	Private Sub Class_Terminate()
-		trace = trace & "[NodeTerminated]"
+		Response.Write "[NodeTerminated]"
 		Set SelfRef = Nothing
 	End Sub
 End Class
@@ -208,7 +208,7 @@ Response.Write trace
 	}
 	host.Response().Flush()
 
-	expected := "[Created][NodeTerminated][Done]"
+	expected := "[Created][Done][NodeTerminated]"
 	if output.String() != expected {
 		t.Fatalf("expected output %q, got %q", expected, output.String())
 	}

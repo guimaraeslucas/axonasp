@@ -78,7 +78,7 @@ Else
 End If
 Response.Write "|" & (s > 0) & (s < 0)
 %>`
-	want := "11110111|TrueFalse"
+	want := "1111011111110111|TrueFalse"
 	if got := runVBSAndGetOutput(t, src); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

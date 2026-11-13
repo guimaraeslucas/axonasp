@@ -111,7 +111,7 @@ func TestProxyInvariant_HasNonConfigurableCannotBeAbsent(t *testing.T) {
 			has: function(t, k) { return false; }
 		});
 		try {
-			var r = ('x' in p);
+			var r = Reflect.has(p, 'x');
 			Response.Write("no error");
 		} catch(e) {
 			Response.Write(e.message);
@@ -135,7 +135,7 @@ func TestProxyInvariant_HasNonExtensibleCannotBeAbsent(t *testing.T) {
 			has: function(t, k) { return false; }
 		});
 		try {
-			var r = ('x' in p);
+			var r = Reflect.has(p, 'x');
 			Response.Write("no error");
 		} catch(e) {
 			Response.Write(e.message);

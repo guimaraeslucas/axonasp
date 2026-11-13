@@ -533,8 +533,8 @@ func TestOptimizeRedundantContiguousLoadWithPop(t *testing.T) {
 	}
 }
 
-// TestVBScriptCallMemberInlineCachePopulation verifies OpCallMember reserve bytes are
-// populated by the VM after first run.
+// TestVBScriptCallMemberInlineCachePopulation verifies OpCallMember reserve bytes stay
+// read-only in bytecode while the VM-local callMemberIC map is populated after execution.
 func TestVBScriptCallMemberInlineCachePopulation(t *testing.T) {
 	source := `<%
 Class CacheProbe
@@ -575,8 +575,15 @@ Next
 	if buf.String() != "777" {
 		t.Fatalf("unexpected output: got %q, want %q", buf.String(), "777")
 	}
-	if binary.BigEndian.Uint32(vm.bytecode[cachePos:cachePos+4]) == 0 {
-		t.Fatalf("expected inline cache slot to be populated after execution")
+	if binary.BigEndian.Uint32(vm.bytecode[cachePos:cachePos+4]) != 0 {
+		t.Fatalf("expected shared bytecode cache slot to remain zero after execution")
+	}
+	entry, ok := vm.callMemberIC[cachePos]
+	if !ok {
+		t.Fatalf("expected VM-local callMemberIC slot at %d to be populated after execution", cachePos)
+	}
+	if entry.kind != callMemberICClassMethod {
+		t.Fatalf("unexpected callMemberIC entry kind: got %d, want %d", entry.kind, callMemberICClassMethod)
 	}
 }
 
