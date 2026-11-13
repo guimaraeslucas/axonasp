@@ -182,8 +182,13 @@ func (v Value) String() string {
 }
 
 // CoerceBool converts a Value to a boolean following VBScript CBool/conditional rules.
-// Numeric strings ("0", "1", "-1", "0.0", "&h0"), "True" and "False" are accepted;
-// any other non-numeric string is rejected. Null yields False so that If/While tests
+// Numeric strings ("0", "1", "-1", "0.0", "&h0", " 2 ") are accepted with surrounding
+// whitespace forgiven; the word booleans "True" and "False" are accepted in any case
+// but must match exactly — IIS raises Type mismatch for CBool(" true ") and
+// `If " true " Then` while accepting " 2 ". Measured:
+// https://github.com/saborrie/iis-oracle/actions/runs/42522425088 (CBool)
+// https://github.com/saborrie/iis-oracle/actions/runs/42511937887 (If condition)
+// Any other non-numeric string is rejected. Null yields False so that If/While tests
 // do not raise error 94 (the explicit CBool Null check stays in vbsCompatCBool).
 // Returns (result, ok); when ok is false the value cannot be coerced and the caller
 // must raise VBScript Type mismatch (error 13). No heap allocations are performed.
@@ -201,14 +206,13 @@ func (v Value) CoerceBool() (bool, bool) {
 	case VTDate:
 		return v.Num != 0, true
 	case VTString:
-		text := strings.TrimSpace(v.Str)
-		if len(text) == 5 && strings.EqualFold(text, "false") {
+		if len(v.Str) == 5 && strings.EqualFold(v.Str, "false") {
 			return false, true
 		}
-		if len(text) == 4 && strings.EqualFold(text, "true") {
+		if len(v.Str) == 4 && strings.EqualFold(v.Str, "true") {
 			return true, true
 		}
-		if num, _, ok := vbsParseNumericString(text); ok {
+		if num, _, ok := vbsParseNumericString(strings.TrimSpace(v.Str)); ok {
 			return num != 0, true
 		}
 		return false, false

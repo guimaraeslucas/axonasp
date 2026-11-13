@@ -78,6 +78,8 @@ Else
 End If
 Response.Write "|" & (s > 0) & (s < 0)
 %>`
+	// The page runs the eight comparisons twice — once as single-line Ifs and once as
+	// block Ifs — so the output carries sixteen digits, both halves identical.
 	want := "1111011111110111|TrueFalse"
 	if got := runVBSAndGetOutput(t, src); got != want {
 		t.Fatalf("got %q, want %q", got, want)
