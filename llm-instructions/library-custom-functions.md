@@ -1,4 +1,6 @@
-When implementing custom functions for AxonASP (Ax), adhere to the following guidelines:
+# Custom Functions Implementation Guidelines (Ax Functions)
+
+When implementing custom native functions for AxonASP (Ax Functions), adhere to the following guidelines:
 
 1.  **File Placement:** Create `axonvm/lib_<name>.go` or in `axonvm/asp/axon` for "Ax" (Custom) functions.
 2.  **Implementation:** Define a concrete Go struct.

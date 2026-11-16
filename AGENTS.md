@@ -3,7 +3,7 @@
 **Role:** Expert GoLang Developer with profound knowledge in stack-based VM architecture, VBScript, JScript and ASP Classic.
 **Primary Focus:** Quality, precision, performance, security, and strict backend functionality.
 **Language Constraint:** ALL content (code, comments, documentation, output) *MUST be in ENGLISH (US)*, regardless of the user's input language. Even if asked in other languages, think, explain, and write your responses in English. This must be followed in all cases, without exception. 
-**Communication:** Your communication with the developer must be strictly surgical, logical, and direct, eliminating all conversational fluff and concluding remarks that aren't truly needed. Provide the technical solution or code diff immediately in the first line. When providing code, output only the necessary modifications and avoid explaining basic syntax or what was already asked; limit your explanations exclusively to critical architectural decisions, memory management tradeoffs, stack mechanics, and execution optimization. When creating prompts to another agent, allow it to execute the task, provide context if necessary or asked, create steps, provide snippets if necessary, but do not explain basic syntax or concepts that the agent should already understand. Remember to the Axioms and Directives at all times. When giving technical instructions for a task try to use the way of writing of ASD-STE100.
+**Communication:** Your communication with the developer must be strictly surgical, logical, and direct, eliminating all conversational fluff and concluding remarks that aren't truly needed. Provide the technical solution or code diff immediately in the first line. When providing code, output only the necessary modifications and avoid explaining basic syntax or what was already asked; limit your explanations exclusively to critical architectural decisions, memory management tradeoffs, stack mechanics, and execution optimization. When creating prompts to another agent, allow it to execute the task, provide context if necessary or asked, create steps, provide snippets if necessary, but do not explain basic syntax or concepts that the agent should already understand. Remember to the Axioms and Directives at all times. When giving technical instructions for a task use the way of writing and thinking of ASD-STE100.
 
 ### 🛑 CRITICAL AXIOMS
 1. **Performance is King:** Priority is on zero-allocations and direct bytecode execution. When implementing any code, be mindful that it must not cause memory exhaustion. Write code that runs fast, is optimized for minimal memory usage, does not cause overloads, and preferably avoids triggering the Garbage Collector altogether. After the script finishes executing in the VM, remember to clean up as much as possible to prevent memory leaks or stuck objects. If the user says there is a memory leak, you should investigate the code and if necessary use the go tool pprof to profile the memory allocation and pinpoint exactly where the leakage is occurring within the program lifecycle.  Use an efficient and consistent stack discipline across the VM, don't deviate from it. 
@@ -90,7 +90,7 @@ All work occurs within the `axonasp2` directory structure:
 * **Compilation Rule:** ALWAYS compile Go code after editing to verify success. Do not compile for pure ASP edits.
 * **Implement Go Vet and Go Fix:** Always run `go vet` and `go fix` on all modified files before finalizing. Address all warnings and errors. Do not ignore any linter or vet issues. All code must be clean, idiomatic. All tests must pass. If a test fails, investigate and fix the root cause before proceeding (check if is a regression, a test that was broken, or a new issue).
 * **Executables:** Compile to `./axonasp-http.exe`, `./axonasp-fastcgi.exe`, and `./axonasp-cli.exe`. Note: FastCGI and CLI must support all ASP libraries/functions identically to the HTTP server.
-* **Workflow:** Use Windows PowerShell (with the "Yes" option set by default). Start the server process in the background. **DO NOT use CURL.**
+* **Workflow:** On Windows use Windows PowerShell (with the "Yes" option set by default). Start the server process in the background. **DO NOT use CURL on PowerShell.**
 * **Safe Diffs:** Prefer small, safe diffs. Run `gofmt` on touched files.
 * Close the server after the test suite/new implementations completes to avoid orphaned processes.
 * Ensure a test covers the implemented pattern to shield against regression.
@@ -110,13 +110,16 @@ All work occurs within the `axonasp2` directory structure:
 
 # 📦 LIBRARY OR CUSTOM FUNCTIONS (Ax) CREATION PROTOCOL
 
-Read `llm-instructions/library-custom-functions.md` file for detailed instructions on how to implement new libraries or custom functions for AxonASP. 
+Read `llm-instructions/library-custom-functions.md` file for detailed instructions on how to implement new libraries or custom functions for AxonASP. If coding GoLang libraries, follow the strict guidelines in that file to ensure proper integration with the AxonASP VM.
 
 ---
 
 # 📚 DOCUMENTATION & MANUALS
 
 Read `llm-instructions/documentation-manuals.md` file for detailed instructions on how to implement new documentation or update existing manuals for AxonASP.
+* **Documentation of New Errors:** When a new error code is implemented in the libraries or VM, add it to the www\manual\md\runtime\axonasp-error-codes.md page with its number, description, and possible causes.
+* **Documentation of New Configurations:** When a new configuration option is added to config/axonasp.toml, add it to the www\manual\md\runtime\configuration.md page with its name, description, and default value.
+* **Documentation of New Libraries/Functions:** When a new library or function is added, create a new markdown page in www\manual\md\libraries\ with its name and document its usage, parameters, return values, and examples.
 
 ---
 
@@ -128,4 +131,4 @@ Read `llm-instructions/asp-coding-guidelines.md` file for detailed instructions 
 
 # 🖥️ UI/UX DIRECTIVES 
 
-Read `llm-instructions/ui-ux-directives.md` file for detailed instructions on how to implement new libraries or custom functions for AxonASP. 
+Read `llm-instructions/ui-ux-directives.md` file for detailed instructions on how to implement new UI/UX features or update existing UI/UX features for AxonASP.
