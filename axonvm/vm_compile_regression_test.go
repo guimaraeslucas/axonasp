@@ -8183,7 +8183,7 @@ Response.Write Z
 // TestASPIncludeCompileErrorReportsOriginalFileAndLine verifies compile errors inside
 // included files are mapped back to the include file path and original line.
 func TestASPIncludeCompileErrorReportsOriginalFileAndLine(t *testing.T) {
-	tmpDir := t.TempDir()
+	tmpDir := canonicalTempDir(t)
 	mainPath := filepath.Join(tmpDir, "main.asp")
 	includePath := filepath.Join(tmpDir, "bad.inc")
 

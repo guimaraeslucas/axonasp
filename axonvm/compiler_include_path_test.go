@@ -7,8 +7,22 @@ import (
 	"testing"
 )
 
+// canonicalTempDir returns t.TempDir() with symlinks and Windows 8.3 short names
+// resolved. Include resolution returns canonical physical paths, so expectations
+// built from a raw temp dir fail on hosts whose TEMP is aliased (the GitHub
+// Windows runners use C:\Users\RUNNER~1\..., and macOS /var is a symlink).
+func canonicalTempDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatalf("resolve temp dir %q: %v", dir, err)
+	}
+	return resolved
+}
+
 func TestResolveIncludeVirtualAnchorsToConfiguredRoot(t *testing.T) {
-	rootDir := t.TempDir()
+	rootDir := canonicalTempDir(t)
 	includePath := filepath.Join(rootDir, "includes", "header.inc")
 	if err := os.MkdirAll(filepath.Dir(includePath), 0o755); err != nil {
 		t.Fatalf("mkdir include dir failed: %v", err)
@@ -103,7 +117,7 @@ func TestResolveIncludeCaseInsensitiveFallback(t *testing.T) {
 }
 
 func TestResolveIncludeFileUsesCurrentScriptDirectory(t *testing.T) {
-	scriptRoot := t.TempDir()
+	scriptRoot := canonicalTempDir(t)
 	wrongSiteRoot := t.TempDir()
 
 	sourcePath := filepath.Join(scriptRoot, "pages", "index.asp")
