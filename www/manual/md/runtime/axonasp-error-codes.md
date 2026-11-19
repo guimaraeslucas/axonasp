@@ -361,6 +361,12 @@ The following error codes follow the standard VBScript specification. They are s
 | 1057 | 0x800A0421 | 'Default' must also specify 'Public' |
 | 1058 | 0x800A0422 | Can only specify 'Default' on Property Get |
 
+### ADODB Collection Errors
+
+| Decimal | Hex (HRESULT) | Description | Possible Cause |
+|---------|---------------|-------------|----------------|
+| 3265 | 0x800A0CC1 | Item cannot be found in the collection corresponding to the requested name or ordinal. | Accessing a nonexistent field name or out-of-range column ordinal on an ADODB `Recordset` or `Fields` collection (e.g., `rs("missing").Value`, `rs.Fields(99)`). |
+
 ### Regular Expression Errors
 
 | Decimal | Hex (HRESULT) | Description |

@@ -152,6 +152,8 @@ type adodbRecordset struct {
 	columnAttrByName    map[string]int
 	columnScaleByName   map[string]int
 	fieldChunkOffset    map[string]int
+	fieldProxyIDs       []int64
+	fieldsCollectionID  int64
 	pendingUpdateFields map[string]struct{}
 	data                []map[string]Value
 	sqlRows             *sql.Rows
@@ -644,6 +646,7 @@ func (vm *VM) adodbConnectionOpenSchema(conn *adodbConnection, args []Value) Val
 		return Value{Type: VTEmpty}
 	}
 	rs.columns = vm.adodbSchemaColumnNames(schemaID)
+	rs.fieldProxyIDs = nil
 	vm.adodbRecordsetRebuildColumnIndex(rs)
 	rs.source = "__schema__"
 	rs.activeConnection = 0
@@ -987,15 +990,13 @@ func (vm *VM) dispatchADODBRecordsetMethod(rs *adodbRecordset, member string, ar
 		}
 		return Value{Type: VTEmpty}
 	case strings.EqualFold(member, "Fields.Item"):
+		if len(args) > 1 {
+			vm.adodbSetFieldValueBySelector(rs, args[0], args[len(args)-1])
+			return Value{Type: VTEmpty}
+		}
 		if len(args) > 0 {
-			if args[0].Type == VTInteger || args[0].Type == VTDouble {
-				idx := vm.asInt(args[0])
-				if idx >= 0 && idx < len(rs.columns) {
-					return vm.newADODBFieldProxyByOrdinal(rs, idx)
-				}
-				return Value{Type: VTEmpty}
-			}
-			return vm.newADODBFieldProxy(rs, args[0].String())
+			fieldVal, _ := vm.adodbResolveFieldProxy(rs, args[0])
+			return fieldVal
 		}
 		return Value{Type: VTEmpty}
 	case strings.EqualFold(member, "Open"):
@@ -1067,82 +1068,25 @@ func (vm *VM) dispatchADODBRecordsetMethod(rs *adodbRecordset, member string, ar
 		vm.adodbRecordsetUpdateBatch(rs)
 		return Value{Type: VTEmpty}
 	case member == "":
-		if len(args) > 0 {
-			if vm.adodbRecordsetIsLiveOLE(rs) {
-				selector := vm.adodbOLEFieldSelector(args[0])
-				if selector != "" {
-					if len(args) > 1 {
-						key := vm.adodbRecordsetResolveColumnKey(rs, args[0])
-						if vm.adodbOLESetFieldValue(rs, key, args[len(args)-1]) {
-							if rs.editMode != adEditAdd {
-								rs.editMode = adEditInProgress
-							}
-							vm.adodbRecordsetMarkPendingUpdateField(rs, key)
-						}
-						return Value{Type: VTEmpty}
-					}
-					if v, ok := vm.adodbOLEGetFieldValueBySelector(rs, selector); ok {
-						return v
-					}
-				}
-			}
-			if rs.state == adStateOpen && rs.currentRow >= 0 && rs.currentRow < len(rs.data) {
-				row := rs.data[rs.currentRow]
-				if row != nil {
-					if (args[0].Type == VTInteger || args[0].Type == VTDouble) && len(args) == 1 {
-						idx := vm.asInt(args[0])
-						if idx >= 0 && idx < len(rs.columns) {
-							return vm.adodbRecordsetValueByOrdinal(rs, row, idx)
-						}
-					}
-					key := vm.adodbRecordsetResolveColumnKey(rs, args[0])
-					if key == "" && (args[0].Type == VTInteger || args[0].Type == VTDouble) {
-						idx := vm.asInt(args[0])
-						if idx >= 0 && idx < len(rs.columns) {
-							key = adodbDuplicateColumnKey(idx)
-						}
-					}
-					if key != "" {
-						if len(args) > 1 {
-							if args[0].Type == VTInteger || args[0].Type == VTDouble {
-								idx := vm.asInt(args[0])
-								if rs.columnIndexByLower == nil {
-									vm.adodbRecordsetRebuildColumnIndex(rs)
-								}
-								if key != adodbDuplicateColumnKey(idx) && rs.columnIndexByLower[key] != idx {
-									key = adodbDuplicateColumnKey(idx)
-								}
-							}
-							row[key] = args[len(args)-1]
-							if rs.editMode != adEditAdd {
-								rs.editMode = adEditInProgress
-							}
-							vm.adodbRecordsetMarkPendingUpdateField(rs, key)
-							return Value{Type: VTEmpty}
-						}
-						if val, ok := row[key]; ok {
-							return val
-						}
-					}
-				}
-			}
+		if len(args) == 0 {
+			return vm.newADODBFieldsCollection(rs)
 		}
+		if len(args) > 1 {
+			vm.adodbSetFieldValueBySelector(rs, args[0], args[len(args)-1])
+			return Value{Type: VTEmpty}
+		}
+		fieldVal, _ := vm.adodbResolveFieldProxy(rs, args[0])
+		return fieldVal
 	case strings.EqualFold(member, "Fields"):
 		if len(args) == 0 {
 			return vm.newADODBFieldsCollection(rs)
 		}
-		if args[0].Type == VTInteger || args[0].Type == VTDouble {
-			idx := vm.asInt(args[0])
-			if idx >= 0 && idx < len(rs.columns) {
-				return vm.newADODBFieldProxyByOrdinal(rs, idx)
-			}
+		if len(args) > 1 {
+			vm.adodbSetFieldValueBySelector(rs, args[0], args[len(args)-1])
 			return Value{Type: VTEmpty}
 		}
-		name := strings.TrimSpace(args[0].String())
-		if name == "" {
-			return Value{Type: VTEmpty}
-		}
-		return vm.newADODBFieldProxy(rs, name)
+		fieldVal, _ := vm.adodbResolveFieldProxy(rs, args[0])
+		return fieldVal
 	}
 	return Value{Type: VTEmpty}
 }
@@ -1706,6 +1650,7 @@ func (vm *VM) adodbRecordsetLoadCurrentSQLResultSet(rs *adodbRecordset) {
 		rs.fieldChunkOffset = make(map[string]int)
 		vm.adodbRecordsetClearPendingUpdateFields(rs)
 		rs.columns = nil
+		rs.fieldProxyIDs = nil
 		vm.adodbRecordsetRebuildColumnIndex(rs)
 		rs.data = nil
 		rs.recordCount = 0
@@ -1730,19 +1675,43 @@ func (vm *VM) adodbRecordsetLoadCurrentSQLResultSet(rs *adodbRecordset) {
 	} else {
 		rs.columns = cols
 	}
+	rs.fieldProxyIDs = nil
 	vm.adodbRecordsetRebuildColumnIndex(rs)
 	if columnTypes, typeErr := rows.ColumnTypes(); typeErr == nil {
 		rs.columnTypes = make([]string, len(columnTypes))
+		if rs.columnTypeByName == nil {
+			rs.columnTypeByName = make(map[string]int)
+		}
+		if rs.columnSizeByName == nil {
+			rs.columnSizeByName = make(map[string]int)
+		}
+		if rs.columnScaleByName == nil {
+			rs.columnScaleByName = make(map[string]int)
+		}
 		for i, columnType := range columnTypes {
 			databaseType := columnType.DatabaseTypeName()
 			rs.columnTypes[i] = databaseType
 			if i < len(cols) {
-				rs.columnTypeByName[strings.ToLower(cols[i])] = adodbTypeFromDatabaseType(databaseType)
-				if length, ok := columnType.Length(); ok {
-					rs.columnSizeByName[strings.ToLower(cols[i])] = int(length)
+				lowerCol := strings.ToLower(strings.TrimSpace(cols[i]))
+				adodbType := adodbTypeFromDatabaseType(databaseType)
+				if lowerCol != "" {
+					rs.columnTypeByName[lowerCol] = adodbType
+					if length, ok := columnType.Length(); ok {
+						rs.columnSizeByName[lowerCol] = int(length)
+					}
+					if _, scale, ok := columnType.DecimalSize(); ok {
+						rs.columnScaleByName[lowerCol] = int(scale)
+					}
 				}
-				if _, scale, ok := columnType.DecimalSize(); ok {
-					rs.columnScaleByName[strings.ToLower(cols[i])] = int(scale)
+				if lowerCol == "" || rs.columnIndexByLower[lowerCol] != i {
+					dupKey := adodbDuplicateColumnKey(i)
+					rs.columnTypeByName[dupKey] = adodbType
+					if length, ok := columnType.Length(); ok {
+						rs.columnSizeByName[dupKey] = int(length)
+					}
+					if _, scale, ok := columnType.DecimalSize(); ok {
+						rs.columnScaleByName[dupKey] = int(scale)
+					}
 				}
 			}
 		}
@@ -1817,7 +1786,11 @@ func adodbMSSQLNumeric(databaseType string, v any) any {
 }
 
 func adodbTypeFromDatabaseType(databaseType string) int {
-	switch strings.ToUpper(strings.TrimSpace(databaseType)) {
+	normalized := strings.ToUpper(strings.TrimSpace(databaseType))
+	if parenIdx := strings.IndexByte(normalized, '('); parenIdx >= 0 {
+		normalized = strings.TrimSpace(normalized[:parenIdx])
+	}
+	switch normalized {
 	case "BIT", "BOOLEAN", "BOOL":
 		return 11 // adBoolean
 	case "TINYINT", "UTINYINT":
@@ -1893,6 +1866,8 @@ func (vm *VM) adodbRecordsetClose(rs *adodbRecordset) {
 	rs.data = nil
 	rs.unfiltered = nil
 	rs.columns = nil
+	rs.fieldProxyIDs = nil
+	rs.fieldsCollectionID = 0
 	vm.adodbRecordsetRebuildColumnIndex(rs)
 	rs.currentRow = -1
 	rs.eof = true
@@ -2596,10 +2571,18 @@ func (vm *VM) newADODBErrorsCollection(conn *adodbConnection) Value {
 }
 
 func (vm *VM) newADODBFieldsCollection(rs *adodbRecordset) Value {
-	// We need a unique ID for this collection linked to the recordset
+	if rs != nil && rs.fieldsCollectionID != 0 {
+		if existing, exists := vm.adodbFieldsCollectionItems[rs.fieldsCollectionID]; exists && existing == rs {
+			return Value{Type: VTNativeObject, Num: rs.fieldsCollectionID}
+		}
+	}
+	// We need a unique ID for this collection linked to the recordset.
 	objID := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
 	vm.adodbFieldsCollectionItems[objID] = rs
+	if rs != nil {
+		rs.fieldsCollectionID = objID
+	}
 	return Value{Type: VTNativeObject, Num: objID}
 }
 
@@ -2712,16 +2695,13 @@ func (vm *VM) dispatchADODBFieldsCollectionMethod(objID int64, member string, ar
 	}
 	switch {
 	case member == "" || strings.EqualFold(member, "Item"):
+		if len(args) > 1 {
+			vm.adodbSetFieldValueBySelector(rs, args[0], args[len(args)-1])
+			return Value{Type: VTEmpty}, true
+		}
 		if len(args) > 0 {
-			if args[0].Type == VTInteger {
-				idx := int(args[0].Num)
-				if idx >= 0 && idx < len(rs.columns) {
-					return vm.newADODBFieldProxyByOrdinal(rs, idx), true
-				}
-				return Value{Type: VTEmpty}, true
-			}
-			name := args[0].String()
-			return vm.newADODBFieldProxy(rs, name), true
+			fieldVal, _ := vm.adodbResolveFieldProxy(rs, args[0])
+			return fieldVal, true
 		}
 	case strings.EqualFold(member, "Append"):
 		if len(args) < 1 {
@@ -2803,51 +2783,153 @@ func (vm *VM) dispatchADODBParametersCollectionPropertyGet(objID int64, member s
 	return Value{Type: VTEmpty}, true
 }
 
+// newADODBFieldProxy returns a Field proxy for a named column, reusing the cached
+// per-column proxy when the column exists in rs.columns so schema Name casing and
+// COM object identity are preserved without per-row allocations.
 func (vm *VM) newADODBFieldProxy(rs *adodbRecordset, name string) Value {
+	lowerName := strings.ToLower(strings.TrimSpace(name))
+	if rs != nil {
+		if rs.columnIndexByLower == nil && len(rs.columns) > 0 {
+			vm.adodbRecordsetRebuildColumnIndex(rs)
+		}
+		if idx, ok := rs.columnIndexByLower[lowerName]; ok && idx >= 0 && idx < len(rs.columns) {
+			return vm.newADODBFieldProxyByOrdinal(rs, idx)
+		}
+	}
 	objID := vm.nextDynamicNativeID
 	vm.nextDynamicNativeID++
-	lowerName := strings.ToLower(strings.TrimSpace(name))
-	vm.adodbFieldItems[objID] = &adodbFieldProxy{rs: rs, name: name, cachedLowerName: lowerName}
+	vm.adodbFieldItems[objID] = &adodbFieldProxy{rs: rs, name: name, cachedLowerName: lowerName, ordinal: -1}
 	return Value{Type: VTNativeObject, Num: objID}
 }
 
+// newADODBFieldProxyByOrdinal returns the cached Field proxy for column ordinal index.
 func (vm *VM) newADODBFieldProxyByOrdinal(rs *adodbRecordset, index int) Value {
-	field := vm.newADODBFieldProxy(rs, rs.columns[index])
-	key := strings.ToLower(strings.TrimSpace(rs.columns[index]))
+	if rs == nil || index < 0 || index >= len(rs.columns) {
+		return Value{Type: VTEmpty}
+	}
+	if len(rs.fieldProxyIDs) < len(rs.columns) {
+		grown := make([]int64, len(rs.columns))
+		copy(grown, rs.fieldProxyIDs)
+		rs.fieldProxyIDs = grown
+	}
+	if cachedID := rs.fieldProxyIDs[index]; cachedID != 0 {
+		if existing, exists := vm.adodbFieldItems[cachedID]; exists && existing != nil && existing.rs == rs {
+			return Value{Type: VTNativeObject, Num: cachedID}
+		}
+	}
+
+	colName := rs.columns[index]
+	key := strings.ToLower(strings.TrimSpace(colName))
+	cachedLowerName := key
 	if key == "" {
 		ordinalKey := adodbDuplicateColumnKey(index)
-		vm.adodbFieldItems[field.Num].cachedLowerName = ordinalKey
-		// Providers expose SELECT 1 with an empty Field.Name. Metadata is
-		// recorded under that empty name; preserve it for ordinal field access.
-		if fieldType, ok := rs.columnTypeByName[key]; ok {
-			rs.columnTypeByName[ordinalKey] = fieldType
-		} else if index < len(rs.columnTypes) {
-			rs.columnTypeByName[ordinalKey] = adodbTypeFromDatabaseType(rs.columnTypes[index])
+		cachedLowerName = ordinalKey
+		if rs.columnTypeByName == nil {
+			rs.columnTypeByName = make(map[string]int)
+		}
+		if _, exists := rs.columnTypeByName[ordinalKey]; !exists {
+			if fieldType, ok := rs.columnTypeByName[key]; ok {
+				rs.columnTypeByName[ordinalKey] = fieldType
+			} else if index < len(rs.columnTypes) {
+				rs.columnTypeByName[ordinalKey] = adodbTypeFromDatabaseType(rs.columnTypes[index])
+			}
 		}
 		if size, ok := rs.columnSizeByName[key]; ok {
-			rs.columnSizeByName[ordinalKey] = size
+			if rs.columnSizeByName == nil {
+				rs.columnSizeByName = make(map[string]int)
+			}
+			if _, exists := rs.columnSizeByName[ordinalKey]; !exists {
+				rs.columnSizeByName[ordinalKey] = size
+			}
 		}
 		if attributes, ok := rs.columnAttrByName[key]; ok {
-			rs.columnAttrByName[ordinalKey] = attributes
+			if rs.columnAttrByName == nil {
+				rs.columnAttrByName = make(map[string]int)
+			}
+			if _, exists := rs.columnAttrByName[ordinalKey]; !exists {
+				rs.columnAttrByName[ordinalKey] = attributes
+			}
 		}
 		if scale, ok := rs.columnScaleByName[key]; ok {
-			rs.columnScaleByName[ordinalKey] = scale
+			if rs.columnScaleByName == nil {
+				rs.columnScaleByName = make(map[string]int)
+			}
+			if _, exists := rs.columnScaleByName[ordinalKey]; !exists {
+				rs.columnScaleByName[ordinalKey] = scale
+			}
 		}
-		return field
+	} else {
+		if rs.columnIndexByLower == nil {
+			vm.adodbRecordsetRebuildColumnIndex(rs)
+		}
+		if rs.columnIndexByLower[key] != index {
+			cachedLowerName = adodbDuplicateColumnKey(index)
+		}
 	}
-	if rs.columnIndexByLower == nil {
+
+	objID := vm.nextDynamicNativeID
+	vm.nextDynamicNativeID++
+	vm.adodbFieldItems[objID] = &adodbFieldProxy{
+		rs:              rs,
+		name:            colName,
+		cachedLowerName: cachedLowerName,
+		ordinal:         index,
+	}
+	rs.fieldProxyIDs[index] = objID
+	return Value{Type: VTNativeObject, Num: objID}
+}
+
+// adodbResolveFieldProxy resolves a numeric ordinal or field name selector to a cached
+// Field proxy, raising ADO error 3265 (adErrItemNotFound) when the field does not exist.
+func (vm *VM) adodbResolveFieldProxy(rs *adodbRecordset, selector Value) (Value, bool) {
+	if rs == nil {
+		vm.raise(vbscript.ADODBItemNotFound, vbscript.ADODBItemNotFound.String())
+		return Value{Type: VTEmpty}, false
+	}
+	if selector.Type == VTInteger || selector.Type == VTDouble {
+		idx := vm.asInt(selector)
+		if idx >= 0 && idx < len(rs.columns) {
+			return vm.newADODBFieldProxyByOrdinal(rs, idx), true
+		}
+		vm.raise(vbscript.ADODBItemNotFound, vbscript.ADODBItemNotFound.String())
+		return Value{Type: VTEmpty}, false
+	}
+	name := strings.TrimSpace(selector.String())
+	lower := strings.ToLower(name)
+	if lower == "" {
+		vm.raise(vbscript.ADODBItemNotFound, vbscript.ADODBItemNotFound.String())
+		return Value{Type: VTEmpty}, false
+	}
+	if rs.columnIndexByLower == nil && len(rs.columns) > 0 {
 		vm.adodbRecordsetRebuildColumnIndex(rs)
 	}
-	if rs.columnIndexByLower[key] != index {
-		vm.adodbFieldItems[field.Num].cachedLowerName = adodbDuplicateColumnKey(index)
+	if idx, exists := rs.columnIndexByLower[lower]; exists && idx >= 0 && idx < len(rs.columns) {
+		return vm.newADODBFieldProxyByOrdinal(rs, idx), true
 	}
-	return field
+	if vm.adodbRecordsetIsLiveOLE(rs) && len(rs.columns) == 0 {
+		if _, ok := vm.adodbOLEGetFieldValue(rs, name); ok {
+			return vm.newADODBFieldProxy(rs, name), true
+		}
+	}
+	vm.raise(vbscript.ADODBItemNotFound, vbscript.ADODBItemNotFound.String())
+	return Value{Type: VTEmpty}, false
+}
+
+// adodbSetFieldValueBySelector assigns val to the Field selected by name or ordinal.
+func (vm *VM) adodbSetFieldValueBySelector(rs *adodbRecordset, selector Value, val Value) {
+	val = vm.unwrapADODBFieldValue(val)
+	fieldVal, ok := vm.adodbResolveFieldProxy(rs, selector)
+	if !ok || fieldVal.Type != VTNativeObject {
+		return
+	}
+	vm.dispatchADODBFieldPropertySet(fieldVal.Num, "Value", val)
 }
 
 type adodbFieldProxy struct {
 	rs              *adodbRecordset
 	name            string
 	cachedLowerName string
+	ordinal         int
 }
 
 // adodbFieldChunkKey builds one stable key for chunk cursor state per field and row.
@@ -2909,51 +2991,11 @@ func (vm *VM) dispatchADODBFieldMethod(objID int64, member string, args []Value)
 	var ret Value
 	var ok bool
 	vm.runOnSTA(func() {
-		field, exists := vm.adodbFieldItems[objID]
-		if !exists {
+		currentField, stillExists := vm.adodbFieldItems[objID]
+		if !stillExists || currentField == nil || currentField.rs == nil {
 			return
 		}
-		switch {
-		case strings.EqualFold(member, "AppendChunk"):
-			if len(args) >= 1 {
-				current, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-				combined := current.String() + args[0].String()
-				vm.dispatchADODBFieldPropertySet(objID, "Value", NewString(combined))
-				field.rs.editMode = adEditInProgress
-			}
-			ret = Value{Type: VTEmpty}
-			ok = true
-			return
-		case strings.EqualFold(member, "GetChunk"):
-			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-			all := value.String()
-			offset := min(vm.adodbFieldChunkOffsetGet(field), len(all))
-			want := len(all) - offset
-			if len(args) >= 1 {
-				requested := max(vm.asInt(args[0]), 0)
-				if requested < want {
-					want = requested
-				}
-			}
-			if want <= 0 {
-				ret = NewString("")
-				ok = true
-				return
-			}
-			end := min(offset+want, len(all))
-			vm.adodbFieldChunkOffsetSet(field, end)
-			ret = NewString(all[offset:end])
-			ok = true
-			return
-		}
-		if member == "" {
-			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-				row := field.rs.data[field.rs.currentRow]
-				ret = row[field.cachedLowerName]
-				ok = true
-				return
-			}
-		}
+		ret, ok = vm.dispatchADODBFieldMethodDirect(currentField, objID, member, args)
 	})
 	if ok {
 		return ret, true
@@ -2985,11 +3027,74 @@ func (vm *VM) dispatchADODBFieldMethodDirect(field *adodbFieldProxy, objID int64
 		vm.adodbFieldChunkOffsetSet(field, end)
 		return NewString(all[offset:end]), true
 	case member == "":
-		if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-			return field.rs.data[field.rs.currentRow][field.cachedLowerName], true
-		}
+		return vm.dispatchADODBFieldPropertyGet(objID, "Value")
 	}
 	return Value{Type: VTEmpty}, false
+}
+
+// adodbFieldReadValueDirect reads one field value from the materialized or disconnected recordset row.
+func (vm *VM) adodbFieldReadValueDirect(field *adodbFieldProxy) Value {
+	if field == nil || field.rs == nil {
+		return Value{Type: VTEmpty}
+	}
+	if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
+		row := field.rs.data[field.rs.currentRow]
+		if row != nil {
+			if val, exists := row[field.cachedLowerName]; exists {
+				return val
+			}
+			if field.ordinal >= 0 {
+				return vm.adodbRecordsetValueByOrdinal(field.rs, row, field.ordinal)
+			}
+		}
+	}
+	return Value{Type: VTEmpty}
+}
+
+// adodbFieldActualSize computes the ADO Field.ActualSize length for a field value.
+func adodbFieldActualSize(value Value) int64 {
+	switch value.Type {
+	case VTEmpty, VTNull:
+		return 0
+	case VTArray:
+		if value.Arr != nil {
+			return int64(len(value.Arr.Values))
+		}
+		return 0
+	default:
+		return int64(len(value.String()))
+	}
+}
+
+// adodbFieldMetadataInt looks up per-column integer metadata by cached key with lowercase name fallback.
+func adodbFieldMetadataInt(field *adodbFieldProxy, m map[string]int) (int, bool) {
+	if field == nil || m == nil {
+		return 0, false
+	}
+	if val, ok := m[field.cachedLowerName]; ok {
+		return val, true
+	}
+	lowerName := strings.ToLower(strings.TrimSpace(field.name))
+	if lowerName != "" && lowerName != field.cachedLowerName {
+		if val, ok := m[lowerName]; ok {
+			return val, true
+		}
+	}
+	return 0, false
+}
+
+// adodbFieldType resolves the ADO DataTypeEnum for a field proxy.
+func adodbFieldType(field *adodbFieldProxy) int {
+	if field == nil || field.rs == nil {
+		return 0
+	}
+	if typ, ok := adodbFieldMetadataInt(field, field.rs.columnTypeByName); ok && typ != 0 {
+		return typ
+	}
+	if field.ordinal >= 0 && field.ordinal < len(field.rs.columnTypes) {
+		return adodbTypeFromDatabaseType(field.rs.columnTypes[field.ordinal])
+	}
+	return 0
 }
 
 func (vm *VM) dispatchADODBFieldPropertyGet(objID int64, member string) (Value, bool) {
@@ -2998,89 +3103,16 @@ func (vm *VM) dispatchADODBFieldPropertyGet(objID int64, member string) (Value, 
 		return Value{Type: VTEmpty}, false
 	}
 	if field.rs.oleRecordset == nil {
-		return vm.dispatchADODBFieldPropertyGetDirect(field, objID, member)
+		return vm.adodbFieldPropertyGetImpl(field, member, false)
 	}
 	var ret Value
 	var ok bool
 	vm.runOnSTA(func() {
-		field, exists := vm.adodbFieldItems[objID]
-		if !exists {
+		currentField, stillExists := vm.adodbFieldItems[objID]
+		if !stillExists || currentField == nil || currentField.rs == nil {
 			return
 		}
-		switch {
-		case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
-			if vm.adodbRecordsetIsLiveOLE(field.rs) {
-				if val, valOk := vm.adodbOLEGetFieldValue(field.rs, field.name); valOk {
-					ret = val
-					ok = true
-					return
-				}
-				ret = Value{Type: VTEmpty}
-				ok = true
-				return
-			}
-			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-				row := field.rs.data[field.rs.currentRow]
-				ret = row[field.cachedLowerName]
-				ok = true
-				return
-			}
-			ret = Value{Type: VTEmpty}
-			ok = true
-			return
-		case strings.EqualFold(member, "Name"):
-			ret = NewString(field.name)
-			ok = true
-			return
-		case strings.EqualFold(member, "Type"):
-			ret = NewInteger(int64(field.rs.columnTypeByName[field.cachedLowerName]))
-			ok = true
-			return
-		case strings.EqualFold(member, "DefinedSize"):
-			ret = NewInteger(int64(field.rs.columnSizeByName[field.cachedLowerName]))
-			ok = true
-			return
-		case strings.EqualFold(member, "Attributes"):
-			ret = NewInteger(int64(field.rs.columnAttrByName[field.cachedLowerName]))
-			ok = true
-			return
-		case strings.EqualFold(member, "NumericScale"):
-			ret = NewInteger(int64(field.rs.columnScaleByName[field.cachedLowerName]))
-			ok = true
-			return
-		case strings.EqualFold(member, "ActualSize"):
-			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-			ret = NewInteger(int64(len(value.String())))
-			ok = true
-			return
-		case strings.EqualFold(member, "DataFormat"):
-			ret = Value{Type: VTEmpty}
-			ok = true
-			return
-		case strings.EqualFold(member, "OriginalValue"):
-			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-			ret = value
-			ok = true
-			return
-		case strings.EqualFold(member, "Precision"):
-			precision := field.rs.columnSizeByName[field.cachedLowerName]
-			if precision <= 0 {
-				value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-				precision = len(value.String())
-			}
-			ret = NewInteger(int64(precision))
-			ok = true
-			return
-		case strings.EqualFold(member, "Status"):
-			ret = NewInteger(int64(field.rs.status))
-			ok = true
-			return
-		case strings.EqualFold(member, "UnderlyingValue"):
-			value, _ := vm.dispatchADODBFieldPropertyGet(objID, "Value")
-			ret = value
-			ok = true
-			return
-		}
+		ret, ok = vm.adodbFieldPropertyGetImpl(currentField, member, true)
 	})
 	if ok {
 		return ret, true
@@ -3088,35 +3120,56 @@ func (vm *VM) dispatchADODBFieldPropertyGet(objID int64, member string) (Value, 
 	return Value{Type: VTEmpty}, false
 }
 
-func (vm *VM) dispatchADODBFieldPropertyGetDirect(field *adodbFieldProxy, objID int64, member string) (Value, bool) {
+func (vm *VM) dispatchADODBFieldPropertyGetDirect(field *adodbFieldProxy, _ int64, member string) (Value, bool) {
+	return vm.adodbFieldPropertyGetImpl(field, member, false)
+}
+
+// adodbFieldPropertyGetImpl resolves all ADODB.Field properties uniformly for both
+// materialized/disconnected recordsets and live STA-bound OLE cursors.
+func (vm *VM) adodbFieldPropertyGetImpl(field *adodbFieldProxy, member string, allowOLE bool) (Value, bool) {
+	if field == nil || field.rs == nil {
+		return Value{Type: VTEmpty}, false
+	}
+	readValue := func() Value {
+		if allowOLE && vm.adodbRecordsetIsLiveOLE(field.rs) {
+			var selector any = field.name
+			if field.ordinal >= 0 {
+				selector = field.ordinal
+			}
+			if val, valOk := vm.adodbOLEGetFieldValueBySelector(field.rs, selector); valOk {
+				return val
+			}
+			return Value{Type: VTEmpty}
+		}
+		return vm.adodbFieldReadValueDirect(field)
+	}
+
 	switch {
 	case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
-		if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-			return field.rs.data[field.rs.currentRow][field.cachedLowerName], true
-		}
-		return Value{Type: VTEmpty}, true
+		return readValue(), true
 	case strings.EqualFold(member, "Name"):
 		return NewString(field.name), true
 	case strings.EqualFold(member, "Type"):
-		return NewInteger(int64(field.rs.columnTypeByName[field.cachedLowerName])), true
+		return NewInteger(int64(adodbFieldType(field))), true
 	case strings.EqualFold(member, "DefinedSize"):
-		return NewInteger(int64(field.rs.columnSizeByName[field.cachedLowerName])), true
+		size, _ := adodbFieldMetadataInt(field, field.rs.columnSizeByName)
+		return NewInteger(int64(size)), true
 	case strings.EqualFold(member, "Attributes"):
-		return NewInteger(int64(field.rs.columnAttrByName[field.cachedLowerName])), true
+		attr, _ := adodbFieldMetadataInt(field, field.rs.columnAttrByName)
+		return NewInteger(int64(attr)), true
 	case strings.EqualFold(member, "NumericScale"):
-		return NewInteger(int64(field.rs.columnScaleByName[field.cachedLowerName])), true
+		scale, _ := adodbFieldMetadataInt(field, field.rs.columnScaleByName)
+		return NewInteger(int64(scale)), true
 	case strings.EqualFold(member, "ActualSize"):
-		value, _ := vm.dispatchADODBFieldPropertyGetDirect(field, objID, "Value")
-		return NewInteger(int64(len(value.String()))), true
+		return NewInteger(adodbFieldActualSize(readValue())), true
 	case strings.EqualFold(member, "DataFormat"):
 		return Value{Type: VTEmpty}, true
 	case strings.EqualFold(member, "OriginalValue"), strings.EqualFold(member, "UnderlyingValue"):
-		return vm.dispatchADODBFieldPropertyGetDirect(field, objID, "Value")
+		return readValue(), true
 	case strings.EqualFold(member, "Precision"):
-		precision := field.rs.columnSizeByName[field.cachedLowerName]
+		precision, _ := adodbFieldMetadataInt(field, field.rs.columnSizeByName)
 		if precision <= 0 {
-			value, _ := vm.dispatchADODBFieldPropertyGetDirect(field, objID, "Value")
-			precision = len(value.String())
+			precision = int(adodbFieldActualSize(readValue()))
 		}
 		return NewInteger(int64(precision)), true
 	case strings.EqualFold(member, "Status"):
@@ -3151,6 +3204,7 @@ func (vm *VM) adodbInitOLERecordsetMetadata(rs *adodbRecordset) {
 				countRes.Clear()
 			}
 			rs.columns = make([]string, count)
+			rs.fieldProxyIDs = nil
 			for i := 0; i < count; i++ {
 				itemRes, _ := oleutil.GetProperty(fields, "Item", i)
 				if itemRes == nil {
@@ -3170,6 +3224,7 @@ func (vm *VM) adodbInitOLERecordsetMetadata(rs *adodbRecordset) {
 					rs.columns[i] = name
 					nameRes.Clear()
 				}
+				vm.adodbLoadOLEFieldMetadata(rs, i, item)
 				item.Release()
 			}
 			fields.Release()
@@ -3270,8 +3325,13 @@ func (vm *VM) adodbOLEGetFieldValueBySelector(rs *adodbRecordset, selector any) 
 	return v, true
 }
 
-// adodbOLESetFieldValue writes one field value into the current row of a live OLE cursor.
+// adodbOLESetFieldValue writes one field value into the current row of a live OLE cursor by name.
 func (vm *VM) adodbOLESetFieldValue(rs *adodbRecordset, fieldName string, val Value) bool {
+	return vm.adodbOLESetFieldValueBySelector(rs, fieldName, val)
+}
+
+// adodbOLESetFieldValueBySelector writes one field value into the current row of a live OLE cursor by name or ordinal.
+func (vm *VM) adodbOLESetFieldValueBySelector(rs *adodbRecordset, selector any, val Value) bool {
 	if rs == nil || rs.oleRecordset == nil {
 		return false
 	}
@@ -3289,7 +3349,7 @@ func (vm *VM) adodbOLESetFieldValue(rs *adodbRecordset, fieldName string, val Va
 	}
 	defer fields.Release()
 
-	itemRes, _ := oleutil.GetProperty(fields, "Item", fieldName)
+	itemRes, _ := oleutil.GetProperty(fields, "Item", selector)
 	if itemRes == nil {
 		return false
 	}
@@ -3319,69 +3379,74 @@ func (vm *VM) adodbOLESetFieldValue(rs *adodbRecordset, fieldName string, val Va
 	return true
 }
 
+// adodbFieldPropertySetImpl writes Field properties for materialized/disconnected and STA-bound OLE recordsets.
+func (vm *VM) adodbFieldPropertySetImpl(field *adodbFieldProxy, member string, val Value, allowOLE bool) bool {
+	if field == nil || field.rs == nil {
+		return false
+	}
+	val = vm.unwrapADODBFieldValue(val)
+	lowerName := field.cachedLowerName
+	switch {
+	case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
+		if allowOLE && vm.adodbRecordsetIsLiveOLE(field.rs) {
+			var selector any = field.name
+			if field.ordinal >= 0 {
+				selector = field.ordinal
+			}
+			if vm.adodbOLESetFieldValueBySelector(field.rs, selector, val) {
+				if field.rs.editMode != adEditAdd {
+					field.rs.editMode = adEditInProgress
+				}
+				markKey := field.name
+				if strings.TrimSpace(markKey) == "" {
+					markKey = lowerName
+				}
+				vm.adodbRecordsetMarkPendingUpdateField(field.rs, markKey)
+				vm.adodbFieldChunkOffsetSet(field, 0)
+				return true
+			}
+			return false
+		}
+		if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
+			row := field.rs.data[field.rs.currentRow]
+			if row == nil {
+				row = make(map[string]Value)
+				field.rs.data[field.rs.currentRow] = row
+			}
+			row[lowerName] = val
+			vm.adodbRecordsetMarkPendingUpdateField(field.rs, lowerName)
+			if field.rs.editMode != adEditAdd {
+				field.rs.editMode = adEditInProgress
+			}
+			vm.adodbFieldChunkOffsetSet(field, 0)
+		}
+		return true
+	case strings.EqualFold(member, "NumericScale"):
+		if field.rs.columnScaleByName == nil {
+			field.rs.columnScaleByName = make(map[string]int)
+		}
+		field.rs.columnScaleByName[lowerName] = vm.asInt(val)
+		return true
+	}
+	return false
+}
+
 func (vm *VM) dispatchADODBFieldPropertySet(objID int64, member string, val Value) bool {
 	field, exists := vm.adodbFieldItems[objID]
 	if !exists || field == nil || field.rs == nil {
 		return false
 	}
+	val = vm.unwrapADODBFieldValue(val)
 	if field.rs.oleRecordset == nil {
-		lowerName := field.cachedLowerName
-		if strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "" {
-			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-				row := field.rs.data[field.rs.currentRow]
-				if row == nil {
-					row = make(map[string]Value)
-					field.rs.data[field.rs.currentRow] = row
-				}
-				row[lowerName] = val
-				vm.adodbRecordsetMarkPendingUpdateField(field.rs, lowerName)
-				if field.rs.editMode != adEditAdd {
-					field.rs.editMode = adEditInProgress
-				}
-				vm.adodbFieldChunkOffsetSet(field, 0)
-			}
-			return true
-		}
+		return vm.adodbFieldPropertySetImpl(field, member, val, false)
 	}
 	var ok bool
 	vm.runOnSTA(func() {
-		field, exists := vm.adodbFieldItems[objID]
-		if !exists {
+		currentField, stillExists := vm.adodbFieldItems[objID]
+		if !stillExists || currentField == nil || currentField.rs == nil {
 			return
 		}
-		lowerName := field.cachedLowerName
-		switch {
-		case strings.EqualFold(member, "Value") || strings.EqualFold(member, "__default__") || member == "":
-			if vm.adodbRecordsetIsLiveOLE(field.rs) {
-				if vm.adodbOLESetFieldValue(field.rs, field.name, val) {
-					if field.rs.editMode != adEditAdd {
-						field.rs.editMode = adEditInProgress
-					}
-					vm.adodbRecordsetMarkPendingUpdateField(field.rs, field.name)
-					vm.adodbFieldChunkOffsetSet(field, 0)
-					ok = true
-					return
-				}
-				return
-			}
-			if field.rs.state == adStateOpen && field.rs.currentRow >= 0 && field.rs.currentRow < len(field.rs.data) {
-				row := field.rs.data[field.rs.currentRow]
-				if row != nil {
-					row[lowerName] = val
-					if field.rs.editMode != adEditAdd {
-						field.rs.editMode = adEditInProgress
-					}
-					vm.adodbRecordsetMarkPendingUpdateField(field.rs, lowerName)
-					vm.adodbFieldChunkOffsetSet(field, 0)
-				}
-			}
-			ok = true
-			return
-		case strings.EqualFold(member, "NumericScale"):
-			field.rs.columnScaleByName[lowerName] = vm.asInt(val)
-			ok = true
-			return
-		}
+		ok = vm.adodbFieldPropertySetImpl(currentField, member, val, true)
 	})
 	return ok
 }
@@ -6013,6 +6078,47 @@ func (vm *VM) adodbOpenAccessDatabase(conn *adodbConnection, connStr string) {
 
 // adodbPopulateRecordsetFromOLE reads column names and all rows from an OLE ADO Recordset
 // into the VM's native cache so the recordset can be served without further OLE calls.
+// adodbLoadOLEFieldMetadata reads Type, DefinedSize, Attributes, and NumericScale
+// from one COM Field item and stores them under both lowercase column name and
+// ordinal fallback keys when needed.
+func (vm *VM) adodbLoadOLEFieldMetadata(rs *adodbRecordset, index int, item *ole.IDispatch) {
+	if rs == nil || item == nil || index < 0 || index >= len(rs.columns) {
+		return
+	}
+	if rs.columnTypeByName == nil {
+		rs.columnTypeByName = make(map[string]int)
+	}
+	if rs.columnSizeByName == nil {
+		rs.columnSizeByName = make(map[string]int)
+	}
+	if rs.columnAttrByName == nil {
+		rs.columnAttrByName = make(map[string]int)
+	}
+	if rs.columnScaleByName == nil {
+		rs.columnScaleByName = make(map[string]int)
+	}
+	lowerCol := strings.ToLower(strings.TrimSpace(rs.columns[index]))
+	dupKey := adodbDuplicateColumnKey(index)
+
+	readIntProp := func(prop string, target map[string]int) {
+		res, _ := oleutil.GetProperty(item, prop)
+		if res == nil {
+			return
+		}
+		val := vm.asInt(vm.adodbValueToVMValue(res.Value()))
+		res.Clear()
+		if lowerCol != "" {
+			target[lowerCol] = val
+		}
+		target[dupKey] = val
+	}
+
+	readIntProp("Type", rs.columnTypeByName)
+	readIntProp("DefinedSize", rs.columnSizeByName)
+	readIntProp("Attributes", rs.columnAttrByName)
+	readIntProp("NumericScale", rs.columnScaleByName)
+}
+
 func (vm *VM) adodbPopulateRecordsetFromOLE(rs *adodbRecordset) {
 	if rs.oleRecordset == nil {
 		return
@@ -6047,6 +6153,7 @@ func (vm *VM) adodbPopulateRecordsetFromOLE(rs *adodbRecordset) {
 
 	// Populate column name slice.
 	rs.columns = make([]string, count)
+	rs.fieldProxyIDs = nil
 	for i := 0; i < count; i++ {
 		itemRes, _ := oleutil.GetProperty(fields, "Item", i)
 		if itemRes == nil {
@@ -6074,12 +6181,7 @@ func (vm *VM) adodbPopulateRecordsetFromOLE(rs *adodbRecordset) {
 			rs.columns[i] = name
 			nameRes.Clear()
 		}
-		typeRes, _ := oleutil.GetProperty(item, "Type")
-		if typeRes != nil {
-			typeValue := vm.adodbValueToVMValue(typeRes.Value())
-			rs.columnTypeByName[strings.ToLower(rs.columns[i])] = vm.asInt(typeValue)
-			typeRes.Clear()
-		}
+		vm.adodbLoadOLEFieldMetadata(rs, i, item)
 		item.Release()
 	}
 	vm.adodbRecordsetRebuildColumnIndex(rs)

@@ -591,6 +591,29 @@ func (c *Compiler) emitAutoCallForBareGlobalBeforeMemberAccess() {
 	c.emit(OpCoerceToValue)
 }
 
+// parseObjectReferenceExpression compiles an expression in an object-reference context
+// such as With or Is/Is Not, stripping trailing default-property coercion while invoking
+// bare zero-argument global Function identifiers.
+func (c *Compiler) parseObjectReferenceExpression(prec Precedence) {
+	subjectStart := len(c.bytecode)
+	subjectBareName := ""
+	switch t := c.next.(type) {
+	case *vbscript.IdentifierToken:
+		subjectBareName = strings.TrimSpace(t.Name)
+	case *vbscript.ExtendedIdentifierToken:
+		subjectBareName = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(t.Name, "["), "]"))
+	case *vbscript.KeywordOrIdentifierToken:
+		subjectBareName = strings.TrimSpace(t.Name)
+	}
+	c.parseExpression(prec)
+	c.undoTrailingCoerce()
+	if subjectBareName != "" && len(c.bytecode) == subjectStart+3 && c.globalZeroArgFuncs[strings.ToLower(subjectBareName)] {
+		if OpCode(c.bytecode[subjectStart]) == OpGetGlobal || OpCode(c.bytecode[subjectStart]) == OpConstant {
+			c.emit(OpCall, 0)
+		}
+	}
+}
+
 // parseExpression implements the Pratt Parser loop.
 func (c *Compiler) parseExpression(precedence Precedence) {
 	token := c.move()
@@ -1116,7 +1139,8 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 					c.move()
 					isNot = true
 				}
-				c.parseExpression(PrecEquality)
+				c.clearLastCallTarget()
+				c.parseObjectReferenceExpression(PrecEquality)
 				if isNot {
 					c.emit(OpIsNotRef)
 				} else {
@@ -1126,7 +1150,8 @@ func (c *Compiler) getInfixRule(token vbscript.Token) func(*Compiler, vbscript.T
 		case vbscript.KeywordIsNot:
 			return func(c *Compiler, tk vbscript.Token) {
 				c.undoTrailingCoerce()
-				c.parseExpression(PrecEquality)
+				c.clearLastCallTarget()
+				c.parseObjectReferenceExpression(PrecEquality)
 				c.emit(OpIsNotRef)
 			}
 		case vbscript.KeywordAnd:

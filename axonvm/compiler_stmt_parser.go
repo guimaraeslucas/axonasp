@@ -1250,8 +1250,8 @@ func (c *Compiler) parseOptionStatementAfterOptionKeyword() {
 // and OpWithLeave restores the stack on exit.
 func (c *Compiler) parseWithStatement() {
 	c.expectKeyword(vbscript.KeywordWith)
-	// Evaluate the With-subject expression and push it onto the data stack.
-	c.parseExpression(PrecNone)
+	// Evaluate the With-subject expression and push a raw object reference onto the data stack.
+	c.parseObjectReferenceExpression(PrecNone)
 	// Move TOS object to the with-object stack; data stack is unchanged depth-wise.
 	c.emit(OpWithEnter)
 	c.withDepth++

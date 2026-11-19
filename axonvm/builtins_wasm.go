@@ -78,6 +78,16 @@ var globalAxonFunctionsInitialized bool
 // strings before For Each enumeration can inspect them.
 var builtinEnumValuesIdx int64 = -1
 
+// Cached builtin registry indices for object-preserving builtins that must
+// inspect native ADODB.Field proxies directly without unwrapping __default__.
+var (
+	builtinEnumCountIdx int64 = -1
+	builtinEnumItemIdx  int64 = -1
+	builtinIsObjectIdx  int64 = -1
+	builtinTypeNameIdx  int64 = -1
+	builtinArrayIdx     int64 = -1
+)
+
 // lastRandomValue stores the last value returned by Rnd() for Rnd(0) calls.
 var lastRandomValue float64 = 0
 
@@ -1609,16 +1619,21 @@ func init() {
 	RegisterBuiltin("__AXON_ENUM_VALUES", vbsAxonEnumValues)
 	builtinEnumValuesIdx = int64(BuiltinIndex["__axon_enum_values"])
 	RegisterBuiltin("__AXON_ENUM_COUNT", bindBuiltin(vbsAxonEnumCount))
+	builtinEnumCountIdx = int64(BuiltinIndex["__axon_enum_count"])
 	RegisterBuiltin("__AXON_ENUM_ITEM", bindBuiltin(vbsAxonEnumItem))
+	builtinEnumItemIdx = int64(BuiltinIndex["__axon_enum_item"])
 
 	// Type Checking
 	RegisterBuiltin("IsEmpty", bindBuiltin(vbsIsEmpty))
 	RegisterBuiltin("IsNull", bindBuiltin(vbsIsNull))
 	RegisterBuiltin("IsArray", bindBuiltin(vbsIsArray))
 	RegisterBuiltin("IsObject", bindBuiltin(vbsIsObject))
+	builtinIsObjectIdx = int64(BuiltinIndex["isobject"])
 	RegisterBuiltin("Erl", vbsErlVM)
 	RegisterBuiltin("TypeName", vbsTypeNameVM)
+	builtinTypeNameIdx = int64(BuiltinIndex["typename"])
 	RegisterBuiltin("Array", vbsArrayVM)
+	builtinArrayIdx = int64(BuiltinIndex["array"])
 	RegisterBuiltin("LBound", vbsLBoundVM)
 	RegisterBuiltin("UBound", vbsUBoundVM)
 

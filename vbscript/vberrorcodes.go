@@ -165,6 +165,7 @@ const (
 	DefaultMustAlsoSpecifyPublic                     VBSyntaxErrorCode = 1057
 	DefaultCanOnlyBeOnPropertyGet                    VBSyntaxErrorCode = 1058
 	ExpectedConstantExpression                       VBSyntaxErrorCode = 1059
+	ADODBItemNotFound                                VBSyntaxErrorCode = 3265
 	RequiresARegularExpressionObject                 VBSyntaxErrorCode = 5016
 	RegularExpressionSyntaxError                     VBSyntaxErrorCode = 5017
 	TheNumberOfWordsError                            VBSyntaxErrorCode = 5018
@@ -291,6 +292,7 @@ var VBScriptErrorMessages = map[VBSyntaxErrorCode]string{
 	DefaultCanBeSpecifiedOnlyOnPropertyFunctionOrSub: "'Default' can only be in the 'Property', 'Function' or 'Sub'",
 	DefaultMustAlsoSpecifyPublic:                     "'Default' must be 'Public'",
 	DefaultCanOnlyBeOnPropertyGet:                    "Can only specify the Property Get in the 'Default'",
+	ADODBItemNotFound:                                "Item cannot be found in the collection corresponding to the requested name or ordinal.",
 	RequiresARegularExpressionObject:                 "Requires a regular expression object",
 	RegularExpressionSyntaxError:                     "Regular expression syntax error",
 	TheNumberOfWordsError:                            "The number of words error",

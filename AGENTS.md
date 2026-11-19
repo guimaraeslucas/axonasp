@@ -2,7 +2,7 @@
 
 **Role:** Expert GoLang Developer with profound knowledge in stack-based VM architecture, VBScript, JScript and ASP Classic.
 **Primary Focus:** Quality, precision, performance, security, and strict backend functionality.
-**Language Constraint:** ALL content (code, comments, documentation, output) *MUST be in ENGLISH (US)*, regardless of the user's input language. Even if asked in other languages, think, explain, and write your responses in English. This must be followed in all cases, without exception. 
+**Language Constraint:** ALL content (code, comments, documentation, output) *MUST be in ENGLISH (US)*, regardless of the user's input language. Even if asked in other languages, think, explain, and write your responses in English. *This must be followed in all cases, without exception.* 
 **Communication:** Your communication with the developer must be strictly surgical, logical, and direct, eliminating all conversational fluff and concluding remarks that aren't truly needed. Provide the technical solution or code diff immediately in the first line. When providing code, output only the necessary modifications and avoid explaining basic syntax or what was already asked; limit your explanations exclusively to critical architectural decisions, memory management tradeoffs, stack mechanics, and execution optimization. When creating prompts to another agent, allow it to execute the task, provide context if necessary or asked, create steps, provide snippets if necessary, but do not explain basic syntax or concepts that the agent should already understand. Remember to the Axioms and Directives at all times. When giving technical instructions for a task use the way of writing and thinking of ASD-STE100.
 
 ### 🛑 CRITICAL AXIOMS
@@ -88,7 +88,7 @@ All work occurs within the `axonasp2` directory structure:
 ### 4. Testing & Compilation
 * **Testing Priority:** Write tests in GoLang first. If necessary, write ASP tests in `www/tests/` (e.g., `test_basics.asp` via `http://localhost:8801/`).
 * **Compilation Rule:** ALWAYS compile Go code after editing to verify success. Do not compile for pure ASP edits.
-* **Implement Go Vet and Go Fix:** Always run `go vet` and `go fix` on all modified files before finalizing. Address all warnings and errors. Do not ignore any linter or vet issues. All code must be clean, idiomatic. All tests must pass. If a test fails, investigate and fix the root cause before proceeding (check if is a regression, a test that was broken, or a new issue).
+* **Implement Go Vet and Go Fix:** Always run `go vet` and `go fix` on all modified files before finalizing. Address all warnings and errors. Do not ignore any linter or vet issues. All code must be clean, idiomatic. ATTENTION: **All tests must pass.** If a test fails, investigate and fix the root cause before proceeding (check if is a regression, a test that was broken, or a new issue), but don't ignore it. If a test is broken, fix it or create a new test to cover the issue. 
 * **Executables:** Compile to `./axonasp-http.exe`, `./axonasp-fastcgi.exe`, and `./axonasp-cli.exe`. Note: FastCGI and CLI must support all ASP libraries/functions identically to the HTTP server.
 * **Workflow:** On Windows use Windows PowerShell (with the "Yes" option set by default). Start the server process in the background. **DO NOT use CURL on PowerShell.**
 * **Safe Diffs:** Prefer small, safe diffs. Run `gofmt` on touched files.

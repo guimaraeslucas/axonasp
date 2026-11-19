@@ -3220,14 +3220,14 @@ func (vm *VM) jsAddValues(a Value, b Value) Value {
 	}
 
 	// Convert objects/arrays to primitives (ES5 §11.6.1).
-	// Non-VBArray objects use ToPrimitive with "number" hint.
+	// Non-VBArray objects and ADODB.Field proxies use ToPrimitive with "number" hint.
 	aPrim := a
 	bPrim := b
-	if (a.Type == VTJSObject || a.Type == VTJSFunction || a.Type == VTJSProxy || a.Type == VTArray) &&
+	if (a.Type == VTJSObject || a.Type == VTJSFunction || a.Type == VTJSProxy || a.Type == VTArray || a.Type == VTNativeObject) &&
 		vm.jsObjectStringProperty(a, "__js_type") != "VBArray" {
 		aPrim = vm.jsToPrimitive(a, "number")
 	}
-	if (b.Type == VTJSObject || b.Type == VTJSFunction || b.Type == VTJSProxy || b.Type == VTArray) &&
+	if (b.Type == VTJSObject || b.Type == VTJSFunction || b.Type == VTJSProxy || b.Type == VTArray || b.Type == VTNativeObject) &&
 		vm.jsObjectStringProperty(b, "__js_type") != "VBArray" {
 		bPrim = vm.jsToPrimitive(b, "number")
 	}
@@ -10787,6 +10787,9 @@ func (vm *VM) jsThrowReferenceError(msg string) {
 // jsToNumber converts a Value to a numeric value (VTDouble) following JScript semantics.
 // jsToPrimitive implements the ECMAScript ToPrimitive abstract operation.
 func (vm *VM) jsToPrimitive(v Value, hint string) Value {
+	if v.Type == VTNativeObject {
+		return vm.unwrapADODBFieldValue(v)
+	}
 	if v.Type != VTJSObject && v.Type != VTJSFunction && v.Type != VTJSProxy && v.Type != VTArray {
 		return v
 	}
@@ -11396,6 +11399,17 @@ func (vm *VM) jsLooseEqual(a Value, b Value) Value {
 	}
 	isPrimitive := func(v Value) bool {
 		return v.Type == VTString || v.Type == VTInteger || v.Type == VTDouble || v.Type == VTSymbol
+	}
+
+	if a.Type == VTNativeObject && isPrimitive(b) {
+		if unwrapped := vm.unwrapADODBFieldValue(a); unwrapped.Type != VTNativeObject {
+			return vm.jsLooseEqual(unwrapped, b)
+		}
+	}
+	if isPrimitive(a) && b.Type == VTNativeObject {
+		if unwrapped := vm.unwrapADODBFieldValue(b); unwrapped.Type != VTNativeObject {
+			return vm.jsLooseEqual(a, unwrapped)
+		}
 	}
 
 	if isObject(a) && isPrimitive(b) {
