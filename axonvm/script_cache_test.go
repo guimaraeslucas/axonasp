@@ -664,3 +664,54 @@ func TestScriptCacheWatchEventInvalidatesAliasedPath(t *testing.T) {
 		t.Fatalf("expected watch event for %q to invalidate the entry cached under the alias", aspFile)
 	}
 }
+
+// TestScriptCacheWatchesSymlinkedRoot verifies a site root that is itself a symlink
+// (e.g. /var/www/current -> releases/N) is watched, under the root's own spelling,
+// along with its subdirectories, and that an edit below it invalidates the cache.
+// filepath.WalkDir does not descend into a linked root, so it used to register nothing.
+func TestScriptCacheWatchesSymlinkedRoot(t *testing.T) {
+	base := t.TempDir()
+	physical := filepath.Join(base, "releases", "1")
+	if err := os.MkdirAll(filepath.Join(physical, "inc"), 0o755); err != nil {
+		t.Fatalf("mkdir physical tree: %v", err)
+	}
+	siteRoot := filepath.Join(base, "current")
+	if err := os.Symlink(physical, siteRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	aspFile := filepath.Join(siteRoot, "inc", "page.asp")
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 1 %>"), 0o644); err != nil {
+		t.Fatalf("write asp file: %v", err)
+	}
+
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	if err := cache.StartInvalidator([]string{siteRoot}); err != nil {
+		t.Fatalf("start invalidator: %v", err)
+	}
+	defer cache.StopInvalidator()
+
+	cache.mu.RLock()
+	for _, dir := range []string{siteRoot, filepath.Join(siteRoot, "inc")} {
+		if _, ok := cache.watchedPaths[normalizeScriptCacheKey(dir)]; !ok {
+			t.Errorf("expected %q to be watched; watched: %v", dir, cache.watchedPaths)
+		}
+	}
+	cache.mu.RUnlock()
+	if t.Failed() {
+		return
+	}
+
+	cache.Put(aspFile, CachedProgram{Bytecode: []byte{1}}, nil)
+	time.Sleep(cache.watchDebounceWindow + 50*time.Millisecond)
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 2 %>"), 0o644); err != nil {
+		t.Fatalf("update asp file: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, found := cache.Get(aspFile); !found {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("expected an edit under symlinked root %q to invalidate the cache", siteRoot)
+}
