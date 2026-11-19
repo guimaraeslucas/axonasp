@@ -2257,6 +2257,9 @@ aspExecLoop:
 			idx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			newVal := vm.pop()
+			if vm.skipToNextStmt {
+				continue
+			}
 			// Type enforcement for VB6 As Type declarations.
 			if int(idx) < len(vm.globalTypes) && vm.globalTypes[idx] != VTEmpty {
 				coerced, err := vm.coerceToDeclaredType(newVal, vm.globalTypes[idx])
@@ -2287,6 +2290,9 @@ aspExecLoop:
 			vm.ip += 2
 			slot := vm.fp + int(offset)
 			newVal := vm.pop()
+			if vm.skipToNextStmt {
+				continue
+			}
 			// Type enforcement for VB6 As Type declarations.
 			if declaredType := vm.localTypes[slot]; declaredType != VTEmpty {
 				coerced, err := vm.coerceToDeclaredType(newVal, declaredType)
@@ -2333,6 +2339,9 @@ aspExecLoop:
 			memberIdx := binary.BigEndian.Uint16(vm.bytecode[vm.ip:])
 			vm.ip += 2
 			val := vm.pop()
+			if vm.skipToNextStmt {
+				continue
+			}
 			memberName := vm.constants[memberIdx].Str
 			if vm.activeClassObjectID != 0 {
 				me := Value{Type: VTObject, Num: vm.activeClassObjectID}
@@ -2594,6 +2603,7 @@ aspExecLoop:
 		// The loop variable and limit are both local frame slots; step direction is encoded in
 		// a single sign byte.  The fast integer branch executes with zero heap allocations.
 		case OpForNextFastInt:
+			vm.skipToNextStmt = false
 			varIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
 			endIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
@@ -2688,6 +2698,7 @@ aspExecLoop:
 			}
 
 		case OpForNextFastGlobalInt:
+			vm.skipToNextStmt = false
 			varIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
 			endIdx := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
@@ -2824,7 +2835,7 @@ aspExecLoop:
 
 		case OpMathSin:
 			// Math intrinsics read by value; dereference any ByRef (VTArgRef) slot reference.
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2832,7 +2843,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Sin(input))
 
 		case OpMathCos:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2840,7 +2851,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Cos(input))
 
 		case OpMathTan:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2848,7 +2859,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Tan(input))
 
 		case OpMathAtn:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2856,7 +2867,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Atan(input))
 
 		case OpMathSqr:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2864,7 +2875,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Sqrt(input))
 
 		case OpMathAbs:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			if arg.Type == VTDouble {
 				vm.stack[vm.sp] = NewDouble(math.Abs(arg.Flt))
 			} else {
@@ -2876,7 +2887,7 @@ aspExecLoop:
 			}
 
 		case OpMathExp:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2884,7 +2895,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Exp(input))
 
 		case OpMathLog:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2892,7 +2903,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.Log(input))
 
 		case OpMathRound:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2900,7 +2911,7 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewDouble(math.RoundToEven(input))
 
 		case OpMathInt:
-			arg := vm.unwrapArgRefValue(vm.stack[vm.sp])
+			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			input := float64(arg.Num)
 			if arg.Type == VTDouble {
 				input = arg.Flt
@@ -2908,8 +2919,8 @@ aspExecLoop:
 			vm.stack[vm.sp] = NewInteger(int64(math.Floor(input)))
 
 		case OpNeq:
-			a := vm.stack[vm.sp-1]
-			b := vm.stack[vm.sp]
+			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
+			b := vm.unwrapADODBFieldValue(vm.stack[vm.sp])
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else if vm.optionCompare == 1 {
@@ -2960,8 +2971,8 @@ aspExecLoop:
 			vm.sp--
 
 		case OpGt:
-			a := vm.stack[vm.sp-1]
-			b := vm.stack[vm.sp]
+			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
+			b := vm.unwrapADODBFieldValue(vm.stack[vm.sp])
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else {
@@ -2970,8 +2981,8 @@ aspExecLoop:
 			vm.sp--
 
 		case OpLte:
-			a := vm.stack[vm.sp-1]
-			b := vm.stack[vm.sp]
+			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
+			b := vm.unwrapADODBFieldValue(vm.stack[vm.sp])
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else {
@@ -2980,8 +2991,8 @@ aspExecLoop:
 			vm.sp--
 
 		case OpGte:
-			a := vm.stack[vm.sp-1]
-			b := vm.stack[vm.sp]
+			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
+			b := vm.unwrapADODBFieldValue(vm.stack[vm.sp])
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else {
@@ -3002,7 +3013,7 @@ aspExecLoop:
 			vm.sp--
 
 		case OpNot:
-			v := vm.pop()
+			v := vm.unwrapADODBFieldValue(vm.pop())
 			if isNull(v) {
 				vm.push(NewNull())
 			} else if v.Type == VTBool {
@@ -3037,7 +3048,7 @@ aspExecLoop:
 		case OpJumpIfNotEq:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
-			b, a := vm.pop(), vm.pop()
+			b, a := vm.unwrapADODBFieldValue(vm.pop()), vm.unwrapADODBFieldValue(vm.pop())
 			var eq bool
 			if isNull(a) || isNull(b) {
 				eq = false
@@ -3053,7 +3064,7 @@ aspExecLoop:
 		case OpJumpIfEq:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
-			b, a := vm.pop(), vm.pop()
+			b, a := vm.unwrapADODBFieldValue(vm.pop()), vm.unwrapADODBFieldValue(vm.pop())
 			var neq bool
 			if isNull(a) || isNull(b) {
 				neq = false
@@ -3069,7 +3080,7 @@ aspExecLoop:
 		case OpJumpIfNotLt:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
-			b, a := vm.pop(), vm.pop()
+			b, a := vm.unwrapADODBFieldValue(vm.pop()), vm.unwrapADODBFieldValue(vm.pop())
 			if isNull(a) || isNull(b) || vm.compareValues(a, b) >= 0 {
 				vm.ip = target
 			}
@@ -3077,7 +3088,7 @@ aspExecLoop:
 		case OpJumpIfLte:
 			target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 			vm.ip += 4
-			b, a := vm.pop(), vm.pop()
+			b, a := vm.unwrapADODBFieldValue(vm.pop()), vm.unwrapADODBFieldValue(vm.pop())
 			// Fuses OpGt + OpJumpIfFalse -> Jump if !(a > b) -> Jump if a <= b
 			if isNull(a) || isNull(b) || vm.compareValues(a, b) <= 0 {
 				vm.ip = target
@@ -3251,6 +3262,9 @@ aspExecLoop:
 
 		case OpWrite:
 			val := vm.pop()
+			if vm.skipToNextStmt {
+				continue
+			}
 			if vm.output != nil {
 				io.WriteString(vm.output, vm.valueToString(val))
 			}
@@ -3263,6 +3277,12 @@ aspExecLoop:
 			// so the Response mutex is acquired only once.
 			n := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
+			if vm.skipToNextStmt {
+				for range n {
+					vm.pop()
+				}
+				continue
+			}
 			if n > 0 && vm.output != nil {
 				// Ensure indexBuffer has capacity for N entries.
 				if cap(vm.indexBuffer) < n {
@@ -3299,6 +3319,15 @@ aspExecLoop:
 			// patched in place.
 			cacheSite := vm.ip
 			vm.ip += 4
+
+			if vm.skipToNextStmt {
+				for range argCount {
+					vm.pop()
+				}
+				vm.pop()
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
 
 			memberArgs := vm.ensureArgBuffer(argCount)
 			hasArgRefMember := false
@@ -3473,10 +3502,19 @@ aspExecLoop:
 			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
 
+			if vm.skipToNextStmt {
+				for range argCount {
+					vm.pop()
+				}
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
+
 			args := vm.ensureArgBuffer(argCount)
 			for i := argCount - 1; i >= 0; i-- {
 				args[i] = resolveCallable(vm, vm.pop())
 			}
+			vm.coerceBuiltinADODBFieldArgs(int64(registryIdx), args)
 
 			fn := BuiltinRegistry[registryIdx]
 			result, err := fn(vm, args)
@@ -3492,6 +3530,10 @@ aspExecLoop:
 		case OpMemberGet:
 			member := vm.pop()
 			target := vm.pop()
+			if vm.skipToNextStmt {
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
 			if target.Type == VTObject {
 				if target.Num == 0 {
 					vm.raise(vbscript.CouldNotFindTargetObject, "Object required")
@@ -4058,6 +4100,9 @@ aspExecLoop:
 			vm.ip += 2
 			value := vm.pop()
 			target := vm.pop()
+			if vm.skipToNextStmt {
+				continue
+			}
 			if target.Type == VTObject {
 				requirePublic := target.Num != vm.activeClassObjectID
 				preferSet := op == OpMemberSetSet || value.Type == VTObject || value.Type == VTNativeObject
@@ -4130,6 +4175,7 @@ aspExecLoop:
 			vm.push(vm.withStack[len(vm.withStack)-1])
 
 		case OpJump:
+			vm.skipToNextStmt = false
 			vm.ip = int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
 
 		case OpJumpIfFalse:
@@ -4140,8 +4186,8 @@ aspExecLoop:
 			}
 
 		case OpEq:
-			a := vm.stack[vm.sp-1]
-			b := vm.stack[vm.sp]
+			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
+			b := vm.unwrapADODBFieldValue(vm.stack[vm.sp])
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else if vm.optionCompare == 1 { // Text
@@ -4152,8 +4198,8 @@ aspExecLoop:
 			vm.sp--
 
 		case OpLt:
-			a := vm.stack[vm.sp-1]
-			b := vm.stack[vm.sp]
+			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
+			b := vm.unwrapADODBFieldValue(vm.stack[vm.sp])
 			if isNull(a) || isNull(b) {
 				vm.stack[vm.sp-1] = NewNull()
 			} else {
@@ -4162,7 +4208,7 @@ aspExecLoop:
 			vm.sp--
 
 		case OpNeg:
-			val := vm.pop()
+			val := vm.unwrapADODBFieldValue(vm.pop())
 			if isNull(val) {
 				vm.push(NewNull())
 			} else if val.Type == VTDouble {
@@ -4239,6 +4285,13 @@ aspExecLoop:
 			vm.ip += 2
 
 			value := vm.pop()
+			if vm.skipToNextStmt {
+				for range argCount {
+					vm.pop()
+				}
+				vm.pop()
+				continue
+			}
 			indexes := vm.ensureIndexBuffer(argCount)
 			hasArgRefIndex := false
 			for i := argCount - 1; i >= 0; i-- {
@@ -4308,6 +4361,15 @@ aspExecLoop:
 			argCount := int(binary.BigEndian.Uint16(vm.bytecode[vm.ip:]))
 			vm.ip += 2
 
+			if vm.skipToNextStmt {
+				for range argCount {
+					vm.pop()
+				}
+				vm.pop()
+				vm.push(Value{Type: VTEmpty})
+				continue
+			}
+
 			// __AXON_ENUM_VALUES must receive native objects (e.g.
 			// RequestCollectionValue) uncoerced so For Each can enumerate
 			// sub-keys. The compiler removes OpCoerceToValue before the
@@ -4346,6 +4408,7 @@ aspExecLoop:
 			}
 
 			if target.Type == VTBuiltin {
+				vm.coerceBuiltinADODBFieldArgs(target.Num, args)
 				fn := BuiltinRegistry[target.Num]
 				result, err := fn(vm, args)
 				if err != nil {
@@ -10815,6 +10878,34 @@ func (vm *VM) asBool(v Value) bool {
 	}
 }
 
+// unwrapADODBFieldValue resolves an ADODB.Field proxy to its underlying Value
+// property in generic VBScript/JScript value contexts, leaving all other values intact.
+func (vm *VM) unwrapADODBFieldValue(v Value) Value {
+	if v.Type != VTNativeObject || vm == nil {
+		return v
+	}
+	if adodbDefault, handled := vm.dispatchADODBFieldPropertyGet(v.Num, "__default__"); handled {
+		return adodbDefault
+	}
+	return v
+}
+
+// coerceBuiltinADODBFieldArgs unwraps ADODB.Field proxy arguments to their underlying
+// Value before executing value-expecting VBScript built-in functions, while keeping
+// object-inspection and enumeration intrinsics working on the Field object itself.
+func (vm *VM) coerceBuiltinADODBFieldArgs(builtinIdx int64, args []Value) {
+	switch builtinIdx {
+	case builtinEnumValuesIdx, builtinEnumCountIdx, builtinEnumItemIdx,
+		builtinIsObjectIdx, builtinTypeNameIdx, builtinArrayIdx:
+		return
+	}
+	for i := range args {
+		if args[i].Type == VTNativeObject {
+			args[i] = vm.unwrapADODBFieldValue(args[i])
+		}
+	}
+}
+
 // evalVBCondition evaluates one VBScript conditional value (If/While/Do/ElseIf) as a
 // boolean using the same coercion rules as CBool: numeric strings and "True"/"False"
 // are accepted, Null yields False, and any other non-convertible string raises
@@ -10823,7 +10914,7 @@ func (vm *VM) asBool(v Value) bool {
 // the error is raised and false is returned, so execution takes the false branch when
 // On Error Resume Next is active.
 func (vm *VM) evalVBCondition(cond Value) bool {
-	cond = resolveCallable(vm, cond)
+	cond = vm.unwrapADODBFieldValue(resolveCallable(vm, cond))
 	b, ok := cond.CoerceBool()
 	if !ok {
 		vm.raise(vbscript.TypeMismatch, vbscript.TypeMismatch.String())

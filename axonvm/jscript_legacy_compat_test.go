@@ -203,8 +203,16 @@ func TestADODBRecordsetDefaultPropertyReadsUnnamedColumnByOrdinal(t *testing.T) 
 	rs.bof = false
 
 	got := vm.dispatchNativeCall(rsValue.Num, "", []Value{NewInteger(0)})
-	if got.Type != VTInteger || got.Num != 42 {
-		t.Fatalf("unexpected unnamed ordinal field value: %#v", got)
+	if got.Type != VTNativeObject {
+		t.Fatalf("expected ADODB.Field proxy from rs(0), got %#v", got)
+	}
+	val, ok := vm.dispatchADODBFieldPropertyGet(got.Num, "Value")
+	if !ok || val.Type != VTInteger || val.Num != 42 {
+		t.Fatalf("unexpected unnamed ordinal field .Value: %#v (ok=%t)", val, ok)
+	}
+	defVal, ok := vm.dispatchADODBFieldPropertyGet(got.Num, "__default__")
+	if !ok || defVal.Type != VTInteger || defVal.Num != 42 {
+		t.Fatalf("unexpected unnamed ordinal field default value: %#v (ok=%t)", defVal, ok)
 	}
 }
 

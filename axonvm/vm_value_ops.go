@@ -56,7 +56,7 @@ func isNumericLike(v Value) bool {
 // coerceFloatStrict converts a value to float64 using VBScript-style numeric coercion.
 // String conversion failure returns false so callers can raise Type mismatch.
 func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
-	v = resolveCallable(vm, v)
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
 	case VTEmpty:
 		return 0, true
@@ -74,7 +74,7 @@ func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
 
 // coerceFloat converts a VM value into float64 using VBScript-like numeric coercion.
 func (vm *VM) coerceFloat(v Value) float64 {
-	v = resolveCallable(vm, v)
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
 	case VTDouble:
 		return v.Flt
@@ -90,7 +90,7 @@ func (vm *VM) coerceFloat(v Value) float64 {
 // Float-to-integer conversions use Banker's Rounding (round-half-to-even) to match
 // the behavior of VBScript's implicit type coercion for Integer and Long variables.
 func (vm *VM) coerceInt64(v Value) int64 {
-	v = resolveCallable(vm, v)
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
 	case VTBool, VTInteger, VTDate, VTNativeObject, VTBuiltin:
 		return v.Num
@@ -115,7 +115,7 @@ func (vm *VM) coerceInt64(v Value) int64 {
 // raise a VBScript Type mismatch error — matching original VBScript behaviour where
 // these operators require CLng-compatible operands.
 func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
-	v = resolveCallable(vm, v)
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
 	case VTBool, VTInteger, VTDate, VTNativeObject, VTBuiltin:
 		return v.Num, true
@@ -153,7 +153,7 @@ func isVBScriptIntegerString(trimmed string) bool {
 // coerceNumericValue converts a VBScript value to a numeric subtype (VTInteger, VTDouble,
 // or VTDate) for numeric contexts such as For...Next loop bounds.
 func (vm *VM) coerceNumericValue(v Value) (Value, vbscript.VBSyntaxErrorCode, bool) {
-	v = resolveCallable(vm, v)
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
 	case VTInteger, VTDouble, VTDate:
 		return v, 0, true
@@ -189,8 +189,8 @@ func (vm *VM) coerceNumericValue(v Value) (Value, vbscript.VBSyntaxErrorCode, bo
 // - Empty + Numeric => numeric addition with Empty as 0
 // - Empty + String => string concatenation with Empty as ""
 func (vm *VM) addValues(a Value, b Value) Value {
-	a = resolveCallable(vm, a)
-	b = resolveCallable(vm, b)
+	a = vm.unwrapADODBFieldValue(resolveCallable(vm, a))
+	b = vm.unwrapADODBFieldValue(resolveCallable(vm, b))
 
 	if isNull(a) || isNull(b) {
 		return NewNull()
@@ -237,6 +237,8 @@ func (vm *VM) addValues(a Value, b Value) Value {
 // subtractValues performs numeric subtraction with integer and floating-point coercion.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) subtractValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -249,6 +251,8 @@ func (vm *VM) subtractValues(a Value, b Value) Value {
 // multiplyValues performs numeric multiplication with integer and floating-point coercion.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) multiplyValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -261,6 +265,8 @@ func (vm *VM) multiplyValues(a Value, b Value) Value {
 // divideValues performs floating-point division and raises on division by zero.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) divideValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -275,6 +281,8 @@ func (vm *VM) divideValues(a Value, b Value) Value {
 // intDivideValues performs integer division and raises on division by zero.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) intDivideValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -289,6 +297,8 @@ func (vm *VM) intDivideValues(a Value, b Value) Value {
 // modValues performs modulo arithmetic using integer coercion.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) modValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -303,6 +313,8 @@ func (vm *VM) modValues(a Value, b Value) Value {
 // powValues performs exponentiation using floating-point coercion.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) powValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -311,6 +323,8 @@ func (vm *VM) powValues(a Value, b Value) Value {
 
 // compareValues compares two values for equality and relational operators.
 func (vm *VM) compareValues(a Value, b Value) int {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if a.Type == VTNativeObject && a.Num == nativeObjectErr {
 		a = vm.errPropertyValue("Number")
 	}
@@ -365,6 +379,8 @@ func (vm *VM) compareValues(a Value, b Value) int {
 // logicalAnd performs boolean logical And or integer bitwise And.
 // VBScript Null rule: Null And False = False; Null And True = Null; Null And Null = Null.
 func (vm *VM) logicalAnd(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		// Short-circuit: Null And False -> False; otherwise Null
 		if (!isNull(a) && !vm.asBool(a)) || (!isNull(b) && !vm.asBool(b)) {
@@ -381,6 +397,8 @@ func (vm *VM) logicalAnd(a Value, b Value) Value {
 // logicalOr performs boolean logical Or or integer bitwise Or.
 // VBScript Null rule: Null Or True = True; Null Or False = Null; Null Or Null = Null.
 func (vm *VM) logicalOr(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		// Short-circuit: Null Or True -> True; otherwise Null
 		if (!isNull(a) && vm.asBool(a)) || (!isNull(b) && vm.asBool(b)) {
@@ -397,6 +415,8 @@ func (vm *VM) logicalOr(a Value, b Value) Value {
 // logicalXor performs boolean logical Xor or integer bitwise Xor.
 // Returns Null if either operand is Null.
 func (vm *VM) logicalXor(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -409,6 +429,8 @@ func (vm *VM) logicalXor(a Value, b Value) Value {
 // logicalEqv performs boolean Eqv or integer bitwise equivalence.
 // Returns Null if either operand is Null.
 func (vm *VM) logicalEqv(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
@@ -421,6 +443,8 @@ func (vm *VM) logicalEqv(a Value, b Value) Value {
 // logicalImp performs boolean implication or integer bitwise implication.
 // VBScript Null rule: False Imp Null = True; Null Imp True = True; else Null.
 func (vm *VM) logicalImp(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		// False Imp Null = True (because !False = True, which dominates)
 		if !isNull(a) && !vm.asBool(a) {
@@ -444,6 +468,8 @@ func (vm *VM) logicalImp(a Value, b Value) Value {
 // appended without the hidden intermediate allocation that Go's '+' operator causes
 // when one operand is not yet a string (e.g. numbers, dates, native objects).
 func (vm *VM) concatValues(a Value, b Value) Value {
+	a = vm.unwrapADODBFieldValue(a)
+	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) && isNull(b) {
 		// Null & Null stays Null; only a lone Null operand coerces to "".
 		// Measured on IIS: https://github.com/guimaraeslucas/axonasp/issues/188

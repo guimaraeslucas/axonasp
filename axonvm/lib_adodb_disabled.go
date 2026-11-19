@@ -100,6 +100,11 @@ func (vm *VM) newADODBFieldProxy(rs *adodbRecordset, name string) Value {
 	return Value{Type: VTEmpty}
 }
 
+// newADODBFieldProxyByOrdinal returns an empty value because ADODB support is compiled out.
+func (vm *VM) newADODBFieldProxyByOrdinal(rs *adodbRecordset, index int) Value {
+	return Value{Type: VTEmpty}
+}
+
 // adodbConnectionOpen is a no-op stub because ADODB support is compiled out.
 func (vm *VM) adodbConnectionOpen(conn *adodbConnection) {}
 
