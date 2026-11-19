@@ -105,7 +105,9 @@ func (vm *VM) newG3FileUploaderObject() Value {
 func (vm *VM) newG3FileUploaderObjectWithProgID(progID string) Value {
 	mode := ModeG3FileUploader
 	progIDLower := strings.ToLower(progID)
-	if strings.Contains(progIDLower, "persits") || strings.Contains(progIDLower, "aspupload") {
+	if progIDLower == "g3fileuploader" {
+		// Exact match first: "g3fileuploader" contains "fileup".
+	} else if strings.Contains(progIDLower, "persits") || strings.Contains(progIDLower, "aspupload") {
 		mode = ModePersitsUpload
 	} else if strings.Contains(progIDLower, "softartisans") || strings.Contains(progIDLower, "fileup") {
 		mode = ModeSAFileUp
