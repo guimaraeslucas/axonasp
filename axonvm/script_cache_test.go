@@ -631,3 +631,36 @@ func TestScriptCacheInvalidatesInMixedCaseDirectory(t *testing.T) {
 	}
 	t.Fatalf("expected cache invalidation in mixed-case directory %q", siteRoot)
 }
+
+// TestScriptCacheWatchEventInvalidatesAliasedPath verifies a watcher event reported
+// under an aliased spelling of the site path (a symlinked directory, or an 8.3 short
+// name on Windows) invalidates the entry cached under that same spelling. The event
+// handler used to canonicalize the event path first, so only the physical key was
+// tried and the entry keyed by the alias survived the edit.
+func TestScriptCacheWatchEventInvalidatesAliasedPath(t *testing.T) {
+	cache := NewScriptCache(BytecodeCacheMemoryOnly, t.TempDir(), 8)
+	base := t.TempDir()
+	physical := filepath.Join(base, "releases", "1")
+	if err := os.MkdirAll(physical, 0o755); err != nil {
+		t.Fatalf("mkdir physical dir: %v", err)
+	}
+	alias := filepath.Join(base, "current")
+	if err := os.Symlink(physical, alias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	aspFile := filepath.Join(alias, "default.asp")
+	if err := os.WriteFile(aspFile, []byte("<% Response.Write 1 %>"), 0o644); err != nil {
+		t.Fatalf("write asp file: %v", err)
+	}
+
+	cache.Put(aspFile, CachedProgram{Bytecode: []byte{1}}, nil)
+	if _, found := cache.Get(aspFile); !found {
+		t.Fatalf("expected %q to be cached", aspFile)
+	}
+
+	cache.handleWatchEvent(nil, fsnotify.Event{Name: aspFile, Op: fsnotify.Write})
+
+	if _, found := cache.Get(aspFile); found {
+		t.Fatalf("expected watch event for %q to invalidate the entry cached under the alias", aspFile)
+	}
+}

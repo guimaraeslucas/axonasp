@@ -1,0 +1,59 @@
+# AxonASP Server - Test Workflow
+#
+# Copyright (C) 2026 G3pix Ltda. All rights reserved.
+#
+# Developed by Lucas Guimarães - G3pix Ltda
+# Contact: https://g3pix.com.br
+# Project URL: https://g3pix.com.br/axonasp
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#
+# Runs go vet and go test on Linux and Windows for every pull request and
+# every push to main (see #199). Deliberately not `go build ./...`: the
+# fpm package does not build on Windows, while vet and test handle it.
+#
+# Triggers:
+#   - Pull request to main
+#   - Push to main
+#   - Workflow dispatch      → allows manual triggering of the workflow
+
+name: Test
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: go vet + go test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -count=1 ./...

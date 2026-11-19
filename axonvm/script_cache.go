@@ -768,14 +768,12 @@ func (c *ScriptCache) handleWatchEvent(watcher *fsnotify.Watcher, event fsnotify
 		return
 	}
 
-	// fsnotify reports the physical entry name. Normalize it once so aliases and
-	// casing never miss the key registered by the request path. Deleted targets
-	// cannot be canonicalized, so the raw path is the fallback.
-	eventPath := event.Name
-	if canonical, canonicalErr := CanonicalizePhysicalPath(eventPath); canonicalErr == nil {
-		eventPath = canonical
-	}
-	c.Invalidate(eventPath)
+	// fsnotify reports the entry under the path that was watched, which is the
+	// same spelling the request path registered (a symlinked root, or an 8.3
+	// short name on Windows). Pass it through unchanged: Invalidate processes
+	// both this key and its canonical physical key, so aliases in either
+	// direction are covered. Canonicalizing here first would drop the raw key.
+	c.Invalidate(event.Name)
 }
 
 // StopInvalidator stops the active file watcher and goroutine.
