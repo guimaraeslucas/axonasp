@@ -230,7 +230,9 @@ func TestFSOResolvePathVirtualAbsoluteAndSandbox(t *testing.T) {
 	if escaped, ok := vm.fsoResolvePath("/../outside.txt"); ok {
 		t.Fatalf("expected /../outside.txt to be refused, got %q", escaped)
 	}
-	if escaped, ok := vm.fsoResolvePath(filepath.Join(rootDir, "..", "outside.txt")); ok {
+	// Concatenate rather than filepath.Join the whole path: Join cleans away the "..",
+	// and on Unix the cleaned path is then treated as virtual and remapped under root.
+	if escaped, ok := vm.fsoResolvePath(rootDir + string(filepath.Separator) + filepath.Join("..", "outside.txt")); ok {
 		t.Fatalf("expected physical root traversal to be refused, got %q", escaped)
 	}
 }
