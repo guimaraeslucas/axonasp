@@ -359,3 +359,31 @@ func TestG3FileUploader_SendBinaryVirtualPath(t *testing.T) {
 		t.Fatalf("unexpected SendBinary output: got %q, want %q", out.String(), "hello-binary")
 	}
 }
+
+// TestG3FileUploader_ProgIDSelectsMode verifies each CreateObject ProgID gets its own
+// compatibility mode, and that the native uploader keeps absolute paths disabled by
+// default. "g3fileuploader" contains "fileup", which once selected SoftArtisans mode.
+func TestG3FileUploader_ProgIDSelectsMode(t *testing.T) {
+	cases := []struct {
+		progID      string
+		mode        UploaderMode
+		allowAbsDef bool
+	}{
+		{"g3fileuploader", ModeG3FileUploader, false},
+		{"G3FileUploader", ModeG3FileUploader, false},
+		{"persits.upload", ModePersitsUpload, true},
+		{"aspupload", ModePersitsUpload, true},
+		{"softartisans.fileup", ModeSAFileUp, true},
+	}
+	vm := NewVM(nil, nil, 0)
+	vm.SetHost(NewMockHost())
+	for _, c := range cases {
+		obj := vm.fileUploaderItems[vm.newG3FileUploaderObjectWithProgID(c.progID).Num]
+		if obj.mode != c.mode {
+			t.Errorf("%s: mode = %v, want %v", c.progID, obj.mode, c.mode)
+		}
+		if obj.allowAbsolutePaths != c.allowAbsDef {
+			t.Errorf("%s: allowAbsolutePaths default = %v, want %v", c.progID, obj.allowAbsolutePaths, c.allowAbsDef)
+		}
+	}
+}
