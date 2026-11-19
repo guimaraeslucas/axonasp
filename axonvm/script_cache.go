@@ -689,7 +689,7 @@ func (c *ScriptCache) StartInvalidator(rootDirs []string) error {
 	c.mu.Unlock()
 
 	for _, rootDir := range resolvedRoots {
-		if err := c.addWatchRecursiveTracked(watcher, rootDir); err != nil {
+		if err := c.addWatchRootTracked(watcher, rootDir); err != nil {
 			_ = watcher.Close()
 			return fmt.Errorf("failed to add watch on %q: %w", rootDir, err)
 		}
@@ -1352,6 +1352,48 @@ func (c *ScriptCache) removeProgramNoLock(scriptPath string) {
 	if c.totalBytes < 0 {
 		c.totalBytes = 0
 	}
+}
+
+// addWatchRootTracked registers watches for one configured site root. A root that
+// is itself a link to a directory (a symlink such as /var/www/current -> releases/N,
+// or a Windows junction) is a directory to Stat but not to Lstat, and
+// filepath.WalkDir Lstats its root, so addWatchRecursiveTracked would neither
+// register nor descend into it. Register such a root under its own spelling and
+// walk each child directory by its path under the root: the link then resolves as
+// an ancestor, and watches keep the spelling request paths are keyed under. Links
+// nested below the root are still not followed, here or for directories created
+// at runtime.
+func (c *ScriptCache) addWatchRootTracked(watcher *fsnotify.Watcher, rootDir string) error {
+	if c == nil || watcher == nil {
+		return nil
+	}
+	info, err := os.Stat(rootDir)
+	if err != nil {
+		return err
+	}
+	linkInfo, err := os.Lstat(rootDir)
+	if err != nil || !info.IsDir() || linkInfo.IsDir() {
+		return c.addWatchRecursiveTracked(watcher, rootDir)
+	}
+	if shouldSkipScriptWatchDir(rootDir, filepath.Base(rootDir)) {
+		return nil
+	}
+	if err := c.addWatchPathTracked(watcher, rootDir); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if err := c.addWatchRecursiveTracked(watcher, filepath.Join(rootDir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *ScriptCache) addWatchRecursiveTracked(watcher *fsnotify.Watcher, rootDir string) error {
