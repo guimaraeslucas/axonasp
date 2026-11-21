@@ -118,10 +118,11 @@ func (c *Compiler) emitIdentifierValue(name string) {
 	// be patched by forward-call binding instead of creating an implicit local.
 	if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctLParen {
 		if c.isLocal {
-			if c.currentClassName != "" {
+			lower := strings.ToLower(trimmedName)
+			if c.currentClassName != "" && (c.isClassMemberDeclared(c.currentClassName, trimmedName) || !c.globalProcedureNames[lower]) {
 				goto resolveIdentifierNormally
 			}
-			if _, isStatic := c.staticLocals[strings.ToLower(trimmedName)]; !isStatic {
+			if _, isStatic := c.staticLocals[lower]; !isStatic {
 				if _, localExists := c.locals.Get(trimmedName); !localExists {
 					globalIdx, exists := c.Globals.Get(trimmedName)
 					if !exists {
@@ -129,7 +130,6 @@ func (c *Compiler) emitIdentifierValue(name string) {
 					}
 					pos := c.emit(OpGetGlobal, globalIdx)
 					c.markLastCallTarget(trimmedName, OpGetGlobal, pos)
-					lower := strings.ToLower(strings.TrimSpace(trimmedName))
 					if !c.constGlobals[lower] {
 						c.registerForwardConstPatch(trimmedName, pos)
 					}
@@ -143,7 +143,8 @@ resolveIdentifierNormally:
 
 	_, hadLocal := c.locals.Get(trimmedName)
 	op, idx := c.resolveVar(trimmedName)
-	if c.isLocal && !hadLocal && c.currentClassName == "" && c.globalProcedureNames[strings.ToLower(trimmedName)] &&
+	if c.isLocal && !hadLocal && c.globalProcedureNames[strings.ToLower(trimmedName)] &&
+		(c.currentClassName == "" || !c.isClassMemberDeclared(c.currentClassName, trimmedName)) &&
 		(op == OpGetLocal || op == OpGetGlobal) && !strings.EqualFold(trimmedName, c.currentFunctionName) {
 		// Forward reference to a page-scope procedure declared later: resolveVar created an
 		// implicit local slot, so rebind the load to the global procedure slot. The trailing

@@ -625,11 +625,15 @@ func (c *Compiler) parseStatement() {
 			// patching mechanism (patchForwardCallSites) can rewrite the load
 			// when the target Sub/Function is defined later in source.
 			forceGlobal := false
-			if c.isLocal && c.currentClassName == "" {
+			if c.isLocal {
 				lower := strings.ToLower(strings.TrimSpace(name))
 				if _, localExists := c.locals.Get(name); !localExists {
 					if _, isStatic := c.staticLocals[lower]; !isStatic {
-						if _, globalExists := c.Globals.Get(name); !globalExists || !c.declaredGlobals[lower] {
+						if c.currentClassName == "" {
+							if _, globalExists := c.Globals.Get(name); !globalExists || !c.declaredGlobals[lower] {
+								forceGlobal = true
+							}
+						} else if !c.isClassMemberDeclared(c.currentClassName, name) && c.globalProcedureNames[lower] {
 							forceGlobal = true
 						}
 					}
@@ -3025,26 +3029,33 @@ func (c *Compiler) compileImplicitClassStatementCall(name string, hasParen bool)
 		return false
 	}
 	lowerName := strings.ToLower(trimmedName)
-	if globalIdx, exists := c.Globals.Get(trimmedName); exists {
-		if globalIdx < c.userGlobalsStart ||
-			c.declaredGlobals[lowerName] ||
-			c.constGlobals[lowerName] ||
-			c.implicitGlobals[lowerName] {
-			// Keep ASP intrinsics/VBScript builtins, user-declared globals (Dim'ed
-			// variables, dictionaries, arrays) and module-level Sub/Function names
-			// bound as globals inside class methods; never rewrite them as
-			// Me.<member>().
-			return false
-		}
-	}
 	if _, exists := c.locals.Get(trimmedName); exists {
-		return false
-	}
-	if _, exists := BuiltinIndex[lowerName]; exists {
 		return false
 	}
 	if c.hasClassFieldDeclaration(c.currentClassName, trimmedName) {
 		return false
+	}
+	// Class methods and properties shadow globals and builtins of the same name.
+	if !c.hasClassMethodDeclaration(c.currentClassName, trimmedName) &&
+		!c.hasClassPropertyDeclaration(c.currentClassName, trimmedName) {
+		if globalIdx, exists := c.Globals.Get(trimmedName); exists {
+			if globalIdx < c.userGlobalsStart ||
+				c.declaredGlobals[lowerName] ||
+				c.constGlobals[lowerName] ||
+				c.implicitGlobals[lowerName] {
+				// Keep ASP intrinsics/VBScript builtins, user-declared globals (Dim'ed
+				// variables, dictionaries, arrays) and module-level Sub/Function names
+				// bound as globals inside class methods; never rewrite them as
+				// Me.<member>().
+				return false
+			}
+		}
+		if c.globalProcedureNames[lowerName] {
+			return false
+		}
+		if _, exists := BuiltinIndex[lowerName]; exists {
+			return false
+		}
 	}
 	// Allow forward same-class statement calls before later methods are parsed.
 	// This matches common VBScript class patterns such as helper calls declared later.

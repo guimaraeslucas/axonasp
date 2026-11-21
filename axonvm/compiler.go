@@ -621,6 +621,13 @@ func (c *Compiler) hasClassMethodDeclaration(className string, methodName string
 	return false
 }
 
+// isClassMemberDeclared reports whether name matches a field, method, or property of className.
+func (c *Compiler) isClassMemberDeclared(className string, name string) bool {
+	return c.hasClassFieldDeclaration(className, name) ||
+		c.hasClassMethodDeclaration(className, name) ||
+		c.hasClassPropertyDeclaration(className, name)
+}
+
 // hasClassZeroArgPropertyGetDeclaration reports whether one class property has a zero-arg getter.
 func (c *Compiler) hasClassZeroArgPropertyGetDeclaration(className string, propertyName string) bool {
 	property, ok := c.getClassPropertyDeclaration(className, propertyName)
