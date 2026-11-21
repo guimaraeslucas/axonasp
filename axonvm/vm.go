@@ -573,6 +573,7 @@ type VM struct {
 	optionExplicit       bool              // Mirrors compiler Option Explicit for dynamic execution APIs.
 	collator             *collate.Collator // cached locale-aware collator for Option Compare Text
 	collatorLCID         int               // LCID for which the collator was built
+	scriptLCID           int               // Per-execution LCID set by SetLocale when Session is disabled
 	globalNames          []string          // Global symbol names aligned with Globals slot order.
 	globalNamesHash      uint64            // Fingerprint of globalNames for fast dynamic-cache scope validation.
 	globalZeroArgFuncs   map[string]bool   // Known zero-arg global Functions for dynamic autocall compatibility.

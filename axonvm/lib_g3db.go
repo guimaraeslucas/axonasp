@@ -344,7 +344,7 @@ func (g *G3DB) query(sqlText string, params []Value) Value {
 	}
 
 	prepared := g3dbRewritePlaceholders(sqlText, driver)
-	iArgs := g3dbValueSliceToInterface(params)
+	iArgs := g3dbValueSliceToInterface(params, builtinCurrentLocation(g.vm))
 	rows, err := db.Query(prepared, iArgs...)
 	if err != nil {
 		g.setError(ErrG3DBQueryFailed.String() + ": " + err.Error())
@@ -368,7 +368,7 @@ func (g *G3DB) queryRow(sqlText string, params []Value) Value {
 	}
 
 	prepared := g3dbRewritePlaceholders(sqlText, driver)
-	iArgs := g3dbValueSliceToInterface(params)
+	iArgs := g3dbValueSliceToInterface(params, builtinCurrentLocation(g.vm))
 	row := db.QueryRow(prepared, iArgs...)
 	g.setError("")
 	return g.vm.newG3DBRowValue(row)
@@ -387,7 +387,7 @@ func (g *G3DB) exec(sqlText string, params []Value) Value {
 	}
 
 	prepared := g3dbRewritePlaceholders(sqlText, driver)
-	iArgs := g3dbValueSliceToInterface(params)
+	iArgs := g3dbValueSliceToInterface(params, builtinCurrentLocation(g.vm))
 	result, err := db.Exec(prepared, iArgs...)
 	if err != nil {
 		g.setError(ErrG3DBExecFailed.String() + ": " + err.Error())
@@ -526,17 +526,18 @@ func (g *G3DB) setError(msg string) {
 // rowData holds the current row's column values as VM Value instances.
 // fieldsID is the companion G3DBFields object registered in the VM.
 type G3DBResultSet struct {
-	vm       *VM
-	driver   string
-	rows     *sql.Rows
-	columns  []string       // original column names (case-preserved)
-	colIdx   map[string]int // lower-case column name → slice index
-	rowData  []Value        // current row (len == len(columns))
-	fieldsID int64          // VM ID of the companion G3DBFields object
-	eof      bool
-	bof      bool
-	isClosed bool
-	mu       sync.RWMutex
+	vm          *VM
+	driver      string
+	rows        *sql.Rows
+	columns     []string       // original column names (case-preserved)
+	columnTypes []string       // database/sql DatabaseTypeName per column
+	colIdx      map[string]int // lower-case column name → slice index
+	rowData     []Value        // current row (len == len(columns))
+	fieldsID    int64          // VM ID of the companion G3DBFields object
+	eof         bool
+	bof         bool
+	isClosed    bool
+	mu          sync.RWMutex
 }
 
 // newG3DBResultSetValue allocates a G3DBResultSet, its companion G3DBFields,
@@ -547,15 +548,23 @@ func (vm *VM) newG3DBResultSetValue(rows *sql.Rows) Value {
 	for i, c := range cols {
 		colIdx[strings.ToLower(c)] = i
 	}
+	var colTypes []string
+	if types, err := rows.ColumnTypes(); err == nil {
+		colTypes = make([]string, len(types))
+		for i, ct := range types {
+			colTypes[i] = ct.DatabaseTypeName()
+		}
+	}
 
 	rs := &G3DBResultSet{
-		vm:      vm,
-		rows:    rows,
-		columns: cols,
-		colIdx:  colIdx,
-		rowData: make([]Value, len(cols)),
-		eof:     false,
-		bof:     true,
+		vm:          vm,
+		rows:        rows,
+		columns:     cols,
+		columnTypes: colTypes,
+		colIdx:      colIdx,
+		rowData:     make([]Value, len(cols)),
+		eof:         false,
+		bof:         true,
 	}
 
 	// Register the ResultSet.
@@ -695,8 +704,13 @@ func (rs *G3DBResultSet) moveNext() {
 		rs.eof = true
 		return
 	}
+	loc := builtinCurrentLocation(rs.vm)
 	for i, raw := range dest {
-		rs.rowData[i] = g3dbRawToValue(raw)
+		dbType := ""
+		if i < len(rs.columnTypes) {
+			dbType = rs.columnTypes[i]
+		}
+		rs.rowData[i] = g3dbRawToValue(normalizeSQLDateTime(dbType, raw, loc))
 	}
 }
 
@@ -741,6 +755,7 @@ func (rs *G3DBResultSet) getRows(maxRows int) Value {
 		ptrs[i] = &dest[i]
 	}
 
+	loc := builtinCurrentLocation(rs.vm)
 	for rs.rows.Next() {
 		if maxRows > 0 && len(collected) >= maxRows {
 			break
@@ -750,7 +765,11 @@ func (rs *G3DBResultSet) getRows(maxRows int) Value {
 		}
 		row := make([]Value, cols)
 		for i, raw := range dest {
-			row[i] = g3dbRawToValue(raw)
+			dbType := ""
+			if i < len(rs.columnTypes) {
+				dbType = rs.columnTypes[i]
+			}
+			row[i] = g3dbRawToValue(normalizeSQLDateTime(dbType, raw, loc))
 		}
 		collected = append(collected, row)
 	}
@@ -898,7 +917,7 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 				return NewEmpty()
 			}
 			r.row = nil
-			return g3dbRawToValue(raw)
+			return g3dbRawToValue(normalizeSQLDateTime("", raw, builtinCurrentLocation(r.vm)))
 		}
 		// Multi-value scan: build dest slice and convert.
 		dest := make([]any, colCount)
@@ -911,9 +930,10 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 			return NewEmpty()
 		}
 		r.row = nil
+		loc := builtinCurrentLocation(r.vm)
 		vals := make([]Value, colCount)
 		for i, raw := range dest {
-			vals[i] = g3dbRawToValue(raw)
+			vals[i] = g3dbRawToValue(normalizeSQLDateTime("", raw, loc))
 		}
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, vals)}
 
@@ -932,10 +952,11 @@ func (r *G3DBRow) DispatchMethod(methodName string, args []Value) Value {
 			return NewEmpty()
 		}
 		r.row = nil
+		loc := builtinCurrentLocation(r.vm)
 		dictVal := r.vm.newDictionaryObject()
 		d := r.vm.dictionaryItems[dictVal.Num]
 		for i, arg := range args {
-			d.itemSet(r.vm, NewString(arg.String()), g3dbRawToValue(dest[i]))
+			d.itemSet(r.vm, NewString(arg.String()), g3dbRawToValue(normalizeSQLDateTime("", dest[i], loc)))
 		}
 		return dictVal
 	}
@@ -983,7 +1004,7 @@ func (s *G3DBStatement) DispatchMethod(methodName string, args []Value) Value {
 		if closed || stmt == nil {
 			return NewEmpty()
 		}
-		iArgs := g3dbValueSliceToInterface(args)
+		iArgs := g3dbValueSliceToInterface(args, builtinCurrentLocation(s.vm))
 		rows, err := stmt.Query(iArgs...)
 		if err != nil {
 			return NewEmpty()
@@ -999,7 +1020,7 @@ func (s *G3DBStatement) DispatchMethod(methodName string, args []Value) Value {
 		if closed || stmt == nil {
 			return NewEmpty()
 		}
-		iArgs := g3dbValueSliceToInterface(args)
+		iArgs := g3dbValueSliceToInterface(args, builtinCurrentLocation(s.vm))
 		row := stmt.QueryRow(iArgs...)
 		return s.vm.newG3DBRowValue(row)
 
@@ -1012,7 +1033,7 @@ func (s *G3DBStatement) DispatchMethod(methodName string, args []Value) Value {
 		if closed || stmt == nil {
 			return NewEmpty()
 		}
-		iArgs := g3dbValueSliceToInterface(args)
+		iArgs := g3dbValueSliceToInterface(args, builtinCurrentLocation(s.vm))
 		result, err := stmt.Exec(iArgs...)
 		if err != nil {
 			return NewEmpty()
@@ -1162,7 +1183,7 @@ func (t *G3DBTransaction) query(sqlText string, params []Value) Value {
 		return NewEmpty()
 	}
 	prepared := g3dbRewritePlaceholders(sqlText, driver)
-	rows, err := tx.Query(prepared, g3dbValueSliceToInterface(params)...)
+	rows, err := tx.Query(prepared, g3dbValueSliceToInterface(params, builtinCurrentLocation(t.vm))...)
 	if err != nil {
 		return NewEmpty()
 	}
@@ -1179,7 +1200,7 @@ func (t *G3DBTransaction) queryRow(sqlText string, params []Value) Value {
 		return NewEmpty()
 	}
 	prepared := g3dbRewritePlaceholders(sqlText, driver)
-	row := tx.QueryRow(prepared, g3dbValueSliceToInterface(params)...)
+	row := tx.QueryRow(prepared, g3dbValueSliceToInterface(params, builtinCurrentLocation(t.vm))...)
 	return t.vm.newG3DBRowValue(row)
 }
 
@@ -1193,7 +1214,7 @@ func (t *G3DBTransaction) exec(sqlText string, params []Value) Value {
 		return NewEmpty()
 	}
 	prepared := g3dbRewritePlaceholders(sqlText, driver)
-	result, err := tx.Exec(prepared, g3dbValueSliceToInterface(params)...)
+	result, err := tx.Exec(prepared, g3dbValueSliceToInterface(params, builtinCurrentLocation(t.vm))...)
 	if err != nil {
 		return NewEmpty()
 	}
@@ -1313,9 +1334,12 @@ func g3dbRawToValue(raw any) Value {
 // g3dbValueSliceToInterface converts a []Value parameter list into []interface{}
 // for passing to sql.DB/Tx/Stmt methods. This is the only other required
 // interface{} boundary — dictated by the database/sql API.
-func g3dbValueSliceToInterface(vals []Value) []any {
+func g3dbValueSliceToInterface(vals []Value, loc *time.Location) []any {
 	if len(vals) == 0 {
 		return nil
+	}
+	if loc == nil {
+		loc = time.UTC
 	}
 	out := make([]any, len(vals))
 	for i, v := range vals {
@@ -1329,7 +1353,7 @@ func g3dbValueSliceToInterface(vals []Value) []any {
 		case VTDouble:
 			out[i] = v.Flt
 		case VTDate:
-			out[i] = time.Unix(0, v.Num).UTC()
+			out[i] = time.Unix(0, v.Num).In(loc)
 		default:
 			out[i] = v.String()
 		}
