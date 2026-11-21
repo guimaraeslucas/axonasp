@@ -246,7 +246,7 @@ func localizedDateTimeText(value time.Time, profile builtinLocaleProfile, format
 	case 4:
 		return localizedFormat(value, profile.shortTimeLayout, profile)
 	default:
-		return localizedFormat(value, profile.shortDateLayout+" "+profile.longTimeLayout, profile)
+		return localizedDateString(value, profile)
 	}
 }
 

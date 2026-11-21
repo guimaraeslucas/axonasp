@@ -107,13 +107,16 @@ func ReloadBuiltinDefaults() builtinDefaults {
 	return cfg
 }
 
-// builtinCurrentLCID resolves the effective LCID from session state or config fallback.
+// builtinCurrentLCID resolves the effective LCID from session state, SetLocale override, or config fallback.
 func builtinCurrentLCID(vm *VM) int {
 	if vm != nil && vm.host != nil && vm.host.SessionEnabled() {
 		lcid := vm.host.Session().GetLCID()
 		if lcid > 0 {
 			return lcid
 		}
+	}
+	if vm != nil && vm.scriptLCID > 0 {
+		return vm.scriptLCID
 	}
 	return loadBuiltinDefaults().mslcid
 }
@@ -683,8 +686,12 @@ func vbsCompatSetLocale(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewInteger(int64(previous)), nil
 	}
-	if vm != nil && vm.host != nil && vm.host.SessionEnabled() {
-		vm.host.Session().SetLCID(vbsIntArg(args[0]))
+	lcid := vbsIntArg(args[0])
+	if vm != nil {
+		vm.scriptLCID = lcid
+		if vm.host != nil && vm.host.SessionEnabled() {
+			vm.host.Session().SetLCID(lcid)
+		}
 	}
 	return NewInteger(int64(previous)), nil
 }

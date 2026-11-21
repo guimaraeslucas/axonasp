@@ -1717,6 +1717,7 @@ func (vm *VM) adodbRecordsetLoadCurrentSQLResultSet(rs *adodbRecordset) {
 		}
 	}
 	rs.data = make([]map[string]Value, 0)
+	loc := builtinCurrentLocation(vm)
 
 	for rows.Next() {
 		if rs.maxRecords > 0 && len(rs.data) >= rs.maxRecords {
@@ -1734,12 +1735,15 @@ func (vm *VM) adodbRecordsetLoadCurrentSQLResultSet(rs *adodbRecordset) {
 		rowMap := make(map[string]Value, len(cols))
 		for i := range cols {
 			value := rowValues[i]
-			if i < len(rs.columnTypes) && rs.columnTypes[i] == "UNIQUEIDENTIFIER" {
-				value = adodbSQLServerGUIDText(value)
-			}
+			dbType := ""
 			if i < len(rs.columnTypes) {
-				value = adodbMSSQLNumeric(rs.columnTypes[i], value)
+				dbType = rs.columnTypes[i]
+				if dbType == "UNIQUEIDENTIFIER" {
+					value = adodbSQLServerGUIDText(value)
+				}
+				value = adodbMSSQLNumeric(dbType, value)
 			}
+			value = normalizeSQLDateTime(dbType, value, loc)
 			adodbStoreColumnValue(rowMap, cols, i, vm.adodbValueToVMValue(value))
 		}
 		rs.data = append(rs.data, rowMap)
@@ -2384,7 +2388,7 @@ func (vm *VM) adodbRecordsetGetString(rs *adodbRecordset, args []Value) Value {
 	for r := 0; r < rs.recordCount; r++ {
 		row := rs.data[r]
 		for c := 0; c < len(rs.columns); c++ {
-			sb.WriteString(vm.adodbRecordsetValueByOrdinal(rs, row, c).String())
+			sb.WriteString(vm.valueToString(vm.adodbRecordsetValueByOrdinal(rs, row, c)))
 			if c < len(rs.columns)-1 {
 				sb.WriteString("\t")
 			}
@@ -3320,7 +3324,7 @@ func (vm *VM) adodbOLEGetFieldValueBySelector(rs *adodbRecordset, selector any) 
 	if valRes == nil {
 		return Value{Type: VTEmpty}, false
 	}
-	v := vm.adodbValueToVMValue(valRes.Value())
+	v := vm.adodbValueToVMValue(normalizeSQLDateTime("DATETIME", valRes.Value(), builtinCurrentLocation(vm)))
 	valRes.Clear()
 	return v, true
 }
@@ -3898,18 +3902,19 @@ func (vm *VM) adodbBestEffortVMDate(val Value) time.Time {
 	if val.Num == NewDate(time.Time{}).Num {
 		return time.Time{}
 	}
-	primary := time.Unix(0, val.Num).UTC()
+	loc := builtinCurrentLocation(vm)
+	primary := time.Unix(0, val.Num).In(loc)
 	if primary.Year() >= 1800 && primary.Year() <= 9999 {
 		return primary
 	}
 	if val.Num > -62135596800000 && val.Num < 253402300800000 {
-		ms := time.UnixMilli(val.Num).UTC()
+		ms := time.UnixMilli(val.Num).In(loc)
 		if ms.Year() >= 1800 && ms.Year() <= 9999 {
 			return ms
 		}
 	}
 	if val.Num > -62135596800 && val.Num < 253402300800 {
-		sec := time.Unix(val.Num, 0).UTC()
+		sec := time.Unix(val.Num, 0).In(loc)
 		if sec.Year() >= 1800 && sec.Year() <= 9999 {
 			return sec
 		}
@@ -3945,8 +3950,9 @@ func (vm *VM) adodbParseDateLiteral(text string) (time.Time, bool) {
 		"01/02/2006 15:04:05",
 		"01/02/2006",
 	}
+	loc := builtinCurrentLocation(vm)
 	for i := range layouts {
-		parsed, err := time.ParseInLocation(layouts[i], trimmed, time.Local)
+		parsed, err := time.ParseInLocation(layouts[i], trimmed, loc)
 		if err == nil {
 			return parsed, true
 		}
@@ -4719,7 +4725,7 @@ func (vm *VM) adodbDriverValue(v Value) any {
 	case VTString:
 		return v.Str
 	case VTDate:
-		return time.Unix(0, v.Num).UTC()
+		return time.Unix(0, v.Num).In(builtinCurrentLocation(vm))
 	default:
 		return v.String()
 	}
@@ -6304,12 +6310,13 @@ func (vm *VM) adodbHydrateRecordsetDataFromFieldMajorValues(rs *adodbRecordset, 
 		return false
 	}
 
+	loc := builtinCurrentLocation(vm)
 	data := make([]map[string]Value, rowCount)
 	for rowIdx := range rowCount {
 		row := make(map[string]Value, fieldCount)
 		base := rowIdx * fieldCount
 		for colIdx := range fieldCount {
-			adodbStoreColumnValue(row, rs.columns, colIdx, vm.adodbValueToVMValue(values[base+colIdx]))
+			adodbStoreColumnValue(row, rs.columns, colIdx, vm.adodbValueToVMValue(normalizeSQLDateTime("DATETIME", values[base+colIdx], loc)))
 		}
 		data[rowIdx] = row
 	}
@@ -6329,6 +6336,7 @@ func (vm *VM) adodbPopulateRecordsetFromOLEFieldWalk(rs *adodbRecordset, fields 
 	if eofRes == nil {
 		return
 	}
+	loc := builtinCurrentLocation(vm)
 	for range adodbOLEMaxRows {
 		eofRaw := eofRes.Value()
 		if eofRaw == nil || vm.asBool(vm.adodbValueToVMValue(eofRaw)) {
@@ -6347,7 +6355,7 @@ func (vm *VM) adodbPopulateRecordsetFromOLEFieldWalk(rs *adodbRecordset, fields 
 			}
 			valRes, _ := oleutil.GetProperty(item, "Value")
 			if valRes != nil {
-				adodbStoreColumnValue(row, rs.columns, i, vm.adodbValueToVMValue(valRes.Value()))
+				adodbStoreColumnValue(row, rs.columns, i, vm.adodbValueToVMValue(normalizeSQLDateTime("DATETIME", valRes.Value(), loc)))
 				valRes.Clear()
 			}
 			item.Release()
