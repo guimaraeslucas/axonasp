@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -615,7 +615,7 @@ func TestBuiltinFormatTypeHandlingAndParsing(t *testing.T) {
 		{"FormatNumber", []Value{NewString("1,234.5")}, "1,234.50"},
 		{"FormatNumber", []Value{NewEmpty()}, "0.00"},
 		{"FormatNumber", []Value{NewBool(false)}, "0.00"},
-		{"FormatNumber", []Value{NewBool(true)}, "1.00"},
+		{"FormatNumber", []Value{NewBool(true)}, "-1.00"},
 		{"FormatNumber", []Value{NewString("1e10"), NewInteger(0)}, "10,000,000,000"},
 		{"FormatNumber", []Value{NewString("1e-5"), NewInteger(5)}, "0.00001"},
 		{"FormatNumber", []Value{NewString("1e20"), NewInteger(0)}, "100,000,000,000,000,000,000"},
