@@ -1671,7 +1671,33 @@ func vbsCompatCDate(vm *VM, args []Value) (Value, error) {
 		// above VbsLen in builtins.go).
 		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
-	return NewDate(valueToTimeInLocale(vm, args[0])), nil
+	v := vm.unwrapADODBFieldValue(resolveCallable(vm, args[0]))
+	switch v.Type {
+	case VTDate:
+		return v, nil
+	case VTEmpty:
+		return NewDate(vbsDateFromSerial(0, builtinCurrentLocation(vm))), nil
+	case VTInteger, VTDouble, VTBool:
+		// Numbers are OLE Automation dates: days since 12/30/1899, fraction = time of day.
+		f, _, _ := vbsCoerceNumericValue(v)
+		return NewDate(vbsDateFromSerial(f, builtinCurrentLocation(vm))), nil
+	}
+	t := valueToTimeInLocale(vm, v)
+	if t.IsZero() {
+		// IIS: CDate("abc"), CDate("") and impossible dates raise Type mismatch.
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+	return NewDate(t), nil
+}
+
+// vbsDateFromSerial converts an OLE Automation date (days since 12/30/1899; the
+// fraction is the time of day, also for negative serials) to a time in loc.
+func vbsDateFromSerial(serial float64, loc *time.Location) time.Time {
+	days := math.Trunc(serial)
+	frac := math.Abs(serial - days)
+	secs := int(math.Round(frac * 86400))
+	base := time.Date(1899, time.December, 30, 0, 0, 0, 0, loc)
+	return base.AddDate(0, 0, int(days)).Add(time.Duration(secs) * time.Second)
 }
 
 // vbsCompatCChar converts to one-character string.
