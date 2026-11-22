@@ -4341,6 +4341,11 @@ func (vm *VM) adodbIsQuery(sql string) bool {
 		return true
 	}
 
+	// SQL Server DBCC commands such as DBCC USEROPTIONS return result sets.
+	if adodbHasSQLKeywordPrefix(trimmed, "dbcc") {
+		return true
+	}
+
 	// DML statements only return a result set when they carry a RETURNING clause.
 	if adodbHasSQLKeywordPrefix(trimmed, "insert") ||
 		adodbHasSQLKeywordPrefix(trimmed, "update") ||
