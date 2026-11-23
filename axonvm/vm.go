@@ -10628,7 +10628,7 @@ func (vm *VM) coerceToDeclaredType(v Value, declaredType ValueType) (Value, erro
 		case VTDouble:
 			return Value{Type: VTInteger, Num: int64(v.Flt)}, nil
 		case VTBool:
-			return Value{Type: VTInteger, Num: v.Num}, nil
+			return Value{Type: VTInteger, Num: vbsBoolNum(v)}, nil
 		case VTString:
 			// Try to parse as number
 			n, err := parseInt64(v.Str)
@@ -10647,7 +10647,7 @@ func (vm *VM) coerceToDeclaredType(v Value, declaredType ValueType) (Value, erro
 		case VTInteger:
 			return Value{Type: VTDouble, Flt: float64(v.Num)}, nil
 		case VTBool:
-			return Value{Type: VTDouble, Flt: float64(v.Num)}, nil
+			return Value{Type: VTDouble, Flt: float64(vbsBoolNum(v))}, nil
 		case VTString:
 			f, err := parseFloat64(v.Str)
 			if err != nil {

@@ -978,7 +978,7 @@ func vbsParseFormatExpression(arg Value, profile builtinLocaleProfile) (float64,
 	case VTInteger:
 		return float64(arg.Num), false, nil
 	case VTBool:
-		return float64(arg.Num), false, nil
+		return float64(vbsBoolNum(arg)), false, nil
 	case VTDouble:
 		if math.IsNaN(arg.Flt) {
 			return 0, false, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
