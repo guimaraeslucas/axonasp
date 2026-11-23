@@ -359,6 +359,29 @@ func (vm *VM) compareValues(a Value, b Value) int {
 		}
 		return 0
 	}
+	// A numeric string against a number compares numerically, as VBScript does
+	// against a numeric literal ("131" > 82 is True, not a text comparison).
+	if (a.Type == VTString) != (b.Type == VTString) {
+		str, num := a, b
+		if b.Type == VTString {
+			str, num = b, a
+		}
+		if num.Type == VTInteger || num.Type == VTDouble {
+			if parsed, _, ok := vbsParseNumericString(str.Str); ok {
+				left, right := parsed, vm.coerceFloat(num)
+				if b.Type == VTString {
+					left, right = right, left
+				}
+				if left < right {
+					return -1
+				}
+				if left > right {
+					return 1
+				}
+				return 0
+			}
+		}
+	}
 	if a.Type == VTString || b.Type == VTString {
 		left := vm.valueToString(a)
 		right := vm.valueToString(b)
