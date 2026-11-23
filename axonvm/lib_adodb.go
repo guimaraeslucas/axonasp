@@ -4347,10 +4347,15 @@ func (vm *VM) adodbIsQuery(sql string) bool {
 	}
 
 	// DML statements only return a result set when they carry a RETURNING clause.
+	// DML statements only return a result set when they carry a RETURNING clause
+	// (PostgreSQL/SQLite) or an OUTPUT clause (SQL Server, e.g.
+	// "INSERT INTO t (...) OUTPUT Inserted.id VALUES (...)").
 	if adodbHasSQLKeywordPrefix(trimmed, "insert") ||
 		adodbHasSQLKeywordPrefix(trimmed, "update") ||
-		adodbHasSQLKeywordPrefix(trimmed, "delete") {
-		return adodbContainsReturningOutsideQuotes(trimmed)
+		adodbHasSQLKeywordPrefix(trimmed, "delete") ||
+		adodbHasSQLKeywordPrefix(trimmed, "merge") {
+		return adodbContainsReturningOutsideQuotes(trimmed) ||
+			adodbContainsKeywordOutsideQuotes(trimmed, "output")
 	}
 
 	return false
@@ -4437,8 +4442,13 @@ func adodbSkipLeadingSQLNoise(sql string) int {
 // The keyword itself must be a full token, so identifiers such as
 // "returning_code" do not trigger the detection.
 func adodbContainsReturningOutsideQuotes(sql string) bool {
-	const keyword = "returning"
-	const keywordLen = len(keyword)
+	return adodbContainsKeywordOutsideQuotes(sql, "returning")
+}
+
+// adodbContainsKeywordOutsideQuotes reports whether sql contains keyword (lowercase)
+// as a full token outside quoted literals, bracket identifiers and comments.
+func adodbContainsKeywordOutsideQuotes(sql string, keyword string) bool {
+	keywordLen := len(keyword)
 
 	i := 0
 	for i < len(sql) {
@@ -4536,15 +4546,13 @@ func adodbContainsReturningOutsideQuotes(sql string) bool {
 				}
 			}
 			i++
-		case 'r', 'R':
-			if i+keywordLen <= len(sql) &&
+		default:
+			if (c|0x20) == keyword[0] && i+keywordLen <= len(sql) &&
 				strings.EqualFold(sql[i:i+keywordLen], keyword) &&
 				adodbIsSQLWordBoundary(sql, i-1) &&
 				adodbIsSQLWordBoundary(sql, i+keywordLen) {
 				return true
 			}
-			i++
-		default:
 			i++
 		}
 	}

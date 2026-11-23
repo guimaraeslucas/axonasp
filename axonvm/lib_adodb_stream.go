@@ -159,6 +159,9 @@ func (vm *VM) dispatchADODBStreamPropertyGet(objID int64, member string) (Value,
 		return NewBool(stream.position >= stream.size), true
 	case strings.EqualFold(member, "ReadText"):
 		return vm.adodbReadText(stream, nil), true
+	case strings.EqualFold(member, "Read"):
+		// b = stream.Read (no parentheses) is a method call that reads to the end.
+		return vm.adodbRead(stream, nil), true
 	default:
 		return Value{Type: VTEmpty}, true
 	}

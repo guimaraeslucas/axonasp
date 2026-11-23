@@ -476,34 +476,63 @@ func vbsCompatInStrRev(vm *VM, args []Value) (Value, error) {
 
 // vbsCompatSplit splits a string into a zero-based Variant array.
 func vbsCompatSplit(_ *VM, args []Value) (Value, error) {
-	if len(args) < 2 {
+	if len(args) < 1 {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
 	}
 	s := args[0].String()
-	delim := args[1].String()
+	if s == "" {
+		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
+	}
+	// The delimiter defaults to a space; an empty delimiter returns the whole string.
+	delim := " "
+	if len(args) > 1 && args[1].Type != VTEmpty {
+		delim = args[1].String()
+	}
 	if delim == "" {
-		runes := []rune(s)
-		values := make([]Value, len(runes))
-		for i := range runes {
-			values[i] = NewString(string(runes[i]))
-		}
-		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
+		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{NewString(s)})}, nil
 	}
 	limit := -1
-	if len(args) > 2 {
+	if len(args) > 2 && args[2].Type != VTEmpty {
 		limit = vbsIntArg(args[2])
 	}
-	parts := []string{}
-	if limit > 0 {
-		parts = strings.SplitN(s, delim, limit)
-	} else {
-		parts = strings.Split(s, delim)
-	}
+	textCompare := len(args) > 3 && vbsIntArg(args[3]) == 1
+	parts := vbsSplitString(s, delim, limit, textCompare)
 	values := make([]Value, len(parts))
 	for i := 0; i < len(parts); i++ {
 		values[i] = NewString(parts[i])
 	}
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
+}
+
+// vbsSplitString splits s on delim, keeping at most limit parts when limit > 0.
+// textCompare matches the delimiter case-insensitively (vbTextCompare).
+func vbsSplitString(s, delim string, limit int, textCompare bool) []string {
+	if !textCompare {
+		if limit > 0 {
+			return strings.SplitN(s, delim, limit)
+		}
+		return strings.Split(s, delim)
+	}
+	parts := []string{}
+	for limit <= 0 || len(parts) < limit-1 {
+		idx := vbsIndexFold(s, delim)
+		if idx < 0 {
+			break
+		}
+		parts = append(parts, s[:idx])
+		s = s[idx+len(delim):]
+	}
+	return append(parts, s)
+}
+
+// vbsIndexFold returns the byte index of the first case-insensitive match of sub in s, or -1.
+func vbsIndexFold(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(sub)], sub) {
+			return i
+		}
+	}
+	return -1
 }
 
 // vbsCompatJoin joins one Variant array using the specified delimiter.
@@ -978,7 +1007,7 @@ func vbsParseFormatExpression(arg Value, profile builtinLocaleProfile) (float64,
 	case VTInteger:
 		return float64(arg.Num), false, nil
 	case VTBool:
-		return float64(arg.Num), false, nil
+		return float64(vbsBoolNum(arg)), false, nil
 	case VTDouble:
 		if math.IsNaN(arg.Flt) {
 			return 0, false, newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
@@ -1671,7 +1700,33 @@ func vbsCompatCDate(vm *VM, args []Value) (Value, error) {
 		// above VbsLen in builtins.go).
 		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
-	return NewDate(valueToTimeInLocale(vm, args[0])), nil
+	v := vm.unwrapADODBFieldValue(resolveCallable(vm, args[0]))
+	switch v.Type {
+	case VTDate:
+		return v, nil
+	case VTEmpty:
+		return NewDate(vbsDateFromSerial(0, builtinCurrentLocation(vm))), nil
+	case VTInteger, VTDouble, VTBool:
+		// Numbers are OLE Automation dates: days since 12/30/1899, fraction = time of day.
+		f, _, _ := vbsCoerceNumericValue(v)
+		return NewDate(vbsDateFromSerial(f, builtinCurrentLocation(vm))), nil
+	}
+	t := valueToTimeInLocale(vm, v)
+	if t.IsZero() {
+		// IIS: CDate("abc"), CDate("") and impossible dates raise Type mismatch.
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
+	}
+	return NewDate(t), nil
+}
+
+// vbsDateFromSerial converts an OLE Automation date (days since 12/30/1899; the
+// fraction is the time of day, also for negative serials) to a time in loc.
+func vbsDateFromSerial(serial float64, loc *time.Location) time.Time {
+	days := math.Trunc(serial)
+	frac := math.Abs(serial - days)
+	secs := int(math.Round(frac * 86400))
+	base := time.Date(1899, time.December, 30, 0, 0, 0, 0, loc)
+	return base.AddDate(0, 0, int(days)).Add(time.Duration(secs) * time.Second)
 }
 
 // vbsCompatCChar converts to one-character string.

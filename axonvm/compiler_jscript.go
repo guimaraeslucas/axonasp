@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -2373,6 +2373,39 @@ func jsObjectPropertyKeyName(key jsast.Expression) (string, bool) {
 	}
 }
 
+// jsCompoundAssignBinaryOp returns the binary opcode a compound assignment
+// (x op= y) applies, for the arithmetic and bitwise/shift operators.
+// The parser may report either the "op=" token or the plain operator token.
+func jsCompoundAssignBinaryOp(op jstoken.Token) (OpCode, bool) {
+	switch op {
+	case jstoken.ADD_ASSIGN, jstoken.PLUS:
+		return OpJSAdd, true
+	case jstoken.SUBTRACT_ASSIGN, jstoken.MINUS:
+		return OpJSSubtract, true
+	case jstoken.MULTIPLY_ASSIGN, jstoken.MULTIPLY:
+		return OpJSMultiply, true
+	case jstoken.QUOTIENT_ASSIGN, jstoken.SLASH:
+		return OpJSDivide, true
+	case jstoken.REMAINDER_ASSIGN, jstoken.REMAINDER:
+		return OpJSModulo, true
+	case jstoken.EXPONENT_ASSIGN, jstoken.EXPONENT:
+		return OpJSExponent, true
+	case jstoken.AND_ASSIGN, jstoken.AND:
+		return OpJSBitwiseAnd, true
+	case jstoken.OR_ASSIGN, jstoken.OR:
+		return OpJSBitwiseOr, true
+	case jstoken.EXCLUSIVE_OR_ASSIGN, jstoken.EXCLUSIVE_OR:
+		return OpJSBitwiseXor, true
+	case jstoken.SHIFT_LEFT_ASSIGN, jstoken.SHIFT_LEFT:
+		return OpJSLeftShift, true
+	case jstoken.SHIFT_RIGHT_ASSIGN, jstoken.SHIFT_RIGHT:
+		return OpJSRightShift, true
+	case jstoken.UNSIGNED_SHIFT_RIGHT_ASSIGN, jstoken.UNSIGNED_SHIFT_RIGHT:
+		return OpJSUnsignedRightShift, true
+	}
+	return 0, false
+}
+
 func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 	switch left := node.Left.(type) {
 	case *jsast.Identifier:
@@ -2402,38 +2435,31 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 			return
 		}
 		if hasLocal {
-			switch node.Operator {
-			case jstoken.ADD_ASSIGN, jstoken.PLUS:
-				c.emit(OpJSGetLocal, localSlot)
-				c.compileJScriptExpression(node.Right)
-				c.emit(OpJSAdd)
-			case jstoken.SUBTRACT_ASSIGN, jstoken.MINUS:
-				c.emit(OpJSGetLocal, localSlot)
-				c.compileJScriptExpression(node.Right)
-				c.emit(OpJSSubtract)
-			case jstoken.MULTIPLY_ASSIGN, jstoken.MULTIPLY:
-				c.emit(OpJSGetLocal, localSlot)
-				c.compileJScriptExpression(node.Right)
-				c.emit(OpJSMultiply)
-			case jstoken.QUOTIENT_ASSIGN, jstoken.SLASH:
-				c.emit(OpJSGetLocal, localSlot)
-				c.compileJScriptExpression(node.Right)
-				c.emit(OpJSDivide)
-			case jstoken.REMAINDER_ASSIGN, jstoken.REMAINDER:
-				c.emit(OpJSGetLocal, localSlot)
-				c.compileJScriptExpression(node.Right)
-				c.emit(OpJSModulo)
-			case jstoken.EXPONENT_ASSIGN, jstoken.EXPONENT:
-				c.emit(OpJSGetLocal, localSlot)
-				c.compileJScriptExpression(node.Right)
-				c.emit(OpJSExponent)
-			default:
+			binOp, ok := jsCompoundAssignBinaryOp(node.Operator)
+			if !ok {
 				c.compileJScriptExpression(node.Right)
 				c.emit(OpJSSetName, nameIdx)
 				return
 			}
+			c.emit(OpJSGetLocal, localSlot)
+			c.compileJScriptExpression(node.Right)
+			c.emit(binOp)
 			c.emit(OpJSDup)
 			c.emit(OpJSSetLocal, localSlot)
+			return
+		}
+		switch node.Operator {
+		case jstoken.AND_ASSIGN, jstoken.AND, jstoken.OR_ASSIGN, jstoken.OR,
+			jstoken.EXCLUSIVE_OR_ASSIGN, jstoken.EXCLUSIVE_OR,
+			jstoken.SHIFT_LEFT_ASSIGN, jstoken.SHIFT_LEFT,
+			jstoken.SHIFT_RIGHT_ASSIGN, jstoken.SHIFT_RIGHT,
+			jstoken.UNSIGNED_SHIFT_RIGHT_ASSIGN, jstoken.UNSIGNED_SHIFT_RIGHT:
+			binOp, _ := jsCompoundAssignBinaryOp(node.Operator)
+			c.emit(OpJSGetName, nameIdx)
+			c.compileJScriptExpression(node.Right)
+			c.emit(binOp)
+			c.emit(OpJSDup)
+			c.emit(OpJSSetName, nameIdx)
 			return
 		}
 		c.compileJScriptExpression(node.Right)
@@ -2489,20 +2515,9 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 		}
 		c.compileJScriptExpression(node.Right)
 		if node.Operator != jstoken.ASSIGN {
-			switch node.Operator {
-			case jstoken.ADD_ASSIGN, jstoken.PLUS:
-				c.emit(OpJSAdd)
-			case jstoken.SUBTRACT_ASSIGN, jstoken.MINUS:
-				c.emit(OpJSSubtract)
-			case jstoken.MULTIPLY_ASSIGN, jstoken.MULTIPLY:
-				c.emit(OpJSMultiply)
-			case jstoken.QUOTIENT_ASSIGN, jstoken.SLASH:
-				c.emit(OpJSDivide)
-			case jstoken.REMAINDER_ASSIGN, jstoken.REMAINDER:
-				c.emit(OpJSModulo)
-			case jstoken.EXPONENT_ASSIGN, jstoken.EXPONENT:
-				c.emit(OpJSExponent)
-			default:
+			if binOp, ok := jsCompoundAssignBinaryOp(node.Operator); ok {
+				c.emit(binOp)
+			} else {
 				c.emit(OpJSPop)
 				c.emit(OpJSLoadUndefined)
 			}
@@ -2514,6 +2529,26 @@ func (c *Compiler) compileJScriptAssignment(node *jsast.AssignExpression) {
 			c.compileJScriptExpression(node.Right)
 			c.compileJScriptExpression(left.Member)
 			c.emit(OpJSSuperIndexSet)
+			return
+		}
+		if binOp, ok := jsCompoundAssignBinaryOp(node.Operator); ok {
+			// a[k] op= v: evaluate target and key once, read the old value,
+			// apply op, then store, leaving the new value as the result.
+			c.compileJScriptExpression(left.Left)   // [t]
+			c.compileJScriptExpression(left.Member) // [t k]
+			c.emit(OpJSDup)                         // [t k k]
+			c.emit(OpJSRot, 3)                      // [k t k]
+			c.emit(OpJSRot, 2)                      // [k k t]
+			c.emit(OpJSDup)                         // [k k t t]
+			c.emit(OpJSRot, 3)                      // [k t k t]
+			c.emit(OpJSRot, 4)                      // [t k t k]
+			c.emit(OpJSIndexGet)                    // [t k old]
+			c.compileJScriptExpression(node.Right)  // [t k old v]
+			c.emit(binOp)                           // [t k new]
+			c.emit(OpJSDup)                         // [t k new new]
+			c.emit(OpJSRot, 4)                      // [new t k new]
+			c.emit(OpJSRot, 3)                      // [new new t k]
+			c.emit(OpJSIndexSet)                    // [new]
 			return
 		}
 		// OpJSIndexSet pops key + target + value, so duplicate the value before
