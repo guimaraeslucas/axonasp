@@ -233,6 +233,16 @@ func NewString(v string) Value {
 	return Value{Type: VTString, Str: v}
 }
 
+// vbsBoolNum returns the VBScript numeric value of a Boolean: True is -1, False is 0.
+// Booleans are stored with Num 1 (shared with JScript, where Number(true) is 1), so
+// every VBScript numeric coercion must go through this helper instead of reading Num.
+func vbsBoolNum(v Value) int64 {
+	if v.Num != 0 {
+		return -1
+	}
+	return 0
+}
+
 func NewBool(v bool) Value {
 	val := int64(0)
 	if v {
