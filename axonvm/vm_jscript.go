@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -10457,6 +10457,9 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsConstructFunction(args)
 		case "Object":
 			return vm.jsConstructObject(args)
+		case "Array":
+			// Array(...) called as a function behaves like new Array(...).
+			return vm.jsConstruct(callee, args, callee, false)
 		case "Number":
 			if len(args) == 0 {
 				return NewDouble(0)
