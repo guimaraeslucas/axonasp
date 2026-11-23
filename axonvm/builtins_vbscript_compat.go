@@ -476,34 +476,63 @@ func vbsCompatInStrRev(vm *VM, args []Value) (Value, error) {
 
 // vbsCompatSplit splits a string into a zero-based Variant array.
 func vbsCompatSplit(_ *VM, args []Value) (Value, error) {
-	if len(args) < 2 {
+	if len(args) < 1 {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
 	}
 	s := args[0].String()
-	delim := args[1].String()
+	if s == "" {
+		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
+	}
+	// The delimiter defaults to a space; an empty delimiter returns the whole string.
+	delim := " "
+	if len(args) > 1 && args[1].Type != VTEmpty {
+		delim = args[1].String()
+	}
 	if delim == "" {
-		runes := []rune(s)
-		values := make([]Value, len(runes))
-		for i := range runes {
-			values[i] = NewString(string(runes[i]))
-		}
-		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
+		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{NewString(s)})}, nil
 	}
 	limit := -1
-	if len(args) > 2 {
+	if len(args) > 2 && args[2].Type != VTEmpty {
 		limit = vbsIntArg(args[2])
 	}
-	parts := []string{}
-	if limit > 0 {
-		parts = strings.SplitN(s, delim, limit)
-	} else {
-		parts = strings.Split(s, delim)
-	}
+	textCompare := len(args) > 3 && vbsIntArg(args[3]) == 1
+	parts := vbsSplitString(s, delim, limit, textCompare)
 	values := make([]Value, len(parts))
 	for i := 0; i < len(parts); i++ {
 		values[i] = NewString(parts[i])
 	}
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
+}
+
+// vbsSplitString splits s on delim, keeping at most limit parts when limit > 0.
+// textCompare matches the delimiter case-insensitively (vbTextCompare).
+func vbsSplitString(s, delim string, limit int, textCompare bool) []string {
+	if !textCompare {
+		if limit > 0 {
+			return strings.SplitN(s, delim, limit)
+		}
+		return strings.Split(s, delim)
+	}
+	parts := []string{}
+	for limit <= 0 || len(parts) < limit-1 {
+		idx := vbsIndexFold(s, delim)
+		if idx < 0 {
+			break
+		}
+		parts = append(parts, s[:idx])
+		s = s[idx+len(delim):]
+	}
+	return append(parts, s)
+}
+
+// vbsIndexFold returns the byte index of the first case-insensitive match of sub in s, or -1.
+func vbsIndexFold(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(sub)], sub) {
+			return i
+		}
+	}
+	return -1
 }
 
 // vbsCompatJoin joins one Variant array using the specified delimiter.
