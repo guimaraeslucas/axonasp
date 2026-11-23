@@ -4,7 +4,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -24,6 +24,8 @@ package axonvm
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -693,6 +695,8 @@ type XMLElement struct {
 	AttrNS     map[string]string
 	Children   []*XMLElement
 	Parent     *XMLElement
+	// DataType is the MSXML node data type ("bin.base64", "bin.hex", ...), "" when untyped.
+	DataType string
 }
 
 // NewMsXML2DOMDocument creates a new DOM Document instance
@@ -2024,6 +2028,23 @@ func (e *XMLElement) legacyGetProperty(name string) any {
 		return nil
 	case "parentnode":
 		return e.Parent
+	case "datatype":
+		if e.DataType == "" {
+			return nil
+		}
+		return e.DataType
+	case "nodetypedvalue":
+		var text strings.Builder
+		appendXMLNodeText(&text, e)
+		switch e.DataType {
+		case "bin.base64":
+			data, _ := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(text.String()), ""))
+			return bytesToVBByteString(data)
+		case "bin.hex":
+			data, _ := hex.DecodeString(strings.TrimSpace(text.String()))
+			return bytesToVBByteString(data)
+		}
+		return text.String()
 	case "length":
 		return len(e.Children)
 	case "children":
@@ -2043,8 +2064,42 @@ func (e *XMLElement) legacySetProperty(name string, value any) error {
 		e.Value = fmt.Sprintf("%v", value)
 	case "text":
 		setXMLNodeText(e, fmt.Sprintf("%v", value))
+	case "datatype":
+		e.DataType = strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", value)))
+	case "nodetypedvalue":
+		switch e.DataType {
+		case "bin.base64":
+			setXMLNodeText(e, base64.StdEncoding.EncodeToString(xmlTypedValueBytes(value)))
+		case "bin.hex":
+			setXMLNodeText(e, hex.EncodeToString(xmlTypedValueBytes(value)))
+		default:
+			setXMLNodeText(e, fmt.Sprintf("%v", value))
+		}
 	}
 	return nil
+}
+
+// xmlTypedValueBytes converts a nodeTypedValue assignment (a VB byte string, as
+// returned by ADODB.Stream.Read, or a byte array) to raw bytes.
+func xmlTypedValueBytes(value any) []byte {
+	switch v := value.(type) {
+	case string:
+		return vbByteStringToBytes(v)
+	case []any:
+		out := make([]byte, len(v))
+		for i, item := range v {
+			switch n := item.(type) {
+			case int:
+				out[i] = byte(n)
+			case float64:
+				out[i] = byte(int(n))
+			}
+		}
+		return out
+	case nil:
+		return nil
+	}
+	return vbByteStringToBytes(fmt.Sprintf("%v", value))
 }
 
 func (e *XMLElement) legacyCallMethod(name string, args ...any) (any, error) {

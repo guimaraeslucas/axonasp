@@ -907,7 +907,9 @@ func vbsCoerceNumericValue(value Value) (float64, vbscript.VBSyntaxErrorCode, bo
 		return 0, 0, true
 	case VTNull:
 		return 0, vbscript.InvalidUseOfNull, false
-	case VTBool, VTInteger:
+	case VTBool:
+		return float64(vbsBoolNum(value)), 0, true
+	case VTInteger:
 		return float64(value.Num), 0, true
 	case VTDouble:
 		return value.Flt, 0, true

@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -10457,6 +10457,9 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 			return vm.jsConstructFunction(args)
 		case "Object":
 			return vm.jsConstructObject(args)
+		case "Array":
+			// Array(...) called as a function behaves like new Array(...).
+			return vm.jsConstruct(callee, args, callee, false)
 		case "Number":
 			if len(args) == 0 {
 				return NewDouble(0)
@@ -11031,15 +11034,16 @@ func (vm *VM) jsToInteger(v Value) float64 {
 	return res
 }
 
+// jsToInt32 implements ECMAScript ToInt32: wrap modulo 2^32, then reinterpret as signed.
+// A plain Go int32(float64) is implementation-defined out of range and saturates on
+// arm64, so 0x8f01cfea | 0 gave 2147483647 instead of -1895706646.
 func (vm *VM) jsToInt32(v Value) int32 {
-	num := vm.jsToInteger(NewDouble(vm.jsToNumber(v).Flt)) // Simplified but usually enough
-	return int32(num)
+	return int32(vm.jsToUint32Exact(v))
 }
 
 // jsToUint32 converts a value to a 32-bit unsigned integer for bitwise operations.
 func (vm *VM) jsToUint32(v Value) uint32 {
-	num := vm.jsToNumber(v).Flt
-	return uint32(int32(num))
+	return vm.jsToUint32Exact(v)
 }
 
 // jsToUint32Exact converts a value to uint32 using ECMAScript ToUint32 semantics.
