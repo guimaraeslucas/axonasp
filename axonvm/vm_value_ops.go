@@ -62,7 +62,9 @@ func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
 		return 0, true
 	case VTDouble:
 		return v.Flt, true
-	case VTBool, VTInteger, VTDate, VTNativeObject, VTBuiltin:
+	case VTBool:
+		return float64(vbsBoolNum(v)), true
+	case VTInteger, VTDate, VTNativeObject, VTBuiltin:
 		return float64(v.Num), true
 	case VTString:
 		parsed, _, ok := vbsParseNumericString(v.Str)
@@ -78,6 +80,8 @@ func (vm *VM) coerceFloat(v Value) float64 {
 	switch v.Type {
 	case VTDouble:
 		return v.Flt
+	case VTBool:
+		return float64(vbsBoolNum(v))
 	case VTString:
 		parsed, _, _ := vbsParseNumericString(v.Str)
 		return parsed
@@ -92,7 +96,9 @@ func (vm *VM) coerceFloat(v Value) float64 {
 func (vm *VM) coerceInt64(v Value) int64 {
 	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
-	case VTBool, VTInteger, VTDate, VTNativeObject, VTBuiltin:
+	case VTBool:
+		return vbsBoolNum(v)
+	case VTInteger, VTDate, VTNativeObject, VTBuiltin:
 		return v.Num
 	case VTDouble:
 		return int64(math.RoundToEven(v.Flt))
@@ -117,7 +123,9 @@ func (vm *VM) coerceInt64(v Value) int64 {
 func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
 	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
-	case VTBool, VTInteger, VTDate, VTNativeObject, VTBuiltin:
+	case VTBool:
+		return vbsBoolNum(v), true
+	case VTInteger, VTDate, VTNativeObject, VTBuiltin:
 		return v.Num, true
 	case VTDouble:
 		return int64(math.RoundToEven(v.Flt)), true
@@ -160,7 +168,7 @@ func (vm *VM) coerceNumericValue(v Value) (Value, vbscript.VBSyntaxErrorCode, bo
 	case VTEmpty:
 		return NewInteger(0), 0, true
 	case VTBool:
-		return NewInteger(v.Num), 0, true
+		return NewInteger(vbsBoolNum(v)), 0, true
 	case VTNull:
 		return NewEmpty(), vbscript.InvalidUseOfNull, false
 	case VTString:
@@ -350,6 +358,29 @@ func (vm *VM) compareValues(a Value, b Value) int {
 			return 1
 		}
 		return 0
+	}
+	// A numeric string against a number compares numerically, as VBScript does
+	// against a numeric literal ("131" > 82 is True, not a text comparison).
+	if (a.Type == VTString) != (b.Type == VTString) {
+		str, num := a, b
+		if b.Type == VTString {
+			str, num = b, a
+		}
+		if num.Type == VTInteger || num.Type == VTDouble {
+			if parsed, _, ok := vbsParseNumericString(str.Str); ok {
+				left, right := parsed, vm.coerceFloat(num)
+				if b.Type == VTString {
+					left, right = right, left
+				}
+				if left < right {
+					return -1
+				}
+				if left > right {
+					return 1
+				}
+				return 0
+			}
+		}
 	}
 	if a.Type == VTString || b.Type == VTString {
 		left := vm.valueToString(a)
