@@ -1117,6 +1117,10 @@ func (vm *VM) dispatchADODBRecordsetPropertyGet(rs *adodbRecordset, member strin
 	case strings.EqualFold(member, "Fields"):
 		return vm.newADODBFieldsCollection(rs)
 	case strings.EqualFold(member, "AbsolutePage"):
+		// The page of the current record, once the cursor is on a record.
+		if rs.pageSize > 0 && rs.currentRow >= 0 && rs.currentRow < rs.recordCount {
+			return NewInteger(int64(rs.currentRow/rs.pageSize + 1))
+		}
 		return NewInteger(int64(rs.absolutePage))
 	case strings.EqualFold(member, "PageCount"):
 		if rs.pageSize <= 0 {
@@ -1234,8 +1238,17 @@ func (vm *VM) dispatchADODBRecordsetPropertySet(rs *adodbRecordset, member strin
 		}
 		return true
 	case strings.EqualFold(member, "AbsolutePage"):
-		rs.absolutePage = vm.asInt(val)
-		return true
+		// Setting AbsolutePage moves the cursor to the first record of that page.
+		page := vm.asInt(val)
+		if page < 1 {
+			return true
+		}
+		size := rs.pageSize
+		if size <= 0 {
+			size = 10
+		}
+		rs.absolutePage = page
+		return vm.dispatchADODBRecordsetPropertySet(rs, "AbsolutePosition", NewInteger(int64((page-1)*size+1)))
 	case strings.EqualFold(member, "AbsolutePosition"):
 		pos := vm.asInt(val)
 		if vm.adodbRecordsetIsLiveOLE(rs) {
