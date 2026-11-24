@@ -4326,6 +4326,79 @@ func (vm *VM) adodbFirstNonEmpty(values ...string) string {
 // through strings.EqualFold on a zero-copy slice, avoiding the heap string that
 // strings.ToLower would produce for every executed statement.
 func (vm *VM) adodbIsQuery(sql string) bool {
+	if adodbIsSingleStatementQuery(sql) {
+		return true
+	}
+	// A batch such as "SET NOCOUNT ON; INSERT ...; SELECT SCOPE_IDENTITY() AS id"
+	// returns the result set of its row-returning statement.
+	statements := adodbSplitSQLStatements(sql)
+	if len(statements) < 2 {
+		return false
+	}
+	for _, statement := range statements[1:] {
+		if adodbIsSingleStatementQuery(statement) {
+			return true
+		}
+	}
+	return false
+}
+
+// adodbSplitSQLStatements splits sql on semicolons that are outside quoted
+// literals, quoted or bracket identifiers and comments.
+func adodbSplitSQLStatements(sql string) []string {
+	var statements []string
+	start := 0
+	skipQuoted := func(i int, closing byte) int {
+		i++
+		for i < len(sql) {
+			if sql[i] == closing {
+				if i+1 < len(sql) && sql[i+1] == closing {
+					i += 2
+					continue
+				}
+				return i + 1
+			}
+			i++
+		}
+		return i
+	}
+	i := 0
+	for i < len(sql) {
+		switch c := sql[i]; {
+		case c == '\'':
+			i = skipQuoted(i, '\'')
+		case c == '"':
+			i = skipQuoted(i, '"')
+		case c == '`':
+			i = skipQuoted(i, '`')
+		case c == '[':
+			i = skipQuoted(i, ']')
+		case c == '-' && i+1 < len(sql) && sql[i+1] == '-':
+			for i < len(sql) && sql[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(sql) && sql[i+1] == '*':
+			i += 2
+			for i < len(sql) && !(sql[i] == '*' && i+1 < len(sql) && sql[i+1] == '/') {
+				i++
+			}
+			i += 2
+		case c == ';':
+			statements = append(statements, sql[start:i])
+			i++
+			start = i
+		default:
+			i++
+		}
+	}
+	if start < len(sql) {
+		statements = append(statements, sql[start:])
+	}
+	return statements
+}
+
+// adodbIsSingleStatementQuery reports whether one SQL statement returns rows.
+func adodbIsSingleStatementQuery(sql string) bool {
 	trimmed := strings.TrimSpace(sql)
 	if trimmed == "" {
 		return false
