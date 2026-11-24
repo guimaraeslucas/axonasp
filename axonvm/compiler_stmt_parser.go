@@ -2461,6 +2461,20 @@ func (c *Compiler) unpatchArgRefInBytecode(startPos int) {
 // marked as ByRef (since parenthesising an argument forces ByVal semantics in VBScript),
 // consumes subsequent comma-separated expressions, and respects parenthesis ByVal semantics.
 func (c *Compiler) parseTrailingBareCallArguments(firstArgStartPos, argCount int) int {
+	// "Foo (a) & b" passes the whole expression "(a) & b" as the first argument:
+	// the parentheses only group the start of it. Continue it with the operators
+	// that follow (not "=", which callers treat as an assignment).
+	if argCount == 1 && c.isBareCallArgumentContinuation() {
+		c.unpatchArgRefInBytecode(firstArgStartPos)
+		for PrecNone < c.getPrecedence(c.next) {
+			infixToken := c.move()
+			infixRule := c.getInfixRule(infixToken)
+			if infixRule == nil {
+				break
+			}
+			infixRule(c, infixToken)
+		}
+	}
 	if comma, ok := c.next.(*vbscript.PunctuationToken); ok && comma.Type == vbscript.PunctComma {
 		c.unpatchArgRefInBytecode(firstArgStartPos)
 		for {
@@ -2492,6 +2506,22 @@ func (c *Compiler) parseTrailingBareCallArguments(firstArgStartPos, argCount int
 		c.unpatchArgRefInBytecode(firstArgStartPos)
 	}
 	return argCount
+}
+
+// isBareCallArgumentContinuation reports whether the token after a parenthesised
+// first argument of a bare call is a binary operator that continues that argument.
+func (c *Compiler) isBareCallArgumentContinuation() bool {
+	prec := c.getPrecedence(c.next)
+	if prec <= PrecNone || prec >= PrecCall {
+		return false
+	}
+	if p, ok := c.next.(*vbscript.PunctuationToken); ok && p.Type == vbscript.PunctEqual {
+		return false
+	}
+	if k, ok := c.next.(*vbscript.KeywordToken); ok && k.Keyword == vbscript.KeywordNot {
+		return false
+	}
+	return true
 }
 
 // parseStaticStatement compiles Static local variable declarations as mapped global slots.

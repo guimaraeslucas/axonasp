@@ -2794,6 +2794,73 @@ func (vm *VM) jsBridgeToVBGlobal(name string, val Value) {
 	if idx, ok := vm.globalNameIndex[strings.ToLower(name)]; ok && idx >= 0 && idx < len(vm.Globals) {
 		vm.Globals[idx] = val
 	}
+	vm.jsBridgeIntrinsicsToVBGlobals()
+}
+
+// jsBridgeIntrinsicsToVBGlobals exposes the JScript namespace objects Math and JSON
+// to VBScript once a server-side JScript block has defined something, as Classic ASP
+// shares one global namespace between script engines (VBScript can call Math.Ceil).
+// Only empty VBScript globals are filled. Other intrinsics (Number, Object, Error, ...)
+// are not bridged, so VBScript variables with those names keep starting out Empty.
+func (vm *VM) jsBridgeIntrinsicsToVBGlobals() {
+	if vm.jsRootEnvID == 0 || vm.jsIntrinsicsBridgedEnv == vm.jsRootEnvID {
+		return
+	}
+	vm.jsIntrinsicsBridgedEnv = vm.jsRootEnvID
+	root := vm.jsEnvItems[vm.jsRootEnvID]
+	if root == nil {
+		return
+	}
+	for _, name := range []string{"Math", "JSON"} {
+		val, ok := root.bindings[name]
+		if !ok {
+			continue
+		}
+		idx, ok := vm.globalNameIndex[strings.ToLower(name)]
+		if !ok || idx < 0 || idx >= len(vm.Globals) || vm.Globals[idx].Type != VTEmpty {
+			continue
+		}
+		vm.Globals[idx] = val
+	}
+}
+
+// jsFoldMemberName returns the member name of a JScript object matching name
+// case-insensitively, as VBScript resolves names without case (Math.Ceil -> ceil).
+func (vm *VM) jsFoldMemberName(target Value, name string) string {
+	if vm.jsHasProperty(target, name) {
+		return name
+	}
+	if target.Type == VTJSObject || target.Type == VTJSFunction {
+		for key := range vm.jsObjectItems[target.Num] {
+			if !strings.HasPrefix(key, "__") && strings.EqualFold(key, name) {
+				return key
+			}
+		}
+		for key := range vm.jsPropertyItems[target.Num] {
+			if strings.EqualFold(key, name) {
+				return key
+			}
+		}
+	}
+	return name
+}
+
+// vbsCallJScriptMember calls (or reads, when not callable) a member of a JScript
+// object on behalf of VBScript code.
+func (vm *VM) vbsCallJScriptMember(target Value, member string, args []Value) Value {
+	name := vm.jsFoldMemberName(target, member)
+	if result, handled := vm.jsCallMember(target, name, args); handled {
+		return result
+	}
+	callee, _ := vm.jsMemberGet(target, name)
+	if vm.jsIsCallable(callee) {
+		return vm.jsCall(callee, target, args)
+	}
+	if len(args) == 0 && callee.Type != VTJSUndefined {
+		return callee
+	}
+	vm.raise(vbscript.ObjectDoesntSupportThisPropertyOrMethod, "Object doesn't support this property or method")
+	return Value{Type: VTEmpty}
 }
 
 func (vm *VM) jsGetName(name string) Value {
