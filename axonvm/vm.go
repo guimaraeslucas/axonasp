@@ -487,6 +487,7 @@ type VM struct {
 	jsProcessObjectID             int64               // ID of the process global object
 	jsNextSymbolID                int64
 	jsRootEnvID                   int64                 // ID of the JScript root environment frame
+	jsIntrinsicsBridgedEnv        int64                 // root env whose intrinsics were bridged into VBScript globals
 	jsStrictMode                  bool                  // Current strict mode state
 	jsFunctionStrictModes         map[int64]bool        // Maps function IDs to strict mode status
 	jsBlockScopes                 []map[string]Value    // Stack of block-scoped (let/const) variable values
@@ -1991,6 +1992,7 @@ func (vm *VM) Run() (err error) {
 				}
 				vm.jsActiveEnvID = 0
 				vm.jsRootEnvID = 0
+				vm.jsIntrinsicsBridgedEnv = 0
 				vm.jsCallStack = nil
 				vm.jsTryStack = nil
 				vm.jsErrStack = nil
@@ -3492,6 +3494,10 @@ aspExecLoop:
 					vm.applyByRefWritebacksFromArgs(nativeByRefs, memberArgs)
 				}
 				vm.push(result)
+			case VTJSObject, VTJSFunction, VTJSProxy:
+				// VBScript calling a member of a JScript object (Classic ASP shares
+				// globals between engines, e.g. Math.Ceil(x) from VBScript).
+				vm.push(vm.vbsCallJScriptMember(target, vm.constants[memberIdx].Str, memberArgs))
 			default:
 				vm.raise(vbscript.CouldNotFindTargetObject, "Object required")
 				vm.push(Value{Type: VTEmpty})

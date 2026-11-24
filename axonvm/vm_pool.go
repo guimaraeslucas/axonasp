@@ -2,7 +2,7 @@
  * AxonASP Server
  * Copyright (C) 2026 G3pix Ltda. All rights reserved.
  *
- * Developed by Lucas Guimarães - G3pix Ltda
+ * Developed by Lucas Guimarães - G3pix Ltda, Yuri Eisman (@yeisman)
  * Contact: https://g3pix.com.br
  * Project URL: https://g3pix.com.br/axonasp
  *
@@ -400,6 +400,7 @@ func (vm *VM) resetForReuse() {
 	vm.nextDynamicClassID = 60000
 	vm.jsActiveEnvID = 0
 	vm.jsRootEnvID = 0
+	vm.jsIntrinsicsBridgedEnv = 0
 	vm.comInitialized = false
 	vm.comThreadLocked = false
 	// Zero-fill icState for fresh execution.
@@ -1076,6 +1077,7 @@ drainedAsyncFS:
 	clear(vm.consoleTimerItems)
 	vm.jsActiveEnvID = 0
 	vm.jsRootEnvID = 0
+	vm.jsIntrinsicsBridgedEnv = 0
 	vm.jsThisValue = Value{Type: VTJSUndefined}
 	vm.jsStringWorkBytes = 0
 }
