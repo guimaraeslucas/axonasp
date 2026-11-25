@@ -33,6 +33,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -4335,12 +4336,7 @@ func (vm *VM) adodbIsQuery(sql string) bool {
 	if len(statements) < 2 {
 		return false
 	}
-	for _, statement := range statements[1:] {
-		if adodbIsSingleStatementQuery(statement) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(statements[1:], adodbIsSingleStatementQuery)
 }
 
 // adodbSplitSQLStatements splits sql on semicolons that are outside quoted

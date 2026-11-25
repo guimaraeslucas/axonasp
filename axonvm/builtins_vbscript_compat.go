@@ -498,7 +498,7 @@ func vbsCompatSplit(_ *VM, args []Value) (Value, error) {
 	textCompare := len(args) > 3 && vbsIntArg(args[3]) == 1
 	parts := vbsSplitString(s, delim, limit, textCompare)
 	values := make([]Value, len(parts))
-	for i := 0; i < len(parts); i++ {
+	for i := range parts {
 		values[i] = NewString(parts[i])
 	}
 	return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, values)}, nil
