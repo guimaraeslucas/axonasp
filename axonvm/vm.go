@@ -2881,6 +2881,8 @@ aspExecLoop:
 			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
 			if arg.Type == VTDouble {
 				vm.stack[vm.sp] = NewDouble(math.Abs(arg.Flt))
+			} else if arg.Type == VTDate {
+				vm.stack[vm.sp] = vbsDateOrDoubleFromSerial(math.Abs(vbsDateSerial(arg)))
 			} else {
 				val := arg.Num
 				if val < 0 {
@@ -2907,19 +2909,28 @@ aspExecLoop:
 
 		case OpMathRound:
 			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
-			input := float64(arg.Num)
-			if arg.Type == VTDouble {
-				input = arg.Flt
+			if arg.Type == VTDate {
+				// IIS: Int, Fix, Round and Abs of a Date are Dates.
+				vm.stack[vm.sp] = vbsDateOrDoubleFromSerial(math.RoundToEven(vbsDateSerial(arg)))
+			} else {
+				input := float64(arg.Num)
+				if arg.Type == VTDouble {
+					input = arg.Flt
+				}
+				vm.stack[vm.sp] = NewDouble(math.RoundToEven(input))
 			}
-			vm.stack[vm.sp] = NewDouble(math.RoundToEven(input))
 
 		case OpMathInt:
 			arg := vm.unwrapADODBFieldValue(vm.unwrapArgRefValue(vm.stack[vm.sp]))
-			input := float64(arg.Num)
-			if arg.Type == VTDouble {
-				input = arg.Flt
+			if arg.Type == VTDate {
+				vm.stack[vm.sp] = vbsDateOrDoubleFromSerial(math.Floor(vbsDateSerial(arg)))
+			} else {
+				input := float64(arg.Num)
+				if arg.Type == VTDouble {
+					input = arg.Flt
+				}
+				vm.stack[vm.sp] = NewInteger(int64(math.Floor(input)))
 			}
-			vm.stack[vm.sp] = NewInteger(int64(math.Floor(input)))
 
 		case OpNeq:
 			a := vm.unwrapADODBFieldValue(vm.stack[vm.sp-1])
@@ -4220,6 +4231,9 @@ aspExecLoop:
 				vm.push(NewNull())
 			} else if val.Type == VTDouble {
 				vm.push(NewDouble(-val.Flt))
+			} else if val.Type == VTDate {
+				// IIS: -d is the Date whose serial is negated (12/27/1772 for 1/1/2027).
+				vm.push(vbsDateOrDoubleFromSerial(-vbsDateSerial(val)))
 			} else if val.Type == VTString {
 				strVal := strings.TrimSpace(val.Str)
 				parsedFloat, err := strconv.ParseFloat(strVal, 64)
@@ -10841,6 +10855,9 @@ func (vm *VM) raiseASPIndexOutOfRange() {
 func (vm *VM) asFloat(v Value) float64 {
 	if v.Type == VTDouble {
 		return v.Flt
+	}
+	if v.Type == VTDate {
+		return vbsDateSerial(v)
 	}
 	return float64(v.Num)
 }

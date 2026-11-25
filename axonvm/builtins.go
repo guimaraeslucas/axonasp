@@ -744,6 +744,9 @@ func vbsAbs(args []Value) (Value, error) {
 	if args[0].Type == VTDouble {
 		return NewDouble(math.Abs(args[0].Flt)), nil
 	}
+	if args[0].Type == VTDate {
+		return vbsDateOrDoubleFromSerial(math.Abs(vbsDateSerial(args[0]))), nil
+	}
 	val := args[0].Num
 	if val < 0 {
 		val = -val
@@ -771,6 +774,8 @@ func vbsInt(args []Value) (Value, error) {
 	var f float64
 	if args[0].Type == VTDouble {
 		f = args[0].Flt
+	} else if args[0].Type == VTDate {
+		return vbsDateOrDoubleFromSerial(math.Floor(vbsDateSerial(args[0]))), nil
 	} else {
 		f = float64(args[0].Num)
 	}
@@ -784,6 +789,8 @@ func vbsFix(args []Value) (Value, error) {
 	var f float64
 	if args[0].Type == VTDouble {
 		f = args[0].Flt
+	} else if args[0].Type == VTDate {
+		return vbsDateOrDoubleFromSerial(math.Trunc(vbsDateSerial(args[0]))), nil
 	} else {
 		f = float64(args[0].Num)
 	}
@@ -914,7 +921,7 @@ func vbsCoerceNumericValue(value Value) (float64, vbscript.VBSyntaxErrorCode, bo
 	case VTDouble:
 		return value.Flt, 0, true
 	case VTDate:
-		return float64(value.Num), 0, true
+		return vbsDateSerial(value), 0, true
 	case VTString:
 		return vbsParseNumericString(value.Str)
 	default:

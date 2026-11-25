@@ -9290,7 +9290,7 @@ End Sub
 // TestASPAddValuesStringNumericCoercion verifies VBScript '+' operator coercion rules:
 // - "5" + 3 = 8 (numeric addition)
 // - True + "3" raises Type Mismatch
-// - Date + "3" raises Type Mismatch
+// - Date + "3" is the Date three days later, as measured on IIS (see below)
 // - "5a" + 3 raises Type Mismatch
 func TestASPAddValuesStringNumericCoercion(t *testing.T) {
 	source := `<%
@@ -9311,11 +9311,12 @@ Err.Clear
 Dim res3 : res3 = True + "3"
 Response.Write "3:Err:" & Err.Number & "|"
 
-' 4. Date + String
+' 4. Date + String: a Date, measured on IIS (d + "1" in
+' https://github.com/saborrie/iis-oracle/actions/runs/45595451489)
 Err.Clear
 Dim d : d = CDate("2020-01-01")
 Dim res4 : res4 = d + "3"
-Response.Write "4:Err:" & Err.Number & "|"
+Response.Write "4:" & res4 & "|Err:" & Err.Number & "|"
 %>`
 
 	compiler := NewASPCompiler(source)
@@ -9334,7 +9335,7 @@ Response.Write "4:Err:" & Err.Number & "|"
 	}
 	host.Response().Flush()
 
-	expected := "1:8|Err:0|2:Err:-2146828275|3:Err:-2146828275|4:Err:-2146828275|"
+	expected := "1:8|Err:0|2:Err:-2146828275|3:Err:-2146828275|4:1/4/2020|Err:0|"
 	if got := output.String(); got != expected {
 		t.Fatalf("expected %q, got %q", expected, got)
 	}
