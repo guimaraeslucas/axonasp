@@ -10784,6 +10784,8 @@ func (vm *VM) jsHandleNativeError(hresult int, errMsg string, vme *VMError) {
 // If a panic occurs during native dispatch (e.g. invalid class string 0x800401F3 from Server.CreateObject),
 // it intercepts the error and routes it through JScript exception handling or telemetry.
 func (vm *VM) jsDispatchNativeCall(targetID int64, member string, args []Value) (res Value) {
+	vm.jsNativeCallDepth++
+	defer func() { vm.jsNativeCallDepth-- }()
 	defer func() {
 		if r := recover(); r != nil {
 			if vme, ok := r.(*VMError); ok {
