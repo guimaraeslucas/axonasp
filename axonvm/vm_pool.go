@@ -401,6 +401,7 @@ func (vm *VM) resetForReuse() {
 	vm.jsActiveEnvID = 0
 	vm.jsRootEnvID = 0
 	vm.jsIntrinsicsBridgedEnv = 0
+	vm.jsNativeCallDepth = 0
 	vm.comInitialized = false
 	vm.comThreadLocked = false
 	// Zero-fill icState for fresh execution.
@@ -1078,6 +1079,7 @@ drainedAsyncFS:
 	vm.jsActiveEnvID = 0
 	vm.jsRootEnvID = 0
 	vm.jsIntrinsicsBridgedEnv = 0
+	vm.jsNativeCallDepth = 0
 	vm.jsThisValue = Value{Type: VTJSUndefined}
 	vm.jsStringWorkBytes = 0
 }

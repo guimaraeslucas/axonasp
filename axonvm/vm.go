@@ -488,6 +488,7 @@ type VM struct {
 	jsNextSymbolID                int64
 	jsRootEnvID                   int64                 // ID of the JScript root environment frame
 	jsIntrinsicsBridgedEnv        int64                 // root env whose intrinsics were bridged into VBScript globals
+	jsNativeCallDepth             int                   // >0 while JScript code is calling a native object member
 	jsStrictMode                  bool                  // Current strict mode state
 	jsFunctionStrictModes         map[int64]bool        // Maps function IDs to strict mode status
 	jsBlockScopes                 []map[string]Value    // Stack of block-scoped (let/const) variable values
@@ -6628,7 +6629,14 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		switch {
 		case strings.EqualFold(member, "Write"):
 			if len(args) > 0 {
-				response.Write(vm.valueToResponseString(args[0]))
+				// JScript callers get JScript string rules (Null -> "null"). A VBScript
+				// call such as Response.Write(rs("col")) must follow VBScript rules and
+				// write nothing for Null, even though a JScript root environment exists.
+				if vm.engineMode == EngineModeJavaScript || vm.jsNativeCallDepth > 0 {
+					response.Write(vm.valueToResponseString(args[0]))
+				} else {
+					response.Write(vm.valueToString(args[0]))
+				}
 			}
 			return Value{Type: VTEmpty}
 		case strings.EqualFold(member, "BinaryWrite"):
