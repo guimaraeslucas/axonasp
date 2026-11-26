@@ -31,9 +31,14 @@ import (
 func TestServerEncoding(t *testing.T) {
 	server := NewServer()
 
-	htmlEncoded := server.HTMLEncode("<b>&\"ä😀</b>")
-	if htmlEncoded != "&lt;b&gt;&amp;&#34;&#228;&#128512;&lt;/b&gt;" {
+	htmlEncoded := server.HTMLEncode("<b>&\"'ä😀</b>")
+	if htmlEncoded != "&lt;b&gt;&amp;&quot;'&#228;&#128512;&lt;/b&gt;" {
 		t.Fatalf("unexpected HTMLEncode output: %s", htmlEncoded)
+	}
+
+	edgeEncoded := server.HTMLEncode("a\x7fb\u0080c\u20acc")
+	if edgeEncoded != "a\x7fb&#128;c&#8364;c" {
+		t.Fatalf("unexpected HTMLEncode edge output: %s", edgeEncoded)
 	}
 
 	urlEncoded := server.URLEncode("a b&c")
