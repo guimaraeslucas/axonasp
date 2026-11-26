@@ -1969,6 +1969,7 @@ func vbsCompatExecuteGlobal(vm *VM, args []Value) (Value, error) {
 				vm.errSetFromVMError(vme)
 				vm.lastError = vme
 			}
+			vm.skipToNextStmt = true
 			return NewEmpty(), nil
 		}
 		return NewEmpty(), err
@@ -2278,6 +2279,9 @@ func vbsCompatEval(vm *VM, args []Value) (Value, error) {
 	// Sync only mutable runtime/global state. Preserving caller stack/frame keeps
 	// Eval side-effect free with respect to VM stack discipline.
 	vm.syncExecuteGlobalState(child)
+	if child.skipToNextStmt {
+		vm.skipToNextStmt = true
+	}
 
 	return resultValue, nil
 }
