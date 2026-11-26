@@ -203,6 +203,8 @@ func (j *G3JSON) vmValueToGoValue(v Value, seenNative map[int64]bool, seenArrays
 		return v.String()
 	case VTInteger:
 		return v.Num
+	case VTCurrency:
+		return float64(v.Num) / 10000.0
 	case VTDouble:
 		if math.IsNaN(v.Flt) || math.IsInf(v.Flt, 0) {
 			return nil

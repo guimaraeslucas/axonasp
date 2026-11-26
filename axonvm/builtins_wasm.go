@@ -35,6 +35,7 @@ import (
 	"strings"
 	"syscall/js"
 	"time"
+	"unicode/utf8"
 
 	"g3pix.com.br/axonasp/v2/vbscript"
 )
@@ -161,7 +162,12 @@ func vbsTypeName(args []Value) (Value, error) {
 	case VTBool:
 		return NewString("Boolean"), nil
 	case VTInteger:
+		if isLongSubtype(args[0]) {
+			return NewString("Long"), nil
+		}
 		return NewString("Integer"), nil
+	case VTCurrency:
+		return NewString("Currency"), nil
 	case VTDouble:
 		return NewString("Double"), nil
 	case VTString:
@@ -347,50 +353,85 @@ func vbsUBoundVM(vm *VM, args []Value) (Value, error) {
 
 // --- String and Binary Manipulation ---
 
+// vmStringArg converts a Value to string using the VM's active VBScript locale when available.
+func vmStringArg(vm *VM, v Value) string {
+	if vm != nil {
+		return vm.valueToString(v)
+	}
+	return v.String()
+}
+
 func VbsLen(args []Value) (Value, error) {
+	return vbsLenVM(nil, args)
+}
+
+func vbsLenVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewInteger(0), nil
 	}
-	return NewInteger(int64(len([]rune(args[0].String())))), nil
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
+	return NewInteger(int64(vbsWTF8RuneCount(vmStringArg(vm, args[0])))), nil
 }
 
 func vbsLenB(args []Value) (Value, error) {
+	return vbsLenBVM(nil, args)
+}
+
+func vbsLenBVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewInteger(0), nil
 	}
-	return NewInteger(int64(len(ansiBytes(args[0].String())))), nil
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
+	return NewInteger(int64(len(ansiBytes(vmStringArg(vm, args[0]))))), nil
 }
 
 func VbsUCase(args []Value) (Value, error) {
+	return vbsUCaseVM(nil, args)
+}
+
+func vbsUCaseVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	return NewString(strings.ToUpper(args[0].String())), nil
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
+	return NewString(strings.ToUpper(vmStringArg(vm, args[0]))), nil
 }
 
-func vbsLCase(args []Value) (Value, error) {
+func vbsLCaseVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	return NewString(strings.ToLower(args[0].String())), nil
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
+	return NewString(strings.ToLower(vmStringArg(vm, args[0]))), nil
 }
 
-func vbsTrim(args []Value) (Value, error) {
+func vbsTrimVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	return NewString(strings.TrimSpace(args[0].String())), nil
+	if args[0].Type == VTNull {
+		return NewNull(), nil
+	}
+	return NewString(strings.TrimSpace(vmStringArg(vm, args[0]))), nil
 }
 
-func vbsMid(args []Value) (Value, error) {
+func vbsMidVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{Type: VTEmpty}, nil
 	}
 	if args[0].Type == VTNull {
 		return NewNull(), nil
 	}
-	runes := []rune(args[0].String())
-	start := vbsIntArg(args[1]) - 1
+	runes := []rune(vmStringArg(vm, args[0]))
+	start := vbsIntArgInLocale(vm, args[1]) - 1
 	if start < 0 {
 		start = 0
 	}
@@ -399,7 +440,7 @@ func vbsMid(args []Value) (Value, error) {
 	}
 
 	if len(args) >= 3 {
-		length := vbsIntArg(args[2])
+		length := vbsIntArgInLocale(vm, args[2])
 		if start+length > len(runes) {
 			length = len(runes) - start
 		}
@@ -408,15 +449,15 @@ func vbsMid(args []Value) (Value, error) {
 	return NewString(string(runes[start:])), nil
 }
 
-func vbsLeft(args []Value) (Value, error) {
+func vbsLeftVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{Type: VTEmpty}, nil
 	}
 	if args[0].Type == VTNull {
 		return NewNull(), nil
 	}
-	runes := []rune(args[0].String())
-	length := vbsIntArg(args[1])
+	runes := []rune(vmStringArg(vm, args[0]))
+	length := vbsIntArgInLocale(vm, args[1])
 	if length <= 0 {
 		return NewString(""), nil
 	}
@@ -426,15 +467,15 @@ func vbsLeft(args []Value) (Value, error) {
 	return NewString(string(runes[:length])), nil
 }
 
-func vbsRight(args []Value) (Value, error) {
+func vbsRightVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{Type: VTEmpty}, nil
 	}
 	if args[0].Type == VTNull {
 		return NewNull(), nil
 	}
-	runes := []rune(args[0].String())
-	length := vbsIntArg(args[1])
+	runes := []rune(vmStringArg(vm, args[0]))
+	length := vbsIntArgInLocale(vm, args[1])
 	if length <= 0 {
 		return NewString(""), nil
 	}
@@ -444,18 +485,44 @@ func vbsRight(args []Value) (Value, error) {
 	return NewString(string(runes[len(runes)-length:])), nil
 }
 
-func vbsAsc(args []Value) (Value, error) {
-	if len(args) < 1 || args[0].String() == "" {
-		return NewInteger(0), nil
+func vbsAscVM(vm *VM, args []Value) (Value, error) {
+	if len(args) < 1 {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.WrongNumberOfParameters, vbscript.WrongNumberOfParameters.String())
 	}
-	return NewInteger(int64(args[0].String()[0])), nil
+	if args[0].Type == VTNull {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
+	}
+	s := vmStringArg(vm, args[0])
+	if s == "" {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
+	}
+	return NewInteger(int64(s[0])), nil
 }
 
-func vbsChr(args []Value) (Value, error) {
+func vbsChrVM(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	return NewString(string(byte(args[0].Num))), nil
+	return NewString(string(byte(vbsIntArgInLocale(vm, args[0])))), nil
+}
+
+// vbsWTF8RuneCount counts Unicode codepoints in a string, treating 3-byte WTF-8 surrogate sequences as 1 character each.
+func vbsWTF8RuneCount(s string) int {
+	count := 0
+	for i := 0; i < len(s); {
+		if i+2 < len(s) && s[i] == 0xED && s[i+1] >= 0xA0 && s[i+1] <= 0xBF && s[i+2] >= 0x80 && s[i+2] <= 0xBF {
+			count++
+			i += 3
+			continue
+		}
+		_, w := utf8.DecodeRuneInString(s[i:])
+		if w <= 0 {
+			w = 1
+		}
+		count++
+		i += w
+	}
+	return count
 }
 
 func vbsInStrVM(vm *VM, args []Value) (Value, error) {
@@ -852,60 +919,18 @@ func vbsRandomize(args []Value) (Value, error) {
 	return Value{Type: VTEmpty}, nil
 }
 
-// vbsParseNumericString parses VBScript numeric text, including &H and &O string forms.
+// vbsParseNumericString parses VBScript numeric text using the configured default locale.
 func vbsParseNumericString(text string) (float64, vbscript.VBSyntaxErrorCode, bool) {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return 0, vbscript.TypeMismatch, false
-	}
-
-	sign := 1.0
-	if strings.HasPrefix(trimmed, "+") {
-		trimmed = strings.TrimSpace(trimmed[1:])
-	} else if strings.HasPrefix(trimmed, "-") {
-		sign = -1
-		trimmed = strings.TrimSpace(trimmed[1:])
-	}
-
-	if trimmed == "" {
-		return 0, vbscript.TypeMismatch, false
-	}
-
-	lower := strings.ToLower(trimmed)
-	if strings.HasPrefix(lower, "&h") {
-		digits := trimmed[2:]
-		if digits == "" {
-			return 0, vbscript.TypeMismatch, false
-		}
-		parsed, err := strconv.ParseUint(digits, 16, 64)
-		if err != nil {
-			return 0, vbscript.TypeMismatch, false
-		}
-		return sign * float64(parsed), 0, true
-	}
-
-	if strings.HasPrefix(lower, "&o") {
-		digits := trimmed[2:]
-		if digits == "" {
-			return 0, vbscript.TypeMismatch, false
-		}
-		parsed, err := strconv.ParseUint(digits, 8, 64)
-		if err != nil {
-			return 0, vbscript.TypeMismatch, false
-		}
-		return sign * float64(parsed), 0, true
-	}
-
-	parsed, err := strconv.ParseFloat(strings.ReplaceAll(trimmed, ",", ""), 64)
-	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-		return 0, vbscript.TypeMismatch, false
-	}
-
-	return sign * parsed, 0, true
+	return vbsParseNumericStringInLocale(text, builtinLocaleProfileForLCID(loadBuiltinDefaults().mslcid))
 }
 
-// vbsCoerceNumericValue converts a VM value to a numeric value using VBScript coercion rules.
+// vbsCoerceNumericValue converts a VM value to a numeric value using default VBScript coercion rules.
 func vbsCoerceNumericValue(value Value) (float64, vbscript.VBSyntaxErrorCode, bool) {
+	return vbsCoerceNumericValueInLocale(nil, value)
+}
+
+// vbsCoerceNumericValueInLocale converts a VM value to a numeric value using the VM's active locale.
+func vbsCoerceNumericValueInLocale(vm *VM, value Value) (float64, vbscript.VBSyntaxErrorCode, bool) {
 	switch value.Type {
 	case VTEmpty:
 		return 0, 0, true
@@ -915,29 +940,31 @@ func vbsCoerceNumericValue(value Value) (float64, vbscript.VBSyntaxErrorCode, bo
 		return float64(vbsBoolNum(value)), 0, true
 	case VTInteger:
 		return float64(value.Num), 0, true
+	case VTCurrency:
+		return float64(value.Num) / 10000.0, 0, true
 	case VTDouble:
 		return value.Flt, 0, true
 	case VTDate:
 		return vbsDateSerial(value), 0, true
 	case VTString:
-		return vbsParseNumericString(value.Str)
+		return vbsParseNumericStringInLocale(value.Str, builtinLocaleProfileForVM(vm))
 	default:
 		return 0, vbscript.TypeMismatch, false
 	}
 }
 
 // vbsConvertRoundedIntegerVM converts one value to an integer range using VBScript banker's rounding.
-func vbsConvertRoundedIntegerVM(vm *VM, args []Value, minValue int64, maxValue int64) (Value, error) {
+func vbsConvertRoundedIntegerVM(vm *VM, args []Value, minValue int64, maxValue int64, forceLong bool) (Value, error) {
 	if len(args) < 1 {
-		return NewInteger(0), nil
+		return newVBScriptIntValue(0, forceLong), nil
 	}
 
-	numericValue, code, ok := vbsCoerceNumericValue(args[0])
+	numericValue, code, ok := vbsCoerceNumericValueInLocale(vm, args[0])
 	if !ok {
 		if vm != nil {
 			vm.raise(code, code.String())
 		}
-		return NewInteger(0), nil
+		return newVBScriptIntValue(0, forceLong), nil
 	}
 
 	rounded := math.RoundToEven(numericValue)
@@ -945,15 +972,15 @@ func vbsConvertRoundedIntegerVM(vm *VM, args []Value, minValue int64, maxValue i
 		if vm != nil {
 			vm.raise(vbscript.Overflow, vbscript.Overflow.String())
 		}
-		return NewInteger(0), nil
+		return newVBScriptIntValue(0, forceLong), nil
 	}
 
-	return NewInteger(int64(rounded)), nil
+	return newVBScriptIntValue(int64(rounded), forceLong), nil
 }
 
 // vbsCIntVM converts values using VBScript CInt semantics, including banker's rounding.
 func vbsCIntVM(vm *VM, args []Value) (Value, error) {
-	return vbsConvertRoundedIntegerVM(vm, args, -32768, 32767)
+	return vbsConvertRoundedIntegerVM(vm, args, -32768, 32767, false)
 }
 
 // vbsCDblVM converts values using VBScript CDbl semantics and VM error propagation.
@@ -962,7 +989,7 @@ func vbsCDblVM(vm *VM, args []Value) (Value, error) {
 		return NewDouble(0), nil
 	}
 
-	numericValue, code, ok := vbsCoerceNumericValue(args[0])
+	numericValue, code, ok := vbsCoerceNumericValueInLocale(vm, args[0])
 	if !ok {
 		if vm != nil {
 			vm.raise(code, code.String())
@@ -1647,16 +1674,16 @@ func init() {
 	RegisterBuiltin("UBound", vbsUBoundVM)
 
 	// Strings
-	RegisterBuiltin("Len", bindBuiltin(VbsLen))
-	RegisterBuiltin("LenB", bindBuiltin(vbsLenB))
-	RegisterBuiltin("UCase", bindBuiltin(VbsUCase))
-	RegisterBuiltin("LCase", bindBuiltin(vbsLCase))
-	RegisterBuiltin("Trim", bindBuiltin(vbsTrim))
-	RegisterBuiltin("Mid", bindBuiltin(vbsMid))
-	RegisterBuiltin("Left", bindBuiltin(vbsLeft))
-	RegisterBuiltin("Right", bindBuiltin(vbsRight))
-	RegisterBuiltin("Asc", bindBuiltin(vbsAsc))
-	RegisterBuiltin("Chr", bindBuiltin(vbsChr))
+	RegisterBuiltin("Len", vbsLenVM)
+	RegisterBuiltin("LenB", vbsLenBVM)
+	RegisterBuiltin("UCase", vbsUCaseVM)
+	RegisterBuiltin("LCase", vbsLCaseVM)
+	RegisterBuiltin("Trim", vbsTrimVM)
+	RegisterBuiltin("Mid", vbsMidVM)
+	RegisterBuiltin("Left", vbsLeftVM)
+	RegisterBuiltin("Right", vbsRightVM)
+	RegisterBuiltin("Asc", vbsAscVM)
+	RegisterBuiltin("Chr", vbsChrVM)
 	RegisterBuiltin("InStr", vbsInStrVM)
 	RegisterBuiltin("Replace", vbsReplaceVM)
 

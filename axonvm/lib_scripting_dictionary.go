@@ -28,14 +28,38 @@ import (
 	"g3pix.com.br/axonasp/v2/vbscript"
 )
 
+// dictKeyKind identifies the VBScript variant key category in Scripting.Dictionary.
+type dictKeyKind uint8
+
+const (
+	dictKeyEmpty dictKeyKind = iota
+	dictKeyNull
+	dictKeyString
+	dictKeyNumber
+	dictKeyBool
+	dictKeyDate
+	dictKeyObject
+	dictKeyOther
+)
+
+// dictMapKey preserves VBScript Variant key types so numeric and string keys (e.g. 1 vs "1")
+// remain distinct, matching Microsoft Scripting.Dictionary semantics.
+type dictMapKey struct {
+	kind dictKeyKind
+	sub  ValueType
+	num  int64
+	flt  float64
+	str  string
+}
+
 // scriptingDictionary is the runtime state for one Scripting.Dictionary instance.
-// Keys are stored in insertion order. The index map holds the normalized key
-// (lowercased when TextCompare) mapped to the position in the keys/values slices.
+// Keys are stored in insertion order. The index map holds the typed normalized key
+// mapped to the position in the keys/values slices.
 // This gives O(1) Exists/Item access and preserves Keys()/Items() ordering.
 type scriptingDictionary struct {
 	keys        []Value
 	values      []Value
-	index       map[string]int
+	index       map[dictMapKey]int
 	compareMode int // 0 = BinaryCompare (case-sensitive), 1 = TextCompare (case-insensitive)
 }
 
@@ -44,7 +68,7 @@ func newScriptingDictionary() *scriptingDictionary {
 	return &scriptingDictionary{
 		keys:   make([]Value, 0, 8),
 		values: make([]Value, 0, 8),
-		index:  make(map[string]int, 8),
+		index:  make(map[dictMapKey]int, 8),
 	}
 }
 
@@ -56,9 +80,41 @@ func (d *scriptingDictionary) normalizeKey(key string) string {
 	return key
 }
 
+// makeMapKey converts a VBScript Value into a typed comparable dictionary lookup key.
+func (d *scriptingDictionary) makeMapKey(key Value) dictMapKey {
+	switch key.Type {
+	case VTEmpty:
+		return dictMapKey{kind: dictKeyEmpty}
+	case VTNull:
+		return dictMapKey{kind: dictKeyNull}
+	case VTString:
+		return dictMapKey{kind: dictKeyString, str: d.normalizeKey(key.Str)}
+	case VTInteger:
+		return dictMapKey{kind: dictKeyNumber, num: key.Num}
+	case VTDouble:
+		if key.Flt >= -9223372036854775808.0 && key.Flt < 9223372036854775808.0 && key.Flt == float64(int64(key.Flt)) {
+			return dictMapKey{kind: dictKeyNumber, num: int64(key.Flt)}
+		}
+		return dictMapKey{kind: dictKeyNumber, flt: key.Flt}
+	case VTCurrency:
+		if key.Num%10000 == 0 {
+			return dictMapKey{kind: dictKeyNumber, num: key.Num / 10000}
+		}
+		return dictMapKey{kind: dictKeyNumber, flt: float64(key.Num) / 10000.0}
+	case VTBool:
+		return dictMapKey{kind: dictKeyBool, num: key.Num}
+	case VTDate:
+		return dictMapKey{kind: dictKeyDate, num: key.Num}
+	case VTObject, VTNativeObject, VTNothing:
+		return dictMapKey{kind: dictKeyObject, sub: key.Type, num: key.Num}
+	default:
+		return dictMapKey{kind: dictKeyOther, sub: key.Type, str: d.normalizeKey(key.String())}
+	}
+}
+
 // keyIndex returns the slice position for the given key, or -1 if not found.
-func (d *scriptingDictionary) keyIndex(key string) int {
-	if pos, ok := d.index[d.normalizeKey(key)]; ok {
+func (d *scriptingDictionary) keyIndex(key Value) int {
+	if pos, ok := d.index[d.makeMapKey(key)]; ok {
 		return pos
 	}
 	return -1
@@ -67,7 +123,7 @@ func (d *scriptingDictionary) keyIndex(key string) int {
 // itemGet returns the value for key. If the key does not exist, it is auto-created
 // with Empty value (classic VBScript Dictionary late-binding behavior).
 func (d *scriptingDictionary) itemGet(vm *VM, key Value) Value {
-	pos := d.keyIndex(key.String())
+	pos := d.keyIndex(key)
 	if pos >= 0 {
 		return d.values[pos]
 	}
@@ -78,7 +134,7 @@ func (d *scriptingDictionary) itemGet(vm *VM, key Value) Value {
 
 // itemSet assigns value to key, creating the entry if it does not exist.
 func (d *scriptingDictionary) itemSet(vm *VM, key Value, val Value) {
-	pos := d.keyIndex(key.String())
+	pos := d.keyIndex(key)
 	if pos >= 0 {
 		prevVal := d.values[pos]
 		d.values[pos] = val
@@ -96,7 +152,7 @@ func (d *scriptingDictionary) addEntry(vm *VM, key Value, val Value) {
 	pos := len(d.keys)
 	d.keys = append(d.keys, key)
 	d.values = append(d.values, val)
-	d.index[d.normalizeKey(key.String())] = pos
+	d.index[d.makeMapKey(key)] = pos
 	if vm != nil {
 		vm.incrementObjectRefCount(key)
 		vm.incrementObjectRefCount(val)
@@ -106,9 +162,9 @@ func (d *scriptingDictionary) addEntry(vm *VM, key Value, val Value) {
 // rebuildIndex reconstructs the index map from the current keys slice.
 // Called after Remove or CompareMode change.
 func (d *scriptingDictionary) rebuildIndex() {
-	d.index = make(map[string]int, len(d.keys))
+	d.index = make(map[dictMapKey]int, len(d.keys))
 	for i, k := range d.keys {
-		d.index[d.normalizeKey(k.String())] = i
+		d.index[d.makeMapKey(k)] = i
 	}
 }
 
@@ -150,7 +206,7 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			vm.raise(vbscript.WrongNumberOfParameters, "Dictionary.Add requires 2 arguments: key, value")
 			return Value{Type: VTEmpty}, true
 		}
-		if d.keyIndex(args[0].String()) >= 0 {
+		if d.keyIndex(args[0]) >= 0 {
 			vm.raise(vbscript.ThisKeyAlreadyAssociatedWithAnElement, "This key is already associated with an element of this collection")
 			return Value{Type: VTEmpty}, true
 		}
@@ -163,7 +219,7 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			vm.raise(vbscript.WrongNumberOfParameters, "Dictionary.Exists requires 1 argument: key")
 			return Value{Type: VTEmpty}, true
 		}
-		return NewBool(d.keyIndex(args[0].String()) >= 0), true
+		return NewBool(d.keyIndex(args[0]) >= 0), true
 
 	// Remove(key) — removes key; error if not found.
 	case strings.EqualFold(member, "Remove"):
@@ -171,7 +227,7 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			vm.raise(vbscript.WrongNumberOfParameters, "Dictionary.Remove requires 1 argument: key")
 			return Value{Type: VTEmpty}, true
 		}
-		pos := d.keyIndex(args[0].String())
+		pos := d.keyIndex(args[0])
 		if pos < 0 {
 			vm.raise(vbscript.ElementWasNotFound, "The specified key was not found in the Dictionary")
 			return Value{Type: VTEmpty}, true
@@ -193,7 +249,7 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 		copy(oldValues, d.values)
 		d.keys = d.keys[:0]
 		d.values = d.values[:0]
-		d.index = make(map[string]int, 8)
+		d.index = make(map[dictMapKey]int, 8)
 		for _, k := range oldKeys {
 			vm.decrementObjectRefCount(k)
 		}
@@ -242,14 +298,12 @@ func (vm *VM) dispatchDictionaryMethod(objID int64, member string, args []Value)
 			return vm.newNativeObjectProxy(objID, "Key", args), true
 		}
 		if len(args) >= 2 {
-			oldKey := args[0].String()
-			newKey := args[1].String()
-			pos := d.keyIndex(oldKey)
+			pos := d.keyIndex(args[0])
 			if pos < 0 {
 				vm.raise(vbscript.ElementWasNotFound, "The specified key was not found in the Dictionary")
 				return Value{Type: VTEmpty}, true
 			}
-			if d.keyIndex(newKey) >= 0 {
+			if d.keyIndex(args[1]) >= 0 {
 				vm.raise(vbscript.ThisKeyAlreadyAssociatedWithAnElement, "The new key is already associated with an element of this collection")
 				return Value{Type: VTEmpty}, true
 			}

@@ -73,12 +73,21 @@ const (
 	VTJSProxy
 	// VTRecord represents a User-Defined Type (UDT) instance.
 	VTRecord
+	// VTCurrency represents a VBScript Currency value (64-bit scaled integer * 10000).
+	VTCurrency
+)
+
+// SubType flags for VTInteger to preserve VBScript Integer vs Long subtype distinction.
+const (
+	intSubTypeDefault byte = 0
+	intSubTypeLong    byte = 1
 )
 
 type Value struct {
 	Type      ValueType
+	SubType   byte      // Stores VBScript subtype metadata (e.g. intSubTypeLong) in existing padding
 	Interface string    // Phase 5: Optional Class/Interface name for VTObject
-	Num       int64     // Used for Bool (0/1), Integer, Date, NativeObject ID, and Builtin Index
+	Num       int64     // Used for Bool (0/1), Integer, Currency (*10000), Date, NativeObject ID, and Builtin Index
 	Flt       float64   // Used for Double
 	Str       string    // Strings in Go are lightweight pointers
 	Arr       *VBArray  // Used for VBScript arrays
@@ -110,6 +119,8 @@ func (v Value) String() string {
 		return "False"
 	case VTInteger:
 		return fmt.Sprintf("%d", v.Num)
+	case VTCurrency:
+		return formatCurrencyValue(v.Num, ".")
 	case VTDouble:
 		if math.IsNaN(v.Flt) {
 			return "NaN"
@@ -194,7 +205,7 @@ func (v Value) String() string {
 // must raise VBScript Type mismatch (error 13). No heap allocations are performed.
 func (v Value) CoerceBool() (bool, bool) {
 	switch v.Type {
-	case VTBool, VTInteger:
+	case VTBool, VTInteger, VTCurrency:
 		return v.Num != 0, true
 	case VTDouble:
 		return v.Flt != 0, true
@@ -223,6 +234,69 @@ func (v Value) CoerceBool() (bool, bool) {
 
 func NewInteger(v int64) Value {
 	return Value{Type: VTInteger, Num: v}
+}
+
+// NewLong creates a VTInteger value explicitly tagged with VBScript Long subtype.
+func NewLong(v int64) Value {
+	return Value{Type: VTInteger, SubType: intSubTypeLong, Num: v}
+}
+
+// NewCurrency creates a VTCurrency value from a fixed-point integer scaled by 10000.
+func NewCurrency(scaled int64) Value {
+	return Value{Type: VTCurrency, Num: scaled}
+}
+
+// isLongSubtype reports whether a VTInteger value has VBScript Long subtype.
+func isLongSubtype(v Value) bool {
+	return v.Type == VTInteger && (v.SubType == intSubTypeLong || v.Num < -32768 || v.Num > 32767)
+}
+
+// formatCurrencyValue renders a scaled Currency value (int64 * 10000) using the given decimal separator.
+func formatCurrencyValue(scaled int64, decSep string) string {
+	if scaled == 0 {
+		return "0"
+	}
+	if decSep == "" {
+		decSep = "."
+	}
+	negative := scaled < 0
+	var absVal uint64
+	if negative {
+		absVal = uint64(-scaled)
+	} else {
+		absVal = uint64(scaled)
+	}
+	intPart := absVal / 10000
+	fracPart := absVal % 10000
+	intStr := strconv.FormatUint(intPart, 10)
+	if fracPart == 0 {
+		if negative {
+			return "-" + intStr
+		}
+		return intStr
+	}
+	var fracBuf [4]byte
+	fracBuf[0] = '0' + byte(fracPart/1000)
+	fracBuf[1] = '0' + byte((fracPart/100)%10)
+	fracBuf[2] = '0' + byte((fracPart/10)%10)
+	fracBuf[3] = '0' + byte(fracPart%10)
+	fracLen := 4
+	for fracLen > 0 && fracBuf[fracLen-1] == '0' {
+		fracLen--
+	}
+	var sb strings.Builder
+	extra := len(intStr) + len(decSep) + fracLen
+	if negative {
+		extra++
+	}
+	sb.Grow(extra)
+	if negative {
+		sb.WriteByte('-')
+	}
+	sb.WriteString(intStr)
+	sb.WriteString(decSep)
+	sb.Write(fracBuf[:fracLen])
+	return sb.String()
 }
 
 func NewDouble(v float64) Value {

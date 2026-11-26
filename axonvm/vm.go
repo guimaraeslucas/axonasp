@@ -572,22 +572,24 @@ type VM struct {
 	engineMode EngineMode
 
 	// Runtime Options
-	optionCompare        int               // 0: Binary, 1: Text
-	optionExplicit       bool              // Mirrors compiler Option Explicit for dynamic execution APIs.
-	collator             *collate.Collator // cached locale-aware collator for Option Compare Text
-	collatorLCID         int               // LCID for which the collator was built
-	scriptLCID           int               // Per-execution LCID set by SetLocale when Session is disabled
-	globalNames          []string          // Global symbol names aligned with Globals slot order.
-	globalNamesHash      uint64            // Fingerprint of globalNames for fast dynamic-cache scope validation.
-	globalZeroArgFuncs   map[string]bool   // Known zero-arg global Functions for dynamic autocall compatibility.
-	globalZeroArgSubs    map[string]bool   // Known zero-arg global Subs for bare-call compilation.
-	runtimeClassVersion  uint64            // Monotonic version for runtime class metadata invalidation.
-	declaredGlobals      map[string]bool   // Global Dim/Const declaration state for dynamic compilation.
-	constGlobals         map[string]bool   // Global Const protection state for dynamic compilation.
-	sourceName           string            // Source file path used for dynamic execution error reporting.
-	sourceMap            SourceMap         // Sparse merged-to-original source line mapping for include-aware errors.
-	dynamicProgramStarts map[uint64]int    // Per-VM start offsets for already-appended cached dynamic fragments.
-	jsStringWorkBytes    int64             // Per-run cumulative bytes produced by JScript string operations.
+	optionCompare        int                  // 0: Binary, 1: Text
+	optionExplicit       bool                 // Mirrors compiler Option Explicit for dynamic execution APIs.
+	collator             *collate.Collator    // cached locale-aware collator for Option Compare Text
+	collatorLCID         int                  // LCID for which the collator was built
+	localeProfileCache   builtinLocaleProfile // cached locale profile for current LCID
+	localeProfileLCID    int                  // LCID for which localeProfileCache was built
+	scriptLCID           int                  // Per-execution LCID set by SetLocale when Session is disabled
+	globalNames          []string             // Global symbol names aligned with Globals slot order.
+	globalNamesHash      uint64               // Fingerprint of globalNames for fast dynamic-cache scope validation.
+	globalZeroArgFuncs   map[string]bool      // Known zero-arg global Functions for dynamic autocall compatibility.
+	globalZeroArgSubs    map[string]bool      // Known zero-arg global Subs for bare-call compilation.
+	runtimeClassVersion  uint64               // Monotonic version for runtime class metadata invalidation.
+	declaredGlobals      map[string]bool      // Global Dim/Const declaration state for dynamic compilation.
+	constGlobals         map[string]bool      // Global Const protection state for dynamic compilation.
+	sourceName           string               // Source file path used for dynamic execution error reporting.
+	sourceMap            SourceMap            // Sparse merged-to-original source line mapping for include-aware errors.
+	dynamicProgramStarts map[uint64]int       // Per-VM start offsets for already-appended cached dynamic fragments.
+	jsStringWorkBytes    int64                // Per-run cumulative bytes produced by JScript string operations.
 	// Decoded immutable metadata keyed by function-template constant index.
 	// Retained across pooled VM resets for the base compiled program.
 	jsFunctionTemplateMetadataCache []*jsFunctionTemplateMetadata
@@ -4287,26 +4289,38 @@ aspExecLoop:
 				vm.push(NewNull())
 			} else if val.Type == VTDouble {
 				vm.push(NewDouble(-val.Flt))
+			} else if val.Type == VTCurrency {
+				vm.push(NewCurrency(-val.Num))
 			} else if val.Type == VTDate {
 				// IIS: -d is the Date whose serial is negated (12/27/1772 for 1/1/2027).
 				vm.push(vbsDateOrDoubleFromSerial(-vbsDateSerial(val)))
 			} else if val.Type == VTString {
 				strVal := strings.TrimSpace(val.Str)
-				parsedFloat, err := strconv.ParseFloat(strVal, 64)
-				if err != nil {
+				profile := vm.localeProfile()
+				parsedFloat, _, ok := vbsParseNumericStringInLocale(strVal, profile)
+				if !ok {
 					vm.raise(vbscript.TypeMismatch, "Type mismatch")
 					vm.push(NewEmpty())
 					continue
 				}
-				if strings.Contains(strVal, ".") || strings.Contains(strings.ToLower(strVal), "e") {
+				if !isVBScriptIntegerStringInLocale(strVal, profile.decimalSeparator) {
 					vm.push(NewDouble(-parsedFloat))
-				} else {
-					parsedInt, intErr := strconv.ParseInt(strVal, 10, 64)
-					if intErr == nil {
-						vm.push(NewInteger(-parsedInt))
+				} else if parsedFloat >= -9223372036854775808.0 && parsedFloat < 9223372036854775808.0 {
+					neg := -int64(parsedFloat)
+					if isLongSubtype(NewInteger(neg)) {
+						vm.push(NewLong(neg))
 					} else {
-						vm.push(NewDouble(-parsedFloat))
+						vm.push(NewInteger(neg))
 					}
+				} else {
+					vm.push(NewDouble(-parsedFloat))
+				}
+			} else if val.Type == VTInteger {
+				neg := -val.Num
+				if val.SubType == intSubTypeLong || neg < -32768 || neg > 32767 {
+					vm.push(NewLong(neg))
+				} else {
+					vm.push(NewInteger(neg))
 				}
 			} else {
 				vm.push(NewInteger(-vm.coerceInt64(val)))
@@ -8624,6 +8638,26 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 		return
 	}
 
+	// Static native object: Session
+	if objID == nativeObjectSession {
+		if !vm.host.SessionEnabled() {
+			vm.raise(vbscript.PermissionDenied, "Session state is disabled for this application")
+			return
+		}
+		session := vm.host.Session()
+		if session != nil {
+			switch {
+			case strings.EqualFold(member, "LCID"):
+				session.SetLCID(vm.asInt(val))
+			case strings.EqualFold(member, "CodePage"):
+				session.SetCodePage(vm.asInt(val))
+			case strings.EqualFold(member, "Timeout"):
+				session.SetTimeout(vm.asInt(val))
+			}
+		}
+		return
+	}
+
 	// Static native object: Server
 	if objID == nativeObjectServer {
 		switch {
@@ -8879,9 +8913,28 @@ func (vm *VM) valueToString(v Value) string {
 			return vm.valueToString(adodbDefault)
 		}
 	}
-	// Handle date formatting according to locale when converting to string
+	// Handle date and locale-aware numeric formatting when converting to string in VBScript mode.
 	if v.Type == VTDate {
 		return vm.dateToLocalizedString(v)
+	}
+	isJS := vm != nil && (vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsNativeCallDepth > 0)
+	if v.Type == VTDouble {
+		s := v.String()
+		if !isJS && !math.IsNaN(v.Flt) && !math.IsInf(v.Flt, 0) {
+			if decSep := vm.localeProfile().decimalSeparator; decSep != "" && decSep != "." {
+				s = strings.Replace(s, ".", decSep, 1)
+			}
+		}
+		return s
+	}
+	if v.Type == VTCurrency {
+		decSep := "."
+		if !isJS {
+			if sep := vm.localeProfile().decimalSeparator; sep != "" {
+				decSep = sep
+			}
+		}
+		return formatCurrencyValue(v.Num, decSep)
 	}
 	return v.String()
 }
@@ -8908,6 +8961,8 @@ func (vm *VM) valueToResponseString(v Value) string {
 		return strconv.FormatInt(v.Num, 10)
 	case VTDouble:
 		return formatMicrosoftJScriptResponseDouble(v.Flt)
+	case VTCurrency:
+		return formatCurrencyValue(v.Num, ".")
 	case VTArray:
 		return vm.jsArrayToString(v)
 	case VTJSFunction:
@@ -9108,6 +9163,20 @@ func (vm *VM) errPropertySet(property string, val Value) {
 		errObj.Category = vm.valueToString(val)
 	}
 	errObj.Normalize()
+}
+
+// localeProfile returns the cached locale profile for the VM's active LCID.
+func (vm *VM) localeProfile() builtinLocaleProfile {
+	lcid := builtinCurrentLCID(vm)
+	if vm != nil && vm.localeProfileLCID == lcid {
+		return vm.localeProfileCache
+	}
+	profile := builtinLocaleProfileForLCID(lcid)
+	if vm != nil {
+		vm.localeProfileCache = profile
+		vm.localeProfileLCID = lcid
+	}
+	return profile
 }
 
 // getCollator returns the locale-aware collator for Option Compare Text,
@@ -10964,6 +11033,9 @@ func (vm *VM) asFloat(v Value) float64 {
 	if v.Type == VTDouble {
 		return v.Flt
 	}
+	if v.Type == VTCurrency {
+		return float64(v.Num) / 10000.0
+	}
 	if v.Type == VTDate {
 		return vbsDateSerial(v)
 	}
@@ -10975,6 +11047,8 @@ func (vm *VM) asInt(v Value) int {
 	switch v.Type {
 	case VTDouble:
 		return int(v.Flt)
+	case VTCurrency:
+		return int(v.Num / 10000)
 	case VTString:
 		var parsed int
 		_, err := fmt.Sscanf(v.Str, "%d", &parsed)
@@ -10992,7 +11066,7 @@ func (vm *VM) asBool(v Value) bool {
 	switch v.Type {
 	case VTBool:
 		return v.Num != 0
-	case VTInteger:
+	case VTInteger, VTCurrency:
 		return v.Num != 0
 	case VTDouble:
 		return v.Flt != 0
@@ -11045,9 +11119,27 @@ func (vm *VM) coerceBuiltinADODBFieldArgs(builtinIdx int64, args []Value) {
 // are auto-called first, matching VBScript value-context semantics. On coercion failure
 // the error is raised and false is returned, so execution takes the false branch when
 // On Error Resume Next is active.
+// coerceBool converts a Value to a boolean following VBScript CBool/conditional rules
+// in the active VM locale.
+func (vm *VM) coerceBool(v Value) (bool, bool) {
+	if v.Type == VTString {
+		if len(v.Str) == 5 && strings.EqualFold(v.Str, "false") {
+			return false, true
+		}
+		if len(v.Str) == 4 && strings.EqualFold(v.Str, "true") {
+			return true, true
+		}
+		if num, _, ok := vbsParseNumericStringInLocale(v.Str, vm.localeProfile()); ok {
+			return num != 0, true
+		}
+		return false, false
+	}
+	return v.CoerceBool()
+}
+
 func (vm *VM) evalVBCondition(cond Value) bool {
 	cond = vm.unwrapADODBFieldValue(resolveCallable(vm, cond))
-	b, ok := cond.CoerceBool()
+	b, ok := vm.coerceBool(cond)
 	if !ok {
 		vm.raise(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
 		return false

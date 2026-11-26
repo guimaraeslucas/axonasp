@@ -336,6 +336,7 @@ func (vm *VM) resetForReuse() {
 	vm.resetDynamicMaps()
 	vm.optionCompare = vm.baseOptionCompare
 	vm.optionExplicit = vm.baseOptionExplicit
+	vm.localeProfileLCID = 0
 	vm.scriptLCID = 0
 	vm.engineMode = vm.baseEngineMode
 

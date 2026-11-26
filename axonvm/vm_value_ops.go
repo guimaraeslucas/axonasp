@@ -46,7 +46,7 @@ func isString(v Value) bool {
 // isNumericLike reports whether the value participates in VBScript numeric addition.
 func isNumericLike(v Value) bool {
 	switch v.Type {
-	case VTBool, VTInteger, VTDouble, VTDate:
+	case VTBool, VTInteger, VTCurrency, VTDouble, VTDate:
 		return true
 	default:
 		return false
@@ -63,6 +63,8 @@ func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
 		return 0, true
 	case VTDouble:
 		return v.Flt, true
+	case VTCurrency:
+		return float64(v.Num) / 10000.0, true
 	case VTBool:
 		return float64(vbsBoolNum(v)), true
 	case VTDate:
@@ -70,7 +72,7 @@ func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
 	case VTInteger, VTNativeObject, VTBuiltin:
 		return float64(v.Num), true
 	case VTString:
-		parsed, _, ok := vbsParseNumericString(v.Str)
+		parsed, _, ok := vbsParseNumericStringInLocale(v.Str, vm.localeProfile())
 		return parsed, ok
 	default:
 		return 0, false
@@ -83,12 +85,14 @@ func (vm *VM) coerceFloat(v Value) float64 {
 	switch v.Type {
 	case VTDouble:
 		return v.Flt
+	case VTCurrency:
+		return float64(v.Num) / 10000.0
 	case VTBool:
 		return float64(vbsBoolNum(v))
 	case VTDate:
 		return vbsDateSerial(v)
 	case VTString:
-		parsed, _, _ := vbsParseNumericString(v.Str)
+		parsed, _, _ := vbsParseNumericStringInLocale(v.Str, vm.localeProfile())
 		return parsed
 	default:
 		return float64(v.Num)
@@ -103,6 +107,8 @@ func (vm *VM) coerceInt64(v Value) int64 {
 	switch v.Type {
 	case VTBool:
 		return vbsBoolNum(v)
+	case VTCurrency:
+		return int64(math.RoundToEven(float64(v.Num) / 10000.0))
 	case VTDate:
 		return int64(math.RoundToEven(vbsDateSerial(v)))
 	case VTInteger, VTNativeObject, VTBuiltin:
@@ -114,7 +120,7 @@ func (vm *VM) coerceInt64(v Value) int64 {
 		if err == nil {
 			return parsed
 		}
-		parsedFloat, _, _ := vbsParseNumericString(v.Str)
+		parsedFloat, _, _ := vbsParseNumericStringInLocale(v.Str, vm.localeProfile())
 		return int64(math.RoundToEven(parsedFloat))
 	default:
 		return 0
@@ -132,6 +138,8 @@ func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
 	switch v.Type {
 	case VTBool:
 		return vbsBoolNum(v), true
+	case VTCurrency:
+		return int64(math.RoundToEven(float64(v.Num) / 10000.0)), true
 	case VTDate:
 		return int64(math.RoundToEven(vbsDateSerial(v))), true
 	case VTInteger, VTNativeObject, VTBuiltin:
@@ -145,7 +153,7 @@ func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
 		if parsed, err := strconv.ParseInt(text, 10, 64); err == nil {
 			return parsed, true
 		}
-		if parsedFloat, _, ok := vbsParseNumericString(text); ok {
+		if parsedFloat, _, ok := vbsParseNumericStringInLocale(text, vm.localeProfile()); ok {
 			return int64(math.RoundToEven(parsedFloat)), true
 		}
 		return 0, false // non-numeric string — raises Type mismatch
@@ -157,22 +165,23 @@ func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
 // isVBScriptIntegerString reports whether a trimmed numeric string uses integer syntax
 // (no decimal point or scientific exponent outside &H/&O literals).
 func isVBScriptIntegerString(trimmed string) bool {
-	s := trimmed
-	if strings.HasPrefix(s, "+") || strings.HasPrefix(s, "-") {
-		s = strings.TrimSpace(s[1:])
-	}
-	if len(s) >= 2 && s[0] == '&' && (s[1] == 'h' || s[1] == 'H' || s[1] == 'o' || s[1] == 'O') {
-		return true
-	}
-	return !strings.ContainsAny(s, ".eE")
+	return isVBScriptIntegerStringInLocale(trimmed, ".")
 }
 
-// coerceNumericValue converts a VBScript value to a numeric subtype (VTInteger, VTDouble,
-// or VTDate) for numeric contexts such as For...Next loop bounds.
+// newVBScriptIntValue returns VTInteger with Long subtype when outside 16-bit signed range or forced.
+func newVBScriptIntValue(val int64, forceLong bool) Value {
+	if forceLong || val < -32768 || val > 32767 {
+		return NewLong(val)
+	}
+	return NewInteger(val)
+}
+
+// coerceNumericValue converts a VBScript value to a numeric subtype (VTInteger, VTCurrency,
+// VTDouble, or VTDate) for numeric contexts such as For...Next loop bounds.
 func (vm *VM) coerceNumericValue(v Value) (Value, vbscript.VBSyntaxErrorCode, bool) {
 	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
-	case VTInteger, VTDouble, VTDate:
+	case VTInteger, VTCurrency, VTDouble, VTDate:
 		return v, 0, true
 	case VTEmpty:
 		return NewInteger(0), 0, true
@@ -183,14 +192,15 @@ func (vm *VM) coerceNumericValue(v Value) (Value, vbscript.VBSyntaxErrorCode, bo
 	case VTString:
 		trimmed := strings.TrimSpace(v.Str)
 		if n, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
-			return NewInteger(n), 0, true
+			return newVBScriptIntValue(n, false), 0, true
 		}
-		parsed, code, ok := vbsParseNumericString(trimmed)
+		profile := vm.localeProfile()
+		parsed, code, ok := vbsParseNumericStringInLocale(trimmed, profile)
 		if !ok {
 			return NewEmpty(), code, false
 		}
-		if isVBScriptIntegerString(trimmed) && parsed >= -9223372036854775808.0 && parsed < 9223372036854775808.0 {
-			return NewInteger(int64(parsed)), 0, true
+		if isVBScriptIntegerStringInLocale(trimmed, profile.decimalSeparator) && parsed >= -9223372036854775808.0 && parsed < 9223372036854775808.0 {
+			return newVBScriptIntValue(int64(parsed), false), 0, true
 		}
 		return NewDouble(parsed), 0, true
 	default:
@@ -227,10 +237,10 @@ func (vm *VM) addValues(a Value, b Value) Value {
 		}
 	}
 
-	// VBScript numeric addition for String + Numeric only allows numeric types (VTInteger, VTDouble).
+	// VBScript numeric addition for String + Numeric only allows numeric types (VTInteger, VTCurrency, VTDouble).
 	// Other types like VTBool or VTDate combined with VTString under '+' operator must raise Type mismatch.
-	isStringANumericB := isString(a) && (b.Type == VTInteger || b.Type == VTDouble)
-	isStringBNumericA := isString(b) && (a.Type == VTInteger || a.Type == VTDouble)
+	isStringANumericB := isString(a) && (b.Type == VTInteger || b.Type == VTCurrency || b.Type == VTDouble)
+	isStringBNumericA := isString(b) && (a.Type == VTInteger || a.Type == VTCurrency || a.Type == VTDouble)
 	bothNumeric := (isNumericLike(a) || isEmpty(a)) && (isNumericLike(b) || isEmpty(b))
 
 	if isStringANumericB || isStringBNumericA || bothNumeric {
@@ -240,10 +250,22 @@ func (vm *VM) addValues(a Value, b Value) Value {
 			vm.raise(vbscript.TypeMismatch, "Type mismatch")
 			return NewEmpty()
 		}
-		if a.Type == VTDouble || b.Type == VTDouble || (isString(a) && strings.Contains(strings.TrimSpace(a.Str), ".")) || (isString(b) && strings.Contains(strings.TrimSpace(b.Str), ".")) {
+		decSep := vm.localeProfile().decimalSeparator
+		hasFloatStr := (isString(a) && !isVBScriptIntegerStringInLocale(strings.TrimSpace(a.Str), decSep)) ||
+			(isString(b) && !isVBScriptIntegerStringInLocale(strings.TrimSpace(b.Str), decSep))
+		if a.Type == VTDouble || b.Type == VTDouble || hasFloatStr {
 			return NewDouble(left + right)
 		}
-		return NewInteger(int64(left + right))
+		if a.Type == VTCurrency || b.Type == VTCurrency {
+			if scaled, _, ok := floatToCurrencyScaled(left + right); ok && !isString(a) && !isString(b) {
+				if a.Type == VTCurrency && b.Type == VTCurrency {
+					return NewCurrency(a.Num + b.Num)
+				}
+				return NewCurrency(scaled)
+			}
+			return NewDouble(left + right)
+		}
+		return newVBScriptIntValue(int64(left+right), isLongSubtype(a) || isLongSubtype(b))
 	}
 
 	if isString(a) || isString(b) {
@@ -254,7 +276,13 @@ func (vm *VM) addValues(a Value, b Value) Value {
 	if a.Type == VTDouble || b.Type == VTDouble {
 		return NewDouble(vm.coerceFloat(a) + vm.coerceFloat(b))
 	}
-	return NewInteger(vm.coerceInt64(a) + vm.coerceInt64(b))
+	if a.Type == VTCurrency || b.Type == VTCurrency {
+		if scaled, _, ok := floatToCurrencyScaled(vm.coerceFloat(a) + vm.coerceFloat(b)); ok {
+			return NewCurrency(scaled)
+		}
+		return NewDouble(vm.coerceFloat(a) + vm.coerceFloat(b))
+	}
+	return newVBScriptIntValue(vm.coerceInt64(a)+vm.coerceInt64(b), isLongSubtype(a) || isLongSubtype(b))
 }
 
 // addOrSubtractDate computes a + b, or a - b, when either operand is a Date, on the
@@ -301,7 +329,16 @@ func (vm *VM) subtractValues(a Value, b Value) Value {
 	if a.Type == VTDouble || b.Type == VTDouble {
 		return NewDouble(vm.coerceFloat(a) - vm.coerceFloat(b))
 	}
-	return NewInteger(vm.coerceInt64(a) - vm.coerceInt64(b))
+	if a.Type == VTCurrency || b.Type == VTCurrency {
+		if a.Type == VTCurrency && b.Type == VTCurrency {
+			return NewCurrency(a.Num - b.Num)
+		}
+		if scaled, _, ok := floatToCurrencyScaled(vm.coerceFloat(a) - vm.coerceFloat(b)); ok {
+			return NewCurrency(scaled)
+		}
+		return NewDouble(vm.coerceFloat(a) - vm.coerceFloat(b))
+	}
+	return newVBScriptIntValue(vm.coerceInt64(a)-vm.coerceInt64(b), isLongSubtype(a) || isLongSubtype(b))
 }
 
 // multiplyValues performs numeric multiplication with integer and floating-point coercion.
@@ -316,7 +353,13 @@ func (vm *VM) multiplyValues(a Value, b Value) Value {
 	if a.Type == VTDouble || b.Type == VTDouble || a.Type == VTDate || b.Type == VTDate {
 		return NewDouble(vm.coerceFloat(a) * vm.coerceFloat(b))
 	}
-	return NewInteger(vm.coerceInt64(a) * vm.coerceInt64(b))
+	if a.Type == VTCurrency || b.Type == VTCurrency {
+		if scaled, _, ok := floatToCurrencyScaled(vm.coerceFloat(a) * vm.coerceFloat(b)); ok {
+			return NewCurrency(scaled)
+		}
+		return NewDouble(vm.coerceFloat(a) * vm.coerceFloat(b))
+	}
+	return newVBScriptIntValue(vm.coerceInt64(a)*vm.coerceInt64(b), isLongSubtype(a) || isLongSubtype(b))
 }
 
 // divideValues performs floating-point division and raises on division by zero.
@@ -415,8 +458,8 @@ func (vm *VM) compareValues(a Value, b Value) int {
 		if b.Type == VTString {
 			str, num = b, a
 		}
-		if num.Type == VTInteger || num.Type == VTDouble {
-			if parsed, _, ok := vbsParseNumericString(str.Str); ok {
+		if num.Type == VTInteger || num.Type == VTCurrency || num.Type == VTDouble {
+			if parsed, _, ok := vbsParseNumericStringInLocale(str.Str, vm.localeProfile()); ok {
 				left, right := parsed, vm.coerceFloat(num)
 				if b.Type == VTString {
 					left, right = right, left
