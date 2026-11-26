@@ -15,38 +15,38 @@ Both the configuration folder and web root (`./www/`) must be in the same direct
 
 ## Environment Variable Override
 
-All configuration values can be overridden via environment variables when `viper_automatic_env = true` in the configuration:
+All configuration values can be overridden via environment variables when `viper_automatic_env = true` in `axonasp.toml`:
 
-**Format:** `SECTION_SETTING` or `SECTION_SUBSETTING` (uppercase with underscores replacing dots)
+**Format:** `SECTION_KEY` (uppercase, with an underscore joining the `[section]` name and the setting key; dots are replaced by underscores)
 
 **Examples:**
 ```powershell
-# Override global settings
-$env:DEFAULT_CHARSET = "UTF-8"
-$env:DEFAULT_SCRIPT_TIMEOUT = "120"
+# Override global settings ([global])
+$env:GLOBAL_DEFAULT_CHARSET = "UTF-8"
+$env:GLOBAL_DEFAULT_SCRIPT_TIMEOUT = "120"
 
-# Override server settings
-$env:SERVER_PORT = "8802"
-$env:WEB_ROOT = "C:\myapp\www"
+# Override server settings ([server])
+$env:SERVER_SERVER_PORT = "8802"
+$env:SERVER_WEB_ROOT = "C:\myapp\www"
 
-# Override FastCGI settings
+# Override FastCGI settings ([fastcgi])
 $env:FASTCGI_SERVER_PORT = "9001"
 
-# Override database settings (G3DB)
-$env:MYSQL_HOST = "db.example.com"
-$env:MYSQL_USER = "appuser"
-$env:MYSQL_PASS = "securepassword"
+# Override database settings ([g3db])
+$env:G3DB_MYSQL_HOST = "db.example.com"
+$env:G3DB_MYSQL_USER = "appuser"
+$env:G3DB_MYSQL_PASS = "securepassword"
 ```
 
 **Using .env File:**
 
 Create a `.env` file in the same directory as the executable:
 ```
-DEFAULT_CHARSET=UTF-8
-SERVER_PORT=8802
-MYSQL_HOST=db.example.com
-MYSQL_USER=appuser
-MYSQL_PASS=securepassword
+GLOBAL_DEFAULT_CHARSET=UTF-8
+SERVER_SERVER_PORT=8802
+G3DB_MYSQL_HOST=db.example.com
+G3DB_MYSQL_USER=appuser
+G3DB_MYSQL_PASS=securepassword
 ```
 
 ---
@@ -59,7 +59,7 @@ Global settings apply to all AxonASP runtime modes.
 
 **Type:** String  
 **Default:** `"UTF-8"`  
-**Environment Variable:** `DEFAULT_CHARSET`
+**Environment Variable:** `GLOBAL_DEFAULT_CHARSET`
 
 Sets the character encoding used when serving content. Controls the `Content-Type: text/html; charset=` HTTP header.
 
@@ -77,7 +77,7 @@ default_charset = "UTF-8"
 
 **Type:** Integer (LCID - Locale ID)  
 **Default:** `1033` (English - United States)  
-**Environment Variable:** `DEFAULT_MSLCID`
+**Environment Variable:** `GLOBAL_DEFAULT_MSLCID`
 
 Sets the default locale for ASP applications. Affects date/time formatting, number formatting, and language-specific functions.
 
@@ -100,7 +100,7 @@ default_mslcid = 1046  # Portuguese (Brazil)
 
 **Type:** Integer (seconds)  
 **Default:** `60`  
-**Environment Variable:** `DEFAULT_SCRIPT_TIMEOUT`
+**Environment Variable:** `GLOBAL_DEFAULT_SCRIPT_TIMEOUT`
 
 Maximum execution time before the server terminates an ASP script. Prevents runaway scripts from consuming resources indefinitely.
 
@@ -118,7 +118,7 @@ default_script_timeout = 60
 
 **Type:** Integer (megabytes)  
 **Default:** `4`  
-**Environment Variable:** `RESPONSE_BUFFER_LIMIT_MB`
+**Environment Variable:** `GLOBAL_RESPONSE_BUFFER_LIMIT_MB`
 
 Maximum size of buffered output when `Response.Buffer` is enabled before aborting with a runtime error. Protects against unbounded memory consumption.
 
@@ -136,7 +136,7 @@ response_buffer_limit_mb = 4
 
 **Type:** String (IANA timezone)  
 **Default:** `"UTC"`  
-**Environment Variable:** `DEFAULT_TIMEZONE`
+**Environment Variable:** `GLOBAL_DEFAULT_TIMEZONE`
 
 Set the default timezone for the server. Make sure to use a valid timezone identifier from the IANA Time Zone Database. You can also use UTC+offsets like "UTC+2" or "UTC-5" to specify a timezone relative to UTC, but it's generally recommended to use named timezones for better clarity and to account for daylight saving time changes. The server will use this timezone setting for date and time functions in your ASP scripts, as well as for logging and other time-related operations. Note that this setting does not affect the system timezone of the server itself, which may be different from the timezone used by the AxonASP server.
 
@@ -161,7 +161,7 @@ default_timezone = "America/New_York"
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_ASP_DEBUGGING`
+**Environment Variable:** `GLOBAL_ENABLE_ASP_DEBUGGING`
 
 When enabled, the HTTP/FastCGI server provides detailed error messages, stack traces, and debugging information. Helpful during development but exposes sensitive information.
 
@@ -176,7 +176,7 @@ enable_asp_debugging = true  # Development only!
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_LOG_FILES`
+**Environment Variable:** `GLOBAL_ENABLE_LOG_FILES` (the internal error logger also accepts `ENABLE_LOG_FILES` as a fallback)
 
 When enabled, AxonASP writes runtime diagnostic files in `./temp/` or the directory specified by `GLOBAL_TEMP_DIR`. These files include:
 - `error.log` for processed ASP/VBScript/runtime errors, plus `console.error` and `console.warn` output
@@ -192,7 +192,7 @@ enable_log_files = true
 ### enable_error_log_file *(Deprecated)*
 
 **Type:** Boolean  
-**Environment Variable:** `ENABLE_ERROR_LOG_FILE`  
+**Environment Variable:** `GLOBAL_ENABLE_ERROR_LOG_FILE`  
 **Status:** **Deprecated since version 2.1** — replaced by `enable_log_files`
 
 This setting is retained for backward compatibility only. If `enable_log_files` is present in the configuration, this setting is ignored. If `enable_log_files` is absent, the server falls back to this key.
@@ -213,7 +213,7 @@ enable_log_files = true
 
 **Type:** Boolean  
 **Default:** `false`  
-**Environment Variable:** `DUMP_PREPROCESSED_SOURCE`
+**Environment Variable:** `GLOBAL_DUMP_PREPROCESSED_SOURCE` (the compiler also checks `DUMP_PREPROCESSED_SOURCE` directly)
 
 When enabled, saves the preprocessed ASP source code to `./temp/` before compilation. Useful for debugging parser issues but consumes disk space on high-traffic sites.
 
@@ -228,7 +228,7 @@ dump_preprocessed_source = false
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `CLEAN_SESSIONS_ON_STARTUP`
+**Environment Variable:** `GLOBAL_CLEAN_SESSIONS_ON_STARTUP`
 
 When enabled, clears all existing sessions when the server starts. Prevents stale session data but logs out active users.
 
@@ -245,7 +245,7 @@ clean_sessions_on_startup = false  # Preserve sessions across restarts
 
 **Type:** String (Enum)  
 **Default:** `"enabled"`  
-**Environment Variable:** `BYTECODE_CACHING_ENABLED`  
+**Environment Variable:** `GLOBAL_BYTECODE_CACHING_ENABLED`  
 **Valid Values:** `"enabled"`, `"memory-only"`, `"disk-only"`, `"disabled"`
 
 Controls compiled bytecode caching strategy for ASP scripts:
@@ -268,7 +268,7 @@ bytecode_caching_enabled = "enabled"
 
 **Type:** Integer (megabytes)  
 **Default:** `128`  
-**Environment Variable:** `CACHE_MAX_SIZE_MB`
+**Environment Variable:** `GLOBAL_CACHE_MAX_SIZE_MB`
 
 Maximum size of the compiled bytecode cache in memory. When exceeded, least-recently-used scripts are evicted.
 
@@ -286,7 +286,7 @@ cache_max_size_mb = 128
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `CLEAN_CACHE_ON_STARTUP`
+**Environment Variable:** `GLOBAL_CLEAN_CACHE_ON_STARTUP`
 
 When enabled, clears the compiled script cache on server startup. Ensures new builds are executed but increases startup time.
 
@@ -303,7 +303,7 @@ clean_cache_on_startup = true
 
 **Type:** Integer  
 **Default:** `10`  
-**Environment Variable:** `VM_POOL_SIZE`
+**Environment Variable:** `GLOBAL_VM_POOL_SIZE`
 
 Number of virtual machine instances in the execution pool. Each VM can execute one script simultaneously, so pool size determines concurrent execution capacity. A pool size of 10 VMs on a server with 512 MB of memory can handle approximately 2000 simultaneous requests for simple pages.
 
@@ -325,7 +325,7 @@ vm_pool_size = 10
 
 **Type:** Integer (0 = unlimited)  
 **Default:** `512`  
-**Environment Variable:** `GOLANG_MEMORY_LIMIT_MB`
+**Environment Variable:** `GLOBAL_GOLANG_MEMORY_LIMIT_MB`
 
 Maximum memory the Go runtime is allowed to use (in megabytes). `0` means unlimited. This directive has a stronger influence on server throughput than `vm_pool_size` and directly affects how memory-intensive libraries such as G3ZSTD work.
 
@@ -347,7 +347,7 @@ golang_memory_limit_mb = 512
 
 **Type:** Integer (seconds)  
 **Default:** `120`  
-**Environment Variable:** `SESSION_FLUSH_INTERVAL_SECONDS`
+**Environment Variable:** `GLOBAL_SESSION_FLUSH_INTERVAL_SECONDS`
 
 Interval for asynchronously flushing dirty in-memory sessions to disk. A value greater than `0` keeps session writes off the request hot path while still guaranteeing a safe flush on process shutdown. Higher values reduce disk I/O; lower values provide fresher data.
 
@@ -366,7 +366,7 @@ session_flush_interval_seconds = 120
 
 **Type:** String (Enum)  
 **Default:** `"auto"`  
-**Environment Variable:** `ADODB_PLATFORM_ARCHITECTURE`  
+**Environment Variable:** `GLOBAL_ADODB_PLATFORM_ARCHITECTURE`  
 **Valid Values:** `"auto"`, `"amd64"`, `"386"`
 
 Specifies platform architecture for ADODB Access database driver (Windows only).
@@ -384,7 +384,7 @@ adodb_platform_architecture = "auto"
 
 **Type:** Array of Strings  
 **Default:** `[".asp"]`  
-**Environment Variable:** `EXECUTE_AS_ASP` (comma-separated list)
+**Environment Variable:** `GLOBAL_EXECUTE_AS_ASP` (comma-separated list)
 
 File extensions to execute as ASP scripts. Other extensions are served as static files.
 
@@ -401,7 +401,7 @@ execute_as_asp = [".asp", ".aspx", ".cer", ".asa"]
 
 **Type:** Array of Strings  
 **Default:** `[".vbs"]`  
-**Environment Variable:** `EXECUTE_AS_VBSCRIPT`
+**Environment Variable:** `GLOBAL_EXECUTE_AS_VBSCRIPT`
 
 File extensions treated as pure VBScript code when `engine_mode` is set to `vbscript`. In this mode, ASP delimiters (`<% %>`) are not parsed, and the entire file is treated as source code.
 
@@ -409,7 +409,7 @@ File extensions treated as pure VBScript code when `engine_mode` is set to `vbsc
 
 **Type:** Array of Strings  
 **Default:** `[".js"]`  
-**Environment Variable:** `EXECUTE_AS_JAVASCRIPT`
+**Environment Variable:** `GLOBAL_EXECUTE_AS_JAVASCRIPT`
 
 File extensions treated as pure JavaScript code when `engine_mode` is set to `javascript`. In this mode, ASP delimiters (`<% %>`) are not parsed, and the entire file is treated as source code.
 
@@ -417,7 +417,7 @@ File extensions treated as pure JavaScript code when `engine_mode` is set to `ja
 
 **Type:** Boolean  
 **Default:** `false`  
-**Environment Variable:** `VIPER_WATCH_CONFIG`
+**Environment Variable:** `GLOBAL_VIPER_WATCH_CONFIG`
 
 When enabled, automatically reloads configuration file on changes without restarting the server.
 
@@ -432,9 +432,9 @@ viper_watch_config = false
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `VIPER_AUTOMATIC_ENV`
+**Environment Variable:** None (must be configured in `axonasp.toml`; read before automatic environment variable binding is enabled)
 
-When enabled, automatically reads configuration values from environment variables. Allows environment variables to override `axonasp.toml` settings.
+When enabled, automatically reads configuration values from environment variables. Allows environment variables to override `axonasp.toml` settings. Because `global.viper_automatic_env` is checked before environment variable binding is activated, setting `GLOBAL_VIPER_AUTOMATIC_ENV` or `VIPER_AUTOMATIC_ENV` in the environment has no effect.
 
 **Example:**
 ```toml
@@ -462,7 +462,7 @@ Configuration for command-line interface (`axonasp-cli.exe`).
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_CLI`
+**Environment Variable:** `CLI_ENABLE_CLI`
 
 When enabled, allows the TUI (Text User Interface) for interactive ASP script testing and execution. Required for CLI to function.
 
@@ -475,7 +475,7 @@ enable_cli = true
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_CLI_RUN_FROM_COMMAND_LINE`
+**Environment Variable:** `CLI_ENABLE_CLI_RUN_FROM_COMMAND_LINE`
 
 When enabled, allows running ASP scripts directly from command line:
 ```powershell
@@ -493,7 +493,7 @@ enable_cli_run_from_command_line = true
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `FORCE_FRESH_COMPILE`
+**Environment Variable:** `CLI_FORCE_FRESH_COMPILE`
 
 When `true`, CLI execution always recompiles scripts and bypasses the bytecode cache entirely. When `false`, the CLI follows the global `bytecode_caching_enabled` setting.
 
@@ -515,7 +515,7 @@ Sets the language mode for the CLI:
 
 **Example:**
 ```toml
-force_fresh_compile = true
+engine_mode = "default"
 ```
 
 ---
@@ -528,7 +528,7 @@ Configuration for HTTP web server (`axonasp-http.exe`).
 
 **Type:** String (path)  
 **Default:** `"./www/error-pages"`  
-**Environment Variable:** `DEFAULT_ERROR_PAGES_DIRECTORY`
+**Environment Variable:** `SERVER_DEFAULT_ERROR_PAGES_DIRECTORY`
 
 Directory containing custom error page templates (e.g., `404.asp`, `500.asp`).
 
@@ -547,7 +547,7 @@ default_error_pages_directory = "./www/error-pages"
 
 **Type:** String (path)  
 **Default:** `"./www/"`  
-**Environment Variable:** `WEB_ROOT`
+**Environment Variable:** `SERVER_WEB_ROOT`
 
 Root directory for serving files. All requests are resolved relative to this path.
 
@@ -562,7 +562,7 @@ web_root = "./www/"
 
 **Type:** Array of Strings  
 **Default:** `["index.asp", "default.asp", "index.html", ...]`  
-**Environment Variable:** `DEFAULT_PAGES` (comma-separated)
+**Environment Variable:** `SERVER_DEFAULT_PAGES` (comma-separated)
 
 Default pages to serve when a directory is requested. Server tries each in order; serves the first found.
 
@@ -580,7 +580,7 @@ default_pages = [
 
 **Type:** Integer or String  
 **Default:** `8801`  
-**Environment Variable:** `SERVER_PORT`
+**Environment Variable:** `SERVER_SERVER_PORT`
 
 Port on which the HTTP server listens. Point your reverse proxy to this port.
 
@@ -595,7 +595,7 @@ server_port = 8801
 
 **Type:** Array of Strings  
 **Default:** `[".asax", ".ascx", ".config", ".exe", ".dll", ...]`  
-**Environment Variable:** `BLOCKED_EXTENSIONS` (comma-separated)
+**Environment Variable:** `SERVER_BLOCKED_EXTENSIONS` (comma-separated)
 
 File extensions that cannot be served by the web server (returns 404).
 
@@ -625,7 +625,7 @@ blocked_extensions = [
 
 **Type:** Array of Strings  
 **Default:** `["MyInfo.xml"]`  
-**Environment Variable:** `BLOCKED_FILES` (comma-separated)
+**Environment Variable:** `SERVER_BLOCKED_FILES` (comma-separated)
 
 Specific files that cannot be served (returns 404).
 
@@ -642,7 +642,7 @@ blocked_files = [
 
 **Type:** Array of Strings  
 **Default:** `["./www/error-pages", "./www/axonasp-pages"]`  
-**Environment Variable:** `BLOCKED_DIRS` (comma-separated)
+**Environment Variable:** `SERVER_BLOCKED_DIRS` (comma-separated)
 
 Directories that cannot be accessed directly (returns 404).
 
@@ -659,7 +659,7 @@ blocked_dirs = [
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_WEBCONFIG`
+**Environment Variable:** `SERVER_ENABLE_WEBCONFIG`
 
 When enabled, reads `web.config` files from directories and applies settings. Allows per-application configuration (custom error pages, redirects, etc.).
 
@@ -672,7 +672,7 @@ enable_webconfig = true
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_DIRECTORY_LISTING`
+**Environment Variable:** `SERVER_ENABLE_DIRECTORY_LISTING`
 
 When enabled, displays directory contents if no default page is found (security risk in production).
 
@@ -687,7 +687,7 @@ enable_directory_listing = false  # Production setting
 
 **Type:** String (path)  
 **Default:** `"./www/axonasp-pages/directory-listing.html"`  
-**Environment Variable:** `DIRECTORY_LISTING_TEMPLATE`
+**Environment Variable:** `SERVER_DIRECTORY_LISTING_TEMPLATE`
 
 HTML template used for directory listing UI. Can be customized to match site design.
 
@@ -779,11 +779,11 @@ mysql_database = "test"
 ```
 
 **Environment Variables:**
-- `MYSQL_HOST`
-- `MYSQL_PORT`
-- `MYSQL_USER`
-- `MYSQL_PASS`
-- `MYSQL_DATABASE`
+- `G3DB_MYSQL_HOST`
+- `G3DB_MYSQL_PORT`
+- `G3DB_MYSQL_USER`
+- `G3DB_MYSQL_PASS`
+- `G3DB_MYSQL_DATABASE`
 
 ### PostgreSQL Settings
 
@@ -793,17 +793,19 @@ postgres_host = "localhost"
 postgres_port = 5432
 postgres_user = "postgres"
 postgres_pass = "password"
-postgress_database = "test"
-postgress_ssl_mode = "disable"
+postgres_database = "test"
+postgres_ssl_mode = "disable"
 ```
 
 **Environment Variables:**
-- `POSTGRES_HOST`
-- `POSTGRES_PORT`
-- `POSTGRES_USER`
-- `POSTGRES_PASS`
-- `POSTGRESS_DATABASE`
-- `POSTGRESS_SSL_MODE`
+- `G3DB_POSTGRES_HOST`
+- `G3DB_POSTGRES_PORT`
+- `G3DB_POSTGRES_USER`
+- `G3DB_POSTGRES_PASS`
+- `G3DB_POSTGRES_DATABASE`
+- `G3DB_POSTGRES_SSL_MODE`
+
+*(Legacy `postgress_*` keys and `G3DB_POSTGRESS_*` environment variables are also accepted as fallbacks if the `postgres_*` keys are unset.)*
 
 ### MS SQL Server Settings
 
@@ -817,11 +819,11 @@ mssql_database = "test"
 ```
 
 **Environment Variables:**
-- `MSSQL_HOST`
-- `MSSQL_PORT`
-- `MSSQL_USER`
-- `MSSQL_PASS`
-- `MSSQL_DATABASE`
+- `G3DB_MSSQL_HOST`
+- `G3DB_MSSQL_PORT`
+- `G3DB_MSSQL_USER`
+- `G3DB_MSSQL_PASS`
+- `G3DB_MSSQL_DATABASE`
 
 ### SQLite Settings
 
@@ -832,8 +834,8 @@ sqlite_busy_timeout = 5000
 ```
 
 **Environment Variables:**
-- `SQLITE_PATH`
-- `SQLITE_BUSY_TIMEOUT` (milliseconds)
+- `G3DB_SQLITE_PATH`
+- `G3DB_SQLITE_BUSY_TIMEOUT` (milliseconds)
 
 ### Oracle Settings
 
@@ -851,12 +853,12 @@ oracle_service = "ORCLCDB"
 ```
 
 **Environment Variables:**
-- `ORACLE_DSN`
-- `ORACLE_HOST`
-- `ORACLE_PORT`
-- `ORACLE_USER`
-- `ORACLE_PASS`
-- `ORACLE_SERVICE`
+- `G3DB_ORACLE_DSN`
+- `G3DB_ORACLE_HOST`
+- `G3DB_ORACLE_PORT`
+- `G3DB_ORACLE_USER`
+- `G3DB_ORACLE_PASS`
+- `G3DB_ORACLE_SERVICE`
 
 ---
 
@@ -875,7 +877,7 @@ smtp_pass = "your_app_password"
 smtp_from = "sender@example.com"
 ```
 
-**Environment Variables:**
+**Environment Variables (read directly by `G3MAIL` as fallback when properties are not set in script):**
 - `SMTP_HOST`
 - `SMTP_PORT`
 - `SMTP_USER`
@@ -904,7 +906,7 @@ Configuration for built-in Ax functions.
 
 **Type:** Boolean  
 **Default:** `true`  
-**Environment Variable:** `ENABLE_GLOBAL_AX`
+**Environment Variable:** `AXFUNCTIONS_ENABLE_GLOBAL_AX`
 
 Makes Ax functions available globally without `Server.CreateObject()`.
 
@@ -930,7 +932,7 @@ enable_global_ax = true
 
 **Type:** Boolean  
 **Default:** `false`  
-**Environment Variable:** `ENABLE_AXSERVERSHUTDOWN_FUNCTION`
+**Environment Variable:** `AXFUNCTIONS_ENABLE_AXSERVERSHUTDOWN_FUNCTION`
 
 When enabled, allows ASP scripts to call `AxShutdownAxonASPServer()` to shut down the server programmatically.
 
@@ -945,7 +947,7 @@ enable_axservershutdown_function = false
 
 **Type:** String (path)  
 **Default:** `"./www/axonasp-pages/css/axonasp.css"`  
-**Environment Variable:** `AX_DEFAULT_CSS_PATH`
+**Environment Variable:** `AXFUNCTIONS_AX_DEFAULT_CSS_PATH`
 
 CSS file used for built-in AxonASP pages (error pages, etc.).
 
@@ -958,7 +960,7 @@ ax_default_css_path = "./www/axonasp-pages/css/axonasp.css"
 
 **Type:** String (path)  
 **Default:** `"./www/axonasp-pages/images/logo.png"`  
-**Environment Variable:** `AX_DEFAULT_LOGO_PATH`
+**Environment Variable:** `AXFUNCTIONS_AX_DEFAULT_LOGO_PATH`
 
 Logo file for built-in AxonASP pages (served as inline base64 image).
 
@@ -977,7 +979,7 @@ Configuration for Model Context Protocol server (`axonasp-mcp.exe`).
 
 **Type:** String (Enum)  
 **Default:** `"stdio"`  
-**Environment Variable:** `MCP_MODE`  
+**Environment Variable:** `MCP_MCP_MODE`  
 **Valid Values:** `"stdio"`, `"sse"`
 
 Communication mode for MCP:
@@ -993,7 +995,7 @@ mcp_mode = "stdio"
 
 **Type:** Integer  
 **Default:** `8000`  
-**Environment Variable:** `MCP_SSE_PORT`
+**Environment Variable:** `MCP_MCP_SSE_PORT`
 
 Port for SSE server when `mcp_mode` is set to `"sse"`. Ignored in `"stdio"` mode.
 
@@ -1010,7 +1012,7 @@ mcp_sse_port = 8000
 
 **Type:** String (path)  
 **Default:** `"mcp/docs.md"`  
-**Environment Variable:** `MCP_DOCS`
+**Environment Variable:** `MCP_MCP_DOCS`
 
 Path to markdown documentation file used by MCP for query responses and assistance.
 
@@ -1029,7 +1031,7 @@ Configuration for Microsoft Web Components (MSWC) like PageCounter.
 
 **Type:** Boolean  
 **Default:** `false`  
-**Environment Variable:** `PAGECOUNTER_ENABLED`
+**Environment Variable:** `MSWC_PAGECOUNTER_ENABLED`
 
 When enabled, provides MSWC.PageCounter component for tracking page hit counts.
 
@@ -1042,7 +1044,7 @@ pagecounter_enabled = false
 
 **Type:** String (path)  
 **Default:** `"./temp/hitcnt.gob"`  
-**Environment Variable:** `PAGECOUNTER_FILE`
+**Environment Variable:** `MSWC_PAGECOUNTER_FILE`
 
 Binary file (Go gob format) storing page hit counts. Created automatically if missing.
 
@@ -1055,7 +1057,7 @@ pagecounter_file = "./temp/hitcnt.gob"
 
 **Type:** Integer (seconds)  
 **Default:** `120`  
-**Environment Variable:** `PAGECOUNTER_SAVE_INTERVAL_SECONDS`
+**Environment Variable:** `MSWC_PAGECOUNTER_SAVE_INTERVAL_SECONDS`
 
 Interval for flushing hit counts to disk. Balances performance vs. data freshness.
 
@@ -1214,13 +1216,13 @@ services:
   axonasp:
     image: axonasp:latest
     environment:
-      DEFAULT_SCRIPT_TIMEOUT: "120"
-      SERVER_PORT: "8801"
-      VM_POOL_SIZE: "100"
-      GOLANG_MEMORY_LIMIT_MB: "256"
-      MYSQL_HOST: "mysql"
-      MYSQL_USER: "appuser"
-      MYSQL_PASS: "securepassword"
+      GLOBAL_DEFAULT_SCRIPT_TIMEOUT: "120"
+      SERVER_SERVER_PORT: "8801"
+      GLOBAL_VM_POOL_SIZE: "100"
+      GLOBAL_GOLANG_MEMORY_LIMIT_MB: "256"
+      G3DB_MYSQL_HOST: "mysql"
+      G3DB_MYSQL_USER: "appuser"
+      G3DB_MYSQL_PASS: "securepassword"
     ports:
       - "8801:8801"
 ```

@@ -1474,10 +1474,22 @@ func g3dbBuildDSN(v *viper.Viper, driver string) string {
 	case "postgres":
 		host := v.GetString("g3db.postgres_host")
 		port := v.GetInt("g3db.postgres_port")
+		if port == 0 {
+			port = v.GetInt("g3db.postgress_port")
+		}
 		user := v.GetString("g3db.postgres_user")
 		pass := v.GetString("g3db.postgres_pass")
+		if pass == "" {
+			pass = v.GetString("g3db.postgress_pass")
+		}
 		dbName := v.GetString("g3db.postgres_database")
+		if dbName == "" {
+			dbName = v.GetString("g3db.postgress_database")
+		}
 		sslMode := v.GetString("g3db.postgres_ssl_mode")
+		if sslMode == "" {
+			sslMode = v.GetString("g3db.postgress_ssl_mode")
+		}
 		if host == "" || user == "" || dbName == "" {
 			return ""
 		}

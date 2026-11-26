@@ -32,7 +32,7 @@ Following the installation of the HttpPlatformHandler module, you must configure
                       startupTimeLimit="5"
                       processesPerApplication="1">
             <environmentVariables>
-                <environmentVariable name="SERVER_PORT" value="%HTTP_PLATFORM_PORT%" />
+                <environmentVariable name="SERVER_SERVER_PORT" value="%HTTP_PLATFORM_PORT%" />
             </environmentVariables>
         </httpPlatform>
     </system.webServer>
