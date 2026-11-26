@@ -533,6 +533,7 @@ type VM struct {
 	// funcLocalClassTypes maps function entry point to local slot Class/Interface names.
 	funcLocalClassTypes map[int]map[int]string
 	callStack           []CallFrame
+	baseCallDepth       int
 	jsCallStack         []jsCallFrame
 	// withStack holds the subject object for each active With...End With block.
 	// OpWithEnter appends, OpWithLeave shrinks, OpWithLoad peeks at the top.
@@ -1594,6 +1595,7 @@ func (vm *VM) cloneForExecuteGlobal(startIP int) *VM {
 	child.ip = startIP
 	child.fp = 0
 	child.callStack = make([]CallFrame, 0, 16)
+	child.baseCallDepth = 0
 	child.withStack = make([]Value, 0, 8)
 	// Copy declared type arrays for VB6 As Type support.
 	child.localTypes = vm.localTypes
@@ -1645,6 +1647,7 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	child.ip = startIP
 	child.callStack = make([]CallFrame, len(vm.callStack))
 	copy(child.callStack, vm.callStack)
+	child.baseCallDepth = len(vm.callStack)
 	child.activeClassObjectID = vm.activeClassObjectID
 	child.terminateCursor = -1
 	child.terminatePrepared = false
@@ -1739,6 +1742,7 @@ func (vm *VM) cloneForExecuteLocalSharedRuntime(startIP int) *VM {
 	child.globalTypes = append([]ValueType(nil), vm.globalTypes...)
 	child.ip = startIP
 	child.callStack = append([]CallFrame(nil), vm.callStack...)
+	child.baseCallDepth = len(vm.callStack)
 	child.activeClassObjectID = vm.activeClassObjectID
 	child.terminateCursor = -1
 	child.terminatePrepared = false
@@ -2084,6 +2088,41 @@ func (vm *VM) Run() (err error) {
 	// intrinsic objects, breaking fundamental type conversion functions.
 	vm.ensureJSRootEnv()
 
+	for {
+		done, execErr := vm.runAspExecLoop(&operationCount, &jsBackJumpCount)
+		if execErr != nil {
+			return execErr
+		}
+		if done {
+			break
+		}
+	}
+
+	if vm.host != nil && vm.host.Response() != nil && isRootRun {
+		vm.host.Response().Flush()
+	}
+
+	return nil
+}
+
+// runAspExecLoop executes the VM bytecode loop and recovers internal unwind signals
+// emitted when a callee runtime error propagates into an ancestor On Error Resume Next frame.
+func (vm *VM) runAspExecLoop(opCount *int, jsCount *int) (done bool, err error) {
+	operationCount := *opCount
+	jsBackJumpCount := *jsCount
+	defer func() {
+		*opCount = operationCount
+		*jsCount = jsBackJumpCount
+		if r := recover(); r != nil {
+			if _, ok := r.(*vmUnwindSignal); ok {
+				done = false
+				err = nil
+				return
+			}
+			panic(r)
+		}
+	}()
+
 aspExecLoop:
 	for vm.ip < len(vm.bytecode) {
 		// Start any Class_Terminate queued by a reference-count drop during the previous
@@ -2098,17 +2137,31 @@ aspExecLoop:
 			vm.jsPumpNodeAsyncTasks(32)
 		}
 		if operationCount&1023 == 0 && vm.host != nil && vm.host.Server() != nil && vm.host.Server().HasTimedOut() {
-			return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()))
+			return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()))
 		}
 		op := OpCode(vm.bytecode[vm.ip])
 		vm.ip++
 
 		// When Resume Next absorbed an error mid-statement, skip bytecode until the next
-		// statement boundary (OpLine) or take any OpJumpIfFalse unconditionally to correctly
-		// skip compound-statement blocks (e.g. If/Then body). OpRet and OpHalt fall through
-		// so function returns and program termination work normally during skip mode.
+		// statement boundary (OpLine), loop tail (OpForNextFast*), return (OpRet), or
+		// halt (OpHalt). Unconditional OpJump follows its target so failed statements at
+		// the end of a True/Case branch still jump over Else/Case branches, while
+		// conditional jumps fall through into the guarded body just as IIS VBScript does.
 		if vm.skipToNextStmt {
-			// ... (rest of skip logic)
+			switch op {
+			case OpLine, OpHalt, OpRet:
+				// Fall through to the main switch handler below.
+			case OpJump:
+				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+				vm.ip = target
+				continue
+			case OpForNextFastInt, OpForNextFastGlobalInt:
+				vm.sp = vm.stmtSP
+				vm.skipToNextStmt = false
+			default:
+				vm.ip += opcodeOperandSize(op, vm.bytecode, vm.ip-1)
+				continue
+			}
 		}
 
 		switch op {
@@ -2680,7 +2733,7 @@ aspExecLoop:
 			if counter.Num < limit.Num {
 				jsBackJumpCount++
 				if jsBackJumpCount > jsBackJumpLimit {
-					return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+					return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 				}
 				vm.ip -= jumpOffset
 				continue
@@ -3538,7 +3591,9 @@ aspExecLoop:
 			fn := BuiltinRegistry[registryIdx]
 			result, err := fn(vm, args)
 			if err != nil {
-				if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
+				if vme, ok := err.(*VMError); ok {
+					vm.raiseVMError(vme)
+				} else if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
 					vm.raise(runtimeErr.code, runtimeErr.Error())
 				} else {
 					vm.raise(vbscript.InternalError, err.Error())
@@ -3664,7 +3719,7 @@ aspExecLoop:
 					if target < vm.ip {
 						jsBackJumpCount++
 						if jsBackJumpCount > jsBackJumpLimit {
-							return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+							return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 						}
 					}
 					vm.ip = target
@@ -4434,7 +4489,9 @@ aspExecLoop:
 				fn := BuiltinRegistry[target.Num]
 				result, err := fn(vm, args)
 				if err != nil {
-					if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
+					if vme, ok := err.(*VMError); ok {
+						vm.raiseVMError(vme)
+					} else if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
 						vm.raise(runtimeErr.code, runtimeErr.Error())
 					} else {
 						vm.raise(vbscript.InternalError, err.Error())
@@ -5129,7 +5186,7 @@ aspExecLoop:
 			if target < vm.ip {
 				jsBackJumpCount++
 				if jsBackJumpCount > jsBackJumpLimit {
-					return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+					return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 				}
 			}
 			vm.ip = target
@@ -5141,7 +5198,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+						return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -5154,7 +5211,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+						return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -5217,7 +5274,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+						return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -6054,11 +6111,7 @@ aspExecLoop:
 		vm.jsProcessMicrotasks()
 	}
 
-	if vm.host != nil && vm.host.Response() != nil && isRootRun {
-		vm.host.Response().Flush()
-	}
-
-	return nil
+	return true, nil
 }
 
 // prepareTransactionEventCall sets up a call frame for the ObjectContext transaction event handler.
@@ -9171,39 +9224,8 @@ func (vm *VM) errRaise(args []Value) Value {
 		HelpContext:    helpContext,
 	}
 
-	vm.errSetFromVMError(vme)
-	if vm.onResumeNext {
-		vm.lastError = vme
-		return Value{Type: VTEmpty}
-	}
-
-	for i, frame := range slices.Backward(vm.callStack) {
-
-		if !frame.savedOnResumeNext {
-			continue
-		}
-		curFP := vm.fp
-		curSP := vm.sp
-		for j := len(vm.callStack) - 1; j >= i; j-- {
-			for k := curFP; k <= curSP; k++ {
-				if k >= 0 && k < StackSize {
-					vm.decrementObjectRefCount(vm.stack[k])
-				}
-			}
-			curSP = vm.callStack[j].oldSP
-			curFP = vm.callStack[j].oldFP
-		}
-		vm.callStack = vm.callStack[:i]
-		vm.sp = curSP
-		vm.fp = curFP
-		vm.ip = frame.returnIP
-		vm.activeClassObjectID = frame.boundObj
-		vm.onResumeNext = frame.savedOnResumeNext
-		vm.lastError = vme
-		return Value{Type: VTEmpty}
-	}
-
-	panic(vme)
+	vm.raiseVMError(vme)
+	return Value{Type: VTEmpty}
 }
 
 // errSetFromVMError mirrors a runtime VM error into the intrinsic Err object.
@@ -9247,12 +9269,12 @@ func (vm *VM) raiseFromSyntaxError(syntaxErr *vbscript.VBSyntaxError) {
 		Number:         syntaxErr.Number,
 		Source:         syntaxErr.Source,
 	}
-	vm.errSetFromVMError(vme)
-	if vm.onResumeNext || (vm.terminatePrepared && !vm.suppressTerminate) {
+	if vm.terminatePrepared && !vm.suppressTerminate {
+		vm.errSetFromVMError(vme)
 		vm.lastError = vme
 		return
 	}
-	panic(vme)
+	vm.raiseVMError(vme)
 }
 
 // valueToApplicationValue converts a VM value into a typed application storage value.
@@ -10866,6 +10888,10 @@ func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 	vm.raiseVMError(vme)
 }
 
+type vmUnwindSignal struct{}
+
+var vmUnwindSentinel = &vmUnwindSignal{}
+
 func (vm *VM) raiseVMError(vme *VMError) {
 	vm.errSetFromVMError(vme)
 
@@ -10877,12 +10903,10 @@ func (vm *VM) raiseVMError(vme *VMError) {
 
 	// Walk the call stack looking for the nearest ancestor frame whose caller had
 	// On Error Resume Next active (savedOnResumeNext == true). When found, unwind
-	// the call stack to that frame so execution resumes in the caller at the
-	// statement following the call that raised the error. This mirrors classic
-	// VBScript behaviour: an unhandled error propagates up until it reaches a
-	// procedure scope that has On Error Resume Next active.
-	for i, frame := range slices.Backward(vm.callStack) {
-
+	// the call stack to that frame and skip the remainder of the caller's statement
+	// so partial expressions or assignments do not overwrite existing variable values.
+	for i := len(vm.callStack) - 1; i >= vm.baseCallDepth; i-- {
+		frame := vm.callStack[i]
 		if !frame.savedOnResumeNext {
 			continue
 		}
@@ -10899,14 +10923,19 @@ func (vm *VM) raiseVMError(vme *VMError) {
 			curSP = vm.callStack[j].oldSP
 			curFP = vm.callStack[j].oldFP
 		}
-		// Unwind to the caller's context, resuming after the call site.
+		// Unwind to the caller's context, skipping the remainder of the caller's statement.
 		vm.callStack = vm.callStack[:i]
-		vm.sp = curSP
+		vm.sp = frame.savedStmtSP
 		vm.fp = curFP
 		vm.ip = frame.returnIP
 		vm.activeClassObjectID = frame.boundObj
 		vm.onResumeNext = frame.savedOnResumeNext // restore caller's On Error state
+		vm.stmtSP = frame.savedStmtSP
+		vm.skipToNextStmt = true
 		vm.lastError = vme
+		if vm.runDepth > 0 {
+			panic(vmUnwindSentinel)
+		}
 		return
 	}
 

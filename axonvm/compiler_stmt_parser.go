@@ -1268,6 +1268,7 @@ func (c *Compiler) parseWithStatement() {
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordEnd)
 	c.expectKeyword(vbscript.KeywordWith)
 	c.withDepth--
@@ -2043,6 +2044,7 @@ func (c *Compiler) parseClassMethodDeclaration(className string, isFunc bool, is
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordEnd)
 	if isFunc {
 		if c.matchKeywordOrIdentifier(vbscript.KeywordFunction, "function") {
@@ -2239,6 +2241,7 @@ func (c *Compiler) parseClassPropertyDeclaration(className string, isPublic bool
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordEnd)
 	if c.matchKeywordOrIdentifier(vbscript.KeywordProperty, "property") {
 		c.move()
@@ -3283,6 +3286,7 @@ func (c *Compiler) parseBlockIfStatement() {
 		c.patchJump(jumpFalseOffset)
 
 		c.move()
+		c.emitCurrentDebugLocation()
 		c.parseExpression(PrecNone)
 		c.expectKeyword(vbscript.KeywordThen)
 
@@ -3299,6 +3303,7 @@ func (c *Compiler) parseBlockIfStatement() {
 		c.patchJump(jumpFalseOffset)
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordEnd)
 	c.expectKeyword(vbscript.KeywordIf)
 	for _, jumpEndOffset := range jumpEndOffsets {
@@ -3332,6 +3337,7 @@ func (c *Compiler) parseInlineIfStatement() {
 		c.patchJump(jumpFalseOffset)
 
 		c.move()
+		c.emitCurrentDebugLocation()
 		c.parseExpression(PrecNone)
 		c.expectKeyword(vbscript.KeywordThen)
 
@@ -3546,6 +3552,7 @@ func (c *Compiler) parseSelectCaseStatement() {
 		break
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordEnd)
 	for {
 		switch c.next.(type) {
@@ -3640,6 +3647,7 @@ func (c *Compiler) parseDoStatement() {
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordLoop)
 
 	postTestMode := 0 // 0 = none, 1 = while, 2 = until
@@ -3681,6 +3689,7 @@ func (c *Compiler) parseWhileStatement() {
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	if c.matchKeywordOrIdentifier(vbscript.KeywordWEnd, "wend") {
 		c.move()
 	} else {
@@ -3752,6 +3761,7 @@ func (c *Compiler) parseForEachStatement() {
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	oneIdx := c.addConstant(NewInteger(1))
 	opIdxGet, idxIdxGet = c.resolveVar(indexName)
 	c.emit(opIdxGet, idxIdxGet)
@@ -4124,6 +4134,7 @@ func (c *Compiler) parseForToStatement() {
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	c.emitForLoopStepUpdate(loopVarName, hasUnitStep, unitStep, stepName)
 	c.emitLoop(loopStart)
 
@@ -4250,6 +4261,7 @@ func (c *Compiler) parseSubFunction(isFunc bool) {
 		c.parseStatement()
 	}
 
+	c.emitCurrentDebugLocation()
 	c.expectKeyword(vbscript.KeywordEnd)
 	if isFunc {
 		c.expectKeyword(vbscript.KeywordFunction)
