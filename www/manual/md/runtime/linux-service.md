@@ -142,7 +142,7 @@ Edit `/opt/axonasp/config/axonasp.toml` to set the web root and port:
 
 ```toml
 [server]
-port = 8801
+server_port = 8801
 web_root = "/opt/axonasp/www"
 ```
 
@@ -150,8 +150,8 @@ These values can also be passed via environment variables in the unit file:
 
 ```ini
 [Service]
-Environment="WEB_ROOT=/opt/axonasp/www"
-Environment="SERVER_PORT=8801"
+Environment="SERVER_WEB_ROOT=/opt/axonasp/www"
+Environment="SERVER_SERVER_PORT=8801"
 ```
 
 ## Nginx Reverse Proxy Integration

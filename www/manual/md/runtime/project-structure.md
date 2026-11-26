@@ -114,21 +114,21 @@ When deploying AxonASP executables, ensure the following are in the **same direc
 1. **config/axonasp.toml** - Configuration file (absolute or relative path, configurable)
 2. **www/** - Web root directory containing your ASP applications
 
-Both paths are configured in `axonasp.toml` and can be set via environment variables:
+The web root path is configured in `axonasp.toml` and can be overridden via an environment variable, while a custom configuration file path can be passed via `-c` / `--config.config_file`:
 ```powershell
-$env:WEB_ROOT = "C:\myapp\www"
-$env:CONFIG_PATH = "C:\myapp\config\axonasp.toml"
+$env:SERVER_WEB_ROOT = "C:\myapp\www"
+.\axonasp-http.exe -c "C:\myapp\config\axonasp.toml"
 ```
 
 ## Environment Variable Override
 
-All configuration values in `axonasp.toml` can be overridden via **environment variables** (requires `viper_automatic_env = true` in config):
+All configuration values in `axonasp.toml` can be overridden via **environment variables** (requires `viper_automatic_env = true` in `axonasp.toml`):
 
 ```powershell
-# Format: SECTION_SETTING or SECTION_SUBSETTING (uppercase, underscores replace dots)
-$env:DEFAULT_CHARSET = "UTF-8"
-$env:DEFAULT_SCRIPT_TIMEOUT = "120"
-$env:SERVER_PORT = "8802"
+# Format: SECTION_KEY (uppercase, underscores replace dots)
+$env:GLOBAL_DEFAULT_CHARSET = "UTF-8"
+$env:GLOBAL_DEFAULT_SCRIPT_TIMEOUT = "120"
+$env:SERVER_SERVER_PORT = "8802"
 ```
 
 ## Service Ports and Endpoints

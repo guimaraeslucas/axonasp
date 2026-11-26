@@ -178,13 +178,13 @@ Start each instance on a different port using environment variables or separate 
 Using environment variables:
 ```powershell
 # Terminal 1
-$env:SERVER_PORT = "8801"; .\axonasp-http.exe
+$env:SERVER_SERVER_PORT = "8801"; .\axonasp-http.exe
 
 # Terminal 2
-$env:SERVER_PORT = "8802"; .\axonasp-http.exe
+$env:SERVER_SERVER_PORT = "8802"; .\axonasp-http.exe
 
 # Terminal 3
-$env:SERVER_PORT = "8803"; .\axonasp-http.exe
+$env:SERVER_SERVER_PORT = "8803"; .\axonasp-http.exe
 ```
 
 Using custom configuration files with the `-c` flag (which allows distinct settings per instance):

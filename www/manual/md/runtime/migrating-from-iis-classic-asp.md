@@ -123,7 +123,7 @@ To properly orchestrate AxonASP within IIS, you must use the **HttpPlatformHandl
                       startupTimeLimit="5"
                       processesPerApplication="1"> <!-- CRITICAL: Must be 1 to preserve global.asa and session state -->
             <environmentVariables>
-                <environmentVariable name="SERVER_PORT" value="%HTTP_PLATFORM_PORT%" />
+                <environmentVariable name="SERVER_SERVER_PORT" value="%HTTP_PLATFORM_PORT%" />
             </environmentVariables>
         </httpPlatform>
     </system.webServer>
