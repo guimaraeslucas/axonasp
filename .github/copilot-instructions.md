@@ -4,4 +4,5 @@ Read, process, and strictly apply all architectural guidelines, context, and cod
 You can also skip the `AGENTS.md` file and check these files for specific situations when not generating code for the AxonASP GoLang framework: 
 * When writing or updating ASP code check `llm-instructions/asp-coding-guidelines.md` file.
 * When writing or updating documentation for AxonASP check `llm-instructions/documentation-manuals.md` file.
-* When generating UI components check `llm-instructions/documentation-manuals.md` file.
+* When generating UI components check `llm-instructions/ui-ux-directives.md` file.
+* When generating Libraries and Custom AxFunctions you also must read `llm-instructions/library-custom-functions.md` file.

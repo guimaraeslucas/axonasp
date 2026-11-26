@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestResponseBufferedWrite verifies buffered output and Flush behavior.
@@ -290,5 +291,35 @@ func TestResponseUnbufferedMixedSegments(t *testing.T) {
 	want := []byte{0xE4, 0xC3, 0xA4}
 	if !bytes.Equal(output.Bytes(), want) {
 		t.Fatalf("unexpected unbuffered mixed response bytes: got %X want %X", output.Bytes(), want)
+	}
+}
+
+// TestResponseCookieSetCookieExpires verifies SetCookieExpires and ParseCookieExpiresRaw emit valid Set-Cookie Expires attributes.
+func TestResponseCookieSetCookieExpires(t *testing.T) {
+	rec := httptest.NewRecorder()
+	response := NewResponse(rec)
+	defer response.ReleaseBuffer()
+
+	response.SetCookieValue("typed", "1")
+	response.SetCookieExpires("typed", time.Date(2027, time.January, 1, 10, 30, 0, 0, time.UTC), "1/1/2027 10:30:00 AM")
+
+	response.SetCookieValue("hyphen", "2")
+	response.SetCookieProperty("hyphen", "Expires", "Fri, 01-Jan-2027 00:00:00 GMT")
+
+	response.Flush()
+
+	if got := response.GetCookieProperty("typed", "Expires"); got != "1/1/2027 10:30:00 AM" {
+		t.Fatalf("unexpected raw Expires property: got %q", got)
+	}
+
+	setCookies := rec.Header().Values("Set-Cookie")
+	if len(setCookies) != 2 {
+		t.Fatalf("expected 2 Set-Cookie headers, got %d (%v)", len(setCookies), setCookies)
+	}
+	if !strings.Contains(setCookies[0], "Expires=Fri, 01 Jan 2027 10:30:00 GMT") {
+		t.Fatalf("expected formatted Expires on typed cookie, got %q", setCookies[0])
+	}
+	if !strings.Contains(setCookies[1], "Expires=Fri, 01 Jan 2027 00:00:00 GMT") {
+		t.Fatalf("expected formatted Expires on hyphenated RFC cookie, got %q", setCookies[1])
 	}
 }

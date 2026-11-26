@@ -83,9 +83,8 @@ func runDateArithmeticCases(t *testing.T, cases [][2]string) {
 //   - https://github.com/saborrie/iis-oracle/actions/runs/45595451489 (date-arithmetic-edges.asp)
 //   - https://github.com/saborrie/iis-oracle/actions/runs/45595820636 (date-arithmetic-edges2.asp)
 //
-// The engine has no separate Long, Single or Currency subtypes, so where IIS reports
-// TypeName Long the expectation says Integer; the value is IIS's. The table runs in two
-// time zones because a Date is a local wall-clock time with no zone in VBScript.
+// The engine has no separate Single subtype; Long and Currency are tracked and match IIS.
+// The table runs in two time zones because a Date is a local wall-clock time with no zone in VBScript.
 func TestVBSDateArithmeticMatchesIIS(t *testing.T) {
 	cases := [][2]string{
 		// Date +/- number is a Date, in either operand order.
@@ -117,7 +116,7 @@ func TestVBSDateArithmeticMatchesIIS(t *testing.T) {
 		{"d / 1", "46388.4375 (Double)"},
 		{"d ^ 1", "46388.4375 (Double)"},
 		{"d * Empty", "0 (Double)"},
-		{`d \ 1`, "46388 (Integer)"},
+		{`d \ 1`, "46388 (Long)"},
 		{"d Mod 7", "6 (Integer)"},
 		{`d \ e`, "1 (Integer)"},
 		{"d Mod e", "1 (Integer)"},
@@ -139,9 +138,9 @@ func TestVBSDateArithmeticMatchesIIS(t *testing.T) {
 		// Conversions read the serial.
 		{"CDbl(d)", "46388.4375 (Double)"},
 		{`CDbl(CDate("1899-12-30"))`, "0 (Double)"},
-		{"CLng(e)", "46387 (Integer)"},
-		{"CLng(d)", "46388 (Integer)"},
-		{"CLng(h)", "46388 (Integer)"},
+		{"CLng(e)", "46387 (Long)"},
+		{"CLng(d)", "46388 (Long)"},
+		{"CLng(h)", "46388 (Long)"},
 		{"CInt(d)", "ERR (Overflow)"},
 		{`CInt(CDate("1950-01-01"))`, "18264 (Integer)"},
 		{"CByte(d)", "ERR (Overflow)"},
@@ -165,7 +164,7 @@ func TestVBSDateArithmeticMatchesIIS(t *testing.T) {
 		{"Int(p)", "12/31/1799 (Date)"},
 		{"Fix(p)", "1/1/1800 (Date)"},
 		{"Round(p)", "1/1/1800 (Date)"},
-		{"CLng(p)", "-36522 (Integer)"},
+		{"CLng(p)", "-36522 (Long)"},
 		{"-p", "12/28/1999 6:00:00 AM (Date)"},
 		{"CDate(-0.25)", "6:00:00 AM (Date)"},
 		{"CDate(-1.25)", "12/29/1899 6:00:00 AM (Date)"},

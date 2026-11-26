@@ -82,6 +82,9 @@ func (m *MockHost) Application() *asp.Application { return m.application }
 // SetApplication injects a custom Application instance.
 func (m *MockHost) SetApplication(app *asp.Application) { m.application = app }
 
+// SetResponse injects a custom Response instance.
+func (m *MockHost) SetResponse(resp *asp.Response) { m.response = resp }
+
 // SetSession injects a custom Session instance.
 func (m *MockHost) SetSession(session *asp.Session) { m.session = session }
 

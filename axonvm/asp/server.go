@@ -241,7 +241,7 @@ func (s *Server) HTMLEncode(str string) string {
 		case '>':
 			encoded.WriteString("&gt;")
 		case '"':
-			encoded.WriteString("&#34;")
+			encoded.WriteString("&quot;")
 		default:
 			if char > 127 {
 				encoded.WriteString("&#")

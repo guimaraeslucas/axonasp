@@ -9287,6 +9287,268 @@ End Sub
 	}
 }
 
+// TestASPResumeNextSkipsCallerAssignmentOnCalleeError verifies that when a called
+// function/property/method raises an unhandled error (via Err.Raise or runtime fault)
+// while the caller has On Error Resume Next active, the caller's entire assignment or
+// output statement is skipped and the target variable retains its previous value.
+func TestASPResumeNextSkipsCallerAssignmentOnCalleeError(t *testing.T) {
+	tests := []struct {
+		name     string
+		source   string
+		expected string
+	}{
+		{
+			name: "direct_err_raise_preserves_global",
+			source: `<%
+Function Raises()
+    Raises = "partial"
+    Err.Raise vbObjectError + 1, "probe", "raised on purpose"
+End Function
+
+On Error Resume Next
+v = "unset"
+v = Raises()
+Response.Write "[" & v & "]|" & (Err.Number = vbObjectError + 1) & "|" & Err.Source & "|" & Err.Description
+%>`,
+			expected: "[unset]|True|probe|raised on purpose",
+		},
+		{
+			name: "two_calls_deep_preserves_caller_var",
+			source: `<%
+Function Inner()
+    Inner = "inner_partial"
+    Err.Raise 5001, "Inner", "deep error"
+End Function
+
+Function Middle()
+    Middle = "middle_partial"
+    Middle = Inner()
+End Function
+
+On Error Resume Next
+v = "unset"
+v = Middle()
+Response.Write "[" & v & "]|" & Err.Number & "|" & Err.Description
+%>`,
+			expected: "[unset]|5001|deep error",
+		},
+		{
+			name: "callee_on_error_goto_0_propagates_to_caller",
+			source: `<%
+Function RaisesAfterGoto0()
+    On Error Resume Next
+    Dim tmp
+    tmp = 1 / 0
+    Err.Clear
+    On Error GoTo 0
+    RaisesAfterGoto0 = "partial"
+    Err.Raise 5002, "Callee", "after goto 0"
+End Function
+
+On Error Resume Next
+v = "unset"
+v = RaisesAfterGoto0()
+Response.Write "[" & v & "]|" & Err.Number & "|" & Err.Description
+%>`,
+			expected: "[unset]|5002|after goto 0",
+		},
+		{
+			name: "runtime_division_by_zero_in_callee_and_compound_expr",
+			source: `<%
+Function DivZero()
+    DivZero = 42
+    Dim x
+    x = 1 / 0
+End Function
+
+On Error Resume Next
+v = "unset"
+v = DivZero()
+Response.Write "[" & v & "]|" & Err.Number & "|"
+Err.Clear
+v2 = 99
+v2 = 10 + DivZero()
+Response.Write "[" & v2 & "]|" & Err.Number
+%>`,
+			expected: "[unset]|-2146828277|[99]|-2146828277",
+		},
+		{
+			name: "eval_and_execute_inside_callee_propagate_to_caller",
+			source: `<%
+Function EvalFail()
+    EvalFail = "partial"
+    EvalFail = Eval("1 / 0")
+End Function
+
+Function ExecFail()
+    ExecFail = "partial"
+    Execute "Dim x : x = 1 / 0"
+End Function
+
+On Error Resume Next
+Dim a, b
+a = "keepEval"
+a = EvalFail()
+b = "keepExec"
+b = ExecFail()
+Response.Write a & "|" & b
+%>`,
+			expected: "keepEval|keepExec",
+		},
+		{
+			name: "zero_arg_bare_call_and_class_member_and_set",
+			source: `<%
+Function BareRaises()
+    BareRaises = "partial"
+    Err.Raise 6001, "Bare", "bare fail"
+End Function
+
+Class Box
+    Public Function FailMethod()
+        FailMethod = "partial"
+        Err.Raise 6002, "Box", "method fail"
+    End Function
+    Public Property Get FailProp()
+        FailProp = "partial"
+        Err.Raise 6003, "Box", "prop fail"
+    End Property
+End Class
+
+Class Marker
+    Public Label
+End Class
+
+Function FailSet()
+    Dim m
+    Set m = New Marker
+    m.Label = "bad"
+    Set FailSet = m
+    Err.Raise 6004, "SetFn", "set fail"
+End Function
+
+On Error Resume Next
+Dim a, b, c, obj, mref
+a = "keepA"
+a = BareRaises
+Set obj = New Box
+b = "keepB"
+b = obj.FailMethod()
+c = "keepC"
+c = obj.FailProp
+Set mref = New Marker
+mref.Label = "keepObj"
+Set mref = FailSet()
+Response.Write a & "|" & b & "|" & c & "|" & mref.Label
+%>`,
+			expected: "keepA|keepB|keepC|keepObj",
+		},
+		{
+			name: "loop_assignments_preserve_previous_iteration_value",
+			source: `<%
+Function MaybeFail(n)
+    If n Mod 2 = 0 Then
+        MaybeFail = "partial"
+        Err.Raise 7000 + n, "Loop", "even fail"
+    End If
+    MaybeFail = "ok" & n
+End Function
+
+Sub RunLoops()
+    On Error Resume Next
+    Dim i, cur, fastTrace, slowTrace, eachTrace, item
+    cur = "init"
+    fastTrace = ""
+    For i = 1 To 4
+        cur = MaybeFail(i)
+        fastTrace = fastTrace & cur & ","
+    Next
+
+    cur = "init"
+    slowTrace = ""
+    For i = 1 To 4 Step 1
+        If i > 0 Then
+            cur = MaybeFail(i)
+            slowTrace = slowTrace & cur & ","
+        End If
+    Next
+
+    Dim step2Cur, step2Trace
+    step2Cur = "init"
+    step2Trace = ""
+    For i = 1 To 4 Step 2
+        step2Cur = MaybeFail(i + 1)
+        step2Trace = step2Trace & step2Cur & ","
+    Next
+
+    cur = "init"
+    eachTrace = ""
+    For Each item In Array(1, 2, 3, 4)
+        cur = MaybeFail(item)
+        eachTrace = eachTrace & cur & ","
+    Next
+
+    Response.Write fastTrace & "|" & step2Trace & "|" & eachTrace
+End Sub
+
+RunLoops
+%>`,
+			expected: "ok1,ok1,ok3,ok3,|init,init,|ok1,ok1,ok3,ok3,",
+		},
+		{
+			name: "local_var_and_last_stmt_in_function_and_if_and_response_write",
+			source: `<%
+Function FailErr()
+    FailErr = "partial"
+    Err.Raise 8001, "Fail", "boom"
+End Function
+
+Function CallerFunc()
+    On Error Resume Next
+    Dim localV
+    localV = "keepLocal"
+    localV = FailErr()
+    If True Then
+        localV = FailErr()
+    Else
+        localV = "elseBranch"
+    End If
+    Response.Write "[" & FailErr() & "]"
+    CallerFunc = localV
+    Dim unused
+    unused = FailErr()
+End Function
+
+Response.Write CallerFunc()
+%>`,
+			expected: "keepLocal",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			compiler := NewASPCompiler(tc.source)
+			if err := compiler.Compile(); err != nil {
+				t.Fatalf("compile failed: %v", err)
+			}
+
+			vm := NewVMFromCompiler(compiler)
+			host := NewMockHost()
+			var output bytes.Buffer
+			host.SetOutput(&output)
+			vm.SetHost(host)
+
+			if err := vm.Run(); err != nil {
+				t.Fatalf("vm run failed: %v", err)
+			}
+			host.Response().Flush()
+
+			if got := output.String(); got != tc.expected {
+				t.Fatalf("expected %q, got %q", tc.expected, got)
+			}
+		})
+	}
+}
+
 // TestASPAddValuesStringNumericCoercion verifies VBScript '+' operator coercion rules:
 // - "5" + 3 = 8 (numeric addition)
 // - True + "3" raises Type Mismatch

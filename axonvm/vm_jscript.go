@@ -1886,6 +1886,8 @@ func (vm *VM) jsJSONStringifyValue(v Value) string {
 		return "false"
 	case VTInteger:
 		return strconv.FormatInt(v.Num, 10)
+	case VTCurrency:
+		return formatCurrencyValue(v.Num, ".")
 	case VTDouble:
 		if math.IsNaN(v.Flt) || math.IsInf(v.Flt, 0) {
 			return "null"
@@ -10601,27 +10603,27 @@ func (vm *VM) jsCall(callee Value, thisVal Value, args []Value) Value {
 		case "require":
 			return vm.jsRequire(args)
 		case "decodeURI":
-			decoded, err := jsDecodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)))
+			decoded, err := jsDecodeURIValue(vm.jsToString(jsArgOrUndefined(args, 0)))
 			if err != nil {
 				vm.jsThrowTypeError("URI malformed")
 				return Value{Type: VTJSUndefined}
 			}
 			return NewString(decoded)
 		case "decodeURIComponent":
-			decoded, err := jsDecodeURIComponentValue(vm.valueToString(jsArgOrUndefined(args, 0)))
+			decoded, err := jsDecodeURIComponentValue(vm.jsToString(jsArgOrUndefined(args, 0)))
 			if err != nil {
 				vm.jsThrowTypeError("URI malformed")
 				return Value{Type: VTJSUndefined}
 			}
 			return NewString(decoded)
 		case "encodeURI":
-			return NewString(jsEncodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)), false))
+			return NewString(jsEncodeURIValue(vm.jsToString(jsArgOrUndefined(args, 0)), false))
 		case "encodeURIComponent":
-			return NewString(jsEncodeURIValue(vm.valueToString(jsArgOrUndefined(args, 0)), true))
+			return NewString(jsEncodeURIValue(vm.jsToString(jsArgOrUndefined(args, 0)), true))
 		case "escape":
-			return NewString(jsEscapeValue(vm.valueToString(jsArgOrUndefined(args, 0))))
+			return NewString(jsEscapeValue(vm.jsToString(jsArgOrUndefined(args, 0))))
 		case "unescape":
-			return NewString(jsUnescapeValue(vm.valueToString(jsArgOrUndefined(args, 0))))
+			return NewString(jsUnescapeValue(vm.jsToString(jsArgOrUndefined(args, 0))))
 		}
 		return Value{Type: VTJSUndefined}
 	case VTBuiltin:
@@ -10996,6 +10998,8 @@ func (vm *VM) jsToString(v Value) string {
 		return "false"
 	case VTInteger:
 		return strconv.FormatInt(v.Num, 10)
+	case VTCurrency:
+		return formatCurrencyValue(v.Num, ".")
 	case VTDouble:
 		if math.IsNaN(v.Flt) {
 			return "NaN"
@@ -11060,6 +11064,8 @@ func (vm *VM) jsToNumber(v Value) Value {
 		return NewDouble(0)
 	case VTInteger:
 		return Value{Type: VTDouble, Flt: float64(v.Num)}
+	case VTCurrency:
+		return Value{Type: VTDouble, Flt: float64(v.Num) / 10000.0}
 	case VTDouble:
 		return v
 	case VTString:

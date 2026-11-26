@@ -1000,15 +1000,14 @@ func foldVBSNumericOp(a, b Value, intOp func(int64, int64) int64, fltOp func(flo
 
 // vbsConstantToString converts a compile-time constant Value to a string
 // representation suitable for the & concatenation operator.
-// Only VTString, VTInteger, and VTDouble are supported.
+// Only VTString and VTInteger are folded at compile time because VTDouble
+// and VTCurrency formatting depends on the runtime locale decimal separator.
 func vbsConstantToString(v Value) (string, bool) {
 	switch v.Type {
 	case VTString:
 		return v.Str, true
 	case VTInteger:
 		return strconv.FormatInt(v.Num, 10), true
-	case VTDouble:
-		return v.String(), true
 	}
 	return "", false
 }

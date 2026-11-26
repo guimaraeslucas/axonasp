@@ -533,6 +533,7 @@ type VM struct {
 	// funcLocalClassTypes maps function entry point to local slot Class/Interface names.
 	funcLocalClassTypes map[int]map[int]string
 	callStack           []CallFrame
+	baseCallDepth       int
 	jsCallStack         []jsCallFrame
 	// withStack holds the subject object for each active With...End With block.
 	// OpWithEnter appends, OpWithLeave shrinks, OpWithLoad peeks at the top.
@@ -571,22 +572,24 @@ type VM struct {
 	engineMode EngineMode
 
 	// Runtime Options
-	optionCompare        int               // 0: Binary, 1: Text
-	optionExplicit       bool              // Mirrors compiler Option Explicit for dynamic execution APIs.
-	collator             *collate.Collator // cached locale-aware collator for Option Compare Text
-	collatorLCID         int               // LCID for which the collator was built
-	scriptLCID           int               // Per-execution LCID set by SetLocale when Session is disabled
-	globalNames          []string          // Global symbol names aligned with Globals slot order.
-	globalNamesHash      uint64            // Fingerprint of globalNames for fast dynamic-cache scope validation.
-	globalZeroArgFuncs   map[string]bool   // Known zero-arg global Functions for dynamic autocall compatibility.
-	globalZeroArgSubs    map[string]bool   // Known zero-arg global Subs for bare-call compilation.
-	runtimeClassVersion  uint64            // Monotonic version for runtime class metadata invalidation.
-	declaredGlobals      map[string]bool   // Global Dim/Const declaration state for dynamic compilation.
-	constGlobals         map[string]bool   // Global Const protection state for dynamic compilation.
-	sourceName           string            // Source file path used for dynamic execution error reporting.
-	sourceMap            SourceMap         // Sparse merged-to-original source line mapping for include-aware errors.
-	dynamicProgramStarts map[uint64]int    // Per-VM start offsets for already-appended cached dynamic fragments.
-	jsStringWorkBytes    int64             // Per-run cumulative bytes produced by JScript string operations.
+	optionCompare        int                  // 0: Binary, 1: Text
+	optionExplicit       bool                 // Mirrors compiler Option Explicit for dynamic execution APIs.
+	collator             *collate.Collator    // cached locale-aware collator for Option Compare Text
+	collatorLCID         int                  // LCID for which the collator was built
+	localeProfileCache   builtinLocaleProfile // cached locale profile for current LCID
+	localeProfileLCID    int                  // LCID for which localeProfileCache was built
+	scriptLCID           int                  // Per-execution LCID set by SetLocale when Session is disabled
+	globalNames          []string             // Global symbol names aligned with Globals slot order.
+	globalNamesHash      uint64               // Fingerprint of globalNames for fast dynamic-cache scope validation.
+	globalZeroArgFuncs   map[string]bool      // Known zero-arg global Functions for dynamic autocall compatibility.
+	globalZeroArgSubs    map[string]bool      // Known zero-arg global Subs for bare-call compilation.
+	runtimeClassVersion  uint64               // Monotonic version for runtime class metadata invalidation.
+	declaredGlobals      map[string]bool      // Global Dim/Const declaration state for dynamic compilation.
+	constGlobals         map[string]bool      // Global Const protection state for dynamic compilation.
+	sourceName           string               // Source file path used for dynamic execution error reporting.
+	sourceMap            SourceMap            // Sparse merged-to-original source line mapping for include-aware errors.
+	dynamicProgramStarts map[uint64]int       // Per-VM start offsets for already-appended cached dynamic fragments.
+	jsStringWorkBytes    int64                // Per-run cumulative bytes produced by JScript string operations.
 	// Decoded immutable metadata keyed by function-template constant index.
 	// Retained across pooled VM resets for the base compiled program.
 	jsFunctionTemplateMetadataCache []*jsFunctionTemplateMetadata
@@ -1594,6 +1597,7 @@ func (vm *VM) cloneForExecuteGlobal(startIP int) *VM {
 	child.ip = startIP
 	child.fp = 0
 	child.callStack = make([]CallFrame, 0, 16)
+	child.baseCallDepth = 0
 	child.withStack = make([]Value, 0, 8)
 	// Copy declared type arrays for VB6 As Type support.
 	child.localTypes = vm.localTypes
@@ -1645,6 +1649,7 @@ func (vm *VM) cloneForExecuteLocal(startIP int) *VM {
 	child.ip = startIP
 	child.callStack = make([]CallFrame, len(vm.callStack))
 	copy(child.callStack, vm.callStack)
+	child.baseCallDepth = len(vm.callStack)
 	child.activeClassObjectID = vm.activeClassObjectID
 	child.terminateCursor = -1
 	child.terminatePrepared = false
@@ -1739,6 +1744,7 @@ func (vm *VM) cloneForExecuteLocalSharedRuntime(startIP int) *VM {
 	child.globalTypes = append([]ValueType(nil), vm.globalTypes...)
 	child.ip = startIP
 	child.callStack = append([]CallFrame(nil), vm.callStack...)
+	child.baseCallDepth = len(vm.callStack)
 	child.activeClassObjectID = vm.activeClassObjectID
 	child.terminateCursor = -1
 	child.terminatePrepared = false
@@ -2084,6 +2090,41 @@ func (vm *VM) Run() (err error) {
 	// intrinsic objects, breaking fundamental type conversion functions.
 	vm.ensureJSRootEnv()
 
+	for {
+		done, execErr := vm.runAspExecLoop(&operationCount, &jsBackJumpCount)
+		if execErr != nil {
+			return execErr
+		}
+		if done {
+			break
+		}
+	}
+
+	if vm.host != nil && vm.host.Response() != nil && isRootRun {
+		vm.host.Response().Flush()
+	}
+
+	return nil
+}
+
+// runAspExecLoop executes the VM bytecode loop and recovers internal unwind signals
+// emitted when a callee runtime error propagates into an ancestor On Error Resume Next frame.
+func (vm *VM) runAspExecLoop(opCount *int, jsCount *int) (done bool, err error) {
+	operationCount := *opCount
+	jsBackJumpCount := *jsCount
+	defer func() {
+		*opCount = operationCount
+		*jsCount = jsBackJumpCount
+		if r := recover(); r != nil {
+			if _, ok := r.(*vmUnwindSignal); ok {
+				done = false
+				err = nil
+				return
+			}
+			panic(r)
+		}
+	}()
+
 aspExecLoop:
 	for vm.ip < len(vm.bytecode) {
 		// Start any Class_Terminate queued by a reference-count drop during the previous
@@ -2098,17 +2139,31 @@ aspExecLoop:
 			vm.jsPumpNodeAsyncTasks(32)
 		}
 		if operationCount&1023 == 0 && vm.host != nil && vm.host.Server() != nil && vm.host.Server().HasTimedOut() {
-			return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()))
+			return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("Script execution exceeded the configured timeout of %d second(s)", vm.host.Server().GetScriptTimeout()))
 		}
 		op := OpCode(vm.bytecode[vm.ip])
 		vm.ip++
 
 		// When Resume Next absorbed an error mid-statement, skip bytecode until the next
-		// statement boundary (OpLine) or take any OpJumpIfFalse unconditionally to correctly
-		// skip compound-statement blocks (e.g. If/Then body). OpRet and OpHalt fall through
-		// so function returns and program termination work normally during skip mode.
+		// statement boundary (OpLine), loop tail (OpForNextFast*), return (OpRet), or
+		// halt (OpHalt). Unconditional OpJump follows its target so failed statements at
+		// the end of a True/Case branch still jump over Else/Case branches, while
+		// conditional jumps fall through into the guarded body just as IIS VBScript does.
 		if vm.skipToNextStmt {
-			// ... (rest of skip logic)
+			switch op {
+			case OpLine, OpHalt, OpRet:
+				// Fall through to the main switch handler below.
+			case OpJump:
+				target := int(binary.BigEndian.Uint32(vm.bytecode[vm.ip:]))
+				vm.ip = target
+				continue
+			case OpForNextFastInt, OpForNextFastGlobalInt:
+				vm.sp = vm.stmtSP
+				vm.skipToNextStmt = false
+			default:
+				vm.ip += opcodeOperandSize(op, vm.bytecode, vm.ip-1)
+				continue
+			}
 		}
 
 		switch op {
@@ -2680,7 +2735,7 @@ aspExecLoop:
 			if counter.Num < limit.Num {
 				jsBackJumpCount++
 				if jsBackJumpCount > jsBackJumpLimit {
-					return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+					return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 				}
 				vm.ip -= jumpOffset
 				continue
@@ -3538,7 +3593,9 @@ aspExecLoop:
 			fn := BuiltinRegistry[registryIdx]
 			result, err := fn(vm, args)
 			if err != nil {
-				if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
+				if vme, ok := err.(*VMError); ok {
+					vm.raiseVMError(vme)
+				} else if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
 					vm.raise(runtimeErr.code, runtimeErr.Error())
 				} else {
 					vm.raise(vbscript.InternalError, err.Error())
@@ -3664,7 +3721,7 @@ aspExecLoop:
 					if target < vm.ip {
 						jsBackJumpCount++
 						if jsBackJumpCount > jsBackJumpLimit {
-							return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+							return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 						}
 					}
 					vm.ip = target
@@ -4232,26 +4289,38 @@ aspExecLoop:
 				vm.push(NewNull())
 			} else if val.Type == VTDouble {
 				vm.push(NewDouble(-val.Flt))
+			} else if val.Type == VTCurrency {
+				vm.push(NewCurrency(-val.Num))
 			} else if val.Type == VTDate {
 				// IIS: -d is the Date whose serial is negated (12/27/1772 for 1/1/2027).
 				vm.push(vbsDateOrDoubleFromSerial(-vbsDateSerial(val)))
 			} else if val.Type == VTString {
 				strVal := strings.TrimSpace(val.Str)
-				parsedFloat, err := strconv.ParseFloat(strVal, 64)
-				if err != nil {
+				profile := vm.localeProfile()
+				parsedFloat, _, ok := vbsParseNumericStringInLocale(strVal, profile)
+				if !ok {
 					vm.raise(vbscript.TypeMismatch, "Type mismatch")
 					vm.push(NewEmpty())
 					continue
 				}
-				if strings.Contains(strVal, ".") || strings.Contains(strings.ToLower(strVal), "e") {
+				if !isVBScriptIntegerStringInLocale(strVal, profile.decimalSeparator) {
 					vm.push(NewDouble(-parsedFloat))
-				} else {
-					parsedInt, intErr := strconv.ParseInt(strVal, 10, 64)
-					if intErr == nil {
-						vm.push(NewInteger(-parsedInt))
+				} else if parsedFloat >= -9223372036854775808.0 && parsedFloat < 9223372036854775808.0 {
+					neg := -int64(parsedFloat)
+					if isLongSubtype(NewInteger(neg)) {
+						vm.push(NewLong(neg))
 					} else {
-						vm.push(NewDouble(-parsedFloat))
+						vm.push(NewInteger(neg))
 					}
+				} else {
+					vm.push(NewDouble(-parsedFloat))
+				}
+			} else if val.Type == VTInteger {
+				neg := -val.Num
+				if val.SubType == intSubTypeLong || neg < -32768 || neg > 32767 {
+					vm.push(NewLong(neg))
+				} else {
+					vm.push(NewInteger(neg))
 				}
 			} else {
 				vm.push(NewInteger(-vm.coerceInt64(val)))
@@ -4434,7 +4503,9 @@ aspExecLoop:
 				fn := BuiltinRegistry[target.Num]
 				result, err := fn(vm, args)
 				if err != nil {
-					if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
+					if vme, ok := err.(*VMError); ok {
+						vm.raiseVMError(vme)
+					} else if runtimeErr, ok := err.(builtinVBRuntimeError); ok {
 						vm.raise(runtimeErr.code, runtimeErr.Error())
 					} else {
 						vm.raise(vbscript.InternalError, err.Error())
@@ -5129,7 +5200,7 @@ aspExecLoop:
 			if target < vm.ip {
 				jsBackJumpCount++
 				if jsBackJumpCount > jsBackJumpLimit {
-					return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+					return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 				}
 			}
 			vm.ip = target
@@ -5141,7 +5212,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+						return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -5154,7 +5225,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+						return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -5217,7 +5288,7 @@ aspExecLoop:
 				if target < vm.ip {
 					jsBackJumpCount++
 					if jsBackJumpCount > jsBackJumpLimit {
-						return vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
+						return false, vm.newMappedAxonASPError(ErrScriptTimeout, nil, fmt.Sprintf("JScript loop iteration limit (%d back-jumps) exceeded", jsBackJumpLimit))
 					}
 				}
 				vm.ip = target
@@ -6054,11 +6125,7 @@ aspExecLoop:
 		vm.jsProcessMicrotasks()
 	}
 
-	if vm.host != nil && vm.host.Response() != nil && isRootRun {
-		vm.host.Response().Flush()
-	}
-
-	return nil
+	return true, nil
 }
 
 // prepareTransactionEventCall sets up a call frame for the ObjectContext transaction event handler.
@@ -6375,7 +6442,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			strings.EqualFold(member, "HttpOnly"), strings.EqualFold(member, "Value"),
 			strings.EqualFold(member, "Name"):
 			if len(args) >= 1 {
-				vm.host.Response().SetCookieProperty(cookieName, member, vm.valueToString(args[len(args)-1]))
+				vm.setCookiePropertyValue(vm.host.Response(), cookieName, member, args[len(args)-1])
 				return Value{Type: VTEmpty}
 			}
 			return NewString(vm.host.Response().GetCookieProperty(cookieName, member))
@@ -6767,47 +6834,47 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			return Value{Type: VTNativeObject, Num: nativeResponseCookies}
 		case strings.EqualFold(member, "Cookies.Domain"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Domain", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Domain", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Domain"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Domain"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.Path"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Path", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Path", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Path"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Path"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.Expires"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Expires", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Expires", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Expires"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Expires"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.Secure"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Secure", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Secure", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Secure"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Secure"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.HttpOnly"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "HttpOnly", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "HttpOnly", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "HttpOnly"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "HttpOnly"))
 			}
 			return NewString("")
 		}
@@ -6832,27 +6899,27 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesDomainMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Domain", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Domain", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesPathMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Path", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Path", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesExpiresMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Expires", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Expires", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesSecureMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Secure", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Secure", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesHttpOnlyMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "HttpOnly", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "HttpOnly", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeObjectRequest: // Request
@@ -8382,7 +8449,7 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 
 	// Dynamic native objects: Response cookie items
 	if cookieName, exists := vm.responseCookieItems[objID]; exists {
-		vm.host.Response().SetCookieProperty(cookieName, member, vm.valueToString(val))
+		vm.setCookiePropertyValue(vm.host.Response(), cookieName, member, val)
 		return
 	}
 
@@ -8571,6 +8638,26 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 		return
 	}
 
+	// Static native object: Session
+	if objID == nativeObjectSession {
+		if !vm.host.SessionEnabled() {
+			vm.raise(vbscript.PermissionDenied, "Session state is disabled for this application")
+			return
+		}
+		session := vm.host.Session()
+		if session != nil {
+			switch {
+			case strings.EqualFold(member, "LCID"):
+				session.SetLCID(vm.asInt(val))
+			case strings.EqualFold(member, "CodePage"):
+				session.SetCodePage(vm.asInt(val))
+			case strings.EqualFold(member, "Timeout"):
+				session.SetTimeout(vm.asInt(val))
+			}
+		}
+		return
+	}
+
 	// Static native object: Server
 	if objID == nativeObjectServer {
 		switch {
@@ -8594,7 +8681,7 @@ func (vm *VM) dispatchResponseCookiesArgs(response *asp.Response, args []Value) 
 	}
 	propertyName := vm.valueToString(args[1])
 	if len(args) >= 3 {
-		response.SetCookieProperty(cookieName, propertyName, vm.valueToString(args[2]))
+		vm.setCookiePropertyValue(response, cookieName, propertyName, args[2])
 		return Value{Type: VTEmpty}
 	}
 	switch {
@@ -8606,6 +8693,77 @@ func (vm *VM) dispatchResponseCookiesArgs(response *asp.Response, args []Value) 
 		response.SetCookieValue(cookieName, propertyName)
 		return Value{Type: VTEmpty}
 	}
+}
+
+// setCookiePropertyValue sets a Response.Cookies property, preserving typed Date and localized date strings for Expires.
+func (vm *VM) setCookiePropertyValue(response *asp.Response, cookieName string, propertyName string, val Value) {
+	if response == nil {
+		return
+	}
+	if strings.EqualFold(propertyName, "Expires") {
+		vm.setCookieExpiresValue(response, cookieName, val)
+		return
+	}
+	response.SetCookieProperty(cookieName, propertyName, vm.valueToString(val))
+}
+
+// setCookieExpiresValue parses a VBScript/JScript Expires value into a time.Time and preserves its raw display string.
+func (vm *VM) setCookieExpiresValue(response *asp.Response, cookieName string, val Value) {
+	v := val
+	if v.Type == VTArgRef {
+		v = vm.stack[int(v.Num)]
+	}
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
+
+	switch v.Type {
+	case VTDate:
+		raw := vm.valueToString(v)
+		if v.Num == vbsCompatZeroDateSentinelNum() {
+			response.SetCookieExpires(cookieName, time.Time{}, raw)
+			return
+		}
+		expires := time.Unix(0, v.Num).In(builtinCurrentLocation(vm))
+		response.SetCookieExpires(cookieName, expires, raw)
+		return
+	case VTJSObject:
+		if vm.jsObjectStringProperty(v, "__js_type") == "Date" {
+			expires := valueToTimeInLocale(vm, v)
+			raw := vm.valueToString(v)
+			if !expires.IsZero() {
+				raw = expires.UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT")
+			}
+			response.SetCookieExpires(cookieName, expires, raw)
+			return
+		}
+	case VTInteger, VTDouble:
+		f, _, _ := vbsCoerceNumericValue(v)
+		raw := vm.valueToString(v)
+		if vbsSerialInDateRange(f) {
+			expires := vbsDateFromSerial(f, builtinCurrentLocation(vm))
+			response.SetCookieExpires(cookieName, expires, raw)
+			return
+		}
+		response.SetCookieProperty(cookieName, "Expires", raw)
+		return
+	}
+
+	raw := vm.valueToString(v)
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		response.SetCookieExpires(cookieName, time.Time{}, raw)
+		return
+	}
+	// Try HTTP/RFC/Unix formats first so standard header strings keep their exact zone,
+	// then fall back to localized CDate-compatible parsing.
+	if parsed := asp.ParseCookieExpiresRaw(trimmed); !parsed.IsZero() {
+		response.SetCookieExpires(cookieName, parsed, raw)
+		return
+	}
+	if parsed := parseLocalizedTimeValue(trimmed, builtinCurrentLocation(vm), builtinLocaleProfileForVM(vm)); !parsed.IsZero() {
+		response.SetCookieExpires(cookieName, parsed, raw)
+		return
+	}
+	response.SetCookieProperty(cookieName, "Expires", raw)
 }
 
 // newResponseCookieItem creates a native cookie item object used for chained cookie member access.
@@ -8755,9 +8913,28 @@ func (vm *VM) valueToString(v Value) string {
 			return vm.valueToString(adodbDefault)
 		}
 	}
-	// Handle date formatting according to locale when converting to string
+	// Handle date and locale-aware numeric formatting when converting to string in VBScript mode.
 	if v.Type == VTDate {
 		return vm.dateToLocalizedString(v)
+	}
+	isJS := vm != nil && (vm.engineMode == EngineModeJavaScript || len(vm.jsCallStack) > 0 || vm.jsNativeCallDepth > 0)
+	if v.Type == VTDouble {
+		s := v.String()
+		if !isJS && !math.IsNaN(v.Flt) && !math.IsInf(v.Flt, 0) {
+			if decSep := vm.localeProfile().decimalSeparator; decSep != "" && decSep != "." {
+				s = strings.Replace(s, ".", decSep, 1)
+			}
+		}
+		return s
+	}
+	if v.Type == VTCurrency {
+		decSep := "."
+		if !isJS {
+			if sep := vm.localeProfile().decimalSeparator; sep != "" {
+				decSep = sep
+			}
+		}
+		return formatCurrencyValue(v.Num, decSep)
 	}
 	return v.String()
 }
@@ -8784,6 +8961,8 @@ func (vm *VM) valueToResponseString(v Value) string {
 		return strconv.FormatInt(v.Num, 10)
 	case VTDouble:
 		return formatMicrosoftJScriptResponseDouble(v.Flt)
+	case VTCurrency:
+		return formatCurrencyValue(v.Num, ".")
 	case VTArray:
 		return vm.jsArrayToString(v)
 	case VTJSFunction:
@@ -8986,6 +9165,20 @@ func (vm *VM) errPropertySet(property string, val Value) {
 	errObj.Normalize()
 }
 
+// localeProfile returns the cached locale profile for the VM's active LCID.
+func (vm *VM) localeProfile() builtinLocaleProfile {
+	lcid := builtinCurrentLCID(vm)
+	if vm != nil && vm.localeProfileLCID == lcid {
+		return vm.localeProfileCache
+	}
+	profile := builtinLocaleProfileForLCID(lcid)
+	if vm != nil {
+		vm.localeProfileCache = profile
+		vm.localeProfileLCID = lcid
+	}
+	return profile
+}
+
 // getCollator returns the locale-aware collator for Option Compare Text,
 // lazily building it from the current VM LCID. The collator is cached and
 // rebuilt only when the effective LCID changes.
@@ -9100,39 +9293,8 @@ func (vm *VM) errRaise(args []Value) Value {
 		HelpContext:    helpContext,
 	}
 
-	vm.errSetFromVMError(vme)
-	if vm.onResumeNext {
-		vm.lastError = vme
-		return Value{Type: VTEmpty}
-	}
-
-	for i, frame := range slices.Backward(vm.callStack) {
-
-		if !frame.savedOnResumeNext {
-			continue
-		}
-		curFP := vm.fp
-		curSP := vm.sp
-		for j := len(vm.callStack) - 1; j >= i; j-- {
-			for k := curFP; k <= curSP; k++ {
-				if k >= 0 && k < StackSize {
-					vm.decrementObjectRefCount(vm.stack[k])
-				}
-			}
-			curSP = vm.callStack[j].oldSP
-			curFP = vm.callStack[j].oldFP
-		}
-		vm.callStack = vm.callStack[:i]
-		vm.sp = curSP
-		vm.fp = curFP
-		vm.ip = frame.returnIP
-		vm.activeClassObjectID = frame.boundObj
-		vm.onResumeNext = frame.savedOnResumeNext
-		vm.lastError = vme
-		return Value{Type: VTEmpty}
-	}
-
-	panic(vme)
+	vm.raiseVMError(vme)
+	return Value{Type: VTEmpty}
 }
 
 // errSetFromVMError mirrors a runtime VM error into the intrinsic Err object.
@@ -9176,12 +9338,12 @@ func (vm *VM) raiseFromSyntaxError(syntaxErr *vbscript.VBSyntaxError) {
 		Number:         syntaxErr.Number,
 		Source:         syntaxErr.Source,
 	}
-	vm.errSetFromVMError(vme)
-	if vm.onResumeNext || (vm.terminatePrepared && !vm.suppressTerminate) {
+	if vm.terminatePrepared && !vm.suppressTerminate {
+		vm.errSetFromVMError(vme)
 		vm.lastError = vme
 		return
 	}
-	panic(vme)
+	vm.raiseVMError(vme)
 }
 
 // valueToApplicationValue converts a VM value into a typed application storage value.
@@ -10795,6 +10957,10 @@ func (vm *VM) raise(code vbscript.VBSyntaxErrorCode, msg string) {
 	vm.raiseVMError(vme)
 }
 
+type vmUnwindSignal struct{}
+
+var vmUnwindSentinel = &vmUnwindSignal{}
+
 func (vm *VM) raiseVMError(vme *VMError) {
 	vm.errSetFromVMError(vme)
 
@@ -10806,12 +10972,10 @@ func (vm *VM) raiseVMError(vme *VMError) {
 
 	// Walk the call stack looking for the nearest ancestor frame whose caller had
 	// On Error Resume Next active (savedOnResumeNext == true). When found, unwind
-	// the call stack to that frame so execution resumes in the caller at the
-	// statement following the call that raised the error. This mirrors classic
-	// VBScript behaviour: an unhandled error propagates up until it reaches a
-	// procedure scope that has On Error Resume Next active.
-	for i, frame := range slices.Backward(vm.callStack) {
-
+	// the call stack to that frame and skip the remainder of the caller's statement
+	// so partial expressions or assignments do not overwrite existing variable values.
+	for i := len(vm.callStack) - 1; i >= vm.baseCallDepth; i-- {
+		frame := vm.callStack[i]
 		if !frame.savedOnResumeNext {
 			continue
 		}
@@ -10828,14 +10992,19 @@ func (vm *VM) raiseVMError(vme *VMError) {
 			curSP = vm.callStack[j].oldSP
 			curFP = vm.callStack[j].oldFP
 		}
-		// Unwind to the caller's context, resuming after the call site.
+		// Unwind to the caller's context, skipping the remainder of the caller's statement.
 		vm.callStack = vm.callStack[:i]
-		vm.sp = curSP
+		vm.sp = frame.savedStmtSP
 		vm.fp = curFP
 		vm.ip = frame.returnIP
 		vm.activeClassObjectID = frame.boundObj
 		vm.onResumeNext = frame.savedOnResumeNext // restore caller's On Error state
+		vm.stmtSP = frame.savedStmtSP
+		vm.skipToNextStmt = true
 		vm.lastError = vme
+		if vm.runDepth > 0 {
+			panic(vmUnwindSentinel)
+		}
 		return
 	}
 
@@ -10864,6 +11033,9 @@ func (vm *VM) asFloat(v Value) float64 {
 	if v.Type == VTDouble {
 		return v.Flt
 	}
+	if v.Type == VTCurrency {
+		return float64(v.Num) / 10000.0
+	}
 	if v.Type == VTDate {
 		return vbsDateSerial(v)
 	}
@@ -10875,6 +11047,8 @@ func (vm *VM) asInt(v Value) int {
 	switch v.Type {
 	case VTDouble:
 		return int(v.Flt)
+	case VTCurrency:
+		return int(v.Num / 10000)
 	case VTString:
 		var parsed int
 		_, err := fmt.Sscanf(v.Str, "%d", &parsed)
@@ -10892,7 +11066,7 @@ func (vm *VM) asBool(v Value) bool {
 	switch v.Type {
 	case VTBool:
 		return v.Num != 0
-	case VTInteger:
+	case VTInteger, VTCurrency:
 		return v.Num != 0
 	case VTDouble:
 		return v.Flt != 0
@@ -10945,9 +11119,27 @@ func (vm *VM) coerceBuiltinADODBFieldArgs(builtinIdx int64, args []Value) {
 // are auto-called first, matching VBScript value-context semantics. On coercion failure
 // the error is raised and false is returned, so execution takes the false branch when
 // On Error Resume Next is active.
+// coerceBool converts a Value to a boolean following VBScript CBool/conditional rules
+// in the active VM locale.
+func (vm *VM) coerceBool(v Value) (bool, bool) {
+	if v.Type == VTString {
+		if len(v.Str) == 5 && strings.EqualFold(v.Str, "false") {
+			return false, true
+		}
+		if len(v.Str) == 4 && strings.EqualFold(v.Str, "true") {
+			return true, true
+		}
+		if num, _, ok := vbsParseNumericStringInLocale(v.Str, vm.localeProfile()); ok {
+			return num != 0, true
+		}
+		return false, false
+	}
+	return v.CoerceBool()
+}
+
 func (vm *VM) evalVBCondition(cond Value) bool {
 	cond = vm.unwrapADODBFieldValue(resolveCallable(vm, cond))
-	b, ok := cond.CoerceBool()
+	b, ok := vm.coerceBool(cond)
 	if !ok {
 		vm.raise(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
 		return false

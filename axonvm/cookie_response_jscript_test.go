@@ -2,7 +2,11 @@ package axonvm
 
 import (
 	"bytes"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 // TestJScriptResponseCookieSet verifies that Response.Cookies("name") = value
@@ -22,9 +26,11 @@ Response.Write("ok");
 
 	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
 	host := NewMockHost()
-	var output bytes.Buffer
-	host.SetOutput(&output)
-	host.Response().SetBuffer(false)
+	rec := httptest.NewRecorder()
+	resp := asp.NewResponse(rec)
+	defer resp.ReleaseBuffer()
+	resp.SetBuffer(false)
+	host.SetResponse(resp)
 	vm.SetHost(host)
 
 	if err := vm.Run(); err != nil {
@@ -32,17 +38,19 @@ Response.Write("ok");
 	}
 	host.Response().Flush()
 
-	if output.String() != "ok" {
-		t.Errorf("expected output 'ok', got %q", output.String())
+	if rec.Body.String() != "ok" {
+		t.Errorf("expected output 'ok', got %q", rec.Body.String())
 	}
 
-	// Verify cookie is in response
+	// Verify cookie is in response with an Expires attribute
 	cookieVal := host.Response().GetCookieValue("g3pix_lang")
 	if cookieVal != "pt" {
 		t.Errorf("expected cookie 'g3pix_lang' = 'pt', got %q", cookieVal)
 	}
-	t.Logf("Cookie value: %q", cookieVal)
-	t.Logf("Output: %q", output.String())
+	setCookies := rec.Header().Values("Set-Cookie")
+	if len(setCookies) != 1 || !strings.Contains(setCookies[0], "Expires=") {
+		t.Errorf("expected Set-Cookie header with Expires attribute, got %v", setCookies)
+	}
 }
 
 // TestJScriptResponseCookieSetAspMode reproduces the exact default.asp

@@ -32,6 +32,7 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"g3pix.com.br/axonasp/v2/axonconfig"
 	"g3pix.com.br/axonasp/v2/vbscript"
@@ -160,10 +161,12 @@ func vbsCompatVarType(_ *VM, args []Value) (Value, error) {
 		if args[0].Type == VTBool {
 			return NewInteger(11), nil
 		}
-		if args[0].Num >= -32768 && args[0].Num <= 32767 {
-			return NewInteger(2), nil
+		if isLongSubtype(args[0]) {
+			return NewInteger(3), nil
 		}
-		return NewInteger(3), nil
+		return NewInteger(2), nil
+	case VTCurrency:
+		return NewInteger(6), nil
 	case VTDouble:
 		return NewInteger(5), nil
 	case VTString:
@@ -200,46 +203,46 @@ func vbsCompatScriptEngineBuildVersion(_ *VM, _ []Value) (Value, error) {
 }
 
 // vbsCompatLTrim trims leading spaces and tabs.
-func vbsCompatLTrim(_ *VM, args []Value) (Value, error) {
+func vbsCompatLTrim(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
 	if args[0].Type == VTNull {
 		return NewNull(), nil
 	}
-	return NewString(strings.TrimLeft(args[0].String(), " \t")), nil
+	return NewString(strings.TrimLeft(vmStringArg(vm, args[0]), " \t")), nil
 }
 
 // vbsCompatRTrim trims trailing spaces and tabs.
-func vbsCompatRTrim(_ *VM, args []Value) (Value, error) {
+func vbsCompatRTrim(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
 	if args[0].Type == VTNull {
 		return NewNull(), nil
 	}
-	return NewString(strings.TrimRight(args[0].String(), " \t")), nil
+	return NewString(strings.TrimRight(vmStringArg(vm, args[0]), " \t")), nil
 }
 
 // vbsCompatSpace returns a string with N spaces.
-func vbsCompatSpace(_ *VM, args []Value) (Value, error) {
+func vbsCompatSpace(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	n := max(vbsIntArg(args[0]), 0)
+	n := max(vbsIntArgInLocale(vm, args[0]), 0)
 	return NewString(strings.Repeat(" ", n)), nil
 }
 
 // vbsCompatString repeats the first rune from input string.
-func vbsCompatString(_ *VM, args []Value) (Value, error) {
+func vbsCompatString(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return NewString(""), nil
 	}
-	n := vbsIntArg(args[0])
+	n := vbsIntArgInLocale(vm, args[0])
 	if n <= 0 {
 		return NewString(""), nil
 	}
-	runes := []rune(args[1].String())
+	runes := []rune(vmStringArg(vm, args[1]))
 	if len(runes) == 0 {
 		return NewString(""), nil
 	}
@@ -247,11 +250,11 @@ func vbsCompatString(_ *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatStrReverse reverses a Unicode string.
-func vbsCompatStrReverse(_ *VM, args []Value) (Value, error) {
+func vbsCompatStrReverse(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	runes := []rune(args[0].String())
+	runes := []rune(vmStringArg(vm, args[0]))
 	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
 		runes[i], runes[j] = runes[j], runes[i]
 	}
@@ -268,11 +271,11 @@ func vbsCompatStrComp(vm *VM, args []Value) (Value, error) {
 		// see the comment above VbsLen in builtins.go).
 		return NewNull(), nil
 	}
-	a := args[0].String()
-	b := args[1].String()
+	a := vmStringArg(vm, args[0])
+	b := vmStringArg(vm, args[1])
 	compare := -1
 	if len(args) > 2 {
-		compare = vbsIntArg(args[2])
+		compare = vbsIntArgInLocale(vm, args[2])
 	}
 	if compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1) {
 		return NewInteger(int64(vm.textCompare(a, b))), nil
@@ -322,24 +325,61 @@ func vbsCompatChrB(_ *VM, args []Value) (Value, error) {
 	return NewString(bytesToVBByteString([]byte{byte(args[0].Num & 0xFF)})), nil
 }
 
-// vbsCompatAscW returns the codepoint of the first rune.
-func vbsCompatAscW(_ *VM, args []Value) (Value, error) {
+// vbsCompatAscW returns the signed 16-bit UTF-16 code unit of the first character, matching VBScript/IIS.
+func vbsCompatAscW(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
-		return NewInteger(0), nil
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.WrongNumberOfParameters, vbscript.WrongNumberOfParameters.String())
 	}
-	r := []rune(args[0].String())
-	if len(r) == 0 {
-		return NewInteger(0), nil
+	if args[0].Type == VTNull {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
-	return NewInteger(int64(r[0])), nil
+	s := vmStringArg(vm, args[0])
+	if s == "" {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
+	}
+	// Decode WTF-8 encoded lone surrogates (0xD800..0xDFFF) emitted by ChrW.
+	if len(s) >= 3 && s[0] == 0xED && s[1] >= 0xA0 && s[1] <= 0xBF && s[2] >= 0x80 && s[2] <= 0xBF {
+		cp := uint16((uint32(s[0]&0x0F) << 12) | (uint32(s[1]&0x3F) << 6) | uint32(s[2]&0x3F))
+		return NewInteger(int64(int16(cp))), nil
+	}
+	r, _ := utf8.DecodeRuneInString(s)
+	if r > 0xFFFF {
+		hi := uint16(0xD800 + ((r - 0x10000) >> 10))
+		return NewInteger(int64(int16(hi))), nil
+	}
+	return NewInteger(int64(int16(uint16(r)))), nil
 }
 
-// vbsCompatChrW returns a string from a Unicode codepoint.
-func vbsCompatChrW(_ *VM, args []Value) (Value, error) {
+// vbsCompatChrW returns a string from a signed/unsigned 16-bit UTF-16 code unit (-32768..65535),
+// preserving lone surrogates via WTF-8 encoding so AscW(ChrW(55357)) returns -10179 as on IIS.
+func vbsCompatChrW(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
-	return NewString(string(rune(args[0].Num))), nil
+	if args[0].Type == VTNull {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
+	}
+	numericValue, code, ok := vbsCoerceNumericValueInLocale(vm, args[0])
+	if !ok {
+		if vm != nil {
+			vm.raise(code, code.String())
+		}
+		return NewEmpty(), newBuiltinVBRuntimeError(code, code.String())
+	}
+	rounded := math.RoundToEven(numericValue)
+	if rounded < -32768 || rounded > 65535 {
+		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidProcedureCallOrArgument, vbscript.InvalidProcedureCallOrArgument.String())
+	}
+	cp := uint16(int32(rounded))
+	if cp >= 0xD800 && cp <= 0xDFFF {
+		buf := [3]byte{
+			0xE0 | byte(cp>>12),
+			0x80 | byte((cp>>6)&0x3F),
+			0x80 | byte(cp&0x3F),
+		}
+		return NewString(string(buf[:])), nil
+	}
+	return NewString(string(rune(cp))), nil
 }
 
 // vbsCompatMidB returns a byte-oriented substring with 1-based indexes.
@@ -412,7 +452,7 @@ func vbsCompatInStrB(_ *VM, args []Value) (Value, error) {
 
 // vbsCompatHex converts a number to uppercase hexadecimal.
 // VBScript rounds the argument to Long integer (banker's rounding) before converting.
-func vbsCompatHex(_ *VM, args []Value) (Value, error) {
+func vbsCompatHex(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
@@ -420,8 +460,10 @@ func vbsCompatHex(_ *VM, args []Value) (Value, error) {
 	switch args[0].Type {
 	case VTDouble:
 		intVal = int64(math.RoundToEven(args[0].Flt))
+	case VTCurrency:
+		intVal = int64(math.RoundToEven(float64(args[0].Num) / 10000.0))
 	case VTString:
-		if parsed, _, ok := vbsParseNumericString(args[0].Str); ok {
+		if parsed, _, ok := vbsParseNumericStringInLocale(args[0].Str, builtinLocaleProfileForVM(vm)); ok {
 			intVal = int64(math.RoundToEven(parsed))
 		}
 	default:
@@ -435,20 +477,20 @@ func vbsCompatInStrRev(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 {
 		return NewInteger(0), nil
 	}
-	s1 := args[0].String()
-	s2 := args[1].String()
+	s1 := vmStringArg(vm, args[0])
+	s2 := vmStringArg(vm, args[1])
 	runes1 := []rune(s1)
 	runes2 := []rune(s2)
 	start := len(runes1)
 	compare := -1
 	if len(args) >= 3 {
-		v := vbsIntArg(args[2])
+		v := vbsIntArgInLocale(vm, args[2])
 		if v > 0 {
 			start = v
 		}
 	}
 	if len(args) >= 4 {
-		compare = vbsIntArg(args[3])
+		compare = vbsIntArgInLocale(vm, args[3])
 	}
 	if start > len(runes1) {
 		start = len(runes1)
@@ -475,27 +517,27 @@ func vbsCompatInStrRev(vm *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatSplit splits a string into a zero-based Variant array.
-func vbsCompatSplit(_ *VM, args []Value) (Value, error) {
+func vbsCompatSplit(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
 	}
-	s := args[0].String()
+	s := vmStringArg(vm, args[0])
 	if s == "" {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
 	}
 	// The delimiter defaults to a space; an empty delimiter returns the whole string.
 	delim := " "
 	if len(args) > 1 && args[1].Type != VTEmpty {
-		delim = args[1].String()
+		delim = vmStringArg(vm, args[1])
 	}
 	if delim == "" {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{NewString(s)})}, nil
 	}
 	limit := -1
 	if len(args) > 2 && args[2].Type != VTEmpty {
-		limit = vbsIntArg(args[2])
+		limit = vbsIntArgInLocale(vm, args[2])
 	}
-	textCompare := len(args) > 3 && vbsIntArg(args[3]) == 1
+	textCompare := len(args) > 3 && vbsIntArgInLocale(vm, args[3]) == 1
 	parts := vbsSplitString(s, delim, limit, textCompare)
 	values := make([]Value, len(parts))
 	for i := range parts {
@@ -536,17 +578,17 @@ func vbsIndexFold(s, sub string) int {
 }
 
 // vbsCompatJoin joins one Variant array using the specified delimiter.
-func vbsCompatJoin(_ *VM, args []Value) (Value, error) {
+func vbsCompatJoin(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 || args[0].Type != VTArray || args[0].Arr == nil {
 		return NewString(""), nil
 	}
 	delim := " "
 	if len(args) > 1 {
-		delim = args[1].String()
+		delim = vmStringArg(vm, args[1])
 	}
 	parts := make([]string, len(args[0].Arr.Values))
 	for i := range parts {
-		parts[i] = args[0].Arr.Values[i].String()
+		parts[i] = vmStringArg(vm, args[0].Arr.Values[i])
 	}
 	return NewString(strings.Join(parts, delim)), nil
 }
@@ -556,18 +598,18 @@ func vbsCompatFilter(vm *VM, args []Value) (Value, error) {
 	if len(args) < 2 || args[0].Type != VTArray || args[0].Arr == nil {
 		return Value{Type: VTArray, Arr: NewVBArrayFromValues(0, []Value{})}, nil
 	}
-	needle := args[1].String()
+	needle := vmStringArg(vm, args[1])
 	include := true
 	if len(args) > 2 {
 		include = args[2].Num != 0
 	}
 	compare := -1
 	if len(args) > 3 {
-		compare = vbsIntArg(args[3])
+		compare = vbsIntArgInLocale(vm, args[3])
 	}
 	matches := make([]Value, 0, len(args[0].Arr.Values))
 	for i := 0; i < len(args[0].Arr.Values); i++ {
-		candidate := args[0].Arr.Values[i].String()
+		candidate := vmStringArg(vm, args[0].Arr.Values[i])
 		var has bool
 		if compare == 1 || (compare == -1 && vm != nil && vm.optionCompare == 1) {
 			has = vm.textContains(candidate, needle)
@@ -583,7 +625,7 @@ func vbsCompatFilter(vm *VM, args []Value) (Value, error) {
 
 // vbsCompatOct converts a number to octal.
 // VBScript rounds the argument to Long integer (banker's rounding) before converting.
-func vbsCompatOct(_ *VM, args []Value) (Value, error) {
+func vbsCompatOct(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewString(""), nil
 	}
@@ -591,8 +633,10 @@ func vbsCompatOct(_ *VM, args []Value) (Value, error) {
 	switch args[0].Type {
 	case VTDouble:
 		intVal = int64(math.RoundToEven(args[0].Flt))
+	case VTCurrency:
+		intVal = int64(math.RoundToEven(float64(args[0].Num) / 10000.0))
 	case VTString:
-		if parsed, _, ok := vbsParseNumericString(args[0].Str); ok {
+		if parsed, _, ok := vbsParseNumericStringInLocale(args[0].Str, builtinLocaleProfileForVM(vm)); ok {
 			intVal = int64(math.RoundToEven(parsed))
 		}
 	default:
@@ -602,19 +646,21 @@ func vbsCompatOct(_ *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatRound rounds a number with optional decimal digits.
-func vbsCompatRound(_ *VM, args []Value) (Value, error) {
+func vbsCompatRound(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewDouble(0), nil
 	}
 	value := float64(args[0].Num)
 	if args[0].Type == VTDouble {
 		value = args[0].Flt
+	} else if args[0].Type == VTCurrency {
+		value = float64(args[0].Num) / 10000.0
 	} else if args[0].Type == VTDate {
 		value = vbsDateSerial(args[0])
 	}
 	digits := 0
 	if len(args) > 1 {
-		digits = vbsIntArg(args[1])
+		digits = vbsIntArgInLocale(vm, args[1])
 	}
 	factor := math.Pow(10, float64(digits))
 	if factor == 0 || math.IsInf(factor, 0) || math.IsNaN(factor) {
@@ -636,6 +682,8 @@ func vbsCompatSgn(_ *VM, args []Value) (Value, error) {
 	value := float64(args[0].Num)
 	if args[0].Type == VTDouble {
 		value = args[0].Flt
+	} else if args[0].Type == VTCurrency {
+		value = float64(args[0].Num) / 10000.0
 	} else if args[0].Type == VTDate {
 		value = vbsDateSerial(args[0])
 	}
@@ -805,10 +853,15 @@ func resolveCallable(vm *VM, v Value) Value {
 	return result
 }
 
-// vbsIntArg reads an integer argument the way VBScript does: Doubles and numeric
-// strings are accepted and rounded half-to-even (Left(s, 100/9) is Left(s, 11)).
+// vbsIntArg reads an integer argument using the default locale.
 func vbsIntArg(v Value) int {
-	f, _, ok := vbsCoerceNumericValue(v)
+	return vbsIntArgInLocale(nil, v)
+}
+
+// vbsIntArgInLocale reads an integer argument the way VBScript does: Doubles and numeric
+// strings are accepted in the active locale and rounded half-to-even (Left(s, 100/9) is Left(s, 11)).
+func vbsIntArgInLocale(vm *VM, v Value) int {
+	f, _, ok := vbsCoerceNumericValueInLocale(vm, v)
 	if !ok {
 		return 0
 	}
@@ -1017,6 +1070,8 @@ func vbsParseFormatExpression(arg Value, profile builtinLocaleProfile) (float64,
 		return 0, false, nil
 	case VTInteger:
 		return float64(arg.Num), false, nil
+	case VTCurrency:
+		return float64(arg.Num) / 10000.0, false, nil
 	case VTBool:
 		return float64(vbsBoolNum(arg)), false, nil
 	case VTDouble:
@@ -1349,16 +1404,33 @@ func vbsCompatTimer(vm *VM, _ []Value) (Value, error) {
 	return NewDouble(now.Sub(midnight).Seconds()), nil
 }
 
-// vbsCompatIsNumeric tests whether a value can be interpreted as numeric.
-func vbsCompatIsNumeric(_ *VM, args []Value) (Value, error) {
+// vbsCompatIsNumeric tests whether a value can be interpreted as numeric in the active locale.
+func vbsCompatIsNumeric(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewBool(false), nil
 	}
 	switch args[0].Type {
-	case VTInteger, VTDouble, VTBool:
+	case VTInteger, VTCurrency, VTDouble, VTBool:
 		return NewBool(true), nil
 	case VTString:
-		return NewBool(isVBSNumericString(args[0].Str)), nil
+		profile := builtinLocaleProfileForVM(vm)
+		if _, _, ok := vbsParseNumericStringInLocale(args[0].Str, profile); ok {
+			return NewBool(true), nil
+		}
+		trimmed := strings.TrimSpace(args[0].Str)
+		runes := []rune(trimmed)
+		if len(runes) > 0 {
+			first := runes[0]
+			if first == '$' || first == '€' || first == '£' || first == '¥' || first == 0xA2 || first == 0xA3 || first == 0xA4 || first == 0xA5 || (profile.currencySymbol != "" && strings.HasPrefix(trimmed, profile.currencySymbol)) {
+				rest := strings.TrimSpace(string(runes[1:]))
+				if profile.currencySymbol != "" && strings.HasPrefix(trimmed, profile.currencySymbol) {
+					rest = strings.TrimSpace(trimmed[len(profile.currencySymbol):])
+				}
+				_, _, ok := vbsParseNumericStringInLocale(rest, profile)
+				return NewBool(ok), nil
+			}
+		}
+		return NewBool(false), nil
 	}
 	return NewBool(false), nil
 }
@@ -1657,7 +1729,13 @@ func vbsCompatCBool(vm *VM, args []Value) (Value, error) {
 		// above VbsLen in builtins.go).
 		return NewEmpty(), newBuiltinVBRuntimeError(vbscript.InvalidUseOfNull, vbscript.InvalidUseOfNull.String())
 	}
-	b, ok := v.CoerceBool()
+	var b bool
+	var ok bool
+	if vm != nil {
+		b, ok = vm.coerceBool(v)
+	} else {
+		b, ok = v.CoerceBool()
+	}
 	if !ok {
 		if vm != nil {
 			vm.raise(vbscript.TypeMismatch, vbscript.TypeMismatch.String())
@@ -1669,7 +1747,7 @@ func vbsCompatCBool(vm *VM, args []Value) (Value, error) {
 
 // vbsCompatCLng converts a value to 32-bit long with VBScript rounding and errors.
 func vbsCompatCLng(vm *VM, args []Value) (Value, error) {
-	return vbsConvertRoundedIntegerVM(vm, args, -2147483648, 2147483647)
+	return vbsConvertRoundedIntegerVM(vm, args, -2147483648, 2147483647, true)
 }
 
 // vbsCompatCSng converts a value to single-precision numeric result.
@@ -1678,7 +1756,7 @@ func vbsCompatCSng(vm *VM, args []Value) (Value, error) {
 		return NewDouble(0), nil
 	}
 
-	numericValue, code, ok := vbsCoerceNumericValue(args[0])
+	numericValue, code, ok := vbsCoerceNumericValueInLocale(vm, args[0])
 	if !ok {
 		if vm != nil {
 			vm.raise(code, code.String())
@@ -1698,7 +1776,7 @@ func vbsCompatCSng(vm *VM, args []Value) (Value, error) {
 
 // vbsCompatCByte converts a value to byte range 0..255.
 func vbsCompatCByte(vm *VM, args []Value) (Value, error) {
-	return vbsConvertRoundedIntegerVM(vm, args, 0, 255)
+	return vbsConvertRoundedIntegerVM(vm, args, 0, 255, false)
 }
 
 // vbsCompatCDate converts a value to date.
@@ -1717,9 +1795,9 @@ func vbsCompatCDate(vm *VM, args []Value) (Value, error) {
 		return v, nil
 	case VTEmpty:
 		return NewDate(vbsDateFromSerial(0, builtinCurrentLocation(vm))), nil
-	case VTInteger, VTDouble, VTBool:
+	case VTInteger, VTCurrency, VTDouble, VTBool:
 		// Numbers are OLE Automation dates: days since 12/30/1899, fraction = time of day.
-		f, _, _ := vbsCoerceNumericValue(v)
+		f, _, _ := vbsCoerceNumericValueInLocale(vm, v)
 		if !vbsSerialInDateRange(f) {
 			// IIS: CDate(3000000) raises Overflow.
 			return NewEmpty(), newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
@@ -1802,13 +1880,30 @@ func vbsCompatCChar(_ *VM, args []Value) (Value, error) {
 	return NewString(string(rune(args[0].Num))), nil
 }
 
-// vbsCompatCCur converts to currency-compatible floating-point value.
+// vbsCompatCCur converts a value to VBScript Currency (VarType 6, fixed 4 decimal places).
 func vbsCompatCCur(vm *VM, args []Value) (Value, error) {
+	if len(args) < 1 {
+		return NewCurrency(0), nil
+	}
+
+	scaled, code, ok := vbsCoerceCurrencyValueInLocale(args[0], builtinLocaleProfileForVM(vm))
+	if !ok {
+		if vm != nil {
+			vm.raise(code, code.String())
+		}
+		return NewCurrency(0), newBuiltinVBRuntimeError(code, code.String())
+	}
+
+	return NewCurrency(scaled), nil
+}
+
+// vbsCompatCDec converts to decimal-compatible floating-point value.
+func vbsCompatCDec(vm *VM, args []Value) (Value, error) {
 	if len(args) < 1 {
 		return NewDouble(0), nil
 	}
 
-	numericValue, code, ok := vbsCoerceNumericValue(args[0])
+	numericValue, code, ok := vbsCoerceNumericValueInLocale(vm, args[0])
 	if !ok {
 		if vm != nil {
 			vm.raise(code, code.String())
@@ -1817,11 +1912,6 @@ func vbsCompatCCur(vm *VM, args []Value) (Value, error) {
 	}
 
 	return NewDouble(numericValue), nil
-}
-
-// vbsCompatCDec converts to decimal-compatible floating-point value.
-func vbsCompatCDec(vm *VM, args []Value) (Value, error) {
-	return vbsCompatCCur(vm, args)
 }
 
 // vbsCompatCObj keeps object conversion semantics by returning the original value.
@@ -1969,6 +2059,7 @@ func vbsCompatExecuteGlobal(vm *VM, args []Value) (Value, error) {
 				vm.errSetFromVMError(vme)
 				vm.lastError = vme
 			}
+			vm.skipToNextStmt = true
 			return NewEmpty(), nil
 		}
 		return NewEmpty(), err
@@ -2278,6 +2369,9 @@ func vbsCompatEval(vm *VM, args []Value) (Value, error) {
 	// Sync only mutable runtime/global state. Preserving caller stack/frame keeps
 	// Eval side-effect free with respect to VM stack discipline.
 	vm.syncExecuteGlobalState(child)
+	if child.skipToNextStmt {
+		vm.skipToNextStmt = true
+	}
 
 	return resultValue, nil
 }

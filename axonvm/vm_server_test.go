@@ -41,8 +41,8 @@ func TestVMServerEncodingDispatch(t *testing.T) {
 	host := NewMockHost()
 	vm.SetHost(host)
 
-	html := vm.dispatchNativeCall(2, "HTMLEncode", []Value{NewString("<x>")})
-	if html.Type != VTString || html.Str != "&lt;x&gt;" {
+	html := vm.dispatchNativeCall(2, "HTMLEncode", []Value{NewString("<x attr=\"1\">")})
+	if html.Type != VTString || html.Str != "&lt;x attr=&quot;1&quot;&gt;" {
 		t.Fatalf("unexpected HTMLEncode result: %#v", html)
 	}
 

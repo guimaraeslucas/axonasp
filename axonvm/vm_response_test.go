@@ -22,7 +22,13 @@ package axonvm
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"g3pix.com.br/axonasp/v2/axonvm/asp"
 )
 
 // TestVMResponseWriteAndProperties verifies Response dispatch for write and properties.
@@ -1256,5 +1262,103 @@ Response.Write "after (should NOT appear)<br>"
 
 	if status := host.Response().GetStatus(); status != "302 Found" {
 		t.Fatalf("expected 302 Found status after Response.Redirect, got %q", status)
+	}
+}
+
+// TestVMResponseCookiesExpiresDateAndStrings verifies that VBScript Dates, date arithmetic,
+// and CDate-compatible strings assigned to Response.Cookies(name).Expires emit valid Set-Cookie Expires attributes.
+func TestVMResponseCookiesExpiresDateAndStrings(t *testing.T) {
+	source := `<%
+Response.Cookies("lit") = "1"
+Response.Cookies("lit").Expires = #2027-01-01#
+Response.Cookies("littime") = "2"
+Response.Cookies("littime").Expires = #2027-01-01 10:30:00#
+Response.Cookies("dateadd") = "3"
+Response.Cookies("dateadd").Expires = DateAdd("d", 1, Now())
+Response.Cookies("nowplus") = "4"
+Response.Cookies("nowplus").Expires = Now() + 1
+Response.Cookies("dateminus") = "5"
+Response.Cookies("dateminus").Expires = Date() - 1
+Response.Cookies("str") = "6"
+Response.Cookies("str").Expires = "January 1, 2027"
+Response.Cookies("threeArg", "Expires", #2027-01-01#)
+%>`
+
+	compiler := NewASPCompiler(source)
+	if err := compiler.Compile(); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	vm := NewVM(compiler.Bytecode(), compiler.Constants(), compiler.GlobalsCount())
+	host := NewMockHost()
+	rec := httptest.NewRecorder()
+	resp := asp.NewResponse(rec)
+	defer resp.ReleaseBuffer()
+	host.SetResponse(resp)
+	vm.SetHost(host)
+
+	if err := vm.Run(); err != nil {
+		t.Fatalf("vm run failed: %v", err)
+	}
+	resp.Flush()
+
+	res := rec.Result()
+	defer res.Body.Close()
+
+	cookiesByName := make(map[string]*http.Cookie)
+	for _, c := range res.Cookies() {
+		cookiesByName[c.Name] = c
+	}
+
+	rawHeaders := rec.Header().Values("Set-Cookie")
+	if len(rawHeaders) != 7 {
+		t.Fatalf("expected 7 Set-Cookie headers, got %d (%v)", len(rawHeaders), rawHeaders)
+	}
+
+	assertExpires := func(name string, wantYear int, wantMonth time.Month, wantDay int, wantHour int, wantMin int) {
+		t.Helper()
+		c, ok := cookiesByName[name]
+		if !ok {
+			t.Fatalf("missing cookie %q in %v", name, rawHeaders)
+		}
+		if c.Expires.IsZero() {
+			t.Fatalf("cookie %q has zero Expires (headers: %v)", name, rawHeaders)
+		}
+		got := c.Expires.UTC()
+		if got.Year() != wantYear || got.Month() != wantMonth || got.Day() != wantDay || got.Hour() != wantHour || got.Minute() != wantMin {
+			t.Fatalf("cookie %q unexpected Expires: got %v, want %04d-%02d-%02d %02d:%02d UTC",
+				name, got, wantYear, wantMonth, wantDay, wantHour, wantMin)
+		}
+	}
+
+	assertExpires("lit", 2027, time.January, 1, 0, 0)
+	assertExpires("littime", 2027, time.January, 1, 10, 30)
+	assertExpires("threeArg", 2027, time.January, 1, 0, 0)
+
+	// Localized string "January 1, 2027" is parsed in builtinCurrentLocation(vm).
+	loc := builtinCurrentLocation(vm)
+	wantStrUTC := time.Date(2027, time.January, 1, 0, 0, 0, 0, loc).UTC()
+	assertExpires("str", wantStrUTC.Year(), wantStrUTC.Month(), wantStrUTC.Day(), wantStrUTC.Hour(), wantStrUTC.Minute())
+
+	now := time.Now().In(loc)
+	wantTomorrowUTC := now.AddDate(0, 0, 1).UTC()
+	for _, name := range []string{"dateadd", "nowplus"} {
+		c := cookiesByName[name]
+		if c == nil || c.Expires.IsZero() {
+			t.Fatalf("cookie %q missing Expires (headers: %v)", name, rawHeaders)
+		}
+		diff := c.Expires.UTC().Sub(wantTomorrowUTC)
+		if diff < -5*time.Second || diff > 5*time.Second {
+			t.Fatalf("cookie %q Expires=%v too far from expected %v", name, c.Expires.UTC(), wantTomorrowUTC)
+		}
+	}
+
+	yesterday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -1).UTC()
+	assertExpires("dateminus", yesterday.Year(), yesterday.Month(), yesterday.Day(), yesterday.Hour(), yesterday.Minute())
+
+	for _, hdr := range rawHeaders {
+		if !strings.Contains(hdr, "Expires=") {
+			t.Fatalf("expected Expires attribute in Set-Cookie header, got %q", hdr)
+		}
 	}
 }

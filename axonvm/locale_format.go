@@ -21,10 +21,12 @@
 package axonvm
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
 
+	"g3pix.com.br/axonasp/v2/vbscript"
 	"github.com/goodsign/monday"
 	"golang.org/x/text/language"
 )
@@ -126,7 +128,10 @@ func newBuiltinLocaleMatcher() language.Matcher {
 
 // builtinLocaleProfileForVM resolves the current locale profile for one VM execution context.
 func builtinLocaleProfileForVM(vm *VM) builtinLocaleProfile {
-	return builtinLocaleProfileForLCID(builtinCurrentLCID(vm))
+	if vm != nil {
+		return vm.localeProfile()
+	}
+	return builtinLocaleProfileForLCID(builtinCurrentLCID(nil))
 }
 
 // builtinLocaleProfileForLCID resolves the closest supported locale profile for one LCID.
@@ -684,4 +689,252 @@ func formatOffset(sign byte, hours, minutes int) string {
 	res[3] = '0' + byte(minutes/10)
 	res[4] = '0' + byte(minutes%10)
 	return string(res)
+}
+
+// vbsSplitLocaleNumericString splits a trimmed numeric string into sign, mantissa, exponent suffix, and whether it uses integer-only syntax.
+func vbsParseNumericStringInLocale(text string, profile builtinLocaleProfile) (float64, vbscript.VBSyntaxErrorCode, bool) {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return 0, vbscript.TypeMismatch, false
+	}
+
+	sign := ""
+	signMul := 1.0
+	if trimmed[0] == '+' {
+		trimmed = strings.TrimSpace(trimmed[1:])
+	} else if trimmed[0] == '-' {
+		sign = "-"
+		signMul = -1.0
+		trimmed = strings.TrimSpace(trimmed[1:])
+	}
+	if trimmed == "" {
+		return 0, vbscript.TypeMismatch, false
+	}
+
+	// Support VBScript hexadecimal (&H) and octal (&O) string literals.
+	if len(trimmed) >= 2 && trimmed[0] == '&' && (trimmed[1] == 'H' || trimmed[1] == 'h' || trimmed[1] == 'O' || trimmed[1] == 'o') {
+		base := 8
+		if trimmed[1] == 'H' || trimmed[1] == 'h' {
+			base = 16
+		}
+		digits := trimmed[2:]
+		if len(digits) > 1 && digits[len(digits)-1] == '&' {
+			digits = digits[:len(digits)-1]
+		}
+		if digits == "" {
+			return 0, vbscript.TypeMismatch, false
+		}
+		parsed, err := strconv.ParseUint(digits, base, 64)
+		if err != nil {
+			return 0, vbscript.TypeMismatch, false
+		}
+		return signMul * float64(parsed), 0, true
+	}
+
+	// Reject underscores, hex float markers, and non-finite literals that Go ParseFloat allows.
+	for i := 0; i < len(trimmed); i++ {
+		switch trimmed[i] {
+		case '+', '-', '_', 'x', 'X', 'p', 'P', 'i', 'I', 'n', 'N':
+			if (trimmed[i] == '+' || trimmed[i] == '-') && i > 0 && (trimmed[i-1] == 'e' || trimmed[i-1] == 'E' || trimmed[i-1] == 'd' || trimmed[i-1] == 'D') {
+				continue
+			}
+			return 0, vbscript.TypeMismatch, false
+		}
+	}
+
+	mantissa, expSuffix, ok := normalizeVBSExponent(trimmed)
+	if !ok {
+		return 0, vbscript.TypeMismatch, false
+	}
+
+	decSep := profile.decimalSeparator
+	if decSep == "" {
+		decSep = "."
+	}
+	grpSep := profile.thousandSeparator
+	if grpSep == "" {
+		grpSep = ","
+	}
+
+	normMantissa, ok := normalizeStrictLocaleNumericBody(mantissa, decSep, grpSep)
+	if !ok {
+		return 0, vbscript.TypeMismatch, false
+	}
+
+	canonical := sign + normMantissa + expSuffix
+	parsed, err := strconv.ParseFloat(canonical, 64)
+	if err != nil {
+		if math.IsInf(parsed, 0) {
+			return 0, vbscript.Overflow, false
+		}
+		if parsed == 0 && strings.Contains(err.Error(), "out of range") {
+			return 0, 0, true
+		}
+		return 0, vbscript.TypeMismatch, false
+	}
+	if math.IsNaN(parsed) {
+		return 0, vbscript.TypeMismatch, false
+	}
+	if math.IsInf(parsed, 0) {
+		return 0, vbscript.Overflow, false
+	}
+	return parsed, 0, true
+}
+
+// normalizeStrictLocaleNumericBody normalizes a numeric mantissa using only the active locale's
+// decimal and grouping separators (matching Windows OLE VarR8FromStr / VarCyFromStr).
+// Grouping separators in the integer part are stripped without requiring 3-digit group sizes
+// (e.g. under LCID 1031, "15.00" -> "1500"), while leading, trailing, or consecutive grouping
+// separators are rejected.
+func normalizeStrictLocaleNumericBody(mantissa string, decSep string, grpSep string) (string, bool) {
+	if mantissa == "" {
+		return "", false
+	}
+	intPart := mantissa
+	fracPart := ""
+	hasDec := false
+	if before, after, ok0 := strings.Cut(mantissa, decSep); ok0 {
+		intPart = before
+		fracPart = after
+		hasDec = true
+		if strings.Contains(fracPart, decSep) {
+			return "", false
+		}
+		for i := 0; i < len(fracPart); i++ {
+			if fracPart[i] < '0' || fracPart[i] > '9' {
+				return "", false
+			}
+		}
+	}
+
+	normInt, ok := stripLocaleGroupingPermissive(intPart, grpSep)
+	if !ok {
+		return "", false
+	}
+	if len(normInt)+len(fracPart) == 0 {
+		return "", false
+	}
+	if hasDec {
+		return normInt + "." + fracPart, true
+	}
+	return normInt, true
+}
+
+// stripLocaleGroupingPermissive strips valid thousand separators from an integer digit string
+// without enforcing 3-digit grouping, rejecting leading, trailing, or consecutive separators.
+func stripLocaleGroupingPermissive(intPart string, grpSep string) (string, bool) {
+	if intPart == "" {
+		return "", true
+	}
+	effective := intPart
+	sep := grpSep
+	if sep == " " || sep == "\u00a0" || sep == "\u202f" {
+		effective = strings.ReplaceAll(effective, "\u00a0", " ")
+		effective = strings.ReplaceAll(effective, "\u202f", " ")
+		sep = " "
+	}
+	if sep == "" || !strings.Contains(effective, sep) {
+		for i := 0; i < len(effective); i++ {
+			if effective[i] < '0' || effective[i] > '9' {
+				return "", false
+			}
+		}
+		return effective, true
+	}
+	if strings.HasPrefix(effective, sep) || strings.HasSuffix(effective, sep) {
+		return "", false
+	}
+	var b strings.Builder
+	b.Grow(len(effective))
+	i := 0
+	prevWasSep := false
+	for i < len(effective) {
+		if strings.HasPrefix(effective[i:], sep) {
+			if prevWasSep {
+				return "", false
+			}
+			prevWasSep = true
+			i += len(sep)
+			continue
+		}
+		c := effective[i]
+		if c < '0' || c > '9' {
+			return "", false
+		}
+		prevWasSep = false
+		b.WriteByte(c)
+		i++
+	}
+	return b.String(), true
+}
+
+// isVBScriptIntegerStringInLocale reports whether a trimmed numeric string uses integer syntax
+// under the active locale (no locale decimal separator and no scientific exponent outside &H/&O).
+func isVBScriptIntegerStringInLocale(trimmed string, decSep string) bool {
+	s := trimmed
+	if strings.HasPrefix(s, "+") || strings.HasPrefix(s, "-") {
+		s = strings.TrimSpace(s[1:])
+	}
+	if len(s) >= 2 && s[0] == '&' && (s[1] == 'h' || s[1] == 'H' || s[1] == 'o' || s[1] == 'O') {
+		return true
+	}
+	if decSep == "" {
+		decSep = "."
+	}
+	return !strings.Contains(s, decSep) && !strings.ContainsAny(s, "eEdD")
+}
+
+// vbsCoerceCurrencyValueInLocale converts a Value to a scaled Currency int64 (*10000)
+// using the active locale's numeric rules and banker's rounding at the 4th decimal place.
+func vbsCoerceCurrencyValueInLocale(value Value, profile builtinLocaleProfile) (int64, vbscript.VBSyntaxErrorCode, bool) {
+	switch value.Type {
+	case VTEmpty:
+		return 0, 0, true
+	case VTNull:
+		return 0, vbscript.InvalidUseOfNull, false
+	case VTCurrency:
+		return value.Num, 0, true
+	case VTBool:
+		return vbsBoolNum(value) * 10000, 0, true
+	case VTInteger:
+		if value.Num > math.MaxInt64/10000 || value.Num < math.MinInt64/10000 {
+			return 0, vbscript.Overflow, false
+		}
+		return value.Num * 10000, 0, true
+	case VTDouble:
+		return floatToCurrencyScaled(value.Flt)
+	case VTDate:
+		return floatToCurrencyScaled(vbsDateSerial(value))
+	case VTString:
+		text := strings.TrimSpace(value.Str)
+		if sym := profile.currencySymbol; sym != "" {
+			if strings.HasPrefix(text, sym) {
+				text = strings.TrimSpace(text[len(sym):])
+			} else if strings.HasSuffix(text, sym) {
+				text = strings.TrimSpace(text[:len(text)-len(sym)])
+			}
+		}
+		f, code, ok := vbsParseNumericStringInLocale(text, profile)
+		if !ok {
+			return 0, code, false
+		}
+		return floatToCurrencyScaled(f)
+	default:
+		return 0, vbscript.TypeMismatch, false
+	}
+}
+
+// floatToCurrencyScaled scales a float64 by 10000 with banker's rounding and Currency range validation.
+func floatToCurrencyScaled(f float64) (int64, vbscript.VBSyntaxErrorCode, bool) {
+	if math.IsNaN(f) {
+		return 0, vbscript.TypeMismatch, false
+	}
+	if math.IsInf(f, 0) {
+		return 0, vbscript.Overflow, false
+	}
+	scaled := math.RoundToEven(f * 10000.0)
+	if scaled < -9223372036854775808.0 || scaled >= 9223372036854775808.0 {
+		return 0, vbscript.Overflow, false
+	}
+	return int64(scaled), 0, true
 }

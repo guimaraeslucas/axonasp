@@ -22,15 +22,17 @@ package axonvm
 
 import (
 	"bytes"
-	"errors"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // runASPSource compiles and executes one inline ASP program and returns the rendered output.
@@ -451,7 +453,7 @@ Response.Write Hex(Err.Number) & "|" & Err.Description
 	}
 }
 
-// TestMSXMLServerXMLHTTPSendNetworkFailures verifies that connection refused, DNS failure, and timeouts
+// TestMSXMLServerXMLHTTPSendNetworkFailures verifies that connection refused and DNS failures
 // raise COM HRESULT 0x80072EFD and sanitize statusText.
 func TestMSXMLServerXMLHTTPSendNetworkFailures(t *testing.T) {
 	networkErrors := []struct {
@@ -465,10 +467,6 @@ func TestMSXMLServerXMLHTTPSendNetworkFailures(t *testing.T) {
 		{
 			name: "dns_error",
 			err:  &net.DNSError{Err: "no such host", Name: "nonexistent.example.invalid"},
-		},
-		{
-			name: "timeout_error",
-			err:  &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("i/o timeout")},
 		},
 	}
 
@@ -621,4 +619,203 @@ Response.Write http.Status & "|" & http.StatusText & "|" & http.ResponseText & "
 	if output != expected {
 		t.Fatalf("expected %q, got %q", expected, output)
 	}
+}
+
+// TestMSXMLServerXMLHTTPSendTimeouts verifies that request/response timeouts raise
+// COM HRESULT 0x80072EE2 (-2147012894) and that setTimeouts configures request deadlines.
+func TestMSXMLServerXMLHTTPSendTimeouts(t *testing.T) {
+	timeoutErrors := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "context_deadline_exceeded",
+			err:  context.DeadlineExceeded,
+		},
+		{
+			name: "os_deadline_exceeded",
+			err:  os.ErrDeadlineExceeded,
+		},
+		{
+			name: "net_op_timeout",
+			err:  &net.OpError{Op: "dial", Net: "tcp", Err: os.ErrDeadlineExceeded},
+		},
+		{
+			name: "dns_timeout",
+			err:  &net.DNSError{Err: "i/o timeout", Name: "slow.example.invalid", IsTimeout: true},
+		},
+	}
+
+	for _, tc := range timeoutErrors {
+		t.Run(tc.name, func(t *testing.T) {
+			vm := NewVM(nil, nil, 0)
+			vm.host = &MockHost{}
+			httpLib := NewMsXML2ServerXMLHTTP(vm)
+			httpLib.SetTransport(&mockRoundTripper{
+				roundTripFunc: func(req *http.Request) (*http.Response, error) {
+					return nil, tc.err
+				},
+			})
+
+			if _, err := httpLib.legacyCallMethod("open", "GET", "http://example.com/slow"); err != nil {
+				t.Fatalf("open failed: %v", err)
+			}
+			_, sendErr := httpLib.legacyCallMethod("send")
+			if sendErr == nil {
+				t.Fatal("expected send to fail on timeout error")
+			}
+			vme, ok := sendErr.(*VMError)
+			if !ok {
+				t.Fatalf("expected *VMError, got %T: %v", sendErr, sendErr)
+			}
+			if vme.Number != HResultServerXMLHTTPTimedOut {
+				t.Fatalf("expected HResult 0x80072EE2 (%d), got %d (0x%08X)",
+					HResultServerXMLHTTPTimedOut, vme.Number, uint32(vme.Number))
+			}
+			if !strings.Contains(vme.Description, "The operation timed out") {
+				t.Fatalf("unexpected description: %q", vme.Description)
+			}
+			if httpLib.statusText != "" {
+				t.Fatalf("expected empty statusText on timeout, got %q", httpLib.statusText)
+			}
+		})
+	}
+
+	t.Run("asp_setTimeouts_slow_headers_vs_refused", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to listen on local port: %v", err)
+		}
+		closedAddr := ln.Addr().String()
+		_ = ln.Close()
+
+		unblock := make(chan struct{})
+		defer close(unblock)
+		slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-unblock:
+			case <-r.Context().Done():
+			}
+		}))
+		defer slowServer.Close()
+
+		aspSource := fmt.Sprintf(`<%%
+On Error Resume Next
+Dim h
+Set h = Server.CreateObject("MSXML2.ServerXMLHTTP")
+h.setTimeouts 150, 150, 150, 150
+h.open "GET", "http://%s/", False
+h.send
+Response.Write "refused:" & Err.Number & "|"
+Err.Clear
+Set h = Server.CreateObject("MSXML2.ServerXMLHTTP")
+h.setTimeouts 150, 150, 150, 150
+h.open "GET", "%s", False
+h.send
+Response.Write "timedout:" & Err.Number & ":" & Hex(Err.Number) & ":" & Err.Description
+%%>`, closedAddr, slowServer.URL)
+
+		start := time.Now()
+		output := runASPSource(t, aspSource, nil)
+		elapsed := time.Since(start)
+		if elapsed > 3*time.Second {
+			t.Fatalf("expected setTimeouts to abort fast, took %v", elapsed)
+		}
+		expected := fmt.Sprintf("refused:%d|timedout:%d:80072EE2:The operation timed out",
+			HResultServerXMLHTTPCannotConnect, HResultServerXMLHTTPTimedOut)
+		if output != expected {
+			t.Fatalf("expected %q, got %q", expected, output)
+		}
+	})
+
+	t.Run("asp_setTimeouts_slow_body", func(t *testing.T) {
+		unblock := make(chan struct{})
+		defer close(unblock)
+		slowBodyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			if fl, ok := w.(http.Flusher); ok {
+				fl.Flush()
+			}
+			select {
+			case <-unblock:
+			case <-r.Context().Done():
+			}
+		}))
+		defer slowBodyServer.Close()
+
+		aspSource := fmt.Sprintf(`<%%
+On Error Resume Next
+Dim h
+Set h = Server.CreateObject("MSXML2.ServerXMLHTTP")
+h.setTimeouts 150, 150, 150, 150
+h.open "GET", "%s", False
+h.send
+Response.Write Err.Number & "|" & Err.Description
+%%>`, slowBodyServer.URL)
+
+		output := runASPSource(t, aspSource, nil)
+		expected := fmt.Sprintf("%d|The operation timed out", HResultServerXMLHTTPTimedOut)
+		if output != expected {
+			t.Fatalf("expected %q, got %q", expected, output)
+		}
+	})
+
+	t.Run("asp_timeout_property_extension", func(t *testing.T) {
+		unblock := make(chan struct{})
+		defer close(unblock)
+		slowServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case <-unblock:
+			case <-r.Context().Done():
+			}
+		}))
+		defer slowServer.Close()
+
+		aspSource := fmt.Sprintf(`<%%
+On Error Resume Next
+Dim h
+Set h = Server.CreateObject("MSXML2.ServerXMLHTTP")
+h.timeout = 1
+h.open "GET", "%s", False
+h.send
+Response.Write Err.Number & "|" & Hex(Err.Number)
+%%>`, slowServer.URL)
+
+		output := runASPSource(t, aspSource, nil)
+		expected := fmt.Sprintf("%d|80072EE2", HResultServerXMLHTTPTimedOut)
+		if output != expected {
+			t.Fatalf("expected %q, got %q", expected, output)
+		}
+	})
+
+	t.Run("setTimeouts_zero_infinite_and_validation", func(t *testing.T) {
+		delayedServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(100 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		}))
+		defer delayedServer.Close()
+
+		aspSource := fmt.Sprintf(`<%%
+On Error Resume Next
+Dim h
+Set h = Server.CreateObject("MSXML2.ServerXMLHTTP")
+h.setTimeouts 0, 0, 0, 0
+h.open "GET", "%s", False
+h.send
+Response.Write h.Status & "|" & h.ResponseText & "|"
+Err.Clear
+h.setTimeouts 100, -1, 100, 100
+Response.Write Hex(Err.Number) & "|"
+Err.Clear
+h.setTimeouts 100, 100
+Response.Write Hex(Err.Number)
+%%>`, delayedServer.URL)
+
+		output := runASPSource(t, aspSource, nil)
+		expected := "200|ok|80070057|80004005"
+		if output != expected {
+			t.Fatalf("expected %q, got %q", expected, output)
+		}
+	})
 }
