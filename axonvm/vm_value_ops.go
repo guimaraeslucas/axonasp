@@ -55,6 +55,7 @@ func isNumericLike(v Value) bool {
 
 // coerceFloatStrict converts a value to float64 using VBScript-style numeric coercion.
 // String conversion failure returns false so callers can raise Type mismatch.
+// A Date converts to its day serial (vbsDateSerial) here and in the coercions below.
 func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
 	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
 	switch v.Type {
@@ -64,7 +65,9 @@ func (vm *VM) coerceFloatStrict(v Value) (float64, bool) {
 		return v.Flt, true
 	case VTBool:
 		return float64(vbsBoolNum(v)), true
-	case VTInteger, VTDate, VTNativeObject, VTBuiltin:
+	case VTDate:
+		return vbsDateSerial(v), true
+	case VTInteger, VTNativeObject, VTBuiltin:
 		return float64(v.Num), true
 	case VTString:
 		parsed, _, ok := vbsParseNumericString(v.Str)
@@ -82,6 +85,8 @@ func (vm *VM) coerceFloat(v Value) float64 {
 		return v.Flt
 	case VTBool:
 		return float64(vbsBoolNum(v))
+	case VTDate:
+		return vbsDateSerial(v)
 	case VTString:
 		parsed, _, _ := vbsParseNumericString(v.Str)
 		return parsed
@@ -98,7 +103,9 @@ func (vm *VM) coerceInt64(v Value) int64 {
 	switch v.Type {
 	case VTBool:
 		return vbsBoolNum(v)
-	case VTInteger, VTDate, VTNativeObject, VTBuiltin:
+	case VTDate:
+		return int64(math.RoundToEven(vbsDateSerial(v)))
+	case VTInteger, VTNativeObject, VTBuiltin:
 		return v.Num
 	case VTDouble:
 		return int64(math.RoundToEven(v.Flt))
@@ -125,7 +132,9 @@ func (vm *VM) coerceLogicalInt64(v Value) (int64, bool) {
 	switch v.Type {
 	case VTBool:
 		return vbsBoolNum(v), true
-	case VTInteger, VTDate, VTNativeObject, VTBuiltin:
+	case VTDate:
+		return int64(math.RoundToEven(vbsDateSerial(v))), true
+	case VTInteger, VTNativeObject, VTBuiltin:
 		return v.Num, true
 	case VTDouble:
 		return int64(math.RoundToEven(v.Flt)), true
@@ -212,6 +221,12 @@ func (vm *VM) addValues(a Value, b Value) Value {
 		return NewString(vm.valueToString(a) + vm.valueToString(b))
 	}
 
+	if a.Type == VTDate || b.Type == VTDate {
+		if sum, handled := vm.addOrSubtractDate(a, b, false); handled {
+			return sum
+		}
+	}
+
 	// VBScript numeric addition for String + Numeric only allows numeric types (VTInteger, VTDouble).
 	// Other types like VTBool or VTDate combined with VTString under '+' operator must raise Type mismatch.
 	isStringANumericB := isString(a) && (b.Type == VTInteger || b.Type == VTDouble)
@@ -242,6 +257,34 @@ func (vm *VM) addValues(a Value, b Value) Value {
 	return NewInteger(vm.coerceInt64(a) + vm.coerceInt64(b))
 }
 
+// addOrSubtractDate computes a + b, or a - b, when either operand is a Date, on the
+// day serials as VBScript does. Measured on IIS (saborrie/iis-oracle runs 45592970246,
+// 45595451489, 45595820636): the result is a Date, except that Date - Date is a Double
+// and a serial outside the Date range stays a Double. The other operand may be a
+// number, Boolean, Empty or numeric string (d + "1" is a Date); a non-numeric string
+// raises Type mismatch. handled is false for operand types this does not cover.
+func (vm *VM) addOrSubtractDate(a Value, b Value, subtract bool) (result Value, handled bool) {
+	dateOperand := func(v Value) bool {
+		return v.Type == VTDate || isNumericLike(v) || isEmpty(v) || isString(v)
+	}
+	if !dateOperand(a) || !dateOperand(b) {
+		return Value{}, false
+	}
+	left, leftOK := vm.coerceFloatStrict(a)
+	right, rightOK := vm.coerceFloatStrict(b)
+	if !leftOK || !rightOK {
+		vm.raise(vbscript.TypeMismatch, "Type mismatch")
+		return NewEmpty(), true
+	}
+	if !subtract {
+		return vbsDateOrDoubleFromSerial(left + right), true
+	}
+	if a.Type == VTDate && b.Type == VTDate {
+		return NewDouble(left - right), true
+	}
+	return vbsDateOrDoubleFromSerial(left - right), true
+}
+
 // subtractValues performs numeric subtraction with integer and floating-point coercion.
 // Returns Null if either operand is Null, following VBScript propagation rules.
 func (vm *VM) subtractValues(a Value, b Value) Value {
@@ -249,6 +292,11 @@ func (vm *VM) subtractValues(a Value, b Value) Value {
 	b = vm.unwrapADODBFieldValue(b)
 	if isNull(a) || isNull(b) {
 		return NewNull()
+	}
+	if a.Type == VTDate || b.Type == VTDate {
+		if diff, handled := vm.addOrSubtractDate(a, b, true); handled {
+			return diff
+		}
 	}
 	if a.Type == VTDouble || b.Type == VTDouble {
 		return NewDouble(vm.coerceFloat(a) - vm.coerceFloat(b))
@@ -264,7 +312,8 @@ func (vm *VM) multiplyValues(a Value, b Value) Value {
 	if isNull(a) || isNull(b) {
 		return NewNull()
 	}
-	if a.Type == VTDouble || b.Type == VTDouble {
+	// A Date multiplies as its day serial and gives a Double (IIS: d * 1 is 46388.4375).
+	if a.Type == VTDouble || b.Type == VTDouble || a.Type == VTDate || b.Type == VTDate {
 		return NewDouble(vm.coerceFloat(a) * vm.coerceFloat(b))
 	}
 	return NewInteger(vm.coerceInt64(a) * vm.coerceInt64(b))

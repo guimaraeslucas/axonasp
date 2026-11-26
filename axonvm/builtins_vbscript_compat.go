@@ -609,6 +609,8 @@ func vbsCompatRound(_ *VM, args []Value) (Value, error) {
 	value := float64(args[0].Num)
 	if args[0].Type == VTDouble {
 		value = args[0].Flt
+	} else if args[0].Type == VTDate {
+		value = vbsDateSerial(args[0])
 	}
 	digits := 0
 	if len(args) > 1 {
@@ -618,7 +620,12 @@ func vbsCompatRound(_ *VM, args []Value) (Value, error) {
 	if factor == 0 || math.IsInf(factor, 0) || math.IsNaN(factor) {
 		return NewDouble(0), nil
 	}
-	return NewDouble(math.RoundToEven(value*factor) / factor), nil
+	rounded := math.RoundToEven(value*factor) / factor
+	if args[0].Type == VTDate {
+		// IIS: Round of a Date is a Date (Round(d) is midnight, Round(d, 2) is 10:33:36).
+		return vbsDateOrDoubleFromSerial(rounded), nil
+	}
+	return NewDouble(rounded), nil
 }
 
 // vbsCompatSgn returns -1, 0, or 1 based on numeric sign.
@@ -629,6 +636,8 @@ func vbsCompatSgn(_ *VM, args []Value) (Value, error) {
 	value := float64(args[0].Num)
 	if args[0].Type == VTDouble {
 		value = args[0].Flt
+	} else if args[0].Type == VTDate {
+		value = vbsDateSerial(args[0])
 	}
 	if value > 0 {
 		return NewInteger(1), nil
@@ -640,8 +649,10 @@ func vbsCompatSgn(_ *VM, args []Value) (Value, error) {
 }
 
 // vbsCompatNow returns current date and time in configured location.
+// Like IIS it has whole seconds, so a Now() value survives the day serial arithmetic
+// round trip (Now() + 1 - 1 = Now()).
 func vbsCompatNow(vm *VM, _ []Value) (Value, error) {
-	return NewDate(time.Now().In(builtinCurrentLocation(vm))), nil
+	return NewDate(time.Now().In(builtinCurrentLocation(vm)).Truncate(time.Second)), nil
 }
 
 // vbsCompatDate returns current date with zeroed clock.
@@ -1709,6 +1720,10 @@ func vbsCompatCDate(vm *VM, args []Value) (Value, error) {
 	case VTInteger, VTDouble, VTBool:
 		// Numbers are OLE Automation dates: days since 12/30/1899, fraction = time of day.
 		f, _, _ := vbsCoerceNumericValue(v)
+		if !vbsSerialInDateRange(f) {
+			// IIS: CDate(3000000) raises Overflow.
+			return NewEmpty(), newBuiltinVBRuntimeError(vbscript.Overflow, vbscript.Overflow.String())
+		}
 		return NewDate(vbsDateFromSerial(f, builtinCurrentLocation(vm))), nil
 	}
 	t := valueToTimeInLocale(vm, v)
@@ -1725,8 +1740,51 @@ func vbsDateFromSerial(serial float64, loc *time.Location) time.Time {
 	days := math.Trunc(serial)
 	frac := math.Abs(serial - days)
 	secs := int(math.Round(frac * 86400))
-	base := time.Date(1899, time.December, 30, 0, 0, 0, 0, loc)
-	return base.AddDate(0, 0, int(days)).Add(time.Duration(secs) * time.Second)
+	// time.Date normalizes the day and second overflow as wall-clock time, so the
+	// time of day is kept on days when daylight saving time starts or ends.
+	return time.Date(1899, time.December, 30+int(days), 0, 0, secs, 0, loc)
+}
+
+// vbsSerialEpochUnix is 12/30/1899 00:00 UTC in Unix seconds, day 0 of the serial.
+var vbsSerialEpochUnix = time.Date(1899, time.December, 30, 0, 0, 0, 0, time.UTC).Unix()
+
+// vbsSerialFromTime converts a wall-clock time to an OLE Automation date serial,
+// the inverse of vbsDateFromSerial: whole days since 12/30/1899 plus the time of day
+// as a fraction, which is subtracted rather than added before that date.
+func vbsSerialFromTime(t time.Time) float64 {
+	y, m, d := t.Date()
+	days := float64((time.Date(y, m, d, 0, 0, 0, 0, time.UTC).Unix() - vbsSerialEpochUnix) / 86400)
+	clock := t.Hour()*3600 + t.Minute()*60 + t.Second()
+	frac := (float64(clock) + float64(t.Nanosecond())/1e9) / 86400
+	if days < 0 {
+		return days - frac
+	}
+	return days + frac
+}
+
+// vbsDateSerial returns the day serial VBScript uses for a Date value in arithmetic,
+// comparisons with numbers and numeric conversions. The serial is of the local wall
+// clock in the configured time zone, since a VBScript Date carries no zone.
+func vbsDateSerial(v Value) float64 {
+	if v.Num == vbsCompatZeroDateSentinelNum() {
+		return vbsSerialFromTime(time.Time{})
+	}
+	return vbsSerialFromTime(time.Unix(0, v.Num).In(builtinCurrentLocation(nil)))
+}
+
+// vbsSerialInDateRange reports whether a serial lies in the VBScript Date range,
+// 1/1/100 to 12/31/9999 23:59:59.
+func vbsSerialInDateRange(serial float64) bool {
+	return serial > -657435 && serial < 2958466
+}
+
+// vbsDateOrDoubleFromSerial is the result of arithmetic that yields a Date on IIS: a
+// Date when the serial is in range, otherwise the Double, as IIS returns for d + 3000000.
+func vbsDateOrDoubleFromSerial(serial float64) Value {
+	if !vbsSerialInDateRange(serial) {
+		return NewDouble(serial)
+	}
+	return NewDate(vbsDateFromSerial(serial, builtinCurrentLocation(nil)))
 }
 
 // vbsCompatCChar converts to one-character string.
