@@ -284,10 +284,7 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 func (s *MsXML2ServerXMLHTTP) legacySetProperty(name string, value any) error {
 	switch strings.ToLower(name) {
 	case "timeout":
-		secs := toInt(value)
-		if secs < 0 {
-			secs = 0
-		}
+		secs := max(toInt(value), 0)
 		d := time.Duration(secs) * time.Second
 		s.timeout = d
 		s.connectTimeout = d
