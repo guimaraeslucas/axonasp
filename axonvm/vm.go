@@ -6375,7 +6375,7 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			strings.EqualFold(member, "HttpOnly"), strings.EqualFold(member, "Value"),
 			strings.EqualFold(member, "Name"):
 			if len(args) >= 1 {
-				vm.host.Response().SetCookieProperty(cookieName, member, vm.valueToString(args[len(args)-1]))
+				vm.setCookiePropertyValue(vm.host.Response(), cookieName, member, args[len(args)-1])
 				return Value{Type: VTEmpty}
 			}
 			return NewString(vm.host.Response().GetCookieProperty(cookieName, member))
@@ -6767,47 +6767,47 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 			return Value{Type: VTNativeObject, Num: nativeResponseCookies}
 		case strings.EqualFold(member, "Cookies.Domain"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Domain", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Domain", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Domain"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Domain"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.Path"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Path", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Path", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Path"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Path"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.Expires"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Expires", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Expires", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Expires"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Expires"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.Secure"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "Secure", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "Secure", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "Secure"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "Secure"))
 			}
 			return NewString("")
 		case strings.EqualFold(member, "Cookies.HttpOnly"):
 			if len(args) >= 2 {
-				response.SetCookieProperty(args[0].String(), "HttpOnly", args[1].String())
+				vm.setCookiePropertyValue(response, vm.valueToString(args[0]), "HttpOnly", args[1])
 				return Value{Type: VTEmpty}
 			}
 			if len(args) == 1 {
-				return NewString(response.GetCookieProperty(args[0].String(), "HttpOnly"))
+				return NewString(response.GetCookieProperty(vm.valueToString(args[0]), "HttpOnly"))
 			}
 			return NewString("")
 		}
@@ -6832,27 +6832,27 @@ func (vm *VM) dispatchNativeCall(objID int64, member string, args []Value) Value
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesDomainMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Domain", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Domain", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesPathMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Path", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Path", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesExpiresMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Expires", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Expires", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesSecureMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "Secure", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "Secure", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeResponseCookiesHttpOnlyMethod:
 		if member == "" && len(args) >= 2 {
-			vm.host.Response().SetCookieProperty(args[0].String(), "HttpOnly", args[1].String())
+			vm.setCookiePropertyValue(vm.host.Response(), vm.valueToString(args[0]), "HttpOnly", args[1])
 		}
 		return Value{Type: VTEmpty}
 	case nativeObjectRequest: // Request
@@ -8382,7 +8382,7 @@ func (vm *VM) dispatchMemberSet(objID int64, member string, val Value) {
 
 	// Dynamic native objects: Response cookie items
 	if cookieName, exists := vm.responseCookieItems[objID]; exists {
-		vm.host.Response().SetCookieProperty(cookieName, member, vm.valueToString(val))
+		vm.setCookiePropertyValue(vm.host.Response(), cookieName, member, val)
 		return
 	}
 
@@ -8594,7 +8594,7 @@ func (vm *VM) dispatchResponseCookiesArgs(response *asp.Response, args []Value) 
 	}
 	propertyName := vm.valueToString(args[1])
 	if len(args) >= 3 {
-		response.SetCookieProperty(cookieName, propertyName, vm.valueToString(args[2]))
+		vm.setCookiePropertyValue(response, cookieName, propertyName, args[2])
 		return Value{Type: VTEmpty}
 	}
 	switch {
@@ -8606,6 +8606,77 @@ func (vm *VM) dispatchResponseCookiesArgs(response *asp.Response, args []Value) 
 		response.SetCookieValue(cookieName, propertyName)
 		return Value{Type: VTEmpty}
 	}
+}
+
+// setCookiePropertyValue sets a Response.Cookies property, preserving typed Date and localized date strings for Expires.
+func (vm *VM) setCookiePropertyValue(response *asp.Response, cookieName string, propertyName string, val Value) {
+	if response == nil {
+		return
+	}
+	if strings.EqualFold(propertyName, "Expires") {
+		vm.setCookieExpiresValue(response, cookieName, val)
+		return
+	}
+	response.SetCookieProperty(cookieName, propertyName, vm.valueToString(val))
+}
+
+// setCookieExpiresValue parses a VBScript/JScript Expires value into a time.Time and preserves its raw display string.
+func (vm *VM) setCookieExpiresValue(response *asp.Response, cookieName string, val Value) {
+	v := val
+	if v.Type == VTArgRef {
+		v = vm.stack[int(v.Num)]
+	}
+	v = vm.unwrapADODBFieldValue(resolveCallable(vm, v))
+
+	switch v.Type {
+	case VTDate:
+		raw := vm.valueToString(v)
+		if v.Num == vbsCompatZeroDateSentinelNum() {
+			response.SetCookieExpires(cookieName, time.Time{}, raw)
+			return
+		}
+		expires := time.Unix(0, v.Num).In(builtinCurrentLocation(vm))
+		response.SetCookieExpires(cookieName, expires, raw)
+		return
+	case VTJSObject:
+		if vm.jsObjectStringProperty(v, "__js_type") == "Date" {
+			expires := valueToTimeInLocale(vm, v)
+			raw := vm.valueToString(v)
+			if !expires.IsZero() {
+				raw = expires.UTC().Format("Mon, 02 Jan 2006 15:04:05 GMT")
+			}
+			response.SetCookieExpires(cookieName, expires, raw)
+			return
+		}
+	case VTInteger, VTDouble:
+		f, _, _ := vbsCoerceNumericValue(v)
+		raw := vm.valueToString(v)
+		if vbsSerialInDateRange(f) {
+			expires := vbsDateFromSerial(f, builtinCurrentLocation(vm))
+			response.SetCookieExpires(cookieName, expires, raw)
+			return
+		}
+		response.SetCookieProperty(cookieName, "Expires", raw)
+		return
+	}
+
+	raw := vm.valueToString(v)
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		response.SetCookieExpires(cookieName, time.Time{}, raw)
+		return
+	}
+	// Try HTTP/RFC/Unix formats first so standard header strings keep their exact zone,
+	// then fall back to localized CDate-compatible parsing.
+	if parsed := asp.ParseCookieExpiresRaw(trimmed); !parsed.IsZero() {
+		response.SetCookieExpires(cookieName, parsed, raw)
+		return
+	}
+	if parsed := parseLocalizedTimeValue(trimmed, builtinCurrentLocation(vm), builtinLocaleProfileForVM(vm)); !parsed.IsZero() {
+		response.SetCookieExpires(cookieName, parsed, raw)
+		return
+	}
+	response.SetCookieProperty(cookieName, "Expires", raw)
 }
 
 // newResponseCookieItem creates a native cookie item object used for chained cookie member access.

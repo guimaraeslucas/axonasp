@@ -67,6 +67,7 @@ type ResponseCookie struct {
 	valueInitialized bool
 	Domain           string
 	Path             string
+	Expires          time.Time
 	ExpiresRaw       string
 	Secure           bool
 	HTTPOnly         bool
@@ -742,11 +743,58 @@ func (r *Response) SetCookieProperty(cookieName string, propertyName string, pro
 		cookie.Path = propertyValue
 	case "expires":
 		cookie.ExpiresRaw = propertyValue
+		cookie.Expires = ParseCookieExpiresRaw(propertyValue)
 	case "secure":
 		cookie.Secure = strings.EqualFold(propertyValue, "true") || propertyValue == "1"
 	case "httponly":
 		cookie.HTTPOnly = strings.EqualFold(propertyValue, "true") || propertyValue == "1"
 	}
+}
+
+// SetCookieExpires sets a response cookie's expiration timestamp along with its raw display string.
+func (r *Response) SetCookieExpires(cookieName string, expires time.Time, raw string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.flushed {
+		return
+	}
+
+	key := strings.ToLower(cookieName)
+	cookie, exists := r.cookies[key]
+	if !exists {
+		cookie = &ResponseCookie{Name: cookieName, Path: "/"}
+		r.cookies[key] = cookie
+		r.cookieOrder = append(r.cookieOrder, cookieName)
+	}
+
+	cookie.Expires = expires
+	cookie.ExpiresRaw = raw
+}
+
+// ParseCookieExpiresRaw parses standard HTTP, RFC, and Unix-second cookie expiration strings.
+func ParseCookieExpiresRaw(raw string) time.Time {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}
+	}
+	if unix, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+		return time.Unix(unix, 0).UTC()
+	}
+	layouts := []string{
+		time.RFC3339,
+		time.RFC1123,
+		time.RFC1123Z,
+		"Mon, 02-Jan-2006 15:04:05 MST",
+		"Mon, 02-Jan-2006 15:04:05 -0700",
+		time.RFC850,
+		time.ANSIC,
+	}
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, trimmed); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
 
 // incomingRequestCookieValueLocked reads a raw incoming HTTP cookie value matching
@@ -1019,20 +1067,10 @@ func (r *Response) flushInternal() {
 			if httpCookie.Path == "" {
 				httpCookie.Path = "/"
 			}
-			if cookie.ExpiresRaw != "" {
-				if unix, err := strconv.ParseInt(cookie.ExpiresRaw, 10, 64); err == nil {
-					httpCookie.Expires = time.Unix(unix, 0).UTC()
-				} else if parsed, err := time.Parse(time.RFC3339, cookie.ExpiresRaw); err == nil {
-					httpCookie.Expires = parsed
-				} else if parsed, err := time.Parse(time.RFC1123, cookie.ExpiresRaw); err == nil {
-					httpCookie.Expires = parsed
-				} else if parsed, err := time.Parse(time.RFC1123Z, cookie.ExpiresRaw); err == nil {
-					httpCookie.Expires = parsed
-				} else if parsed, err := time.Parse(time.RFC850, cookie.ExpiresRaw); err == nil {
-					httpCookie.Expires = parsed
-				} else if parsed, err := time.Parse(time.ANSIC, cookie.ExpiresRaw); err == nil {
-					httpCookie.Expires = parsed
-				}
+			if !cookie.Expires.IsZero() {
+				httpCookie.Expires = cookie.Expires
+			} else if cookie.ExpiresRaw != "" {
+				httpCookie.Expires = ParseCookieExpiresRaw(cookie.ExpiresRaw)
 			}
 			http.SetCookie(r.w, httpCookie)
 		}
