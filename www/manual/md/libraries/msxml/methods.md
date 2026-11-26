@@ -6,6 +6,7 @@
 |---|---|---|
 | `Open(method, url [,async [,user [,password]]])` | Empty | Configures the HTTP method, URL, and optional async flag and credentials. |
 | `SetRequestHeader(header, value)` | Empty | Adds or replaces an outgoing request header. |
+| `SetTimeouts(resolveTimeout, connectTimeout, sendTimeout, receiveTimeout)` | Empty | Configures DNS resolution, connect, send, and receive timeouts in milliseconds (`0` = infinite). |
 | `Send([body])` | Empty | Executes the configured HTTP request. Accepts an optional String or byte-array body. |
 | `Abort()` | Empty | Cancels the current request without waiting for a response. |
 | `GetResponseHeader(header)` | String | Returns the value of a single response header (case-insensitive lookup). |
@@ -53,6 +54,7 @@
 ### ServerXMLHTTP
 - Open
 - SetRequestHeader
+- SetTimeouts
 - Send
 - Abort
 - GetResponseHeader

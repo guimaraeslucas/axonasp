@@ -24,6 +24,7 @@ package axonvm
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -32,11 +33,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -48,8 +52,12 @@ const (
 	HResultServerXMLHTTPUnrecognizedScheme = -2147012890
 	// HResultServerXMLHTTPUnspecifiedError indicates execution failure such as Send after invalid Open (0x80004005).
 	HResultServerXMLHTTPUnspecifiedError = -2147467259
+	// HResultServerXMLHTTPInvalidArg indicates an invalid parameter passed to a method (0x80070057).
+	HResultServerXMLHTTPInvalidArg = -2147024809
 	// HResultServerXMLHTTPCannotConnect indicates transport or connection failure (0x80072EFD).
 	HResultServerXMLHTTPCannotConnect = -2147012867
+	// HResultServerXMLHTTPTimedOut indicates that the HTTP operation timed out (0x80072EE2).
+	HResultServerXMLHTTPTimedOut = -2147012894
 	// HResultServerXMLHTTPDataNotAvailable indicates accessing response properties before data is available (0x8000000A).
 	HResultServerXMLHTTPDataNotAvailable = -2147483638
 )
@@ -57,25 +65,30 @@ const (
 // MsXML2ServerXMLHTTP implements the MSXML2.ServerXMLHTTP object
 // Provides methods for making HTTP requests and handling XML responses
 type MsXML2ServerXMLHTTP struct {
-	method          string
-	url             string
-	responseText    string
-	responseXML     string
-	responseXMLDoc  *MsXML2DOMDocument
-	status          int
-	statusText      string
-	readyState      int
-	headers         map[string]string
-	responseHeaders map[string]string
-	body            string
-	responseBody    []byte
-	timeout         time.Duration
-	async           bool
-	ctx             *VM
-	openFailed      bool
-	sendFailed      bool
-	lastErr         error
-	transport       http.RoundTripper
+	method            string
+	url               string
+	responseText      string
+	responseXML       string
+	responseXMLDoc    *MsXML2DOMDocument
+	status            int
+	statusText        string
+	readyState        int
+	headers           map[string]string
+	responseHeaders   map[string]string
+	body              string
+	responseBody      []byte
+	timeout           time.Duration
+	resolveTimeout    time.Duration
+	connectTimeout    time.Duration
+	sendTimeout       time.Duration
+	receiveTimeout    time.Duration
+	hasCustomTimeouts bool
+	async             bool
+	ctx               *VM
+	openFailed        bool
+	sendFailed        bool
+	lastErr           error
+	transport         http.RoundTripper
 }
 
 // NewMsXML2ServerXMLHTTP creates a new ServerXMLHTTP instance
@@ -85,6 +98,9 @@ func NewMsXML2ServerXMLHTTP(ctx *VM) *MsXML2ServerXMLHTTP {
 		responseHeaders: make(map[string]string),
 		readyState:      0,
 		timeout:         30 * time.Second,
+		connectTimeout:  60 * time.Second,
+		sendTimeout:     30 * time.Second,
+		receiveTimeout:  30 * time.Second,
 		async:           false,
 		ctx:             ctx,
 	}
@@ -135,6 +151,46 @@ func (s *MsXML2ServerXMLHTTP) raiseCOMError(hresult int, description string) *VM
 		s.ctx.raiseVMError(vme)
 	}
 	return vme
+}
+
+// isTimeoutError reports whether err represents a request deadline or network timeout.
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	if netErr, ok := errors.AsType[net.Error](err); ok && netErr.Timeout() {
+		return true
+	}
+	return false
+}
+
+// idleTimeoutReader resets a receive deadline timer around each body Read call.
+type idleTimeoutReader struct {
+	r       io.Reader
+	timeout time.Duration
+	timer   *time.Timer
+}
+
+func (tr *idleTimeoutReader) Read(p []byte) (int, error) {
+	tr.timer.Reset(tr.timeout)
+	n, err := tr.r.Read(p)
+	tr.timer.Stop()
+	return n, err
+}
+
+func (s *MsXML2ServerXMLHTTP) failSend(err error, timedOut bool) *VMError {
+	s.sendFailed = true
+	s.lastErr = err
+	s.status = 0
+	s.statusText = ""
+	s.readyState = 4
+	if timedOut || isTimeoutError(err) {
+		return s.raiseCOMError(HResultServerXMLHTTPTimedOut, "The operation timed out")
+	}
+	return s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
 }
 
 // isNetworkFailure determines if an error represents a network transport failure
@@ -228,7 +284,16 @@ func (s *MsXML2ServerXMLHTTP) legacyGetProperty(name string) any {
 func (s *MsXML2ServerXMLHTTP) legacySetProperty(name string, value any) error {
 	switch strings.ToLower(name) {
 	case "timeout":
-		s.timeout = time.Duration(toInt(value)) * time.Second
+		secs := toInt(value)
+		if secs < 0 {
+			secs = 0
+		}
+		d := time.Duration(secs) * time.Second
+		s.timeout = d
+		s.connectTimeout = d
+		s.sendTimeout = d
+		s.receiveTimeout = d
+		s.hasCustomTimeouts = false
 	}
 	return nil
 }
@@ -239,6 +304,8 @@ func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...any) (any, e
 		return s.open(args)
 	case "setrequestheader":
 		return s.setRequestHeader(args), nil
+	case "settimeouts":
+		return s.setTimeouts(args)
 	case "send":
 		return s.send(args)
 	case "abort":
@@ -249,6 +316,32 @@ func (s *MsXML2ServerXMLHTTP) legacyCallMethod(name string, args ...any) (any, e
 	case "getallresponseheaders":
 		return s.getAllResponseHeaders(), nil
 	}
+	return nil, nil
+}
+
+// setTimeouts configures resolve, connect, send, and receive timeouts in milliseconds.
+// Syntax: setTimeouts(resolveTimeout, connectTimeout, sendTimeout, receiveTimeout)
+func (s *MsXML2ServerXMLHTTP) setTimeouts(args []any) (any, error) {
+	if len(args) != 4 {
+		err := s.raiseCOMError(HResultServerXMLHTTPUnspecifiedError, "Wrong number of parameters or invalid property assignment")
+		return nil, err
+	}
+
+	resolveMs := toInt(args[0])
+	connectMs := toInt(args[1])
+	sendMs := toInt(args[2])
+	receiveMs := toInt(args[3])
+	if resolveMs < 0 || connectMs < 0 || sendMs < 0 || receiveMs < 0 {
+		err := s.raiseCOMError(HResultServerXMLHTTPInvalidArg, "The parameter is incorrect")
+		return nil, err
+	}
+
+	s.resolveTimeout = time.Duration(resolveMs) * time.Millisecond
+	s.connectTimeout = time.Duration(connectMs) * time.Millisecond
+	s.sendTimeout = time.Duration(sendMs) * time.Millisecond
+	s.receiveTimeout = time.Duration(receiveMs) * time.Millisecond
+	s.timeout = s.receiveTimeout
+	s.hasCustomTimeouts = true
 	return nil, nil
 }
 
@@ -334,12 +427,7 @@ func (s *MsXML2ServerXMLHTTP) send(args []any) (any, error) {
 
 	req, err := http.NewRequest(s.method, s.url, bodyReader)
 	if err != nil {
-		s.sendFailed = true
-		s.lastErr = err
-		s.statusText = ""
-		s.readyState = 4
-		errObj := s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
-		return nil, errObj
+		return nil, s.failSend(err, false)
 	}
 
 	// Add custom headers
@@ -369,27 +457,103 @@ func (s *MsXML2ServerXMLHTTP) send(args []any) (any, error) {
 
 	s.readyState = 3
 
-	client := &http.Client{Timeout: s.timeout, Transport: s.transport}
+	var timedOut atomic.Bool
+	var client *http.Client
+	var cancelReq context.CancelFunc
+	if s.transport != nil || !s.hasCustomTimeouts {
+		clientTimeout := s.timeout
+		if s.hasCustomTimeouts {
+			clientTimeout = s.receiveTimeout
+		}
+		client = &http.Client{Timeout: clientTimeout, Transport: s.transport}
+	} else {
+		dialTimeout := s.connectTimeout
+		if dialTimeout == 0 && s.resolveTimeout > 0 {
+			dialTimeout = s.resolveTimeout
+		}
+		tlsTimeout := 10 * time.Second
+		if s.connectTimeout > 0 {
+			tlsTimeout = s.connectTimeout
+		} else if s.receiveTimeout == 0 {
+			tlsTimeout = 0
+		}
+		tr := &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   dialTimeout,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   tlsTimeout,
+			ResponseHeaderTimeout: s.receiveTimeout,
+			DisableKeepAlives:     true,
+		}
+		defer tr.CloseIdleConnections()
+
+		var reqCtx context.Context
+		reqCtx, cancelReq = context.WithCancel(context.Background())
+		defer cancelReq()
+
+		var sendMu sync.Mutex
+		var sendTimer *time.Timer
+		stopSendTimer := func() {
+			sendMu.Lock()
+			if sendTimer != nil {
+				sendTimer.Stop()
+				sendTimer = nil
+			}
+			sendMu.Unlock()
+		}
+		defer stopSendTimer()
+
+		if s.sendTimeout > 0 {
+			trace := &httptrace.ClientTrace{
+				GotConn: func(_ httptrace.GotConnInfo) {
+					sendMu.Lock()
+					if sendTimer != nil {
+						sendTimer.Stop()
+					}
+					sendTimer = time.AfterFunc(s.sendTimeout, func() {
+						timedOut.Store(true)
+						cancelReq()
+					})
+					sendMu.Unlock()
+				},
+				WroteRequest: func(_ httptrace.WroteRequestInfo) {
+					stopSendTimer()
+				},
+			}
+			reqCtx = httptrace.WithClientTrace(reqCtx, trace)
+		}
+
+		req = req.WithContext(reqCtx)
+		client = &http.Client{Transport: tr}
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
-		s.sendFailed = true
-		s.lastErr = err
-		s.statusText = ""
-		s.readyState = 4
-		errObj := s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
-		return nil, errObj
+		return nil, s.failSend(err, timedOut.Load())
 	}
 	defer resp.Body.Close()
 
+	var bodySrc io.Reader = resp.Body
+	if s.transport == nil && s.hasCustomTimeouts && s.receiveTimeout > 0 {
+		recvTimer := time.AfterFunc(s.receiveTimeout, func() {
+			timedOut.Store(true)
+			cancelReq()
+		})
+		recvTimer.Stop()
+		defer recvTimer.Stop()
+		bodySrc = &idleTimeoutReader{
+			r:       resp.Body,
+			timeout: s.receiveTimeout,
+			timer:   recvTimer,
+		}
+	}
+
 	// Read response body
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(bodySrc)
 	if err != nil {
-		s.sendFailed = true
-		s.lastErr = err
-		s.statusText = ""
-		s.readyState = 4
-		errObj := s.raiseCOMError(HResultServerXMLHTTPCannotConnect, "A connection with the server could not be established")
-		return nil, errObj
+		return nil, s.failSend(err, timedOut.Load())
 	}
 
 	s.sendFailed = false
